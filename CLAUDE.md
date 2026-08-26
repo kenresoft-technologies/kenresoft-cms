@@ -94,8 +94,7 @@ Per the roadmap in `docs/ARCHITECTURE.md` §20:
   the first signup becomes owner, everyone after defaults to editor, and only owners can
   create content types (this gate moved from project creation in the v0.5 revision above).
   Not yet done: any owner-only surface beyond content-type creation (no invite/promote flow
-  exists yet), and select/multi_select option lists, media picker, and reference lookup
-  fields all still render as plain text pending field-builder UI to configure them.
+  exists yet).
 - **Phase 4** (draft/publish + scheduled publishing + revisions + restore) — done:
   `EntryRevision` entity snapshotting every entry write (create/update/restore/auto-publish),
   a `GET .../entries/:id/revisions` + `POST .../entries/:id/revisions/:revisionId/restore` API,
@@ -108,9 +107,7 @@ Per the roadmap in `docs/ARCHITECTURE.md` §20:
   restricted to PNG/GIF/JPEG/WebP verified by the file's actual bytes (`src/lib/
   image-metadata.ts`), never the client-supplied Content-Type or filename extension — see
   `docs/ARCHITECTURE.md` §9/§14. Not yet done: WebP dimension parsing (verified but stored as
-  null — VP8/VP8L/VP8X each encode dimensions differently), and no field type yet uses a media
-  picker to reference an uploaded item (the `media` field type still renders as plain text,
-  same gap noted under Phase 3).
+  null — VP8/VP8L/VP8X each encode dimensions differently).
 - **Phase 6** (public/admin REST API + OpenAPI + public API caching) — in progress. Done:
   `GET /api/v1/public/:contentType` + `GET /api/v1/public/:contentType/:slug`, unauthenticated,
   addressed by content-type/entry slug rather than internal ids. Filters to `status =
@@ -143,5 +140,22 @@ Per the roadmap in `docs/ARCHITECTURE.md` §20:
   building forms or reviewing submissions — the API is fully usable without it today (e.g. a
   hand-written contact form on the eventual Astro site could call it directly), there's just
   no in-CMS way to create a form yet apart from calling the admin API.
+- **Admin UI polish** (not a roadmap phase — a cross-cutting pass over the `apps/admin` work
+  from Phases 3–5) — done: `window.confirm` replaced with shadcn `AlertDialog` everywhere
+  destructive, plus `sonner` toast feedback on every mutation across content types, entries,
+  media and fields; real data-table behavior (search, column sort, pagination) on the content
+  types and entries list pages via TanStack Table; a real Dashboard
+  (`GET /api/v1/admin/dashboard`) with content-type/entry/media counts, a draft/published
+  donut chart, and a recent-activity list; a Settings page
+  (`GET`/`PUT /api/v1/admin/settings`, owner-gated for writes) for the `Settings` singleton
+  entity; and real inputs for `select`/`multi_select`/`media`/`reference` fields — both in the
+  field builder (an option-list editor, a target-content-type picker) and the entry editor (a
+  dropdown, checkboxes, a Media Library picker dialog, and a searchable combobox for
+  reference lookups) — closing the plain-text-field gaps noted under Phases 3 and 5 above.
+  Also fixed a real bug found while building the dashboard: `entries.createdAt`/`updatedAt`
+  used second-precision timestamps, making "recent activity" ordering non-deterministic for
+  writes within the same second (now millisecond precision, matching `entry_revisions`). Not
+  yet done: a command palette (cmd+k) and drag-to-reorder on the field list — both explicitly
+  scoped as stretch goals, not required for this pass.
 
 CI is green on `develop`.
