@@ -53,3 +53,17 @@ export interface FieldDefinition {
   createdAt: string;
   updatedAt: string;
 }
+
+export const ENTRY_STATUSES = ['draft', 'published'] as const;
+export type EntryStatus = (typeof ENTRY_STATUSES)[number];
+
+export interface Entry {
+  id: string;
+  projectId: string;
+  contentTypeId: string;
+  slug: string;
+  status: EntryStatus;
+  data: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}

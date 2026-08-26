@@ -129,7 +129,14 @@ export function ContentTypeDetailPage() {
           </Link>
           <h1 className="text-2xl font-semibold">{contentType?.name ?? 'Fields'}</h1>
         </div>
-        {contentTypeId ? <NewFieldDialog contentTypeId={contentTypeId} /> : null}
+        <div className="flex items-center gap-2">
+          <Button variant="outline" asChild>
+            <Link to={`/projects/${projectId}/content-types/${contentTypeId}/entries`}>
+              View entries
+            </Link>
+          </Button>
+          {contentTypeId ? <NewFieldDialog contentTypeId={contentTypeId} /> : null}
+        </div>
       </div>
 
       {isPending ? <p className="text-muted-foreground">Loading…</p> : null}
