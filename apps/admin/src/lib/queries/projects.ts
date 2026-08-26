@@ -12,6 +12,14 @@ export function useProjects() {
   });
 }
 
+export function useProject(id: string) {
+  return useQuery({
+    queryKey: [...projectsKey, id],
+    queryFn: () => apiClient.get<Project>(`/api/v1/admin/projects/${id}`),
+    enabled: Boolean(id),
+  });
+}
+
 export function useCreateProject() {
   const queryClient = useQueryClient();
 

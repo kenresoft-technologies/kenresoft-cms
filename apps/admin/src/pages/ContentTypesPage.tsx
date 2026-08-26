@@ -1,8 +1,9 @@
 import { useState, type FormEvent } from 'react';
-import { Link } from 'react-router';
+import { Link, useParams } from 'react-router';
 
 import { ApiError } from '@/lib/api-client';
-import { useCreateProject, useProjects } from '@/lib/queries/projects';
+import { useProject } from '@/lib/queries/projects';
+import { useContentTypes, useCreateContentType } from '@/lib/queries/content-types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -17,63 +18,63 @@ import {
 } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
-function NewProjectDialog() {
+function NewContentTypeDialog({ projectId }: { projectId: string }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const createProject = useCreateProject();
+  const createContentType = useCreateContentType(projectId);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
 
     try {
-      await createProject.mutateAsync({ name, slug });
+      await createContentType.mutateAsync({ name, slug });
       setName('');
       setSlug('');
       setOpen(false);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to create project');
+      setError(err instanceof ApiError ? err.message : 'Failed to create content type');
     }
   }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button>New project</Button>
+        <Button>New content type</Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>New project</DialogTitle>
+          <DialogTitle>New content type</DialogTitle>
           <DialogDescription>
-            Projects are the top-level boundary for content types, entries, and media (§11).
+            A reusable type such as Blog Post or Service (§6). Add fields to it next.
           </DialogDescription>
         </DialogHeader>
         <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="project-name">Name</Label>
+            <Label htmlFor="content-type-name">Name</Label>
             <Input
-              id="project-name"
+              id="content-type-name"
               required
               value={name}
               onChange={(event) => setName(event.target.value)}
             />
           </div>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="project-slug">Slug</Label>
+            <Label htmlFor="content-type-slug">Slug</Label>
             <Input
-              id="project-slug"
+              id="content-type-slug"
               required
-              placeholder="pathvera"
+              placeholder="blog-post"
               value={slug}
               onChange={(event) => setSlug(event.target.value)}
             />
           </div>
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
           <DialogFooter>
-            <Button type="submit" disabled={createProject.isPending}>
-              {createProject.isPending ? 'Creating…' : 'Create project'}
+            <Button type="submit" disabled={createContentType.isPending}>
+              {createContentType.isPending ? 'Creating…' : 'Create content type'}
             </Button>
           </DialogFooter>
         </form>
@@ -82,27 +83,33 @@ function NewProjectDialog() {
   );
 }
 
-export function ProjectsPage() {
-  const { data: projects, isPending, error } = useProjects();
+export function ContentTypesPage() {
+  const { projectId } = useParams<{ projectId: string }>();
+  const { data: project } = useProject(projectId ?? '');
+  const { data: contentTypes, isPending, error } = useContentTypes(projectId ?? '');
 
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Projects</h1>
-          <p className="text-muted-foreground">Every content type and entry belongs to a project.</p>
+          <Link to="/projects" className="text-sm text-muted-foreground hover:text-foreground">
+            ← Projects
+          </Link>
+          <h1 className="text-2xl font-semibold">
+            Content types{project ? ` — ${project.name}` : ''}
+          </h1>
         </div>
-        <NewProjectDialog />
+        {projectId ? <NewContentTypeDialog projectId={projectId} /> : null}
       </div>
 
       {isPending ? <p className="text-muted-foreground">Loading…</p> : null}
       {error ? <p className="text-destructive">{error.message}</p> : null}
 
-      {projects && projects.length === 0 ? (
-        <p className="text-muted-foreground">No projects yet — create one to get started.</p>
+      {contentTypes && contentTypes.length === 0 ? (
+        <p className="text-muted-foreground">No content types yet — create one to get started.</p>
       ) : null}
 
-      {projects && projects.length > 0 ? (
+      {contentTypes && contentTypes.length > 0 ? (
         <Table>
           <TableHeader>
             <TableRow>
@@ -111,17 +118,17 @@ export function ProjectsPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {projects.map((project) => (
-              <TableRow key={project.id}>
+            {contentTypes.map((contentType) => (
+              <TableRow key={contentType.id}>
                 <TableCell>
                   <Link
-                    to={`/projects/${project.id}/content-types`}
+                    to={`/projects/${projectId}/content-types/${contentType.id}`}
                     className="text-primary hover:underline"
                   >
-                    {project.name}
+                    {contentType.name}
                   </Link>
                 </TableCell>
-                <TableCell className="text-muted-foreground">{project.slug}</TableCell>
+                <TableCell className="text-muted-foreground">{contentType.slug}</TableCell>
               </TableRow>
             ))}
           </TableBody>

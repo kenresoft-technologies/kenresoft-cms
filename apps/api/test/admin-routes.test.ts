@@ -56,6 +56,12 @@ describe('admin routes (real D1)', () => {
     });
     expect(await listProjectsRes.json()).toEqual([project]);
 
+    const getProjectRes = await SELF.fetch(
+      `https://example.com/api/v1/admin/projects/${project.id}`,
+      { headers: { Cookie: cookie } },
+    );
+    expect(await getProjectRes.json()).toEqual(project);
+
     const contentTypeRes = await SELF.fetch('https://example.com/api/v1/admin/content-types', {
       method: 'POST',
       headers,
@@ -63,6 +69,12 @@ describe('admin routes (real D1)', () => {
     });
     expect(contentTypeRes.status).toBe(201);
     const contentType = await contentTypeRes.json<{ id: string }>();
+
+    const getContentTypeRes = await SELF.fetch(
+      `https://example.com/api/v1/admin/content-types/${contentType.id}`,
+      { headers: { Cookie: cookie } },
+    );
+    expect(await getContentTypeRes.json()).toEqual(contentType);
 
     const fieldRes = await SELF.fetch(
       `https://example.com/api/v1/admin/content-types/${contentType.id}/fields`,
@@ -127,6 +139,19 @@ describe('admin routes (real D1)', () => {
     expect(response.status).toBe(400);
     const body = await response.json<{ error: string }>();
     expect(body.error).toBe('Validation failed');
+  });
+
+  it('404s fetching a non-existent project or content type', async () => {
+    const cookie = await freshCookie();
+    const headers = { Cookie: cookie };
+
+    const [projectRes, contentTypeRes] = await Promise.all([
+      SELF.fetch('https://example.com/api/v1/admin/projects/does-not-exist', { headers }),
+      SELF.fetch('https://example.com/api/v1/admin/content-types/does-not-exist', { headers }),
+    ]);
+
+    expect(projectRes.status).toBe(404);
+    expect(contentTypeRes.status).toBe(404);
   });
 
   it('404s when creating an entry under a non-existent content type', async () => {

@@ -40,6 +40,15 @@ contentTypesRoute.post('/', async (c) => {
   return c.json(contentType, 201);
 });
 
+contentTypesRoute.get('/:id', async (c) => {
+  const db = getDb(c);
+  const contentType = await getContentTypeById(db, c.req.param('id'));
+  if (!contentType) {
+    return c.json({ error: 'Content type not found' }, 404);
+  }
+  return c.json(contentType);
+});
+
 contentTypesRoute.get('/:id/fields', async (c) => {
   const db = getDb(c);
   const contentType = await getContentTypeById(db, c.req.param('id'));

@@ -4,7 +4,7 @@ import { getDb } from '../../lib/db';
 import { parseJsonBody } from '../../lib/validate';
 import type { Bindings } from '../../lib/env';
 import type { AuthedVariables } from '../../middleware/require-session';
-import { createProject, listProjects } from '../../repositories/projects';
+import { createProject, getProjectById, listProjects } from '../../repositories/projects';
 import { createProjectSchema } from '../../validators/projects';
 
 export const projectsRoute = new Hono<{ Bindings: Bindings; Variables: AuthedVariables }>();
@@ -12,6 +12,15 @@ export const projectsRoute = new Hono<{ Bindings: Bindings; Variables: AuthedVar
 projectsRoute.get('/', async (c) => {
   const db = getDb(c);
   return c.json(await listProjects(db));
+});
+
+projectsRoute.get('/:id', async (c) => {
+  const db = getDb(c);
+  const project = await getProjectById(db, c.req.param('id'));
+  if (!project) {
+    return c.json({ error: 'Project not found' }, 404);
+  }
+  return c.json(project);
 });
 
 projectsRoute.post('/', async (c) => {
