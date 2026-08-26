@@ -111,5 +111,13 @@ Per the roadmap in `docs/ARCHITECTURE.md` §20:
   null — VP8/VP8L/VP8X each encode dimensions differently), and no field type yet uses a media
   picker to reference an uploaded item (the `media` field type still renders as plain text,
   same gap noted under Phase 3).
+- **Phase 6** (public/admin REST API + OpenAPI + public API caching) — in progress. Done:
+  `GET /api/v1/public/:contentType` + `GET /api/v1/public/:contentType/:slug`, unauthenticated,
+  addressed by content-type/entry slug rather than internal ids. Filters to `status =
+  'published'` at the query layer (`getPublishedEntryBySlug`/`listPublishedEntriesFor
+  ContentType` in `apps/api/src/repositories/entries.ts`) — a draft matching the requested
+  slug 404s exactly like a slug that doesn't exist, never distinguishable from the outside.
+  Not yet done: migrating routes to `@hono/zod-openapi` for generated API contracts, and the
+  public API caching layer (Cache API/KV) — both independent, substantial slices of their own.
 
 CI is green on `develop`.
