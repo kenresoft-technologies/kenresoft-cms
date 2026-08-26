@@ -63,9 +63,7 @@ describe('EntriesPage', () => {
 
     renderPage();
 
-    await waitFor(() =>
-      expect(screen.getByText('No entries yet — create one to get started.')).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.getByText('No entries yet')).toBeInTheDocument());
     expect(screen.getByRole('link', { name: 'New entry' })).toHaveAttribute(
       'href',
       '/projects/proj-1/content-types/ct-1/entries/new',

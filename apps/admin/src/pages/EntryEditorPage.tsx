@@ -1,15 +1,20 @@
 import { useState, type FormEvent } from 'react';
-import { Link, useNavigate, useParams } from 'react-router';
+import { useNavigate, useParams } from 'react-router';
 
 import { FieldInput } from '@/components/field-input';
 import { ApiError } from '@/lib/api-client';
+import { useContentType } from '@/lib/queries/content-types';
 import { useCreateEntry, useEntry, useUpdateEntry } from '@/lib/queries/entries';
 import { useFieldDefinitions } from '@/lib/queries/field-definitions';
+import { useProject } from '@/lib/queries/projects';
 import { ENTRY_STATUSES, type Entry, type EntryStatus, type FieldDefinition, type FieldType } from '@/lib/types';
+import { PageBreadcrumb } from '@/components/page-breadcrumb';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Skeleton } from '@/components/ui/skeleton';
 
 function defaultValueForType(fieldType: FieldType): unknown {
   return fieldType === 'boolean' ? false : '';
@@ -114,33 +119,55 @@ export function EntryEditorPage() {
   }>();
   const isNew = entryId === 'new';
 
+  const { data: project } = useProject(projectId ?? '');
+  const { data: contentType } = useContentType(contentTypeId ?? '');
   const { data: fields } = useFieldDefinitions(contentTypeId ?? '');
   const { data: entry } = useEntry(isNew ? '' : (entryId ?? ''));
   const ready = Boolean(fields) && (isNew || Boolean(entry));
 
   return (
     <div className="flex max-w-2xl flex-col gap-6">
-      <div>
-        <Link
-          to={`/projects/${projectId}/content-types/${contentTypeId}/entries`}
-          className="text-sm text-muted-foreground hover:text-foreground"
-        >
-          ← Entries
-        </Link>
-        <h1 className="text-2xl font-semibold">{isNew ? 'New entry' : 'Edit entry'}</h1>
-      </div>
+      <PageBreadcrumb
+        items={[
+          { label: 'Projects', to: '/projects' },
+          { label: project?.name ?? '…', to: `/projects/${projectId}/content-types` },
+          {
+            label: contentType?.name ?? '…',
+            to: `/projects/${projectId}/content-types/${contentTypeId}`,
+          },
+          {
+            label: 'Entries',
+            to: `/projects/${projectId}/content-types/${contentTypeId}/entries`,
+          },
+          { label: isNew ? 'New' : (entry?.slug ?? '…') },
+        ]}
+      />
 
-      {!ready ? <p className="text-muted-foreground">Loading…</p> : null}
+      <h1 className="text-2xl font-semibold">{isNew ? 'New entry' : 'Edit entry'}</h1>
+
+      {!ready ? (
+        <Card>
+          <CardContent className="flex flex-col gap-4">
+            <Skeleton className="h-9 w-full" />
+            <Skeleton className="h-9 w-full" />
+            <Skeleton className="h-9 w-full" />
+          </CardContent>
+        </Card>
+      ) : null}
 
       {ready && projectId && contentTypeId && entryId ? (
-        <EntryForm
-          key={entryId}
-          projectId={projectId}
-          contentTypeId={contentTypeId}
-          entryId={entryId}
-          fields={fields!}
-          entry={isNew ? undefined : entry}
-        />
+        <Card>
+          <CardContent>
+            <EntryForm
+              key={entryId}
+              projectId={projectId}
+              contentTypeId={contentTypeId}
+              entryId={entryId}
+              fields={fields!}
+              entry={isNew ? undefined : entry}
+            />
+          </CardContent>
+        </Card>
       ) : null}
     </div>
   );

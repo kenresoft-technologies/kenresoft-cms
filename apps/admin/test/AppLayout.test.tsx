@@ -3,6 +3,7 @@ import { MemoryRouter, Route, Routes } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AppLayout } from '@/layouts/AppLayout';
+import { TooltipProvider } from '@/components/ui/tooltip';
 
 const { useSessionMock, signOutMock } = vi.hoisted(() => ({
   useSessionMock: vi.fn(),
@@ -18,14 +19,16 @@ vi.mock('@/lib/auth-client', () => ({
 
 function renderAppLayout() {
   return render(
-    <MemoryRouter initialEntries={['/']}>
-      <Routes>
-        <Route path="/login" element={<div>Login placeholder</div>} />
-        <Route path="/" element={<AppLayout />}>
-          <Route index element={<div>Protected content</div>} />
-        </Route>
-      </Routes>
-    </MemoryRouter>,
+    <TooltipProvider>
+      <MemoryRouter initialEntries={['/']}>
+        <Routes>
+          <Route path="/login" element={<div>Login placeholder</div>} />
+          <Route path="/" element={<AppLayout />}>
+            <Route index element={<div>Protected content</div>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>
+    </TooltipProvider>,
   );
 }
 
@@ -53,7 +56,7 @@ describe('AppLayout', () => {
 
   it('renders the outlet and user email when a session exists', () => {
     useSessionMock.mockReturnValue({
-      data: { user: { email: 'owner@pathvera.test' } },
+      data: { user: { email: 'owner@pathvera.test', role: 'owner' } },
       isPending: false,
     });
 

@@ -53,8 +53,9 @@ describe('ContentTypesPage', () => {
 
     await waitFor(() => expect(screen.getByText('Blog Post')).toBeInTheDocument());
     expect(getMock).toHaveBeenCalledWith('/api/v1/admin/content-types?projectId=proj-1');
+    expect(screen.getByRole('heading', { name: 'Content types' })).toBeInTheDocument();
     await waitFor(() =>
-      expect(screen.getByText('Content types — Pathvera Group')).toBeInTheDocument(),
+      expect(screen.getByRole('link', { name: 'Pathvera Group' })).toBeInTheDocument(),
     );
   });
 
@@ -67,9 +68,7 @@ describe('ContentTypesPage', () => {
     postMock.mockResolvedValue({ id: 'ct-1', projectId: 'proj-1', name: 'Blog Post', slug: 'blog-post' });
 
     renderPage();
-    await waitFor(() =>
-      expect(screen.getByText('No content types yet — create one to get started.')).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.getByText('No content types yet')).toBeInTheDocument());
 
     await userEvent.click(screen.getByRole('button', { name: 'New content type' }));
     const dialog = screen.getByRole('dialog');

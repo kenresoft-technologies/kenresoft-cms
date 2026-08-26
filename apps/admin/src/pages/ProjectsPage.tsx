@@ -1,8 +1,11 @@
 import { useState, type FormEvent } from 'react';
+import { ChevronRight, FolderKanban } from 'lucide-react';
 import { Link } from 'react-router';
 
 import { ApiError } from '@/lib/api-client';
 import { useCreateProject, useProjects } from '@/lib/queries/projects';
+import { EmptyState } from '@/components/empty-state';
+import { TableSkeleton } from '@/components/table-skeleton';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -95,37 +98,60 @@ export function ProjectsPage() {
         <NewProjectDialog />
       </div>
 
-      {isPending ? <p className="text-muted-foreground">Loading…</p> : null}
       {error ? <p className="text-destructive">{error.message}</p> : null}
 
+      {isPending ? (
+        <div className="rounded-xl border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Slug</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableSkeleton columns={2} />
+          </Table>
+        </div>
+      ) : null}
+
       {projects && projects.length === 0 ? (
-        <p className="text-muted-foreground">No projects yet — create one to get started.</p>
+        <EmptyState
+          icon={FolderKanban}
+          title="No projects yet"
+          description="Create your first project to start modeling content."
+        />
       ) : null}
 
       {projects && projects.length > 0 ? (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Slug</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {projects.map((project) => (
-              <TableRow key={project.id}>
-                <TableCell>
-                  <Link
-                    to={`/projects/${project.id}/content-types`}
-                    className="text-primary hover:underline"
-                  >
-                    {project.name}
-                  </Link>
-                </TableCell>
-                <TableCell className="text-muted-foreground">{project.slug}</TableCell>
+        <div className="rounded-xl border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Slug</TableHead>
+                <TableHead className="w-8" />
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {projects.map((project) => (
+                <TableRow key={project.id} className="group">
+                  <TableCell>
+                    <Link
+                      to={`/projects/${project.id}/content-types`}
+                      className="font-medium hover:underline"
+                    >
+                      {project.name}
+                    </Link>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">{project.slug}</TableCell>
+                  <TableCell>
+                    <ChevronRight className="size-4 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
       ) : null}
     </div>
   );

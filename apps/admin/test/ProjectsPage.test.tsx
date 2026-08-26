@@ -55,9 +55,7 @@ describe('ProjectsPage', () => {
 
     renderProjectsPage();
 
-    await waitFor(() =>
-      expect(screen.getByText('No projects yet — create one to get started.')).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.getByText('No projects yet')).toBeInTheDocument());
   });
 
   it('creates a project through the dialog and refetches the list', async () => {

@@ -1,10 +1,16 @@
 import { useState, type FormEvent } from 'react';
+import { ListPlus } from 'lucide-react';
 import { Link, useParams } from 'react-router';
 
 import { ApiError } from '@/lib/api-client';
 import { useContentType } from '@/lib/queries/content-types';
 import { useCreateFieldDefinition, useFieldDefinitions } from '@/lib/queries/field-definitions';
+import { useProject } from '@/lib/queries/projects';
 import { FIELD_TYPES, type FieldType } from '@/lib/types';
+import { EmptyState } from '@/components/empty-state';
+import { PageBreadcrumb } from '@/components/page-breadcrumb';
+import { TableSkeleton } from '@/components/table-skeleton';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -115,19 +121,23 @@ function NewFieldDialog({ contentTypeId }: { contentTypeId: string }) {
 export function ContentTypeDetailPage() {
   const { projectId, contentTypeId } = useParams<{ projectId: string; contentTypeId: string }>();
   const { data: contentType } = useContentType(contentTypeId ?? '');
+  const { data: project } = useProject(projectId ?? '');
   const { data: fields, isPending, error } = useFieldDefinitions(contentTypeId ?? '');
 
   return (
     <div className="flex flex-col gap-6">
+      <PageBreadcrumb
+        items={[
+          { label: 'Projects', to: '/projects' },
+          { label: project?.name ?? '…', to: `/projects/${projectId}/content-types` },
+          { label: contentType?.name ?? '…' },
+        ]}
+      />
+
       <div className="flex items-center justify-between">
         <div>
-          <Link
-            to={`/projects/${projectId}/content-types`}
-            className="text-sm text-muted-foreground hover:text-foreground"
-          >
-            ← Content types
-          </Link>
           <h1 className="text-2xl font-semibold">{contentType?.name ?? 'Fields'}</h1>
+          <p className="text-muted-foreground">Fields define what the entry editor renders.</p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" asChild>
@@ -139,34 +149,59 @@ export function ContentTypeDetailPage() {
         </div>
       </div>
 
-      {isPending ? <p className="text-muted-foreground">Loading…</p> : null}
       {error ? <p className="text-destructive">{error.message}</p> : null}
 
+      {isPending ? (
+        <div className="rounded-xl border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Label</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead>Required</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableSkeleton columns={4} />
+          </Table>
+        </div>
+      ) : null}
+
       {fields && fields.length === 0 ? (
-        <p className="text-muted-foreground">No fields yet — add one to define this content type.</p>
+        <EmptyState
+          icon={ListPlus}
+          title="No fields yet"
+          description="Add fields to define this content type's shape."
+        />
       ) : null}
 
       {fields && fields.length > 0 ? (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Label</TableHead>
-              <TableHead>Type</TableHead>
-              <TableHead>Required</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {fields.map((field) => (
-              <TableRow key={field.id}>
-                <TableCell>{field.name}</TableCell>
-                <TableCell>{field.label}</TableCell>
-                <TableCell className="text-muted-foreground">{field.fieldType}</TableCell>
-                <TableCell>{field.required ? 'Yes' : 'No'}</TableCell>
+        <div className="rounded-xl border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Label</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead>Required</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {fields.map((field) => (
+                <TableRow key={field.id}>
+                  <TableCell className="font-mono text-sm">{field.name}</TableCell>
+                  <TableCell>{field.label}</TableCell>
+                  <TableCell>
+                    <Badge variant="outline">{field.fieldType}</Badge>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {field.required ? 'Yes' : 'No'}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
       ) : null}
     </div>
   );

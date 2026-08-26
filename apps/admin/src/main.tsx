@@ -5,13 +5,16 @@ import { RouterProvider } from 'react-router';
 
 import { queryClient } from '@/lib/query-client';
 import { router } from '@/routes/router';
+import { TooltipProvider } from '@/components/ui/tooltip';
 
 import './index.css';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
+      <TooltipProvider>
+        <RouterProvider router={router} />
+      </TooltipProvider>
     </QueryClientProvider>
   </StrictMode>,
 );

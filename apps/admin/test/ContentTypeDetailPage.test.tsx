@@ -44,17 +44,23 @@ describe('ContentTypeDetailPage', () => {
   });
 
   it('fetches the content type and its fields scoped by contentTypeId', async () => {
-    getMock.mockImplementation((path: string) =>
-      path.endsWith('/fields')
-        ? Promise.resolve([
-            { id: 'f-1', name: 'title', label: 'Title', fieldType: 'text', required: true },
-          ])
-        : Promise.resolve({ id: 'ct-1', name: 'Blog Post', slug: 'blog-post' }),
-    );
+    getMock.mockImplementation((path: string) => {
+      if (path.endsWith('/fields')) {
+        return Promise.resolve([
+          { id: 'f-1', name: 'title', label: 'Title', fieldType: 'text', required: true },
+        ]);
+      }
+      if (path.includes('/projects/')) {
+        return Promise.resolve({ id: 'proj-1', name: 'Pathvera Group', slug: 'pathvera' });
+      }
+      return Promise.resolve({ id: 'ct-1', name: 'Blog Post', slug: 'blog-post' });
+    });
 
     renderPage();
 
-    await waitFor(() => expect(screen.getByText('Blog Post')).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'Blog Post' })).toBeInTheDocument(),
+    );
     expect(screen.getByText('title')).toBeInTheDocument();
     expect(screen.getByText('Title')).toBeInTheDocument();
     expect(getMock).toHaveBeenCalledWith('/api/v1/admin/content-types/ct-1/fields');
@@ -62,11 +68,13 @@ describe('ContentTypeDetailPage', () => {
   });
 
   it('adds a field through the dialog, defaulting to type=text and required=false', async () => {
-    getMock.mockImplementation((path: string) =>
-      path.endsWith('/fields')
-        ? Promise.resolve([])
-        : Promise.resolve({ id: 'ct-1', name: 'Blog Post', slug: 'blog-post' }),
-    );
+    getMock.mockImplementation((path: string) => {
+      if (path.endsWith('/fields')) return Promise.resolve([]);
+      if (path.includes('/projects/')) {
+        return Promise.resolve({ id: 'proj-1', name: 'Pathvera Group', slug: 'pathvera' });
+      }
+      return Promise.resolve({ id: 'ct-1', name: 'Blog Post', slug: 'blog-post' });
+    });
     postMock.mockResolvedValue({
       id: 'f-1',
       name: 'title',
@@ -76,11 +84,7 @@ describe('ContentTypeDetailPage', () => {
     });
 
     renderPage();
-    await waitFor(() =>
-      expect(
-        screen.getByText('No fields yet — add one to define this content type.'),
-      ).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.getByText('No fields yet')).toBeInTheDocument());
 
     await userEvent.click(screen.getByRole('button', { name: 'Add field' }));
     const dialog = screen.getByRole('dialog');

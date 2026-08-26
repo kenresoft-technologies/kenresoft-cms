@@ -1,9 +1,13 @@
 import { useState, type FormEvent } from 'react';
+import { ChevronRight, LayoutList } from 'lucide-react';
 import { Link, useParams } from 'react-router';
 
 import { ApiError } from '@/lib/api-client';
 import { useProject } from '@/lib/queries/projects';
 import { useContentTypes, useCreateContentType } from '@/lib/queries/content-types';
+import { EmptyState } from '@/components/empty-state';
+import { PageBreadcrumb } from '@/components/page-breadcrumb';
+import { TableSkeleton } from '@/components/table-skeleton';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -90,49 +94,75 @@ export function ContentTypesPage() {
 
   return (
     <div className="flex flex-col gap-6">
+      <PageBreadcrumb
+        items={[
+          { label: 'Projects', to: '/projects' },
+          { label: project?.name ?? '…' },
+        ]}
+      />
+
       <div className="flex items-center justify-between">
         <div>
-          <Link to="/projects" className="text-sm text-muted-foreground hover:text-foreground">
-            ← Projects
-          </Link>
-          <h1 className="text-2xl font-semibold">
-            Content types{project ? ` — ${project.name}` : ''}
-          </h1>
+          <h1 className="text-2xl font-semibold">Content types</h1>
+          <p className="text-muted-foreground">Reusable types such as Blog Post or Service.</p>
         </div>
         {projectId ? <NewContentTypeDialog projectId={projectId} /> : null}
       </div>
 
-      {isPending ? <p className="text-muted-foreground">Loading…</p> : null}
       {error ? <p className="text-destructive">{error.message}</p> : null}
 
+      {isPending ? (
+        <div className="rounded-xl border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Slug</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableSkeleton columns={2} />
+          </Table>
+        </div>
+      ) : null}
+
       {contentTypes && contentTypes.length === 0 ? (
-        <p className="text-muted-foreground">No content types yet — create one to get started.</p>
+        <EmptyState
+          icon={LayoutList}
+          title="No content types yet"
+          description="Create one to start defining what this project's content looks like."
+        />
       ) : null}
 
       {contentTypes && contentTypes.length > 0 ? (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Slug</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {contentTypes.map((contentType) => (
-              <TableRow key={contentType.id}>
-                <TableCell>
-                  <Link
-                    to={`/projects/${projectId}/content-types/${contentType.id}`}
-                    className="text-primary hover:underline"
-                  >
-                    {contentType.name}
-                  </Link>
-                </TableCell>
-                <TableCell className="text-muted-foreground">{contentType.slug}</TableCell>
+        <div className="rounded-xl border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Slug</TableHead>
+                <TableHead className="w-8" />
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {contentTypes.map((contentType) => (
+                <TableRow key={contentType.id} className="group">
+                  <TableCell>
+                    <Link
+                      to={`/projects/${projectId}/content-types/${contentType.id}`}
+                      className="font-medium hover:underline"
+                    >
+                      {contentType.name}
+                    </Link>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">{contentType.slug}</TableCell>
+                  <TableCell>
+                    <ChevronRight className="size-4 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
       ) : null}
     </div>
   );
