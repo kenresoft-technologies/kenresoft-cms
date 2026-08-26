@@ -2,10 +2,13 @@ import { useState, type FormEvent } from 'react';
 import { ChevronRight, LayoutList } from 'lucide-react';
 import { Link } from 'react-router';
 import { toast } from 'sonner';
+import type { ColumnDef } from '@tanstack/react-table';
 
 import { ApiError } from '@/lib/api-client';
 import { authClient } from '@/lib/auth-client';
 import { useContentTypes, useCreateContentType } from '@/lib/queries/content-types';
+import type { ContentType } from '@/lib/types';
+import { DataTable } from '@/components/data-table';
 import { EmptyState } from '@/components/empty-state';
 import { PageBreadcrumb } from '@/components/page-breadcrumb';
 import { TableSkeleton } from '@/components/table-skeleton';
@@ -21,7 +24,32 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Table, TableHeader, TableHead, TableRow } from '@/components/ui/table';
+
+const columns: ColumnDef<ContentType>[] = [
+  {
+    accessorKey: 'name',
+    header: 'Name',
+    cell: ({ row }) => (
+      <Link to={`/content-types/${row.original.id}`} className="font-medium hover:underline">
+        {row.original.name}
+      </Link>
+    ),
+  },
+  {
+    accessorKey: 'slug',
+    header: 'Slug',
+    cell: ({ row }) => <span className="text-muted-foreground">{row.original.slug}</span>,
+  },
+  {
+    id: 'chevron',
+    header: '',
+    enableSorting: false,
+    cell: () => (
+      <ChevronRight className="size-4 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+    ),
+  },
+];
 
 function NewContentTypeDialog() {
   const [open, setOpen] = useState(false);
@@ -137,35 +165,7 @@ export function ContentTypesPage() {
       ) : null}
 
       {contentTypes && contentTypes.length > 0 ? (
-        <div className="rounded-xl border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Slug</TableHead>
-                <TableHead className="w-8" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {contentTypes.map((contentType) => (
-                <TableRow key={contentType.id} className="group">
-                  <TableCell>
-                    <Link
-                      to={`/content-types/${contentType.id}`}
-                      className="font-medium hover:underline"
-                    >
-                      {contentType.name}
-                    </Link>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">{contentType.slug}</TableCell>
-                  <TableCell>
-                    <ChevronRight className="size-4 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+        <DataTable columns={columns} data={contentTypes} searchPlaceholder="Search content types…" />
       ) : null}
     </div>
   );
