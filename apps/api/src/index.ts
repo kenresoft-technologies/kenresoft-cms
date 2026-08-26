@@ -13,6 +13,7 @@ import { dashboardRoute } from './routes/admin/dashboard';
 import { entriesRoute } from './routes/admin/entries';
 import { formsRoute } from './routes/admin/forms';
 import { mediaRoute } from './routes/admin/media';
+import { settingsRoute } from './routes/admin/settings';
 import { healthRoute } from './routes/health';
 import { publicContentRoute } from './routes/public/content';
 import { publicFormsRoute } from './routes/public/forms';
@@ -39,6 +40,7 @@ app.route('/api/v1/admin/content-types', contentTypesRoute);
 app.route('/api/v1/admin/entries', entriesRoute);
 app.route('/api/v1/admin/media', mediaRoute);
 app.route('/api/v1/admin/forms', formsRoute);
+app.route('/api/v1/admin/settings', settingsRoute);
 
 export default {
   fetch: app.fetch,

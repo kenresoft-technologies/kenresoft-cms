@@ -1,4 +1,4 @@
-import { Images, LayoutDashboard, LayoutList, LogOut } from 'lucide-react';
+import { Images, LayoutDashboard, LayoutList, LogOut, Settings } from 'lucide-react';
 import { Navigate, NavLink, Outlet, useLocation } from 'react-router';
 
 import { authClient } from '@/lib/auth-client';
@@ -34,8 +34,32 @@ const navItems = [
   { to: '/media', label: 'Media', end: false, icon: Images },
 ];
 
+const configItems = [{ to: '/settings', label: 'Settings', end: false, icon: Settings }];
+
 function initials(email: string) {
   return email.slice(0, 2).toUpperCase();
+}
+
+type NavItem = { to: string; label: string; end: boolean; icon: typeof LayoutDashboard };
+
+function NavItems({ items, pathname }: { items: NavItem[]; pathname: string }) {
+  return (
+    <SidebarMenu>
+      {items.map((item) => {
+        const isActive = item.end ? pathname === item.to : pathname.startsWith(item.to);
+        return (
+          <SidebarMenuItem key={item.to}>
+            <SidebarMenuButton asChild isActive={isActive} tooltip={item.label}>
+              <NavLink to={item.to} end={item.end}>
+                <item.icon />
+                <span>{item.label}</span>
+              </NavLink>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        );
+      })}
+    </SidebarMenu>
+  );
 }
 
 export function AppLayout() {
@@ -60,23 +84,13 @@ export function AppLayout() {
           <SidebarGroup>
             <SidebarGroupLabel>Content</SidebarGroupLabel>
             <SidebarGroupContent>
-              <SidebarMenu>
-                {navItems.map((item) => {
-                  const isActive = item.end
-                    ? location.pathname === item.to
-                    : location.pathname.startsWith(item.to);
-                  return (
-                    <SidebarMenuItem key={item.to}>
-                      <SidebarMenuButton asChild isActive={isActive} tooltip={item.label}>
-                        <NavLink to={item.to} end={item.end}>
-                          <item.icon />
-                          <span>{item.label}</span>
-                        </NavLink>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  );
-                })}
-              </SidebarMenu>
+              <NavItems items={navItems} pathname={location.pathname} />
+            </SidebarGroupContent>
+          </SidebarGroup>
+          <SidebarGroup>
+            <SidebarGroupLabel>Configuration</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <NavItems items={configItems} pathname={location.pathname} />
             </SidebarGroupContent>
           </SidebarGroup>
         </SidebarContent>

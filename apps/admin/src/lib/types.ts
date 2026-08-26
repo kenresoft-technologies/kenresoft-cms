@@ -100,3 +100,14 @@ export interface DashboardStats {
     updatedAt: string;
   }[];
 }
+
+export interface Settings {
+  id: string;
+  name: string;
+  contactEmail: string | null;
+  socialLinks: Record<string, string> | null;
+  corsOrigin: string | null;
+  featureFlags: Record<string, boolean> | null;
+  createdAt: string;
+  updatedAt: string;
+}
