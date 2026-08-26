@@ -25,12 +25,15 @@ export const entries = sqliteTable(
     data: text('data', { mode: 'json' })
       .notNull()
       .$type<Record<string, unknown>>(),
-    createdAt: integer('created_at', { mode: 'timestamp' })
+    // Millisecond precision (matching entry_revisions.createdAt) — plain unixepoch() only
+    // resolves to the second, which made "recent activity" ordering (dashboard, §20 Phase
+    // beyond) non-deterministic for entries created or updated within the same second.
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
       .notNull()
-      .default(sql`(unixepoch())`),
-    updatedAt: integer('updated_at', { mode: 'timestamp' })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
       .notNull()
-      .default(sql`(unixepoch())`),
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`),
   },
   (table) => [
     uniqueIndex('entries_content_type_slug_unique').on(table.contentTypeId, table.slug),

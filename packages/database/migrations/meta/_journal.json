@@ -57,6 +57,13 @@
       "when": 1787768884176,
       "tag": "0007_left_beyonder",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1787778999102,
+      "tag": "0008_daily_proudstar",
+      "breakpoints": true
     }
   ]
 }
