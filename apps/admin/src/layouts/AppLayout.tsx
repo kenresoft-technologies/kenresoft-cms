@@ -1,4 +1,4 @@
-import { FolderKanban, LayoutDashboard, LogOut } from 'lucide-react';
+import { LayoutDashboard, LayoutList, LogOut } from 'lucide-react';
 import { Navigate, NavLink, Outlet, useLocation } from 'react-router';
 
 import { authClient } from '@/lib/auth-client';
@@ -30,7 +30,7 @@ import {
 
 const navItems = [
   { to: '/', label: 'Dashboard', end: true, icon: LayoutDashboard },
-  { to: '/projects', label: 'Projects', end: false, icon: FolderKanban },
+  { to: '/content-types', label: 'Content types', end: false, icon: LayoutList },
 ];
 
 function initials(email: string) {

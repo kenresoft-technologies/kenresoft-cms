@@ -1,9 +1,9 @@
 import { useState, type FormEvent } from 'react';
 import { ChevronRight, LayoutList } from 'lucide-react';
-import { Link, useParams } from 'react-router';
+import { Link } from 'react-router';
 
 import { ApiError } from '@/lib/api-client';
-import { useProject } from '@/lib/queries/projects';
+import { authClient } from '@/lib/auth-client';
 import { useContentTypes, useCreateContentType } from '@/lib/queries/content-types';
 import { EmptyState } from '@/components/empty-state';
 import { PageBreadcrumb } from '@/components/page-breadcrumb';
@@ -22,12 +22,12 @@ import {
 } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
-function NewContentTypeDialog({ projectId }: { projectId: string }) {
+function NewContentTypeDialog() {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const createContentType = useCreateContentType(projectId);
+  const createContentType = useCreateContentType();
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -88,25 +88,20 @@ function NewContentTypeDialog({ projectId }: { projectId: string }) {
 }
 
 export function ContentTypesPage() {
-  const { projectId } = useParams<{ projectId: string }>();
-  const { data: project } = useProject(projectId ?? '');
-  const { data: contentTypes, isPending, error } = useContentTypes(projectId ?? '');
+  const { data: session } = authClient.useSession();
+  const isOwner = session?.user.role === 'owner';
+  const { data: contentTypes, isPending, error } = useContentTypes();
 
   return (
     <div className="flex flex-col gap-6">
-      <PageBreadcrumb
-        items={[
-          { label: 'Projects', to: '/projects' },
-          { label: project?.name ?? '…' },
-        ]}
-      />
+      <PageBreadcrumb items={[{ label: 'Content types' }]} />
 
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold">Content types</h1>
           <p className="text-muted-foreground">Reusable types such as Blog Post or Service.</p>
         </div>
-        {projectId ? <NewContentTypeDialog projectId={projectId} /> : null}
+        {isOwner ? <NewContentTypeDialog /> : null}
       </div>
 
       {error ? <p className="text-destructive">{error.message}</p> : null}
@@ -129,7 +124,11 @@ export function ContentTypesPage() {
         <EmptyState
           icon={LayoutList}
           title="No content types yet"
-          description="Create one to start defining what this project's content looks like."
+          description={
+            isOwner
+              ? 'Create one to start defining what your content looks like.'
+              : 'Ask an owner to create a content type to get started.'
+          }
         />
       ) : null}
 
@@ -148,7 +147,7 @@ export function ContentTypesPage() {
                 <TableRow key={contentType.id} className="group">
                   <TableCell>
                     <Link
-                      to={`/projects/${projectId}/content-types/${contentType.id}`}
+                      to={`/content-types/${contentType.id}`}
                       className="font-medium hover:underline"
                     >
                       {contentType.name}

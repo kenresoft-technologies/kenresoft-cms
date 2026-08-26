@@ -7,7 +7,6 @@ import { ApiError } from '@/lib/api-client';
 import { useContentType } from '@/lib/queries/content-types';
 import { useCreateEntry, useEntry, useUpdateEntry } from '@/lib/queries/entries';
 import { useFieldDefinitions } from '@/lib/queries/field-definitions';
-import { useProject } from '@/lib/queries/projects';
 import { ENTRY_STATUSES, type Entry, type EntryStatus, type FieldDefinition, type FieldType } from '@/lib/types';
 import { PageBreadcrumb } from '@/components/page-breadcrumb';
 import { Button } from '@/components/ui/button';
@@ -32,7 +31,6 @@ function toDatetimeLocalValue(iso: string | null): string {
 }
 
 interface EntryFormProps {
-  projectId: string;
   contentTypeId: string;
   entryId: string;
   fields: FieldDefinition[];
@@ -43,7 +41,7 @@ interface EntryFormProps {
 // loading gate below — so local state can be initialized once via useState's lazy
 // initializer instead of syncing it in from a query with useEffect + setState (which
 // eslint-plugin-react-hooks flags: react.dev/learn/you-might-not-need-an-effect).
-function EntryForm({ projectId, contentTypeId, entryId, fields, entry }: EntryFormProps) {
+function EntryForm({ contentTypeId, entryId, fields, entry }: EntryFormProps) {
   const isNew = entry === undefined;
   const navigate = useNavigate();
   const createEntry = useCreateEntry(contentTypeId);
@@ -74,7 +72,7 @@ function EntryForm({ projectId, contentTypeId, entryId, fields, entry }: EntryFo
       } else {
         await updateEntry.mutateAsync({ slug, status, data, publishAt: publishAtIso });
       }
-      void navigate(`/projects/${projectId}/content-types/${contentTypeId}/entries`);
+      void navigate(`/content-types/${contentTypeId}/entries`);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to save entry');
     }
@@ -140,14 +138,12 @@ function EntryForm({ projectId, contentTypeId, entryId, fields, entry }: EntryFo
 }
 
 export function EntryEditorPage() {
-  const { projectId, contentTypeId, entryId } = useParams<{
-    projectId: string;
+  const { contentTypeId, entryId } = useParams<{
     contentTypeId: string;
     entryId: string;
   }>();
   const isNew = entryId === 'new';
 
-  const { data: project } = useProject(projectId ?? '');
   const { data: contentType } = useContentType(contentTypeId ?? '');
   const { data: fields } = useFieldDefinitions(contentTypeId ?? '');
   const { data: entry } = useEntry(isNew ? '' : (entryId ?? ''));
@@ -157,15 +153,14 @@ export function EntryEditorPage() {
     <div className="flex max-w-2xl flex-col gap-6">
       <PageBreadcrumb
         items={[
-          { label: 'Projects', to: '/projects' },
-          { label: project?.name ?? '…', to: `/projects/${projectId}/content-types` },
+          { label: 'Content types', to: '/content-types' },
           {
             label: contentType?.name ?? '…',
-            to: `/projects/${projectId}/content-types/${contentTypeId}`,
+            to: `/content-types/${contentTypeId}`,
           },
           {
             label: 'Entries',
-            to: `/projects/${projectId}/content-types/${contentTypeId}/entries`,
+            to: `/content-types/${contentTypeId}/entries`,
           },
           { label: isNew ? 'New' : (entry?.slug ?? '…') },
         ]}
@@ -188,12 +183,11 @@ export function EntryEditorPage() {
         </Card>
       ) : null}
 
-      {ready && projectId && contentTypeId && entryId ? (
+      {ready && contentTypeId && entryId ? (
         <Card>
           <CardContent>
             <EntryForm
               key={`${entryId}-${entry?.updatedAt ?? 'new'}`}
-              projectId={projectId}
               contentTypeId={contentTypeId}
               entryId={entryId}
               fields={fields!}

@@ -3,12 +3,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
 import type { ContentType } from '@/lib/types';
 
-export function useContentTypes(projectId: string) {
+const contentTypesKey = ['content-types'] as const;
+
+export function useContentTypes() {
   return useQuery({
-    queryKey: ['content-types', projectId],
-    queryFn: () =>
-      apiClient.get<ContentType[]>(`/api/v1/admin/content-types?projectId=${projectId}`),
-    enabled: Boolean(projectId),
+    queryKey: contentTypesKey,
+    queryFn: () => apiClient.get<ContentType[]>('/api/v1/admin/content-types'),
   });
 }
 
@@ -20,14 +20,14 @@ export function useContentType(contentTypeId: string) {
   });
 }
 
-export function useCreateContentType(projectId: string) {
+export function useCreateContentType() {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: (input: { name: string; slug: string; description?: string | null }) =>
-      apiClient.post<ContentType>('/api/v1/admin/content-types', { ...input, projectId }),
+      apiClient.post<ContentType>('/api/v1/admin/content-types', input),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['content-types', projectId] });
+      void queryClient.invalidateQueries({ queryKey: contentTypesKey });
     },
   });
 }

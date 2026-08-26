@@ -3,17 +3,8 @@
 // backend (importing the DB package into a browser bundle isn't desirable either — its
 // schema modules pull in drizzle-orm). Phase 6 (docs/ARCHITECTURE.md §20) replaces this with
 // generated contract types shared through packages/contracts.
-export interface Project {
-  id: string;
-  name: string;
-  slug: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
 export interface ContentType {
   id: string;
-  projectId: string;
   name: string;
   slug: string;
   description: string | null;
@@ -59,7 +50,6 @@ export type EntryStatus = (typeof ENTRY_STATUSES)[number];
 
 export interface Entry {
   id: string;
-  projectId: string;
   contentTypeId: string;
   slug: string;
   status: EntryStatus;

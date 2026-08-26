@@ -41,7 +41,7 @@ function renderEditor(path: string) {
       <MemoryRouter initialEntries={[path]}>
         <Routes>
           <Route
-            path="/projects/:projectId/content-types/:contentTypeId/entries/:entryId"
+            path="/content-types/:contentTypeId/entries/:entryId"
             element={<EntryEditorPage />}
           />
         </Routes>
@@ -61,7 +61,7 @@ describe('EntryEditorPage', () => {
     getMock.mockResolvedValue(fields);
     postMock.mockResolvedValue({ id: 'e-1' });
 
-    renderEditor('/projects/proj-1/content-types/ct-1/entries/new');
+    renderEditor('/content-types/ct-1/entries/new');
 
     await waitFor(() => expect(screen.getByLabelText('Title')).toBeInTheDocument());
     expect(screen.getByLabelText('Title')).toHaveValue('');
@@ -77,24 +77,26 @@ describe('EntryEditorPage', () => {
         slug: 'hello-world',
         status: 'draft',
         data: { title: 'Hello World', featured: true },
+        publishAt: null,
       }),
     );
   });
 
   it('prefills the form from the existing entry when editing and PATCHes on save', async () => {
-    getMock.mockImplementation((path: string) =>
-      path.endsWith('/fields')
-        ? Promise.resolve(fields)
-        : Promise.resolve({
-            id: 'e-1',
-            slug: 'hello-world',
-            status: 'published',
-            data: { title: 'Hello World', featured: true },
-          }),
-    );
+    getMock.mockImplementation((path: string) => {
+      if (path.endsWith('/fields')) return Promise.resolve(fields);
+      if (path.endsWith('/revisions')) return Promise.resolve([]);
+      return Promise.resolve({
+        id: 'e-1',
+        slug: 'hello-world',
+        status: 'published',
+        data: { title: 'Hello World', featured: true },
+        publishAt: null,
+      });
+    });
     patchMock.mockResolvedValue({ id: 'e-1' });
 
-    renderEditor('/projects/proj-1/content-types/ct-1/entries/e-1');
+    renderEditor('/content-types/ct-1/entries/e-1');
 
     await waitFor(() => expect(screen.getByLabelText('Slug')).toHaveValue('hello-world'));
     expect(screen.getByLabelText('Title')).toHaveValue('Hello World');
@@ -107,6 +109,7 @@ describe('EntryEditorPage', () => {
         slug: 'hello-world',
         status: 'published',
         data: { title: 'Hello World', featured: true },
+        publishAt: null,
       }),
     );
   });
