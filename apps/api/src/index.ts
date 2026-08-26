@@ -8,6 +8,7 @@ import { securityHeaders } from './middleware/security-headers';
 import { publishDueEntries } from './repositories/entries';
 import { contentTypesRoute } from './routes/admin/content-types';
 import { entriesRoute } from './routes/admin/entries';
+import { mediaRoute } from './routes/admin/media';
 import { healthRoute } from './routes/health';
 import type { Bindings } from './lib/env';
 import type { AuthedVariables } from './middleware/require-session';
@@ -24,6 +25,7 @@ app.on(['GET', 'POST'], '/api/v1/auth/*', (c) => createAuth(c.env).handler(c.req
 app.use('/api/v1/admin/*', requireSession);
 app.route('/api/v1/admin/content-types', contentTypesRoute);
 app.route('/api/v1/admin/entries', entriesRoute);
+app.route('/api/v1/admin/media', mediaRoute);
 
 export default {
   fetch: app.fetch,
