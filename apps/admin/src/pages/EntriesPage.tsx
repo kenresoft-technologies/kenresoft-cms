@@ -3,7 +3,6 @@ import { Link, useParams } from 'react-router';
 
 import { useContentType } from '@/lib/queries/content-types';
 import { useEntries } from '@/lib/queries/entries';
-import { useProject } from '@/lib/queries/projects';
 import { EmptyState } from '@/components/empty-state';
 import { PageBreadcrumb } from '@/components/page-breadcrumb';
 import { TableSkeleton } from '@/components/table-skeleton';
@@ -12,14 +11,13 @@ import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 export function EntriesPage() {
-  const { projectId, contentTypeId } = useParams<{ projectId: string; contentTypeId: string }>();
+  const { contentTypeId } = useParams<{ contentTypeId: string }>();
   const { data: contentType } = useContentType(contentTypeId ?? '');
-  const { data: project } = useProject(projectId ?? '');
   const { data: entries, isPending, error } = useEntries(contentTypeId ?? '');
 
   const newEntryLink = (
     <Button asChild>
-      <Link to={`/projects/${projectId}/content-types/${contentTypeId}/entries/new`}>
+      <Link to={`/content-types/${contentTypeId}/entries/new`}>
         <Plus />
         New entry
       </Link>
@@ -30,12 +28,8 @@ export function EntriesPage() {
     <div className="flex flex-col gap-6">
       <PageBreadcrumb
         items={[
-          { label: 'Projects', to: '/projects' },
-          { label: project?.name ?? '…', to: `/projects/${projectId}/content-types` },
-          {
-            label: contentType?.name ?? '…',
-            to: `/projects/${projectId}/content-types/${contentTypeId}`,
-          },
+          { label: 'Content types', to: '/content-types' },
+          { label: contentType?.name ?? '…', to: `/content-types/${contentTypeId}` },
           { label: 'Entries' },
         ]}
       />
@@ -90,7 +84,7 @@ export function EntriesPage() {
                 <TableRow key={entry.id}>
                   <TableCell>
                     <Link
-                      to={`/projects/${projectId}/content-types/${contentTypeId}/entries/${entry.id}`}
+                      to={`/content-types/${contentTypeId}/entries/${entry.id}`}
                       className="font-medium hover:underline"
                     >
                       {entry.slug}

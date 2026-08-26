@@ -1,4 +1,4 @@
-import { ArrowRight, FolderKanban } from 'lucide-react';
+import { ArrowRight, LayoutList } from 'lucide-react';
 import { Link } from 'react-router';
 
 import { Button } from '@/components/ui/button';
@@ -15,18 +15,18 @@ export function DashboardPage() {
       <Card className="max-w-md">
         <CardHeader>
           <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10">
-            <FolderKanban className="size-5 text-primary" />
+            <LayoutList className="size-5 text-primary" />
           </div>
-          <CardTitle>Start with a project</CardTitle>
+          <CardTitle>Start with a content type</CardTitle>
           <CardDescription>
-            Every content type and entry belongs to a project — the top-level boundary for a
-            website or client (§11).
+            Content types are the top-level building block for this deployment (§11) — define
+            one, add fields to it, then start creating entries.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <Button asChild>
-            <Link to="/projects">
-              Go to projects
+            <Link to="/content-types">
+              Go to content types
               <ArrowRight />
             </Link>
           </Button>

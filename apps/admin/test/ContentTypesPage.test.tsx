@@ -1,14 +1,15 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes } from 'react-router';
+import { MemoryRouter } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ContentTypesPage } from '@/pages/ContentTypesPage';
 
-const { getMock, postMock } = vi.hoisted(() => ({
+const { getMock, postMock, useSessionMock } = vi.hoisted(() => ({
   getMock: vi.fn(),
   postMock: vi.fn(),
+  useSessionMock: vi.fn(),
 }));
 
 vi.mock('@/lib/api-client', async () => {
@@ -19,16 +20,18 @@ vi.mock('@/lib/api-client', async () => {
   };
 });
 
+vi.mock('@/lib/auth-client', () => ({
+  authClient: { useSession: useSessionMock },
+}));
+
 function renderPage() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={['/projects/proj-1/content-types']}>
-        <Routes>
-          <Route path="/projects/:projectId/content-types" element={<ContentTypesPage />} />
-        </Routes>
+      <MemoryRouter>
+        <ContentTypesPage />
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -38,34 +41,49 @@ describe('ContentTypesPage', () => {
   beforeEach(() => {
     getMock.mockReset();
     postMock.mockReset();
+    useSessionMock.mockReset();
+    useSessionMock.mockReturnValue({
+      data: { user: { email: 'owner@pathvera.test', role: 'owner' } },
+      isPending: false,
+    });
   });
 
-  it('fetches content types scoped to the project in the URL', async () => {
-    getMock.mockImplementation((path: string) =>
-      path.startsWith('/api/v1/admin/projects/')
-        ? Promise.resolve({ id: 'proj-1', name: 'Pathvera Group', slug: 'pathvera' })
-        : Promise.resolve([
-            { id: 'ct-1', projectId: 'proj-1', name: 'Blog Post', slug: 'blog-post' },
-          ]),
-    );
+  it('lists content types returned by the API', async () => {
+    getMock.mockResolvedValue([{ id: 'ct-1', name: 'Blog Post', slug: 'blog-post' }]);
 
     renderPage();
 
     await waitFor(() => expect(screen.getByText('Blog Post')).toBeInTheDocument());
-    expect(getMock).toHaveBeenCalledWith('/api/v1/admin/content-types?projectId=proj-1');
-    expect(screen.getByRole('heading', { name: 'Content types' })).toBeInTheDocument();
-    await waitFor(() =>
-      expect(screen.getByRole('link', { name: 'Pathvera Group' })).toBeInTheDocument(),
-    );
+    expect(screen.getByText('blog-post')).toBeInTheDocument();
+    expect(getMock).toHaveBeenCalledWith('/api/v1/admin/content-types');
   });
 
-  it('creates a content type through the dialog with the projectId attached', async () => {
-    getMock.mockImplementation((path: string) =>
-      path.startsWith('/api/v1/admin/projects/')
-        ? Promise.resolve({ id: 'proj-1', name: 'Pathvera Group', slug: 'pathvera' })
-        : Promise.resolve([]),
-    );
-    postMock.mockResolvedValue({ id: 'ct-1', projectId: 'proj-1', name: 'Blog Post', slug: 'blog-post' });
+  it('shows an empty state when there are no content types', async () => {
+    getMock.mockResolvedValue([]);
+
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('No content types yet')).toBeInTheDocument());
+  });
+
+  it('hides the New content type action for an editor, since only owners can create them', async () => {
+    useSessionMock.mockReturnValue({
+      data: { user: { email: 'editor@pathvera.test', role: 'editor' } },
+      isPending: false,
+    });
+    getMock.mockResolvedValue([]);
+
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('No content types yet')).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: 'New content type' })).not.toBeInTheDocument();
+  });
+
+  it('creates a content type through the dialog and refetches the list', async () => {
+    getMock
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: 'ct-1', name: 'Blog Post', slug: 'blog-post' }]);
+    postMock.mockResolvedValue({ id: 'ct-1', name: 'Blog Post', slug: 'blog-post' });
 
     renderPage();
     await waitFor(() => expect(screen.getByText('No content types yet')).toBeInTheDocument());
@@ -80,8 +98,8 @@ describe('ContentTypesPage', () => {
       expect(postMock).toHaveBeenCalledWith('/api/v1/admin/content-types', {
         name: 'Blog Post',
         slug: 'blog-post',
-        projectId: 'proj-1',
       }),
     );
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
 });

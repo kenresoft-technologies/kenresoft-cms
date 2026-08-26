@@ -24,7 +24,6 @@ describe('admin routes (real D1)', () => {
     await env.DB.exec('DELETE FROM entries');
     await env.DB.exec('DELETE FROM field_definitions');
     await env.DB.exec('DELETE FROM content_types');
-    await env.DB.exec('DELETE FROM projects');
     // Cleared every test so the first signup within each test is deterministically the
     // owner (see src/lib/auth.ts's databaseHooks.user.create.before).
     await env.DB.exec('DELETE FROM session');
@@ -34,8 +33,7 @@ describe('admin routes (real D1)', () => {
 
   it('rejects every admin route without a session', async () => {
     const responses = await Promise.all([
-      SELF.fetch('https://example.com/api/v1/admin/projects'),
-      SELF.fetch('https://example.com/api/v1/admin/content-types?projectId=x'),
+      SELF.fetch('https://example.com/api/v1/admin/content-types'),
       SELF.fetch('https://example.com/api/v1/admin/entries?contentTypeId=x'),
     ]);
 
@@ -44,34 +42,14 @@ describe('admin routes (real D1)', () => {
     }
   });
 
-  it('walks the full authenticated CRUD flow: project -> content type -> field -> entry', async () => {
+  it('walks the full authenticated CRUD flow: content type -> field -> entry', async () => {
     const cookie = await freshCookie();
     const headers = { Cookie: cookie, 'Content-Type': 'application/json' };
-
-    const projectRes = await SELF.fetch('https://example.com/api/v1/admin/projects', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ name: 'Pathvera Group', slug: 'pathvera' }),
-    });
-    expect(projectRes.status).toBe(201);
-    const project = await projectRes.json<{ id: string; slug: string }>();
-    expect(project.slug).toBe('pathvera');
-
-    const listProjectsRes = await SELF.fetch('https://example.com/api/v1/admin/projects', {
-      headers: { Cookie: cookie },
-    });
-    expect(await listProjectsRes.json()).toEqual([project]);
-
-    const getProjectRes = await SELF.fetch(
-      `https://example.com/api/v1/admin/projects/${project.id}`,
-      { headers: { Cookie: cookie } },
-    );
-    expect(await getProjectRes.json()).toEqual(project);
 
     const contentTypeRes = await SELF.fetch('https://example.com/api/v1/admin/content-types', {
       method: 'POST',
       headers,
-      body: JSON.stringify({ projectId: project.id, name: 'Blog Post', slug: 'blog-post' }),
+      body: JSON.stringify({ name: 'Blog Post', slug: 'blog-post' }),
     });
     expect(contentTypeRes.status).toBe(201);
     const contentType = await contentTypeRes.json<{ id: string }>();
@@ -103,9 +81,8 @@ describe('admin routes (real D1)', () => {
       },
     );
     expect(entryRes.status).toBe(201);
-    const entry = await entryRes.json<{ id: string; status: string; projectId: string }>();
+    const entry = await entryRes.json<{ id: string; status: string }>();
     expect(entry.status).toBe('draft');
-    expect(entry.projectId).toBe(project.id);
 
     const patchRes = await SELF.fetch(`https://example.com/api/v1/admin/entries/${entry.id}`, {
       method: 'PATCH',
@@ -136,7 +113,7 @@ describe('admin routes (real D1)', () => {
   it('validates request bodies with Zod before touching the database', async () => {
     const cookie = await freshCookie();
 
-    const response = await SELF.fetch('https://example.com/api/v1/admin/projects', {
+    const response = await SELF.fetch('https://example.com/api/v1/admin/content-types', {
       method: 'POST',
       headers: { Cookie: cookie, 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: '', slug: 'Not A Valid Slug' }),
@@ -147,20 +124,18 @@ describe('admin routes (real D1)', () => {
     expect(body.error).toBe('Validation failed');
   });
 
-  it('404s fetching a non-existent project or content type', async () => {
+  it('404s fetching a non-existent content type', async () => {
     const cookie = await freshCookie();
-    const headers = { Cookie: cookie };
 
-    const [projectRes, contentTypeRes] = await Promise.all([
-      SELF.fetch('https://example.com/api/v1/admin/projects/does-not-exist', { headers }),
-      SELF.fetch('https://example.com/api/v1/admin/content-types/does-not-exist', { headers }),
-    ]);
+    const response = await SELF.fetch(
+      'https://example.com/api/v1/admin/content-types/does-not-exist',
+      { headers: { Cookie: cookie } },
+    );
 
-    expect(projectRes.status).toBe(404);
-    expect(contentTypeRes.status).toBe(404);
+    expect(response.status).toBe(404);
   });
 
-  it('bootstraps the first signup as owner and rejects project creation from an editor', async () => {
+  it('bootstraps the first signup as owner and rejects content-type creation from an editor', async () => {
     const ownerCookie = await freshCookie();
     const editorCookie = await freshCookie();
 
@@ -174,14 +149,14 @@ describe('admin routes (real D1)', () => {
     });
     expect((await editorSessionRes.json<{ user: { role: string } }>()).user.role).toBe('editor');
 
-    const editorCreateRes = await SELF.fetch('https://example.com/api/v1/admin/projects', {
+    const editorCreateRes = await SELF.fetch('https://example.com/api/v1/admin/content-types', {
       method: 'POST',
       headers: { Cookie: editorCookie, 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: 'Should Fail', slug: 'should-fail' }),
     });
     expect(editorCreateRes.status).toBe(403);
 
-    const ownerCreateRes = await SELF.fetch('https://example.com/api/v1/admin/projects', {
+    const ownerCreateRes = await SELF.fetch('https://example.com/api/v1/admin/content-types', {
       method: 'POST',
       headers: { Cookie: ownerCookie, 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: 'Should Succeed', slug: 'should-succeed' }),
@@ -193,18 +168,11 @@ describe('admin routes (real D1)', () => {
     const cookie = await freshCookie();
     const headers = { Cookie: cookie, 'Content-Type': 'application/json' };
 
-    const project = await (
-      await SELF.fetch('https://example.com/api/v1/admin/projects', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ name: 'Pathvera Group', slug: 'pathvera' }),
-      })
-    ).json<{ id: string }>();
     const contentType = await (
       await SELF.fetch('https://example.com/api/v1/admin/content-types', {
         method: 'POST',
         headers,
-        body: JSON.stringify({ projectId: project.id, name: 'Blog Post', slug: 'blog-post' }),
+        body: JSON.stringify({ name: 'Blog Post', slug: 'blog-post' }),
       })
     ).json<{ id: string }>();
 
@@ -253,18 +221,11 @@ describe('admin routes (real D1)', () => {
     const cookie = await freshCookie();
     const headers = { Cookie: cookie, 'Content-Type': 'application/json' };
 
-    const project = await (
-      await SELF.fetch('https://example.com/api/v1/admin/projects', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ name: 'Pathvera Group', slug: 'pathvera' }),
-      })
-    ).json<{ id: string }>();
     const contentType = await (
       await SELF.fetch('https://example.com/api/v1/admin/content-types', {
         method: 'POST',
         headers,
-        body: JSON.stringify({ projectId: project.id, name: 'Blog Post', slug: 'blog-post' }),
+        body: JSON.stringify({ name: 'Blog Post', slug: 'blog-post' }),
       })
     ).json<{ id: string }>();
     const entry = await (

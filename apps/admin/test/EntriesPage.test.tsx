@@ -16,12 +16,9 @@ function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={['/projects/proj-1/content-types/ct-1/entries']}>
+      <MemoryRouter initialEntries={['/content-types/ct-1/entries']}>
         <Routes>
-          <Route
-            path="/projects/:projectId/content-types/:contentTypeId/entries"
-            element={<EntriesPage />}
-          />
+          <Route path="/content-types/:contentTypeId/entries" element={<EntriesPage />} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -66,7 +63,7 @@ describe('EntriesPage', () => {
     await waitFor(() => expect(screen.getByText('No entries yet')).toBeInTheDocument());
     expect(screen.getByRole('link', { name: 'New entry' })).toHaveAttribute(
       'href',
-      '/projects/proj-1/content-types/ct-1/entries/new',
+      '/content-types/ct-1/entries/new',
     );
   });
 });

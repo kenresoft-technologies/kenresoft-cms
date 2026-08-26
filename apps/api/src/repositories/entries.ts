@@ -37,7 +37,7 @@ export async function createEntry(
 
   const [entry] = await db
     .insert(entries)
-    .values({ ...input, contentTypeId, projectId: contentType.projectId })
+    .values({ ...input, contentTypeId })
     .returning();
   await snapshotRevision(db, entry!, createdBy);
   return entry!;

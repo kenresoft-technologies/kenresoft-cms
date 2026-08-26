@@ -29,6 +29,20 @@
       "when": 1787759630670,
       "tag": "0003_brainy_the_captain",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1787762696578,
+      "tag": "0004_hard_venus",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1787762721557,
+      "tag": "0005_stiff_fallen_one",
+      "breakpoints": true
     }
   ]
 }

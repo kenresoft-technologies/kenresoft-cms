@@ -4,10 +4,11 @@ import { getDb } from '../../lib/db';
 import { parseJsonBody } from '../../lib/validate';
 import type { Bindings } from '../../lib/env';
 import type { AuthedVariables } from '../../middleware/require-session';
+import { requireRole } from '../../middleware/require-role';
 import {
   createContentType,
   getContentTypeById,
-  listContentTypesForProject,
+  listContentTypes,
 } from '../../repositories/content-types';
 import {
   createFieldDefinition,
@@ -19,16 +20,13 @@ import { createFieldDefinitionSchema } from '../../validators/field-definitions'
 export const contentTypesRoute = new Hono<{ Bindings: Bindings; Variables: AuthedVariables }>();
 
 contentTypesRoute.get('/', async (c) => {
-  const projectId = c.req.query('projectId');
-  if (!projectId) {
-    return c.json({ error: 'projectId query parameter is required' }, 400);
-  }
-
   const db = getDb(c);
-  return c.json(await listContentTypesForProject(db, projectId));
+  return c.json(await listContentTypes(db));
 });
 
-contentTypesRoute.post('/', async (c) => {
+// Content types are the top-level structural resource now that Projects are gone (§11) —
+// creating one is an owner-level action, same as project creation was before.
+contentTypesRoute.post('/', requireRole('owner'), async (c) => {
   const parsed = await parseJsonBody(c, createContentTypeSchema);
   if ('error' in parsed) return parsed.error;
 

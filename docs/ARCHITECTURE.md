@@ -1,11 +1,44 @@
 # Kenresoft CMS — Architecture & Technical Specification
 
-Version 0.4 — Foundation Specification
+Version 0.5 — Foundation Specification
 First production target: Pathvera Group website
 Vision: Cloudflare-native, API-first, reusable, scalable, open-source-ready CMS
 Status: Proposed / Ready for implementation
 
 ## Changelog
+
+**v0.5 (2026-08-26)** — Removed the multi-tenant/shared-installation assumption. Kenresoft
+CMS is now a **single-site-per-deployment** CMS: every deployment (its own Cloudflare
+account, D1 database, R2 bucket, Worker) backs exactly one website, deployed from the same
+open-source codebase rather than run as a shared installation serving multiple clients from
+one running instance. Decided after review surfaced two problems with the shared-tenant
+model this document previously left open (old §11): (1) it is incompatible with handing a
+finished site fully off to a client to run independently, since a shared installation would
+still hold other clients' data alongside theirs; (2) `project_id`-scoped queries introduce a
+real cross-tenant data-leak risk class — one missing filter in one repository or route leaks
+another tenant's content — that a fully isolated deployment removes by construction instead
+of by convention.
+
+- **Domain model (§6)** — removed the `Project` entity and every `project_id` foreign key.
+  Reusability is preserved at the codebase level (fork/redeploy the same open-source project
+  to a new Cloudflare account per site) rather than at the running-instance level. The
+  `Setting` entity added in v0.4 is renamed `Settings` and is now a **singleton per
+  deployment** (name, contact email, social links, CORS origin, feature flags) rather than
+  scoped to a project, since there is no longer a project to scope it to.
+- **Deployment model (§11)**, retitled from "Multi-Client / Multi-Tenant Strategy" to
+  "Deployment Model: Single Site Per Instance" — now documents the single-site-per-instance
+  model directly (fork/clone → provision that client's own Cloudflare resources →
+  `wrangler deploy`), rather than hedging between a shared D1 database and per-tenant
+  databases.
+- **API routes (§8)** — public content routes no longer take a `:project` path segment
+  (`GET /api/v1/public/:contentType` instead of `GET /api/v1/public/:project/:contentType`);
+  the admin `GET /api/v1/admin/projects` route is removed.
+- **Non-goals (§19)** — added "operating a shared multi-tenant hosting service for multiple
+  clients from one running installation" as an explicit non-goal, so this isn't silently
+  reopened later.
+- **Scalability (§12) and risk table (§23)** — `project_id`-based sharding language removed;
+  every deployment is already a single-tenant database by construction, not a scaling
+  technique applied within a shared one.
 
 **v0.4 (2026-08-26)** — Three gaps identified from a SonicJS feature comparison during Phase 3
 admin UI work.
@@ -75,8 +108,9 @@ Everything else below carries forward from v0.1 unchanged.
 
 Kenresoft CMS is a reusable content-management platform whose first production
 implementation will power the Pathvera Group website. It is not a Pathvera-specific
-dashboard. The core platform must be designed so additional projects and clients can use the
-same CMS architecture without requiring a rewrite.
+dashboard. The core platform must be designed so additional clients can run the same CMS by
+deploying their own instance of it — the same open-source codebase, not a rewrite and not a
+new tenant inside Pathvera's deployment (§11).
 
 The platform is Cloudflare-native and database-backed rather than Git-based. Content lives in
 Cloudflare D1, media lives in Cloudflare R2, the API runs on Cloudflare Workers, and the
@@ -92,11 +126,11 @@ CMS products such as Adobe Experience Manager, Sitecore, or a full WordPress eco
 Cloudflare's D1 limits make this architecture practical for the intended workload class:
 Workers Paid supports up to 50,000 D1 databases per account by default, each D1 database can
 hold up to 10 GB, and Cloudflare explicitly describes D1 as suitable for horizontal
-scale-out using multiple smaller databases, including per-tenant databases. R2 provides
-effectively unlimited bucket storage and supports objects up to 5 TiB. Workers Paid provides
-no request-count limit and supports up to 5 minutes of CPU time per invocation. These limits
-are adequate for the target workload, provided the application uses proper indexing,
-pagination, caching and tenant/database isolation strategies.
+scale-out using one dedicated database per site — which is the default shape here (§11), not
+an optimization applied later. R2 provides effectively unlimited bucket storage and supports
+objects up to 5 TiB. Workers Paid provides no request-count limit and supports up to 5
+minutes of CPU time per invocation. These limits are adequate for the target workload,
+provided each deployment uses proper indexing, pagination and caching.
 
 ### 1.2 Can it handle forms?
 
@@ -108,11 +142,13 @@ spam protection and appropriate security controls.
 
 ### 1.3 Can it serve multiple clients?
 
-Yes. The architecture is intentionally project-aware. V1 launches with one production
-project (Pathvera), but the database and API model include a project boundary so the
-platform can later support multiple projects. A future deployment may use one D1 database
-per tenant/project or a carefully isolated shared database, depending on scale and
-operational requirements.
+Yes — as independent deployments, not as one shared installation. Each client gets their own
+deployment of the same open-source codebase: its own Cloudflare account (or account-scoped
+environment), its own D1 database, its own R2 bucket, its own Worker. There is no
+`project_id`-scoped shared database and no cross-tenant boundary to defend inside a
+deployment, because there is no second tenant inside it (§11). V1 launches with one
+production deployment (Pathvera); additional clients get their own deployment from the same
+codebase, not a new tenant inside Pathvera's.
 
 ---
 
@@ -133,7 +169,7 @@ friction.
 - Admin UI never accesses D1 directly.
 - Every schema change is versioned through migrations.
 - Backups and recovery are part of the platform, not afterthoughts.
-- Security boundaries must exist before multi-client deployment.
+- Security boundaries must exist before any deployment goes to production.
 - Use established technologies; do not reinvent authentication, cryptography or database
   engines.
 - Keep the core extensible without prematurely building an enterprise feature set.
@@ -196,7 +232,7 @@ can use Cloudflare's workerd runtime, which improves local/production runtime pa
               |
               v
    Migrations / Revisions /
-   Projects / Content Types
+   Content Types / Entries
 ```
 
 Astro websites consume the Content API:
@@ -266,7 +302,7 @@ kenresoft-cms/
 
 | Entity | Purpose |
 |---|---|
-| Project | Logical website/client/project boundary |
+| Settings | Singleton per-deployment site configuration (name, contact email, social links, CORS origin, feature flags) |
 | User | Administrative identity |
 | Role | Authorization role; initially simple, extensible later |
 | ContentType | Defines a reusable type such as Blog Post or Service |
@@ -276,7 +312,6 @@ kenresoft-cms/
 | Media | Metadata for R2 objects |
 | Form | Definition of a public or administrative form |
 | FormSubmission | Captured form submission; separate from CMS content |
-| Setting | Key/value configuration scoped to a project (contact email, social links, feature flags); editable from the admin UI without a redeploy |
 | AuditLog | Security/administrative activity history |
 | APIKey | Future programmatic access mechanism |
 
@@ -329,13 +364,12 @@ https://cms.example.com/api/v1/
 
 **Public:**
 ```
-GET /api/v1/public/:project/:contentType
-GET /api/v1/public/:project/:contentType/:slug
+GET /api/v1/public/:contentType
+GET /api/v1/public/:contentType/:slug
 ```
 
 **Admin:**
 ```
-GET    /api/v1/admin/projects
 GET    /api/v1/admin/content-types
 POST   /api/v1/admin/content-types
 GET    /api/v1/admin/entries
@@ -414,31 +448,44 @@ for it.
 
 Authorization is represented separately from authentication. The initial implementation
 starts with a small role set — Owner and Editor — while the data model remains extensible
-toward project-scoped permissions.
+toward more granular, per-resource permissions.
 
 ---
 
-## 11. Multi-Client / Multi-Tenant Strategy
+## 11. Deployment Model: Single Site Per Instance
 
-The platform is project-aware from V1, but full multi-tenancy should not be implemented
-before the single-project vertical slice is proven.
+Kenresoft CMS is not operated as a shared, multi-tenant installation. Every deployment backs
+exactly one website. A second client does not become a second tenant inside an existing
+deployment — they get their own deployment of the same open-source codebase.
 
 ```
-Project
-  |
-  +-- Users
-  +-- Content Types
-  +-- Entries
-  +-- Media
-  +-- Forms
-  +-- Settings
-  +-- Audit Logs
+kenresoft-cms (codebase)
+      |
+      +--> Pathvera's deployment   → its own Cloudflare account, D1, R2, Worker
+      +--> Client B's deployment   → its own Cloudflare account, D1, R2, Worker
+      +--> Client C's deployment   → its own Cloudflare account, D1, R2, Worker
 ```
 
-Future deployments can choose between a shared D1 database with strict `project_id`
-isolation and separate D1 databases per project/tenant. Cloudflare explicitly positions D1
-for horizontal scale-out using multiple smaller databases, including per-tenant designs. The
-database/repository layer must stay isolated enough to permit either strategy later.
+Standing up a new instance:
+
+1. Fork or clone the `kenresoft-cms` repository.
+2. Provision that client's own Cloudflare resources: a D1 database, an R2 bucket, and (if
+   used) a KV namespace.
+3. Configure that deployment's environment/secrets — `CORS_ORIGINS`, `BETTER_AUTH_SECRET`,
+   `BETTER_AUTH_URL` — and its site-level values in the `Settings` table (§6).
+4. Run migrations against that client's D1 database (§16) and `wrangler deploy`.
+
+This is deliberately the same shape as other self-hosted open-source CMS products (Strapi,
+Directus, Payload, SonicJS itself) rather than a hosted SaaS model: the product is the
+codebase, not a running multi-tenant service Kenresoft operates on clients' behalf. This
+choice was made specifically because finished sites are sometimes handed off to a
+non-technical client to run independently — a shared installation cannot be handed off
+without exposing other clients' data, and a fully isolated deployment can.
+
+Reusability is unaffected by dropping multi-tenancy: `packages/contracts`,
+`packages/database`, `apps/api` and `apps/admin` remain fully generic and must never contain
+Pathvera-specific business logic (§4.1) — the same codebase is what gets redeployed per
+client, not a shared runtime.
 
 ---
 
@@ -447,8 +494,10 @@ database/repository layer must stay isolated enough to permit either strategy la
 The platform is scalable for the intended CMS workload, but scalability here is not a claim
 of unlimited enterprise throughput. D1 has a 10 GB per-database limit on Workers Paid and
 each individual D1 database is single-threaded. The architecture must use efficient
-queries, indexes, pagination and, at higher scale, database sharding/per-tenant databases
-and read replication where appropriate.
+queries, indexes, pagination and, at higher scale, read replication where appropriate.
+Because every deployment already has its own dedicated database (§11), there is no
+cross-tenant sharding concern to design for — scale is managed per site, not across a shared
+installation.
 
 For the expected corporate-site workload — pages, services, blogs, FAQs, team records, forms
 and media metadata — these constraints are not a practical blocker. R2 is the appropriate
@@ -591,6 +640,8 @@ runtime for development, useful for production-parity testing.
 - Plugin marketplace.
 - Full localization platform.
 - Real-time collaborative editing.
+- Operating a shared multi-tenant hosting service for multiple clients from one running
+  installation (§11) — each client gets their own deployment instead.
 - Custom authentication/cryptography implementation.
 - Replacement for every feature of WordPress, Drupal, Directus or enterprise CMS products.
 
@@ -602,7 +653,7 @@ runtime for development, useful for production-parity testing.
 |---|---|
 | 0 | Architecture, repository and domain model |
 | 1 | Worker + Hono + D1 + Drizzle + migrations |
-| 2 | Projects + content types + fields + entries |
+| 2 | Content types + fields + entries |
 | 3 | Admin authentication (better-auth) + dashboard + dynamic editor |
 | 4 | Draft/publish + scheduled publishing + revisions + restore |
 | 5 | R2 media library |
@@ -676,7 +727,7 @@ API contracts remain human-controlled.
 |---|---|
 | Scope explosion | Strict V1 non-goals and vertical-slice delivery |
 | D1 single-threaded database | Indexes, efficient queries, caching, pagination, future database sharding |
-| 10 GB per D1 database | Per-project databases and R2 for media; monitor storage |
+| 10 GB per D1 database | Each deployment already has its own dedicated database (§11) and R2 for media; monitor storage |
 | Authentication mistakes | better-auth (established library) + security review, not custom crypto |
 | Data loss | D1 recovery/export procedures, revisions and tested migrations |
 | Open-source maintenance burden | Modular architecture, tests, documentation and semantic versioning |
@@ -753,7 +804,7 @@ The architecture should be ambitious while the implementation remains incrementa
 
 ## 27. Specification Status
 
-This is Version 0.4. It is an implementation-oriented architectural baseline, not an
+This is Version 0.5. It is an implementation-oriented architectural baseline, not an
 immutable contract. Database schema details, exact API routes and deployment topology may
 still be refined as later phases land. Any change should be recorded in the Changelog above
 so this document stays synchronized with the implementation.

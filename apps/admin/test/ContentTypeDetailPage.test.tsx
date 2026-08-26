@@ -25,12 +25,9 @@ function renderPage() {
   });
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={['/projects/proj-1/content-types/ct-1']}>
+      <MemoryRouter initialEntries={['/content-types/ct-1']}>
         <Routes>
-          <Route
-            path="/projects/:projectId/content-types/:contentTypeId"
-            element={<ContentTypeDetailPage />}
-          />
+          <Route path="/content-types/:contentTypeId" element={<ContentTypeDetailPage />} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -50,9 +47,6 @@ describe('ContentTypeDetailPage', () => {
           { id: 'f-1', name: 'title', label: 'Title', fieldType: 'text', required: true },
         ]);
       }
-      if (path.includes('/projects/')) {
-        return Promise.resolve({ id: 'proj-1', name: 'Pathvera Group', slug: 'pathvera' });
-      }
       return Promise.resolve({ id: 'ct-1', name: 'Blog Post', slug: 'blog-post' });
     });
 
@@ -70,9 +64,6 @@ describe('ContentTypeDetailPage', () => {
   it('adds a field through the dialog, defaulting to type=text and required=false', async () => {
     getMock.mockImplementation((path: string) => {
       if (path.endsWith('/fields')) return Promise.resolve([]);
-      if (path.includes('/projects/')) {
-        return Promise.resolve({ id: 'proj-1', name: 'Pathvera Group', slug: 'pathvera' });
-      }
       return Promise.resolve({ id: 'ct-1', name: 'Blog Post', slug: 'blog-post' });
     });
     postMock.mockResolvedValue({

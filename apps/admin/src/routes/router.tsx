@@ -7,7 +7,6 @@ import { DashboardPage } from '@/pages/DashboardPage';
 import { EntriesPage } from '@/pages/EntriesPage';
 import { EntryEditorPage } from '@/pages/EntryEditorPage';
 import { LoginPage } from '@/pages/LoginPage';
-import { ProjectsPage } from '@/pages/ProjectsPage';
 
 export const router = createBrowserRouter([
   {
@@ -19,20 +18,10 @@ export const router = createBrowserRouter([
     element: <AppLayout />,
     children: [
       { index: true, element: <DashboardPage /> },
-      { path: 'projects', element: <ProjectsPage /> },
-      { path: 'projects/:projectId/content-types', element: <ContentTypesPage /> },
-      {
-        path: 'projects/:projectId/content-types/:contentTypeId',
-        element: <ContentTypeDetailPage />,
-      },
-      {
-        path: 'projects/:projectId/content-types/:contentTypeId/entries',
-        element: <EntriesPage />,
-      },
-      {
-        path: 'projects/:projectId/content-types/:contentTypeId/entries/:entryId',
-        element: <EntryEditorPage />,
-      },
+      { path: 'content-types', element: <ContentTypesPage /> },
+      { path: 'content-types/:contentTypeId', element: <ContentTypeDetailPage /> },
+      { path: 'content-types/:contentTypeId/entries', element: <EntriesPage /> },
+      { path: 'content-types/:contentTypeId/entries/:entryId', element: <EntryEditorPage /> },
     ],
   },
 ]);
