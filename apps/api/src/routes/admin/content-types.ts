@@ -13,9 +13,10 @@ import {
 import {
   createFieldDefinition,
   listFieldDefinitionsForContentType,
+  reorderFieldDefinitions,
 } from '../../repositories/field-definitions';
 import { createContentTypeSchema } from '../../validators/content-types';
-import { createFieldDefinitionSchema } from '../../validators/field-definitions';
+import { createFieldDefinitionSchema, reorderFieldDefinitionsSchema } from '../../validators/field-definitions';
 
 export const contentTypesRoute = new Hono<{ Bindings: Bindings; Variables: AuthedVariables }>();
 
@@ -72,4 +73,22 @@ contentTypesRoute.post('/:id/fields', async (c) => {
     contentTypeId: contentType.id,
   });
   return c.json(field, 201);
+});
+
+contentTypesRoute.patch('/:id/fields/reorder', async (c) => {
+  const db = getDb(c);
+  const contentType = await getContentTypeById(db, c.req.param('id'));
+  if (!contentType) {
+    return c.json({ error: 'Content type not found' }, 404);
+  }
+
+  const parsed = await parseJsonBody(c, reorderFieldDefinitionsSchema);
+  if ('error' in parsed) return parsed.error;
+
+  try {
+    const fields = await reorderFieldDefinitions(db, contentType.id, parsed.data.fieldIds);
+    return c.json(fields);
+  } catch {
+    return c.json({ error: 'fieldIds must exactly match this content type\'s existing fields' }, 400);
+  }
 });

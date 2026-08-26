@@ -32,3 +32,41 @@ export function useCreateFieldDefinition(contentTypeId: string) {
     },
   });
 }
+
+export function useReorderFieldDefinitions(contentTypeId: string) {
+  const queryClient = useQueryClient();
+  const queryKey = ['field-definitions', contentTypeId];
+
+  return useMutation({
+    mutationFn: (fieldIds: string[]) =>
+      apiClient.patch<FieldDefinition[]>(
+        `/api/v1/admin/content-types/${contentTypeId}/fields/reorder`,
+        { fieldIds },
+      ),
+    // Optimistic: dragging should feel instant rather than waiting on a round-trip. Rolled
+    // back in onError if the server rejects the reorder (e.g. a stale field list).
+    onMutate: async (fieldIds) => {
+      await queryClient.cancelQueries({ queryKey });
+      const previous = queryClient.getQueryData<FieldDefinition[]>(queryKey);
+      if (previous) {
+        const byId = new Map(previous.map((field) => [field.id, field]));
+        const reordered = fieldIds
+          .map((id, index) => {
+            const field = byId.get(id);
+            return field ? { ...field, sortOrder: index } : undefined;
+          })
+          .filter((field): field is FieldDefinition => field !== undefined);
+        queryClient.setQueryData(queryKey, reordered);
+      }
+      return { previous };
+    },
+    onError: (_err, _fieldIds, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(queryKey, context.previous);
+      }
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey });
+    },
+  });
+}

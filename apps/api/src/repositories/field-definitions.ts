@@ -21,3 +21,28 @@ export function listFieldDefinitionsForContentType(
     orderBy: asc(fieldDefinitions.sortOrder),
   });
 }
+
+// Sets each field's sortOrder to its index in `fieldIds` (§6.1 — the entry editor renders
+// fields in this order). Requires fieldIds to be exactly the content type's current field
+// ids, just reordered — rejects a stale or foreign id rather than silently dropping or
+// reordering fields that don't belong to this content type.
+export async function reorderFieldDefinitions(
+  db: Database,
+  contentTypeId: string,
+  fieldIds: string[],
+): Promise<FieldDefinition[]> {
+  const existing = await listFieldDefinitionsForContentType(db, contentTypeId);
+  const existingIds = new Set(existing.map((field) => field.id));
+  const isExactMatch = fieldIds.length === existing.length && fieldIds.every((id) => existingIds.has(id));
+  if (!isExactMatch) {
+    throw new Error('fieldIds must exactly match this content type\'s existing fields');
+  }
+
+  await Promise.all(
+    fieldIds.map((id, index) =>
+      db.update(fieldDefinitions).set({ sortOrder: index }).where(eq(fieldDefinitions.id, id)),
+    ),
+  );
+
+  return listFieldDefinitionsForContentType(db, contentTypeId);
+}

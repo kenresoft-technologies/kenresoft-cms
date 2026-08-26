@@ -1,12 +1,26 @@
 import { useState, type FormEvent } from 'react';
-import { ListPlus, Trash2 } from 'lucide-react';
+import {
+  DndContext,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { GripVertical, ListPlus, Trash2 } from 'lucide-react';
 import { Link, useParams } from 'react-router';
 import { toast } from 'sonner';
 
 import { ApiError } from '@/lib/api-client';
 import { useContentType, useContentTypes } from '@/lib/queries/content-types';
-import { useCreateFieldDefinition, useFieldDefinitions } from '@/lib/queries/field-definitions';
-import { FIELD_TYPES, type FieldType } from '@/lib/types';
+import {
+  useCreateFieldDefinition,
+  useFieldDefinitions,
+  useReorderFieldDefinitions,
+} from '@/lib/queries/field-definitions';
+import { FIELD_TYPES, type FieldDefinition, type FieldType } from '@/lib/types';
 import { EmptyState } from '@/components/empty-state';
 import { PageBreadcrumb } from '@/components/page-breadcrumb';
 import { TableSkeleton } from '@/components/table-skeleton';
@@ -207,10 +221,59 @@ function NewFieldDialog({ contentTypeId }: { contentTypeId: string }) {
   );
 }
 
+function SortableFieldRow({ field }: { field: FieldDefinition }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: field.id,
+  });
+
+  return (
+    <TableRow
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={isDragging ? 'relative z-10 bg-muted' : undefined}
+    >
+      <TableCell className="w-8">
+        <button
+          type="button"
+          className="cursor-grab touch-none text-muted-foreground hover:text-foreground active:cursor-grabbing"
+          aria-label={`Reorder ${field.label}`}
+          {...attributes}
+          {...listeners}
+        >
+          <GripVertical className="size-4" />
+        </button>
+      </TableCell>
+      <TableCell className="font-mono text-sm">{field.name}</TableCell>
+      <TableCell>{field.label}</TableCell>
+      <TableCell>
+        <Badge variant="outline">{field.fieldType}</Badge>
+      </TableCell>
+      <TableCell className="text-muted-foreground">{field.required ? 'Yes' : 'No'}</TableCell>
+    </TableRow>
+  );
+}
+
 export function ContentTypeDetailPage() {
   const { contentTypeId } = useParams<{ contentTypeId: string }>();
   const { data: contentType } = useContentType(contentTypeId ?? '');
   const { data: fields, isPending, error } = useFieldDefinitions(contentTypeId ?? '');
+  const reorderFields = useReorderFieldDefinitions(contentTypeId ?? '');
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id || !fields) return;
+
+    const oldIndex = fields.findIndex((field) => field.id === active.id);
+    const newIndex = fields.findIndex((field) => field.id === over.id);
+    const reordered = arrayMove(fields, oldIndex, newIndex);
+    reorderFields.mutate(
+      reordered.map((field) => field.id),
+      {
+        onError: () => toast.error('Failed to reorder fields'),
+      },
+    );
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -241,13 +304,14 @@ export function ContentTypeDetailPage() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-8" />
                 <TableHead>Name</TableHead>
                 <TableHead>Label</TableHead>
                 <TableHead>Type</TableHead>
                 <TableHead>Required</TableHead>
               </TableRow>
             </TableHeader>
-            <TableSkeleton columns={4} />
+            <TableSkeleton columns={5} />
           </Table>
         </div>
       ) : null}
@@ -265,26 +329,22 @@ export function ContentTypeDetailPage() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-8" />
                 <TableHead>Name</TableHead>
                 <TableHead>Label</TableHead>
                 <TableHead>Type</TableHead>
                 <TableHead>Required</TableHead>
               </TableRow>
             </TableHeader>
-            <TableBody>
-              {fields.map((field) => (
-                <TableRow key={field.id}>
-                  <TableCell className="font-mono text-sm">{field.name}</TableCell>
-                  <TableCell>{field.label}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{field.fieldType}</Badge>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {field.required ? 'Yes' : 'No'}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              <SortableContext items={fields.map((field) => field.id)} strategy={verticalListSortingStrategy}>
+                <TableBody>
+                  {fields.map((field) => (
+                    <SortableFieldRow key={field.id} field={field} />
+                  ))}
+                </TableBody>
+              </SortableContext>
+            </DndContext>
           </Table>
         </div>
       ) : null}

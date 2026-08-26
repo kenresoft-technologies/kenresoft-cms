@@ -9,3 +9,7 @@ export const createFieldDefinitionSchema = z.object({
   sortOrder: z.number().int().optional().default(0),
   config: z.record(z.string(), z.unknown()).nullable().optional(),
 });
+
+export const reorderFieldDefinitionsSchema = z.object({
+  fieldIds: z.array(z.string().min(1)).min(1),
+});
