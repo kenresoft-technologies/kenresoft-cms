@@ -1,7 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { apiClient } from '@/lib/api-client';
-import type { Entry, EntryStatus } from '@/lib/types';
+import type { Entry, EntryRevision, EntryStatus } from '@/lib/types';
+
+type EntryWriteInput = {
+  slug: string;
+  status: EntryStatus;
+  data: Record<string, unknown>;
+  publishAt?: string | null;
+};
 
 export function useEntries(contentTypeId: string) {
   return useQuery({
@@ -23,7 +30,7 @@ export function useCreateEntry(contentTypeId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (input: { slug: string; status: EntryStatus; data: Record<string, unknown> }) =>
+    mutationFn: (input: EntryWriteInput) =>
       apiClient.post<Entry>(`/api/v1/admin/entries?contentTypeId=${contentTypeId}`, input),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['entries', contentTypeId] });
@@ -35,11 +42,31 @@ export function useUpdateEntry(contentTypeId: string, id: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (input: { slug: string; status: EntryStatus; data: Record<string, unknown> }) =>
-      apiClient.patch<Entry>(`/api/v1/admin/entries/${id}`, input),
+    mutationFn: (input: EntryWriteInput) => apiClient.patch<Entry>(`/api/v1/admin/entries/${id}`, input),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['entries', contentTypeId] });
       void queryClient.invalidateQueries({ queryKey: ['entries', 'by-id', id] });
+    },
+  });
+}
+
+export function useEntryRevisions(entryId: string) {
+  return useQuery({
+    queryKey: ['entries', 'by-id', entryId, 'revisions'],
+    queryFn: () => apiClient.get<EntryRevision[]>(`/api/v1/admin/entries/${entryId}/revisions`),
+    enabled: Boolean(entryId),
+  });
+}
+
+export function useRestoreEntryRevision(contentTypeId: string, entryId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (revisionId: string) =>
+      apiClient.post<Entry>(`/api/v1/admin/entries/${entryId}/revisions/${revisionId}/restore`, {}),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['entries', contentTypeId] });
+      void queryClient.invalidateQueries({ queryKey: ['entries', 'by-id', entryId] });
     },
   });
 }

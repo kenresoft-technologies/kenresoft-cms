@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router';
 
+import { EntryRevisionHistory } from '@/components/entry-revision-history';
 import { FieldInput } from '@/components/field-input';
 import { ApiError } from '@/lib/api-client';
 import { useContentType } from '@/lib/queries/content-types';
@@ -18,6 +19,16 @@ import { Skeleton } from '@/components/ui/skeleton';
 
 function defaultValueForType(fieldType: FieldType): unknown {
   return fieldType === 'boolean' ? false : '';
+}
+
+// The datetime-local input works in the viewer's local time and has no timezone info, so
+// converting to/from it has to go through the local offset by hand rather than a plain
+// toISOString/new Date round-trip (which would silently shift the displayed time to UTC).
+function toDatetimeLocalValue(iso: string | null): string {
+  if (!iso) return '';
+  const date = new Date(iso);
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 16);
 }
 
 interface EntryFormProps {
@@ -40,6 +51,7 @@ function EntryForm({ projectId, contentTypeId, entryId, fields, entry }: EntryFo
 
   const [slug, setSlug] = useState(entry?.slug ?? '');
   const [status, setStatus] = useState<EntryStatus>(entry?.status ?? 'draft');
+  const [publishAt, setPublishAt] = useState(() => toDatetimeLocalValue(entry?.publishAt ?? null));
   const [data, setData] = useState<Record<string, unknown>>(() => {
     if (entry) return entry.data;
     const defaults: Record<string, unknown> = {};
@@ -54,11 +66,13 @@ function EntryForm({ projectId, contentTypeId, entryId, fields, entry }: EntryFo
     event.preventDefault();
     setError(null);
 
+    const publishAtIso = publishAt ? new Date(publishAt).toISOString() : null;
+
     try {
       if (isNew) {
-        await createEntry.mutateAsync({ slug, status, data });
+        await createEntry.mutateAsync({ slug, status, data, publishAt: publishAtIso });
       } else {
-        await updateEntry.mutateAsync({ slug, status, data });
+        await updateEntry.mutateAsync({ slug, status, data, publishAt: publishAtIso });
       }
       void navigate(`/projects/${projectId}/content-types/${contentTypeId}/entries`);
     } catch (err) {
@@ -89,6 +103,20 @@ function EntryForm({ projectId, contentTypeId, entryId, fields, entry }: EntryFo
             ))}
           </SelectContent>
         </Select>
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <Label htmlFor="entry-publish-at">Schedule publish (optional)</Label>
+        <Input
+          id="entry-publish-at"
+          type="datetime-local"
+          value={publishAt}
+          onChange={(event) => setPublishAt(event.target.value)}
+        />
+        <p className="text-sm text-muted-foreground">
+          Leave blank to publish only on manual save. If set, a draft entry is automatically
+          published once this time passes.
+        </p>
       </div>
 
       {fields.map((field) => (
@@ -143,7 +171,12 @@ export function EntryEditorPage() {
         ]}
       />
 
-      <h1 className="text-2xl font-semibold">{isNew ? 'New entry' : 'Edit entry'}</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-semibold">{isNew ? 'New entry' : 'Edit entry'}</h1>
+        {!isNew && entryId ? (
+          <EntryRevisionHistory contentTypeId={contentTypeId ?? ''} entryId={entryId} />
+        ) : null}
+      </div>
 
       {!ready ? (
         <Card>
@@ -159,7 +192,7 @@ export function EntryEditorPage() {
         <Card>
           <CardContent>
             <EntryForm
-              key={entryId}
+              key={`${entryId}-${entry?.updatedAt ?? 'new'}`}
               projectId={projectId}
               contentTypeId={contentTypeId}
               entryId={entryId}

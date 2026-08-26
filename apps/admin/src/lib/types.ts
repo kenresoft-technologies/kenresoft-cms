@@ -64,6 +64,17 @@ export interface Entry {
   slug: string;
   status: EntryStatus;
   data: Record<string, unknown>;
+  publishAt: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface EntryRevision {
+  id: string;
+  entryId: string;
+  slug: string;
+  status: EntryStatus;
+  data: Record<string, unknown>;
+  createdBy: string | null;
+  createdAt: string;
 }
