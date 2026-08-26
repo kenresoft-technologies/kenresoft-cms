@@ -7,9 +7,20 @@
   "types": "./src/index.ts",
   "scripts": {
     "generate": "drizzle-kit generate",
-    "migrate:local": "wrangler d1 migrations apply kenresoft-cms-db --local",
-    "migrate:remote": "wrangler d1 migrations apply kenresoft-cms-db --remote",
+    "migrate:local": "wrangler d1 migrations apply kenresoft-cms-db --local --config ../../apps/api/wrangler.toml",
+    "migrate:remote": "wrangler d1 migrations apply kenresoft-cms-db --remote --config ../../apps/api/wrangler.toml",
     "typecheck": "tsc --noEmit",
     "lint": "eslint ."
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.44.5"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260826.1",
+    "@kenresoft/config": "workspace:*",
+    "drizzle-kit": "^0.31.7",
+    "eslint": "^10.9.1",
+    "typescript": "^5.9.3",
+    "wrangler": "^4.42.4"
   }
 }

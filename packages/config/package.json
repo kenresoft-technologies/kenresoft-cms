@@ -3,5 +3,19 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Shared ESLint, TypeScript and Prettier base configs for the monorepo."
+  "description": "Shared ESLint, TypeScript and Prettier base configs for the monorepo.",
+  "exports": {
+    "./eslint/base": "./eslint/base.js",
+    "./eslint/node": "./eslint/node.js",
+    "./eslint/react": "./eslint/react.js",
+    "./prettier": "./prettier.js"
+  },
+  "dependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.5",
+    "globals": "^17.11.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.68.0"
+  }
 }

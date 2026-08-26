@@ -7,12 +7,16 @@
 name = "kenresoft-cms-api"
 main = "src/index.ts"
 compatibility_date = "2026-08-01"
-compatibility_flags = ["nodejs_compat"]
+# nodejs_compat is not enabled yet — nothing in Phase 1 needs Node built-ins. Re-add for
+# Phase 3 (better-auth) if its D1/Drizzle adapter requires it; as of 2026-08-26 it currently
+# breaks @cloudflare/vitest-pool-workers (cloudflare/workers-sdk#11028).
+compatibility_flags = []
 
 [[d1_databases]]
 binding = "DB"
 database_name = "kenresoft-cms-db"
 database_id = "REPLACE_WITH_REAL_D1_ID"
+migrations_dir = "../../packages/database/migrations"
 
 [[r2_buckets]]
 binding = "MEDIA_BUCKET"
@@ -24,3 +28,5 @@ id = "REPLACE_WITH_REAL_KV_ID"
 
 [vars]
 API_VERSION = "v1"
+# Comma-separated allow-list per docs/ARCHITECTURE.md §9 — never "*". Override per environment.
+CORS_ORIGINS = "http://localhost:5173"
