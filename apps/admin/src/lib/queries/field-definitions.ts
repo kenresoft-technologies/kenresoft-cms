@@ -16,7 +16,13 @@ export function useCreateFieldDefinition(contentTypeId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (input: { name: string; label: string; fieldType: FieldType; required: boolean }) =>
+    mutationFn: (input: {
+      name: string;
+      label: string;
+      fieldType: FieldType;
+      required: boolean;
+      config?: Record<string, unknown> | null;
+    }) =>
       apiClient.post<FieldDefinition>(
         `/api/v1/admin/content-types/${contentTypeId}/fields`,
         input,

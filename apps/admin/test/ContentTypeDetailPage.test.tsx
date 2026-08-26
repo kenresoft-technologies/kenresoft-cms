@@ -89,6 +89,51 @@ describe('ContentTypeDetailPage', () => {
         label: 'Title',
         fieldType: 'text',
         required: false,
+        config: null,
+      }),
+    );
+  });
+
+  it('adds a select field with configured options', async () => {
+    getMock.mockImplementation((path: string) => {
+      if (path.endsWith('/fields')) return Promise.resolve([]);
+      if (path === '/api/v1/admin/content-types') return Promise.resolve([]);
+      return Promise.resolve({ id: 'ct-1', name: 'Blog Post', slug: 'blog-post' });
+    });
+    postMock.mockResolvedValue({
+      id: 'f-1',
+      name: 'status',
+      label: 'Status',
+      fieldType: 'select',
+      required: false,
+      config: { options: ['open', 'closed'] },
+    });
+
+    renderPage();
+    await waitFor(() => expect(screen.getByText('No fields yet')).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole('button', { name: 'Add field' }));
+    const dialog = screen.getByRole('dialog');
+    await userEvent.type(within(dialog).getByLabelText('Name'), 'status');
+    await userEvent.type(within(dialog).getByLabelText('Label'), 'Status');
+
+    await userEvent.click(within(dialog).getByLabelText('Type'));
+    await userEvent.click(screen.getByRole('option', { name: 'select' }));
+
+    await userEvent.type(within(dialog).getByPlaceholderText('option value'), 'open');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Add' }));
+    await userEvent.type(within(dialog).getByPlaceholderText('option value'), 'closed');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Add' }));
+
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Add field' }));
+
+    await waitFor(() =>
+      expect(postMock).toHaveBeenCalledWith('/api/v1/admin/content-types/ct-1/fields', {
+        name: 'status',
+        label: 'Status',
+        fieldType: 'select',
+        required: false,
+        config: { options: ['open', 'closed'] },
       }),
     );
   });

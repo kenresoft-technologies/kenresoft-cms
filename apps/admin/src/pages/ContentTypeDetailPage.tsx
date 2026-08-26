@@ -1,10 +1,10 @@
 import { useState, type FormEvent } from 'react';
-import { ListPlus } from 'lucide-react';
+import { ListPlus, Trash2 } from 'lucide-react';
 import { Link, useParams } from 'react-router';
 import { toast } from 'sonner';
 
 import { ApiError } from '@/lib/api-client';
-import { useContentType } from '@/lib/queries/content-types';
+import { useContentType, useContentTypes } from '@/lib/queries/content-types';
 import { useCreateFieldDefinition, useFieldDefinitions } from '@/lib/queries/field-definitions';
 import { FIELD_TYPES, type FieldType } from '@/lib/types';
 import { EmptyState } from '@/components/empty-state';
@@ -27,26 +27,91 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
+const OPTION_LIST_TYPES: FieldType[] = ['select', 'multi_select'];
+
+function OptionListEditor({ options, onChange }: { options: string[]; onChange: (options: string[]) => void }) {
+  const [newOption, setNewOption] = useState('');
+
+  function addOption() {
+    const trimmed = newOption.trim();
+    if (!trimmed || options.includes(trimmed)) return;
+    onChange([...options, trimmed]);
+    setNewOption('');
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <Label>Options</Label>
+      {options.length === 0 ? <p className="text-sm text-muted-foreground">No options yet.</p> : null}
+      {options.map((option, index) => (
+        <div key={option} className="flex items-center gap-2">
+          <span className="flex-1 text-sm">{option}</span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label={`Remove ${option}`}
+            onClick={() => onChange(options.filter((_, i) => i !== index))}
+          >
+            <Trash2 />
+          </Button>
+        </div>
+      ))}
+      <div className="flex gap-2">
+        <Input
+          placeholder="option value"
+          value={newOption}
+          onChange={(event) => setNewOption(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              addOption();
+            }
+          }}
+        />
+        <Button type="button" variant="outline" onClick={addOption}>
+          Add
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function NewFieldDialog({ contentTypeId }: { contentTypeId: string }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [label, setLabel] = useState('');
   const [fieldType, setFieldType] = useState<FieldType>('text');
   const [required, setRequired] = useState(false);
+  const [options, setOptions] = useState<string[]>([]);
+  const [targetContentTypeId, setTargetContentTypeId] = useState('');
   const [error, setError] = useState<string | null>(null);
   const createField = useCreateFieldDefinition(contentTypeId);
+  const { data: contentTypes } = useContentTypes();
+
+  function resetForm() {
+    setName('');
+    setLabel('');
+    setFieldType('text');
+    setRequired(false);
+    setOptions([]);
+    setTargetContentTypeId('');
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
 
+    const config = OPTION_LIST_TYPES.includes(fieldType)
+      ? { options }
+      : fieldType === 'reference' && targetContentTypeId
+        ? { targetContentTypeId }
+        : null;
+
     try {
-      await createField.mutateAsync({ name, label, fieldType, required });
+      await createField.mutateAsync({ name, label, fieldType, required, config });
       toast.success('Field added');
-      setName('');
-      setLabel('');
-      setFieldType('text');
-      setRequired(false);
+      resetForm();
       setOpen(false);
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to create field';
@@ -101,6 +166,27 @@ function NewFieldDialog({ contentTypeId }: { contentTypeId: string }) {
               </SelectContent>
             </Select>
           </div>
+
+          {OPTION_LIST_TYPES.includes(fieldType) ? <OptionListEditor options={options} onChange={setOptions} /> : null}
+
+          {fieldType === 'reference' ? (
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="field-target-content-type">References</Label>
+              <Select value={targetContentTypeId} onValueChange={setTargetContentTypeId}>
+                <SelectTrigger id="field-target-content-type">
+                  <SelectValue placeholder="Choose a content type…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {contentTypes?.map((ct) => (
+                    <SelectItem key={ct.id} value={ct.id}>
+                      {ct.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : null}
+
           <div className="flex items-center gap-2">
             <Checkbox
               id="field-required"

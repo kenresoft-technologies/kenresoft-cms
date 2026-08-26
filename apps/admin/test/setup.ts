@@ -9,6 +9,13 @@ class ResizeObserverStub {
 
 globalThis.ResizeObserver ??= ResizeObserverStub as unknown as typeof ResizeObserver;
 
+// jsdom doesn't implement the Pointer Capture APIs or scrollIntoView, both of which Radix's
+// Select uses internally when handling option clicks.
+Element.prototype.hasPointerCapture ??= () => false;
+Element.prototype.setPointerCapture ??= () => {};
+Element.prototype.releasePointerCapture ??= () => {};
+Element.prototype.scrollIntoView ??= () => {};
+
 // jsdom doesn't implement matchMedia either, needed by ThemeToggle and shadcn's
 // use-mobile hook (used internally by the sidebar).
 window.matchMedia ??= ((query: string) => ({
