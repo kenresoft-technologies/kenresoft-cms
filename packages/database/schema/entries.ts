@@ -1,7 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { sqliteTable, text, integer, uniqueIndex, index } from 'drizzle-orm/sqlite-core';
 
-import { projects } from './projects';
 import { contentTypes } from './content-types';
 
 export const ENTRY_STATUSES = ['draft', 'published'] as const;
@@ -13,11 +12,6 @@ export const entries = sqliteTable(
     id: text('id')
       .primaryKey()
       .$defaultFn(() => crypto.randomUUID()),
-    // Denormalized alongside contentTypeId so project-scoped queries (§11 isolation) don't
-    // require a join through content_types.
-    projectId: text('project_id')
-      .notNull()
-      .references(() => projects.id, { onDelete: 'cascade' }),
     contentTypeId: text('content_type_id')
       .notNull()
       .references(() => contentTypes.id, { onDelete: 'cascade' }),
@@ -40,7 +34,6 @@ export const entries = sqliteTable(
   },
   (table) => [
     uniqueIndex('entries_content_type_slug_unique').on(table.contentTypeId, table.slug),
-    index('entries_project_status_idx').on(table.projectId, table.status),
     // Scanned by the scheduled-publishing Cron Trigger (§13): status = 'draft' AND
     // publishAt <= now().
     index('entries_status_publish_at_idx').on(table.status, table.publishAt),
