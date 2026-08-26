@@ -10,7 +10,13 @@ export default defineWorkersConfig(async () => {
         workers: {
           wrangler: { configPath: './wrangler.toml' },
           miniflare: {
-            bindings: { TEST_MIGRATIONS: migrations },
+            bindings: {
+              TEST_MIGRATIONS: migrations,
+              // Tests must be hermetic — never depend on the gitignored, developer-local
+              // .dev.vars (absent in CI and on a fresh clone). This value is test-only and
+              // never used outside the vitest-pool-workers runtime.
+              BETTER_AUTH_SECRET: 'test-only-secret-not-used-outside-vitest-pool-workers',
+            },
             // nodejs_compat + a compatibility_date past 2025-09-21 breaks
             // @cloudflare/vitest-pool-workers (cloudflare/workers-sdk#11028). wrangler.toml
             // keeps the real date for actual deploys; the test pool alone pins an earlier
