@@ -9,6 +9,8 @@ import {
   deleteEntry,
   getEntryById,
   listEntriesForContentType,
+  listEntryRevisions,
+  restoreEntryRevision,
   updateEntry,
 } from '../../repositories/entries';
 import { createEntrySchema, updateEntrySchema } from '../../validators/entries';
@@ -36,7 +38,7 @@ entriesRoute.post('/', async (c) => {
 
   const db = getDb(c);
   try {
-    const entry = await createEntry(db, contentTypeId, parsed.data);
+    const entry = await createEntry(db, contentTypeId, parsed.data, c.get('user').id);
     return c.json(entry, 201);
   } catch {
     return c.json({ error: 'Content type not found' }, 404);
@@ -57,7 +59,7 @@ entriesRoute.patch('/:id', async (c) => {
   if ('error' in parsed) return parsed.error;
 
   const db = getDb(c);
-  const entry = await updateEntry(db, c.req.param('id'), parsed.data);
+  const entry = await updateEntry(db, c.req.param('id'), parsed.data, c.get('user').id);
   if (!entry) {
     return c.json({ error: 'Entry not found' }, 404);
   }
@@ -71,4 +73,27 @@ entriesRoute.delete('/:id', async (c) => {
     return c.json({ error: 'Entry not found' }, 404);
   }
   return c.body(null, 204);
+});
+
+entriesRoute.get('/:id/revisions', async (c) => {
+  const db = getDb(c);
+  const entry = await getEntryById(db, c.req.param('id'));
+  if (!entry) {
+    return c.json({ error: 'Entry not found' }, 404);
+  }
+  return c.json(await listEntryRevisions(db, entry.id));
+});
+
+entriesRoute.post('/:id/revisions/:revisionId/restore', async (c) => {
+  const db = getDb(c);
+  const entry = await restoreEntryRevision(
+    db,
+    c.req.param('id'),
+    c.req.param('revisionId'),
+    c.get('user').id,
+  );
+  if (!entry) {
+    return c.json({ error: 'Entry or revision not found' }, 404);
+  }
+  return c.json(entry);
 });

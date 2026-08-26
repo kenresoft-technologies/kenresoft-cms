@@ -1,10 +1,32 @@
-import { and, contentTypes, entries, eq } from '@kenresoft/database';
-import type { Database, Entry, NewEntry } from '@kenresoft/database';
+import { and, contentTypes, desc, entries, entryRevisions, eq } from '@kenresoft/database';
+import type { Database, Entry, EntryRevision, NewEntry } from '@kenresoft/database';
+
+type EntryWriteInput = {
+  slug?: NewEntry['slug'] | undefined;
+  status?: NewEntry['status'] | undefined;
+  data?: NewEntry['data'] | undefined;
+  publishAt?: NewEntry['publishAt'] | undefined;
+};
+
+async function snapshotRevision(
+  db: Database,
+  entry: Pick<Entry, 'id' | 'slug' | 'status' | 'data'>,
+  createdBy: string | null,
+): Promise<void> {
+  await db.insert(entryRevisions).values({
+    entryId: entry.id,
+    slug: entry.slug,
+    status: entry.status,
+    data: entry.data,
+    createdBy,
+  });
+}
 
 export async function createEntry(
   db: Database,
   contentTypeId: string,
-  input: Pick<NewEntry, 'slug' | 'status' | 'data'>,
+  input: Pick<NewEntry, 'slug' | 'status' | 'data'> & Pick<EntryWriteInput, 'publishAt'>,
+  createdBy: string | null,
 ): Promise<Entry> {
   const contentType = await db.query.contentTypes.findFirst({
     where: eq(contentTypes.id, contentTypeId),
@@ -17,6 +39,7 @@ export async function createEntry(
     .insert(entries)
     .values({ ...input, contentTypeId, projectId: contentType.projectId })
     .returning();
+  await snapshotRevision(db, entry!, createdBy);
   return entry!;
 }
 
@@ -41,15 +64,19 @@ export function getEntryById(db: Database, id: string): Promise<Entry | undefine
   return db.query.entries.findFirst({ where: eq(entries.id, id) });
 }
 
+// Snapshots the entry's current (about-to-be-overwritten) state as a revision before
+// applying the update, so there's always something to restore to (§13).
 export async function updateEntry(
   db: Database,
   id: string,
-  input: {
-    slug?: NewEntry['slug'] | undefined;
-    status?: NewEntry['status'] | undefined;
-    data?: NewEntry['data'] | undefined;
-  },
+  input: EntryWriteInput,
+  updatedBy: string | null,
 ): Promise<Entry | undefined> {
+  const current = await db.query.entries.findFirst({ where: eq(entries.id, id) });
+  if (!current) return undefined;
+
+  await snapshotRevision(db, current, updatedBy);
+
   const [entry] = await db
     .update(entries)
     .set({ ...input, updatedAt: new Date() })
@@ -61,4 +88,32 @@ export async function updateEntry(
 export async function deleteEntry(db: Database, id: string): Promise<boolean> {
   const [deleted] = await db.delete(entries).where(eq(entries.id, id)).returning({ id: entries.id });
   return Boolean(deleted);
+}
+
+export function listEntryRevisions(db: Database, entryId: string): Promise<EntryRevision[]> {
+  return db.query.entryRevisions.findMany({
+    where: eq(entryRevisions.entryId, entryId),
+    orderBy: desc(entryRevisions.createdAt),
+  });
+}
+
+// Reuses updateEntry so the restore itself snapshots the pre-restore state too — restoring
+// is never a dead end.
+export async function restoreEntryRevision(
+  db: Database,
+  entryId: string,
+  revisionId: string,
+  restoredBy: string | null,
+): Promise<Entry | undefined> {
+  const revision = await db.query.entryRevisions.findFirst({
+    where: and(eq(entryRevisions.id, revisionId), eq(entryRevisions.entryId, entryId)),
+  });
+  if (!revision) return undefined;
+
+  return updateEntry(
+    db,
+    entryId,
+    { slug: revision.slug, status: revision.status, data: revision.data },
+    restoredBy,
+  );
 }

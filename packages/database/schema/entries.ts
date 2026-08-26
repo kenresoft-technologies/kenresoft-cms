@@ -4,8 +4,6 @@ import { sqliteTable, text, integer, uniqueIndex, index } from 'drizzle-orm/sqli
 import { projects } from './projects';
 import { contentTypes } from './content-types';
 
-// Full lifecycle (revisions, restore) lands in Phase 4 (§13, §20) — this is deliberately
-// just draft/published for now.
 export const ENTRY_STATUSES = ['draft', 'published'] as const;
 export type EntryStatus = (typeof ENTRY_STATUSES)[number];
 
@@ -25,6 +23,9 @@ export const entries = sqliteTable(
       .references(() => contentTypes.id, { onDelete: 'cascade' }),
     slug: text('slug').notNull(),
     status: text('status').notNull().$type<EntryStatus>().default('draft'),
+    // Nullable — set while still Draft to queue a Cron Trigger transition to Published once
+    // it elapses (§13). Null means "no schedule," not "publish immediately."
+    publishAt: integer('publish_at', { mode: 'timestamp' }),
     // Field values keyed by FieldDefinition.name — validated against the content type's
     // field definitions at the API layer, not the DB layer.
     data: text('data', { mode: 'json' })
@@ -40,6 +41,9 @@ export const entries = sqliteTable(
   (table) => [
     uniqueIndex('entries_content_type_slug_unique').on(table.contentTypeId, table.slug),
     index('entries_project_status_idx').on(table.projectId, table.status),
+    // Scanned by the scheduled-publishing Cron Trigger (§13): status = 'draft' AND
+    // publishAt <= now().
+    index('entries_status_publish_at_idx').on(table.status, table.publishAt),
   ],
 );
 

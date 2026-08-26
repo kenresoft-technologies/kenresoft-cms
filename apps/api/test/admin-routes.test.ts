@@ -20,6 +20,7 @@ async function freshCookie(): Promise<string> {
 
 describe('admin routes (real D1)', () => {
   beforeEach(async () => {
+    await env.DB.exec('DELETE FROM entry_revisions');
     await env.DB.exec('DELETE FROM entries');
     await env.DB.exec('DELETE FROM field_definitions');
     await env.DB.exec('DELETE FROM content_types');
@@ -186,6 +187,99 @@ describe('admin routes (real D1)', () => {
       body: JSON.stringify({ name: 'Should Succeed', slug: 'should-succeed' }),
     });
     expect(ownerCreateRes.status).toBe(201);
+  });
+
+  it('records revisions on write and can restore an entry to a past one', async () => {
+    const cookie = await freshCookie();
+    const headers = { Cookie: cookie, 'Content-Type': 'application/json' };
+
+    const project = await (
+      await SELF.fetch('https://example.com/api/v1/admin/projects', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ name: 'Pathvera Group', slug: 'pathvera' }),
+      })
+    ).json<{ id: string }>();
+    const contentType = await (
+      await SELF.fetch('https://example.com/api/v1/admin/content-types', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ projectId: project.id, name: 'Blog Post', slug: 'blog-post' }),
+      })
+    ).json<{ id: string }>();
+
+    const entry = await (
+      await SELF.fetch(`https://example.com/api/v1/admin/entries?contentTypeId=${contentType.id}`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ slug: 'hello-world', data: { title: 'Original title' } }),
+      })
+    ).json<{ id: string }>();
+
+    await SELF.fetch(`https://example.com/api/v1/admin/entries/${entry.id}`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify({ data: { title: 'Edited title' } }),
+    });
+
+    const revisionsRes = await SELF.fetch(
+      `https://example.com/api/v1/admin/entries/${entry.id}/revisions`,
+      { headers: { Cookie: cookie } },
+    );
+    expect(revisionsRes.status).toBe(200);
+    const revisions = await revisionsRes.json<{ id: string; data: { title: string } }[]>();
+    // Newest first: the pre-edit snapshot (still "Original title"), then the creation snapshot.
+    expect(revisions).toHaveLength(2);
+    expect(revisions[0]!.data.title).toBe('Original title');
+
+    const restoreRes = await SELF.fetch(
+      `https://example.com/api/v1/admin/entries/${entry.id}/revisions/${revisions[0]!.id}/restore`,
+      { method: 'POST', headers: { Cookie: cookie } },
+    );
+    expect(restoreRes.status).toBe(200);
+    expect(await restoreRes.json()).toMatchObject({ data: { title: 'Original title' } });
+
+    // Restoring itself snapshotted the pre-restore ("Edited title") state, so it's undoable too.
+    const revisionsAfterRestore = await (
+      await SELF.fetch(`https://example.com/api/v1/admin/entries/${entry.id}/revisions`, {
+        headers: { Cookie: cookie },
+      })
+    ).json<{ data: { title: string } }[]>();
+    expect(revisionsAfterRestore).toHaveLength(3);
+    expect(revisionsAfterRestore[0]!.data.title).toBe('Edited title');
+  });
+
+  it('404s restoring a non-existent revision', async () => {
+    const cookie = await freshCookie();
+    const headers = { Cookie: cookie, 'Content-Type': 'application/json' };
+
+    const project = await (
+      await SELF.fetch('https://example.com/api/v1/admin/projects', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ name: 'Pathvera Group', slug: 'pathvera' }),
+      })
+    ).json<{ id: string }>();
+    const contentType = await (
+      await SELF.fetch('https://example.com/api/v1/admin/content-types', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ projectId: project.id, name: 'Blog Post', slug: 'blog-post' }),
+      })
+    ).json<{ id: string }>();
+    const entry = await (
+      await SELF.fetch(`https://example.com/api/v1/admin/entries?contentTypeId=${contentType.id}`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ slug: 'hello-world', data: {} }),
+      })
+    ).json<{ id: string }>();
+
+    const response = await SELF.fetch(
+      `https://example.com/api/v1/admin/entries/${entry.id}/revisions/does-not-exist/restore`,
+      { method: 'POST', headers: { Cookie: cookie } },
+    );
+    expect(response.status).toBe(404);
   });
 
   it('404s when creating an entry under a non-existent content type', async () => {
