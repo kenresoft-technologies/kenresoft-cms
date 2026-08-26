@@ -90,5 +90,11 @@ Per the roadmap in `docs/ARCHITECTURE.md` §20:
   (no invite/promote flow exists yet), and select/multi_select option lists, media picker, and
   reference lookup fields all still render as plain text pending field-builder UI to
   configure them.
+- **Phase 4** (draft/publish + scheduled publishing + revisions + restore) — done:
+  `EntryRevision` entity snapshotting every entry write (create/update/restore/auto-publish),
+  a `GET .../entries/:id/revisions` + `POST .../entries/:id/revisions/:revisionId/restore` API,
+  a nullable `publishAt` column on entries with a Cloudflare Cron Trigger (every 5 min) that
+  auto-publishes due drafts, and the corresponding `apps/admin` UI: a "Schedule publish"
+  datetime field and a revision-history side panel with restore on the entry editor.
 
 CI is green on `develop`.
