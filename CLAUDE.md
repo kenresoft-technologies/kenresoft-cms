@@ -102,5 +102,14 @@ Per the roadmap in `docs/ARCHITECTURE.md` §20:
   a nullable `publishAt` column on entries with a Cloudflare Cron Trigger (every 5 min) that
   auto-publishes due drafts, and the corresponding `apps/admin` UI: a "Schedule publish"
   datetime field and a revision-history side panel with restore on the entry editor.
+- **Phase 5** (R2 media library) — done: a `Media` entity (D1 stores metadata + the R2 object
+  key, never the binary), `POST/GET/DELETE /api/v1/admin/media` + `GET .../media/:id/file`,
+  and an `apps/admin` Media Library page (upload dialog, thumbnail grid, delete). Uploads are
+  restricted to PNG/GIF/JPEG/WebP verified by the file's actual bytes (`src/lib/
+  image-metadata.ts`), never the client-supplied Content-Type or filename extension — see
+  `docs/ARCHITECTURE.md` §9/§14. Not yet done: WebP dimension parsing (verified but stored as
+  null — VP8/VP8L/VP8X each encode dimensions differently), and no field type yet uses a media
+  picker to reference an uploaded item (the `media` field type still renders as plain text,
+  same gap noted under Phase 3).
 
 CI is green on `develop`.
