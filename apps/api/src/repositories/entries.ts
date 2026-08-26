@@ -60,6 +60,32 @@ export function getEntryBySlug(
   });
 }
 
+// Public content API (§8) — only ever surfaces published entries, regardless of what the
+// caller asks for by slug. A draft matching the requested slug 404s exactly like a slug that
+// doesn't exist at all, so the public API never leaks draft content's existence.
+export function listPublishedEntriesForContentType(
+  db: Database,
+  contentTypeId: string,
+): Promise<Entry[]> {
+  return db.query.entries.findMany({
+    where: and(eq(entries.contentTypeId, contentTypeId), eq(entries.status, 'published')),
+  });
+}
+
+export function getPublishedEntryBySlug(
+  db: Database,
+  contentTypeId: string,
+  slug: string,
+): Promise<Entry | undefined> {
+  return db.query.entries.findFirst({
+    where: and(
+      eq(entries.contentTypeId, contentTypeId),
+      eq(entries.slug, slug),
+      eq(entries.status, 'published'),
+    ),
+  });
+}
+
 export function getEntryById(db: Database, id: string): Promise<Entry | undefined> {
   return db.query.entries.findFirst({ where: eq(entries.id, id) });
 }
