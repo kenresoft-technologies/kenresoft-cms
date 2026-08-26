@@ -1,11 +1,27 @@
 # Kenresoft CMS — Architecture & Technical Specification
 
-Version 0.3 — Foundation Specification
+Version 0.4 — Foundation Specification
 First production target: Pathvera Group website
 Vision: Cloudflare-native, API-first, reusable, scalable, open-source-ready CMS
 Status: Proposed / Ready for implementation
 
 ## Changelog
+
+**v0.4 (2026-08-26)** — Three gaps identified from a SonicJS feature comparison during Phase 3
+admin UI work.
+
+- **Domain model (§6)** now includes a **Setting** entity — key/value configuration scoped to
+  a project (contact email, social links, feature flags), editable from the admin UI without a
+  redeploy. This was already implied by the Settings box in §11's multi-tenant diagram but
+  never captured as a real entity.
+- **Scalability (§12)** and **Phase 6** now specify a caching layer in front of the public
+  content API — the Cloudflare Cache API for edge caching, with Workers KV as a read-through
+  cache for content needing cross-colo consistency or longer TTLs, invalidated on publish/
+  unpublish (§13) rather than left to expire blindly. D1 is single-threaded and had no cache
+  story documented anywhere before this.
+- **Content Lifecycle (§13)** and **Phase 4** now include optional scheduled publishing: a
+  nullable `publishAt` timestamp on Entry, with a Cloudflare Cron Trigger periodically
+  transitioning entries whose `publishAt` has elapsed to Published.
 
 **v0.3 (2026-08-26)** — Two gaps identified by reviewing `FORK-CHANGES.md` from a prior
 Hono+D1+Workers CMS project (flarecms, a SonicJS fork) before archiving it. That project had
@@ -260,6 +276,7 @@ kenresoft-cms/
 | Media | Metadata for R2 objects |
 | Form | Definition of a public or administrative form |
 | FormSubmission | Captured form submission; separate from CMS content |
+| Setting | Key/value configuration scoped to a project (contact email, social links, feature flags); editable from the admin UI without a redeploy |
 | AuditLog | Security/administrative activity history |
 | APIKey | Future programmatic access mechanism |
 
@@ -438,6 +455,13 @@ and media metadata — these constraints are not a practical blocker. R2 is the 
 place for large files because its object storage is designed for very large-scale media
 storage.
 
+A caching layer sits in front of the public content API (§8) to keep D1's single-threaded
+limit from becoming a bottleneck under read load: the Cloudflare Cache API for per-colo edge
+caching of anonymous GET responses, with Cloudflare Workers KV as a read-through cache where
+cross-colo consistency or a longer TTL than the Cache API provides is needed. Cache entries
+are invalidated on publish/unpublish (§13) rather than left to expire blindly, so editors see
+their changes reflected promptly instead of waiting out a TTL.
+
 ---
 
 ## 13. Content Lifecycle
@@ -451,7 +475,9 @@ Draft
   |
   +--> Preview
   |
-  +--> Publish
+  +--> Schedule (optional; publishAt set, still Draft)
+  |
+  +--> Publish (immediate, or automatically once publishAt elapses)
   |
   +--> Published
   |
@@ -462,6 +488,11 @@ Draft
 
 Revision history is part of the safety model. A client should be able to recover from an
 accidental edit without contacting a developer.
+
+Scheduled publishing is optional: an entry may carry a nullable `publishAt` timestamp while
+still in Draft or Preview. A Cloudflare Cron Trigger periodically scans for entries whose
+`publishAt` has passed and transitions them to Published, so editors can queue content ahead
+of time (an announcement, a dated blog post) without keeping a session open until go-live.
 
 ---
 
@@ -573,9 +604,9 @@ runtime for development, useful for production-parity testing.
 | 1 | Worker + Hono + D1 + Drizzle + migrations |
 | 2 | Projects + content types + fields + entries |
 | 3 | Admin authentication (better-auth) + dashboard + dynamic editor |
-| 4 | Draft/publish + revisions + restore |
+| 4 | Draft/publish + scheduled publishing + revisions + restore |
 | 5 | R2 media library |
-| 6 | Public/admin REST API + OpenAPI (`@hono/zod-openapi`) |
+| 6 | Public/admin REST API + OpenAPI (`@hono/zod-openapi`) + public API caching (Cache API/KV) |
 | 7 | Forms + submissions + spam/rate limiting |
 | 8 | Astro integration and Pathvera production integration |
 | 9 | Testing, security hardening, backups and migration testing |
@@ -689,6 +720,8 @@ The architecture should be ambitious while the implementation remains incrementa
 | REST + OpenAPI via `@hono/zod-openapi` | LOCKED |
 | better-auth | LOCKED |
 | Cloudflare Rate Limiting binding | LOCKED |
+| Cloudflare Cache API + Workers KV (public API caching) | LOCKED |
+| Cloudflare Cron Triggers (scheduled publishing) | LOCKED |
 | `@cloudflare/vitest-pool-workers` | LOCKED |
 | pnpm monorepo | LOCKED |
 | Astro integration | FIRST-CLASS TARGET |
@@ -709,6 +742,9 @@ The architecture should be ambitious while the implementation remains incrementa
 - Cloudflare Access Applications: https://developers.cloudflare.com/cloudflare-one/access-controls/applications/
 - Cloudflare Access JWT Validation: https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/validating-json/
 - Cloudflare Workers Rate Limiting: https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/
+- Cloudflare Cache API: https://developers.cloudflare.com/workers/runtime-apis/cache/
+- Cloudflare Workers KV: https://developers.cloudflare.com/kv/
+- Cloudflare Cron Triggers: https://developers.cloudflare.com/workers/configuration/cron-triggers/
 - Vitest Cloudflare Workers Integration: https://developers.cloudflare.com/workers/testing/vitest-integration/
 - better-auth: https://www.better-auth.com/
 - Hono Zod OpenAPI: https://hono.dev/examples/zod-openapi
@@ -717,7 +753,7 @@ The architecture should be ambitious while the implementation remains incrementa
 
 ## 27. Specification Status
 
-This is Version 0.3. It is an implementation-oriented architectural baseline, not an
+This is Version 0.4. It is an implementation-oriented architectural baseline, not an
 immutable contract. Database schema details, exact API routes and deployment topology may
-still be refined during Phase 1 implementation. Any change should be recorded in the
-Changelog above so this document stays synchronized with the implementation.
+still be refined as later phases land. Any change should be recorded in the Changelog above
+so this document stays synchronized with the implementation.
