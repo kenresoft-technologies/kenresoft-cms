@@ -3,6 +3,7 @@ import { ChevronRight, FolderKanban } from 'lucide-react';
 import { Link } from 'react-router';
 
 import { ApiError } from '@/lib/api-client';
+import { authClient } from '@/lib/auth-client';
 import { useCreateProject, useProjects } from '@/lib/queries/projects';
 import { EmptyState } from '@/components/empty-state';
 import { TableSkeleton } from '@/components/table-skeleton';
@@ -86,6 +87,8 @@ function NewProjectDialog() {
 }
 
 export function ProjectsPage() {
+  const { data: session } = authClient.useSession();
+  const isOwner = session?.user.role === 'owner';
   const { data: projects, isPending, error } = useProjects();
 
   return (
@@ -95,7 +98,7 @@ export function ProjectsPage() {
           <h1 className="text-2xl font-semibold">Projects</h1>
           <p className="text-muted-foreground">Every content type and entry belongs to a project.</p>
         </div>
-        <NewProjectDialog />
+        {isOwner ? <NewProjectDialog /> : null}
       </div>
 
       {error ? <p className="text-destructive">{error.message}</p> : null}
@@ -118,7 +121,11 @@ export function ProjectsPage() {
         <EmptyState
           icon={FolderKanban}
           title="No projects yet"
-          description="Create your first project to start modeling content."
+          description={
+            isOwner
+              ? 'Create your first project to start modeling content.'
+              : 'Ask an owner to create a project to get started.'
+          }
         />
       ) : null}
 

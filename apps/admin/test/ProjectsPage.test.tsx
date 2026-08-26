@@ -6,9 +6,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ProjectsPage } from '@/pages/ProjectsPage';
 
-const { getMock, postMock } = vi.hoisted(() => ({
+const { getMock, postMock, useSessionMock } = vi.hoisted(() => ({
   getMock: vi.fn(),
   postMock: vi.fn(),
+  useSessionMock: vi.fn(),
 }));
 
 vi.mock('@/lib/api-client', async () => {
@@ -18,6 +19,10 @@ vi.mock('@/lib/api-client', async () => {
     apiClient: { ...actual.apiClient, get: getMock, post: postMock },
   };
 });
+
+vi.mock('@/lib/auth-client', () => ({
+  authClient: { useSession: useSessionMock },
+}));
 
 function renderProjectsPage() {
   const queryClient = new QueryClient({
@@ -36,6 +41,11 @@ describe('ProjectsPage', () => {
   beforeEach(() => {
     getMock.mockReset();
     postMock.mockReset();
+    useSessionMock.mockReset();
+    useSessionMock.mockReturnValue({
+      data: { user: { email: 'owner@pathvera.test', role: 'owner' } },
+      isPending: false,
+    });
   });
 
   it('lists projects returned by the API', async () => {
@@ -56,6 +66,19 @@ describe('ProjectsPage', () => {
     renderProjectsPage();
 
     await waitFor(() => expect(screen.getByText('No projects yet')).toBeInTheDocument());
+  });
+
+  it('hides the New project action for an editor, since only owners can create projects', async () => {
+    useSessionMock.mockReturnValue({
+      data: { user: { email: 'editor@pathvera.test', role: 'editor' } },
+      isPending: false,
+    });
+    getMock.mockResolvedValue([]);
+
+    renderProjectsPage();
+
+    await waitFor(() => expect(screen.getByText('No projects yet')).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: 'New project' })).not.toBeInTheDocument();
   });
 
   it('creates a project through the dialog and refetches the list', async () => {

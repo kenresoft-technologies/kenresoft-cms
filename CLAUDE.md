@@ -82,11 +82,13 @@ Per the roadmap in `docs/ARCHITECTURE.md` §20:
 - **Phase 1** (Worker + Hono + D1 + Drizzle + migrations) — done.
 - **Phase 2** (Projects + content types + fields + entries domain model) — done.
 - **Phase 3** (admin auth + dashboard + dynamic editor) — done: better-auth backend, login
-  flow, authenticated admin CRUD routes, and the full Projects → Content Types → Fields →
-  Entries screens in `apps/admin`, including the dynamic entry editor (a form rendered from
-  a content type's field definitions). Not yet done: role-differentiated authorization
-  (owner vs editor currently authenticate the same) and select/multi_select option lists,
-  media picker, and reference lookup fields all currently render as plain text pending
-  field-builder UI to configure them.
+  flow, authenticated admin CRUD routes, the full Projects → Content Types → Fields →
+  Entries screens in `apps/admin` (sidebar layout, dark mode, breadcrumbs), the dynamic entry
+  editor (a form rendered from a content type's field definitions), and role-differentiated
+  authorization — the first signup becomes owner, everyone after defaults to editor, and only
+  owners can create projects. Not yet done: any owner-only surface beyond project creation
+  (no invite/promote flow exists yet), and select/multi_select option lists, media picker, and
+  reference lookup fields all still render as plain text pending field-builder UI to
+  configure them.
 
 CI is green on `develop`.

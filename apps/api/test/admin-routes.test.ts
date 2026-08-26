@@ -24,6 +24,11 @@ describe('admin routes (real D1)', () => {
     await env.DB.exec('DELETE FROM field_definitions');
     await env.DB.exec('DELETE FROM content_types');
     await env.DB.exec('DELETE FROM projects');
+    // Cleared every test so the first signup within each test is deterministically the
+    // owner (see src/lib/auth.ts's databaseHooks.user.create.before).
+    await env.DB.exec('DELETE FROM session');
+    await env.DB.exec('DELETE FROM account');
+    await env.DB.exec('DELETE FROM user');
   });
 
   it('rejects every admin route without a session', async () => {
@@ -152,6 +157,35 @@ describe('admin routes (real D1)', () => {
 
     expect(projectRes.status).toBe(404);
     expect(contentTypeRes.status).toBe(404);
+  });
+
+  it('bootstraps the first signup as owner and rejects project creation from an editor', async () => {
+    const ownerCookie = await freshCookie();
+    const editorCookie = await freshCookie();
+
+    const ownerRes = await SELF.fetch('https://example.com/api/v1/auth/get-session', {
+      headers: { Cookie: ownerCookie },
+    });
+    expect((await ownerRes.json<{ user: { role: string } }>()).user.role).toBe('owner');
+
+    const editorSessionRes = await SELF.fetch('https://example.com/api/v1/auth/get-session', {
+      headers: { Cookie: editorCookie },
+    });
+    expect((await editorSessionRes.json<{ user: { role: string } }>()).user.role).toBe('editor');
+
+    const editorCreateRes = await SELF.fetch('https://example.com/api/v1/admin/projects', {
+      method: 'POST',
+      headers: { Cookie: editorCookie, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Should Fail', slug: 'should-fail' }),
+    });
+    expect(editorCreateRes.status).toBe(403);
+
+    const ownerCreateRes = await SELF.fetch('https://example.com/api/v1/admin/projects', {
+      method: 'POST',
+      headers: { Cookie: ownerCookie, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Should Succeed', slug: 'should-succeed' }),
+    });
+    expect(ownerCreateRes.status).toBe(201);
   });
 
   it('404s when creating an entry under a non-existent content type', async () => {

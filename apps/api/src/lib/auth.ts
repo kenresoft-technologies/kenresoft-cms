@@ -18,6 +18,21 @@ export function createAuth(env: Bindings) {
     trustedOrigins: env.CORS_ORIGINS.split(',')
       .map((origin) => origin.trim())
       .filter(Boolean),
+    databaseHooks: {
+      user: {
+        create: {
+          // Bootstraps the very first signup as owner — there's no invite/promote flow yet
+          // (§10 authorization is intentionally minimal for now), so without this an owner
+          // could only ever be created by hand-editing the database.
+          before: async () => {
+            const existing = await db.query.user.findFirst({ columns: { id: true } });
+            if (!existing) {
+              return { data: { role: 'owner' } };
+            }
+          },
+        },
+      },
+    },
   });
 }
 

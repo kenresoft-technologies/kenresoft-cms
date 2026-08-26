@@ -19,20 +19,34 @@ describe('better-auth wiring (real D1)', () => {
     await env.DB.exec('DELETE FROM user');
   });
 
-  it('signs up a user and defaults their role to editor', async () => {
+  it('bootstraps the first signup as owner', async () => {
+    const response = await signUp('first@pathvera.test');
+    expect(response.status).toBe(200);
+
+    const user = await db.query.user.findFirst();
+    expect(user).toMatchObject({ email: 'first@pathvera.test', role: 'owner' });
+  });
+
+  it('defaults subsequent signups to editor', async () => {
+    await signUp('first@pathvera.test');
     const response = await signUp('editor@pathvera.test');
     expect(response.status).toBe(200);
 
-    const user = await db.query.user.findFirst();
-    expect(user).toMatchObject({ email: 'editor@pathvera.test', role: 'editor' });
+    const editor = await db.query.user.findFirst({
+      where: (user, { eq }) => eq(user.email, 'editor@pathvera.test'),
+    });
+    expect(editor?.role).toBe('editor');
   });
 
   it('ignores a client-supplied role at signup (input: false)', async () => {
+    await signUp('first@pathvera.test');
     const response = await signUp('attacker@pathvera.test', { role: 'owner' });
     expect(response.status).toBe(200);
 
-    const user = await db.query.user.findFirst();
-    expect(user?.role).toBe('editor');
+    const attacker = await db.query.user.findFirst({
+      where: (user, { eq }) => eq(user.email, 'attacker@pathvera.test'),
+    });
+    expect(attacker?.role).toBe('editor');
   });
 
   it('signs in and receives a session cookie', async () => {
