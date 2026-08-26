@@ -1,4 +1,4 @@
-import { LayoutDashboard, LayoutList, LogOut } from 'lucide-react';
+import { Images, LayoutDashboard, LayoutList, LogOut } from 'lucide-react';
 import { Navigate, NavLink, Outlet, useLocation } from 'react-router';
 
 import { authClient } from '@/lib/auth-client';
@@ -31,6 +31,7 @@ import {
 const navItems = [
   { to: '/', label: 'Dashboard', end: true, icon: LayoutDashboard },
   { to: '/content-types', label: 'Content types', end: false, icon: LayoutList },
+  { to: '/media', label: 'Media', end: false, icon: Images },
 ];
 
 function initials(email: string) {

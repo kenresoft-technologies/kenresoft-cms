@@ -68,3 +68,20 @@ export interface EntryRevision {
   createdBy: string | null;
   createdAt: string;
 }
+
+// Mirrors packages/database/schema/media.ts MEDIA_CONTENT_TYPES.
+export const MEDIA_CONTENT_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'] as const;
+export type MediaContentType = (typeof MEDIA_CONTENT_TYPES)[number];
+
+export interface Media {
+  id: string;
+  key: string;
+  filename: string;
+  contentType: MediaContentType;
+  size: number;
+  width: number | null;
+  height: number | null;
+  altText: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
