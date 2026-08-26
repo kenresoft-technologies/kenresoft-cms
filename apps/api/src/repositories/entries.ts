@@ -1,4 +1,4 @@
-import { and, contentTypes, desc, entries, entryRevisions, eq } from '@kenresoft/database';
+import { and, contentTypes, desc, entries, entryRevisions, eq, lte } from '@kenresoft/database';
 import type { Database, Entry, EntryRevision, NewEntry } from '@kenresoft/database';
 
 type EntryWriteInput = {
@@ -116,4 +116,20 @@ export async function restoreEntryRevision(
     { slug: revision.slug, status: revision.status, data: revision.data },
     restoredBy,
   );
+}
+
+// Scanned by the scheduled-publishing Cron Trigger (§13): draft entries whose publishAt has
+// elapsed. Goes through updateEntry (createdBy: null — no user initiated this) so each
+// auto-publish is itself snapshotted as a revision, same as any other write.
+export async function publishDueEntries(db: Database): Promise<Entry[]> {
+  const due = await db.query.entries.findMany({
+    where: and(eq(entries.status, 'draft'), lte(entries.publishAt, new Date())),
+  });
+
+  const published: Entry[] = [];
+  for (const entry of due) {
+    const updated = await updateEntry(db, entry.id, { status: 'published' }, null);
+    if (updated) published.push(updated);
+  }
+  return published;
 }

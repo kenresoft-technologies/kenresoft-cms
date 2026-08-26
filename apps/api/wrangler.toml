@@ -24,6 +24,10 @@ bucket_name = "kenresoft-cms-media"
 binding = "CACHE_KV"
 id = "REPLACE_WITH_REAL_KV_ID"
 
+[triggers]
+# Scheduled publishing (§13) — checks for draft entries whose publishAt has elapsed.
+crons = ["*/5 * * * *"]
+
 [vars]
 API_VERSION = "v1"
 # Comma-separated allow-list per docs/ARCHITECTURE.md §9 — never "*". Override per environment.
