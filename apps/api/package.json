@@ -16,7 +16,8 @@
     "@kenresoft/database": "workspace:*",
     "better-auth": "1.4.21",
     "drizzle-orm": "^0.45.2",
-    "hono": "^4.10.7"
+    "hono": "^4.10.7",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.9.14",

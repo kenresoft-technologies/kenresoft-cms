@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { createProject, getProjectBySlug } from '../src/repositories/projects';
 import { createContentType, getContentTypeBySlug } from '../src/repositories/content-types';
 import { createFieldDefinition, listFieldDefinitionsForContentType } from '../src/repositories/field-definitions';
-import { createEntry, getEntryBySlug, setEntryStatus } from '../src/repositories/entries';
+import { createEntry, getEntryBySlug, updateEntry } from '../src/repositories/entries';
 
 const db = createDb(env.DB);
 
@@ -55,8 +55,8 @@ describe('domain model repositories (real D1)', () => {
       status: 'draft',
     });
 
-    const published = await setEntryStatus(db, entry.id, 'published');
-    expect(published.status).toBe('published');
+    const published = await updateEntry(db, entry.id, { status: 'published' });
+    expect(published?.status).toBe('published');
   });
 
   it('rejects an entry for a non-existent content type', async () => {

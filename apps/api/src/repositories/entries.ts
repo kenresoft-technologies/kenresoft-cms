@@ -1,5 +1,5 @@
 import { and, contentTypes, entries, eq } from '@kenresoft/database';
-import type { Database, Entry, EntryStatus, NewEntry } from '@kenresoft/database';
+import type { Database, Entry, NewEntry } from '@kenresoft/database';
 
 export async function createEntry(
   db: Database,
@@ -37,18 +37,28 @@ export function getEntryBySlug(
   });
 }
 
-export async function setEntryStatus(
+export function getEntryById(db: Database, id: string): Promise<Entry | undefined> {
+  return db.query.entries.findFirst({ where: eq(entries.id, id) });
+}
+
+export async function updateEntry(
   db: Database,
   id: string,
-  status: EntryStatus,
-): Promise<Entry> {
+  input: {
+    slug?: NewEntry['slug'] | undefined;
+    status?: NewEntry['status'] | undefined;
+    data?: NewEntry['data'] | undefined;
+  },
+): Promise<Entry | undefined> {
   const [entry] = await db
     .update(entries)
-    .set({ status, updatedAt: new Date() })
+    .set({ ...input, updatedAt: new Date() })
     .where(eq(entries.id, id))
     .returning();
-  if (!entry) {
-    throw new Error(`Entry ${id} not found`);
-  }
   return entry;
+}
+
+export async function deleteEntry(db: Database, id: string): Promise<boolean> {
+  const [deleted] = await db.delete(entries).where(eq(entries.id, id)).returning({ id: entries.id });
+  return Boolean(deleted);
 }

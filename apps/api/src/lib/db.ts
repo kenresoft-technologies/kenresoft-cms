@@ -3,6 +3,6 @@ import type { Context } from 'hono';
 
 import type { Bindings } from './env';
 
-export function getDb(c: Context<{ Bindings: Bindings }>) {
+export function getDb<E extends { Bindings: Bindings }>(c: Context<E>) {
   return createDb(c.env.DB);
 }
