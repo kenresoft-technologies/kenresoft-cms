@@ -10,14 +10,11 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import worker from '../src/index';
 import { createContentType } from '../src/repositories/content-types';
 import { createEntry, getEntryById, listEntryRevisions } from '../src/repositories/entries';
-import { createProject } from '../src/repositories/projects';
 
 const db = createDb(env.DB);
 
 async function seedEntry(status: 'draft' | 'published', publishAt: Date | null) {
-  const project = await createProject(db, { name: 'Pathvera Group', slug: 'pathvera' });
   const contentType = await createContentType(db, {
-    projectId: project.id,
     name: 'Blog Post',
     slug: 'blog-post',
     description: null,
@@ -37,7 +34,6 @@ describe('scheduled publishing (real D1)', () => {
     await env.DB.exec('DELETE FROM entries');
     await env.DB.exec('DELETE FROM field_definitions');
     await env.DB.exec('DELETE FROM content_types');
-    await env.DB.exec('DELETE FROM projects');
   });
 
   it('publishes a draft entry whose publishAt has elapsed, and records the transition as a revision', async () => {

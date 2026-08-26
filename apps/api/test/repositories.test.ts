@@ -2,7 +2,6 @@ import { env } from 'cloudflare:test';
 import { createDb } from '@kenresoft/database';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { createProject, getProjectBySlug } from '../src/repositories/projects';
 import { createContentType, getContentTypeBySlug } from '../src/repositories/content-types';
 import { createFieldDefinition, listFieldDefinitionsForContentType } from '../src/repositories/field-definitions';
 import { createEntry, getEntryBySlug, listEntryRevisions, updateEntry } from '../src/repositories/entries';
@@ -15,20 +14,15 @@ describe('domain model repositories (real D1)', () => {
     await env.DB.exec('DELETE FROM entries');
     await env.DB.exec('DELETE FROM field_definitions');
     await env.DB.exec('DELETE FROM content_types');
-    await env.DB.exec('DELETE FROM projects');
   });
 
-  it('walks the project -> content type -> field -> entry graph', async () => {
-    const project = await createProject(db, { name: 'Pathvera Group', slug: 'pathvera' });
-    expect(await getProjectBySlug(db, 'pathvera')).toMatchObject({ id: project.id });
-
+  it('walks the content type -> field -> entry graph', async () => {
     const contentType = await createContentType(db, {
-      projectId: project.id,
       name: 'Blog Post',
       slug: 'blog-post',
       description: null,
     });
-    expect(await getContentTypeBySlug(db, project.id, 'blog-post')).toMatchObject({
+    expect(await getContentTypeBySlug(db, 'blog-post')).toMatchObject({
       id: contentType.id,
     });
 
@@ -51,7 +45,6 @@ describe('domain model repositories (real D1)', () => {
       { slug: 'hello-world', status: 'draft', data: { title: 'Hello World' } },
       null,
     );
-    expect(entry.projectId).toBe(project.id);
     expect(await getEntryBySlug(db, contentType.id, 'hello-world')).toMatchObject({
       id: entry.id,
       status: 'draft',
@@ -73,8 +66,10 @@ describe('domain model repositories (real D1)', () => {
     ).rejects.toThrow('Content type does-not-exist not found');
   });
 
-  it('enforces unique (project, slug) at the DB layer', async () => {
-    await createProject(db, { name: 'Pathvera Group', slug: 'pathvera' });
-    await expect(createProject(db, { name: 'Duplicate', slug: 'pathvera' })).rejects.toThrow();
+  it('enforces a unique content type slug at the DB layer', async () => {
+    await createContentType(db, { name: 'Blog Post', slug: 'blog-post', description: null });
+    await expect(
+      createContentType(db, { name: 'Duplicate', slug: 'blog-post', description: null }),
+    ).rejects.toThrow();
   });
 });
