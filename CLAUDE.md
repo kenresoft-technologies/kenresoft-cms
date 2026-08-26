@@ -16,7 +16,10 @@ once a deploy pipeline exists.
 
 **Kenresoft CMS** is a reusable, Cloudflare-native, API-first content management platform.
 First production implementation: the Pathvera Group website. It is not a Pathvera-specific
-dashboard — additional projects/clients must be able to use the same CMS without a rewrite.
+dashboard, but it is also not a multi-tenant hosted service — it's **single-site-per-deployment**
+(see `docs/ARCHITECTURE.md` §11): every deployment (its own Cloudflare account, D1, R2,
+Worker) backs exactly one website. Additional clients get their own deployment of the same
+open-source codebase, not a new tenant inside Pathvera's.
 
 **Full architecture and technical specification: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)**
 — this is the source of truth for design decisions, domain model, API contract, security
@@ -80,16 +83,19 @@ Ask before running long-lived dev servers if the user has them running elsewhere
 Per the roadmap in `docs/ARCHITECTURE.md` §20:
 
 - **Phase 1** (Worker + Hono + D1 + Drizzle + migrations) — done.
-- **Phase 2** (Projects + content types + fields + entries domain model) — done.
+- **Phase 2** (content types + fields + entries domain model) — done. Originally shipped with
+  a `Project` entity as a multi-tenant boundary above content types; removed in the v0.5
+  single-site-per-deployment revision (`docs/ARCHITECTURE.md` §11 Changelog) — content types
+  are now the top-level structural resource directly.
 - **Phase 3** (admin auth + dashboard + dynamic editor) — done: better-auth backend, login
-  flow, authenticated admin CRUD routes, the full Projects → Content Types → Fields →
-  Entries screens in `apps/admin` (sidebar layout, dark mode, breadcrumbs), the dynamic entry
-  editor (a form rendered from a content type's field definitions), and role-differentiated
-  authorization — the first signup becomes owner, everyone after defaults to editor, and only
-  owners can create projects. Not yet done: any owner-only surface beyond project creation
-  (no invite/promote flow exists yet), and select/multi_select option lists, media picker, and
-  reference lookup fields all still render as plain text pending field-builder UI to
-  configure them.
+  flow, authenticated admin CRUD routes, the Content Types → Fields → Entries screens in
+  `apps/admin` (sidebar layout, dark mode, breadcrumbs), the dynamic entry editor (a form
+  rendered from a content type's field definitions), and role-differentiated authorization —
+  the first signup becomes owner, everyone after defaults to editor, and only owners can
+  create content types (this gate moved from project creation in the v0.5 revision above).
+  Not yet done: any owner-only surface beyond content-type creation (no invite/promote flow
+  exists yet), and select/multi_select option lists, media picker, and reference lookup
+  fields all still render as plain text pending field-builder UI to configure them.
 - **Phase 4** (draft/publish + scheduled publishing + revisions + restore) — done:
   `EntryRevision` entity snapshotting every entry write (create/update/restore/auto-publish),
   a `GET .../entries/:id/revisions` + `POST .../entries/:id/revisions/:revisionId/restore` API,
