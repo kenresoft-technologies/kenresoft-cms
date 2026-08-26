@@ -5,6 +5,8 @@ import { createAuth } from './lib/auth';
 import { corsMiddleware } from './middleware/cors';
 import { requireSession } from './middleware/require-session';
 import { securityHeaders } from './middleware/security-headers';
+import { invalidatePublicEntryCache } from './lib/public-cache';
+import { getContentTypeById } from './repositories/content-types';
 import { publishDueEntries } from './repositories/entries';
 import { contentTypesRoute } from './routes/admin/content-types';
 import { entriesRoute } from './routes/admin/entries';
@@ -36,6 +38,20 @@ export default {
   // transitions draft entries whose publishAt has elapsed to published.
   scheduled: async (_controller: ScheduledController, env: Bindings, ctx: ExecutionContext) => {
     const db = createDb(env.DB);
-    ctx.waitUntil(publishDueEntries(db));
+    ctx.waitUntil(
+      (async () => {
+        const published = await publishDueEntries(db);
+        // Newly-published entries invalidate the public API cache the same way an admin
+        // edit does (§12/§13) — otherwise a cached "not published yet" response could
+        // outlive the auto-publish by up to the cache TTL.
+        await Promise.all(
+          published.map(async (entry) => {
+            const contentType = await getContentTypeById(db, entry.contentTypeId);
+            if (!contentType) return;
+            await invalidatePublicEntryCache(contentType.slug, entry.slug);
+          }),
+        );
+      })(),
+    );
   },
 } satisfies ExportedHandler<Bindings>;

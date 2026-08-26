@@ -1,9 +1,11 @@
 import { Hono } from 'hono';
 
 import { getDb } from '../../lib/db';
+import { invalidatePublicEntryCache } from '../../lib/public-cache';
 import { parseJsonBody } from '../../lib/validate';
 import type { Bindings } from '../../lib/env';
 import type { AuthedVariables } from '../../middleware/require-session';
+import { getContentTypeById } from '../../repositories/content-types';
 import {
   createEntry,
   deleteEntry,
@@ -14,8 +16,21 @@ import {
   updateEntry,
 } from '../../repositories/entries';
 import { createEntrySchema, updateEntrySchema } from '../../validators/entries';
+import type { Database, Entry } from '@kenresoft/database';
 
 export const entriesRoute = new Hono<{ Bindings: Bindings; Variables: AuthedVariables }>();
+
+// Best-effort: every write to an entry could change what the public API's cached responses
+// for its content type return (§13), so every write path below calls this regardless of the
+// entry's actual status — deleting a cache key that was never populated is a harmless no-op.
+async function invalidateCacheForEntry(
+  db: Database,
+  entry: Pick<Entry, 'contentTypeId' | 'slug'>,
+): Promise<void> {
+  const contentType = await getContentTypeById(db, entry.contentTypeId);
+  if (!contentType) return;
+  await invalidatePublicEntryCache(contentType.slug, entry.slug);
+}
 
 entriesRoute.get('/', async (c) => {
   const contentTypeId = c.req.query('contentTypeId');
@@ -39,6 +54,7 @@ entriesRoute.post('/', async (c) => {
   const db = getDb(c);
   try {
     const entry = await createEntry(db, contentTypeId, parsed.data, c.get('user').id);
+    c.executionCtx.waitUntil(invalidateCacheForEntry(db, entry));
     return c.json(entry, 201);
   } catch {
     return c.json({ error: 'Content type not found' }, 404);
@@ -63,15 +79,18 @@ entriesRoute.patch('/:id', async (c) => {
   if (!entry) {
     return c.json({ error: 'Entry not found' }, 404);
   }
+  c.executionCtx.waitUntil(invalidateCacheForEntry(db, entry));
   return c.json(entry);
 });
 
 entriesRoute.delete('/:id', async (c) => {
   const db = getDb(c);
-  const deleted = await deleteEntry(db, c.req.param('id'));
-  if (!deleted) {
+  const entry = await getEntryById(db, c.req.param('id'));
+  if (!entry) {
     return c.json({ error: 'Entry not found' }, 404);
   }
+  await deleteEntry(db, entry.id);
+  c.executionCtx.waitUntil(invalidateCacheForEntry(db, entry));
   return c.body(null, 204);
 });
 
@@ -95,5 +114,6 @@ entriesRoute.post('/:id/revisions/:revisionId/restore', async (c) => {
   if (!entry) {
     return c.json({ error: 'Entry or revision not found' }, 404);
   }
+  c.executionCtx.waitUntil(invalidateCacheForEntry(db, entry));
   return c.json(entry);
 });
