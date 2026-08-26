@@ -1,0 +1,12 @@
+{
+  "name": "@kenresoft/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./api/index.ts",
+  "types": "./api/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint ."
+  }
+}

@@ -1,0 +1,26 @@
+# Kenresoft CMS — API Worker
+# TODO(Phase 1): replace placeholder IDs below with real resources created via:
+#   wrangler d1 create kenresoft-cms-db
+#   wrangler r2 bucket create kenresoft-cms-media
+#   wrangler kv namespace create kenresoft-cms-cache
+
+name = "kenresoft-cms-api"
+main = "src/index.ts"
+compatibility_date = "2026-08-01"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "kenresoft-cms-db"
+database_id = "REPLACE_WITH_REAL_D1_ID"
+
+[[r2_buckets]]
+binding = "MEDIA_BUCKET"
+bucket_name = "kenresoft-cms-media"
+
+[[kv_namespaces]]
+binding = "CACHE_KV"
+id = "REPLACE_WITH_REAL_KV_ID"
+
+[vars]
+API_VERSION = "v1"

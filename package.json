@@ -1,0 +1,19 @@
+{
+  "name": "kenresoft-cms",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cloudflare-native, API-first, reusable CMS. First production target: Pathvera Group.",
+  "license": "MIT",
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "build": "pnpm -r --filter=./packages/* --filter=./apps/* build",
+    "dev": "pnpm -r --parallel dev",
+    "test": "pnpm -r test",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "clean": "pnpm -r clean"
+  }
+}

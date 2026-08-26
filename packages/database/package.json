@@ -1,0 +1,15 @@
+{
+  "name": "@kenresoft/database",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "generate": "drizzle-kit generate",
+    "migrate:local": "wrangler d1 migrations apply kenresoft-cms-db --local",
+    "migrate:remote": "wrangler d1 migrations apply kenresoft-cms-db --remote",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint ."
+  }
+}

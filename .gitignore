@@ -1,0 +1,17 @@
+node_modules/
+dist/
+build/
+.wrangler/
+.env
+.env.*
+!.env.example
+*.log
+npm-debug.log*
+pnpm-debug.log*
+.DS_Store
+Thumbs.db
+coverage/
+*.tsbuildinfo
+.vscode/*
+!.vscode/extensions.json
+.idea/
