@@ -1,11 +1,24 @@
 # Kenresoft CMS — Architecture & Technical Specification
 
-Version 0.2 — Foundation Specification
+Version 0.3 — Foundation Specification
 First production target: Pathvera Group website
 Vision: Cloudflare-native, API-first, reusable, scalable, open-source-ready CMS
 Status: Proposed / Ready for implementation
 
 ## Changelog
+
+**v0.3 (2026-08-26)** — Two gaps identified by reviewing `FORK-CHANGES.md` from a prior
+Hono+D1+Workers CMS project (flarecms, a SonicJS fork) before archiving it. That project had
+to cherry-pick both of these in as post-hoc security patches after shipping without them —
+cheaper to build in from the start here.
+
+- **Security Architecture (§9)** now explicitly names a **CORS allow-list** (never default
+  to `*`) and a **security headers middleware** (CSP, `X-Frame-Options`,
+  `X-Content-Type-Options`, HSTS, `Referrer-Policy`, `Permissions-Policy`) as required
+  controls, rather than leaving them implied by "established technologies."
+- **Migrations pipeline (§16)** now includes a **staging D1 database** step between local
+  verification and production apply — migrations are proven against a real D1 instance
+  before touching production, not just tested locally.
 
 **v0.2 (2026-08-26)** — Revised from v0.1 to lock several previously-open decisions to
 concrete, currently-maintained libraries, per the v0.1 policy that "any change should be
@@ -347,6 +360,13 @@ and generates the OpenAPI document — the contract cannot drift from the implem
   better-auth).
 - Apply the Cloudflare Workers Rate Limiting binding to authentication, public form
   submissions and other sensitive endpoints.
+- Restrict CORS to an explicit allow-list of known origins (admin app, Astro sites); never
+  default to `*`. Configure per-environment via a `CORS_ORIGINS` binding/var.
+- Apply a security headers middleware to all responses: `Content-Security-Policy`,
+  `X-Frame-Options`, `X-Content-Type-Options`, `Strict-Transport-Security`,
+  `Referrer-Policy`, `Permissions-Policy`.
+- Sanitize all public form submission input before persisting it, to prevent stored XSS —
+  do not trust that Zod validation alone makes content safe to render later.
 - Validate upload MIME types, file sizes and object keys before writing to R2.
 - Never trust filename extensions or browser-provided MIME types alone.
 - Record security-sensitive administrative actions in an audit log.
@@ -489,8 +509,10 @@ runtime for development, useful for production-parity testing.
 - Applied migrations must never be edited retroactively.
 - Migration pipeline: `drizzle-kit generate` (author schema change in
   `packages/database/schema`, generate SQL) → review generated SQL → `wrangler d1
-  migrations apply kenresoft-cms-db --local` (verify locally) → `--remote` (production,
-  via documented deployment process).
+  migrations apply kenresoft-cms-db --local` (verify locally) → apply to a staging D1
+  database and verify against a staging Worker deployment → `--remote` (production, via
+  documented deployment process). Never apply a migration to production without a staging
+  verification pass first.
 - Migration tests run against realistic seeded data.
 - Destructive migrations must have a recovery/rollback strategy.
 - D1 Time Travel/backups are part of the operational recovery plan.
@@ -695,7 +717,7 @@ The architecture should be ambitious while the implementation remains incrementa
 
 ## 27. Specification Status
 
-This is Version 0.2. It is an implementation-oriented architectural baseline, not an
+This is Version 0.3. It is an implementation-oriented architectural baseline, not an
 immutable contract. Database schema details, exact API routes and deployment topology may
 still be refined during Phase 1 implementation. Any change should be recorded in the
 Changelog above so this document stays synchronized with the implementation.
