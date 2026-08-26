@@ -154,8 +154,13 @@ Per the roadmap in `docs/ARCHITECTURE.md` §20:
   reference lookups) — closing the plain-text-field gaps noted under Phases 3 and 5 above.
   Also fixed a real bug found while building the dashboard: `entries.createdAt`/`updatedAt`
   used second-precision timestamps, making "recent activity" ordering non-deterministic for
-  writes within the same second (now millisecond precision, matching `entry_revisions`). Not
-  yet done: a command palette (cmd+k) and drag-to-reorder on the field list — both explicitly
-  scoped as stretch goals, not required for this pass.
+  writes within the same second (now millisecond precision, matching `entry_revisions`). Both
+  stretch goals are done too: a cmd+k/ctrl+k command palette (jumps to any page, content type,
+  or recently-updated entry) — building it surfaced a real bug in shadcn's generated
+  `CommandDialog`, which never renders cmdk's own `<Command>` context provider, so
+  `CommandInput`/`List`/`Item` crashed until the palette wrapped its own content in `<Command>`
+  explicitly; and drag-to-reorder on the field list via dnd-kit, backed by a new
+  `PATCH /api/v1/admin/content-types/:id/fields/reorder` endpoint that requires the given
+  field ids to exactly match the content type's existing set before writing anything.
 
 CI is green on `develop`.
