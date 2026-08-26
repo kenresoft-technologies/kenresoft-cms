@@ -10,9 +10,11 @@ import { getContentTypeById } from './repositories/content-types';
 import { publishDueEntries } from './repositories/entries';
 import { contentTypesRoute } from './routes/admin/content-types';
 import { entriesRoute } from './routes/admin/entries';
+import { formsRoute } from './routes/admin/forms';
 import { mediaRoute } from './routes/admin/media';
 import { healthRoute } from './routes/health';
 import { publicContentRoute } from './routes/public/content';
+import { publicFormsRoute } from './routes/public/forms';
 import type { Bindings } from './lib/env';
 import type { AuthedVariables } from './middleware/require-session';
 
@@ -25,12 +27,16 @@ app.route('/api/v1/health', healthRoute);
 
 app.on(['GET', 'POST'], '/api/v1/auth/*', (c) => createAuth(c.env).handler(c.req.raw));
 
+// Mounted before the more general /api/v1/public/:contentType catchall so "forms" is never
+// ambiguous with a content-type slug.
+app.route('/api/v1/public/forms', publicFormsRoute);
 app.route('/api/v1/public', publicContentRoute);
 
 app.use('/api/v1/admin/*', requireSession);
 app.route('/api/v1/admin/content-types', contentTypesRoute);
 app.route('/api/v1/admin/entries', entriesRoute);
 app.route('/api/v1/admin/media', mediaRoute);
+app.route('/api/v1/admin/forms', formsRoute);
 
 export default {
   fetch: app.fetch,

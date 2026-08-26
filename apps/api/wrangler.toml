@@ -24,6 +24,13 @@ bucket_name = "kenresoft-cms-media"
 binding = "CACHE_KV"
 id = "REPLACE_WITH_REAL_KV_ID"
 
+[[ratelimits]]
+# Public form submissions (§9) — 5 per 60s per rate-limit key (IP address). namespace_id is
+# an arbitrary account-unique identifier, not a provisioned resource — no setup step needed.
+name = "FORM_SUBMISSION_RATE_LIMITER"
+namespace_id = "1001"
+simple = { limit = 5, period = 60 }
+
 [triggers]
 # Scheduled publishing (§13) — checks for draft entries whose publishAt has elapsed.
 crons = ["*/5 * * * *"]
