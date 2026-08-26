@@ -71,12 +71,20 @@ Ask before running long-lived dev servers if the user has them running elsewhere
 ## GitHub
 
 - Org: `kenresoft-technologies`
-- Repo: `kenresoft-cms` (private)
+- Repo: `kenresoft-cms` (public)
 
 ---
 
 ## Status
 
-Phase 0 complete (repository scaffold + domain model). No application code yet — Phase 1
-(Worker + Hono + D1 + Drizzle + migrations) is next, per the roadmap in
-`docs/ARCHITECTURE.md` §20.
+Per the roadmap in `docs/ARCHITECTURE.md` §20:
+
+- **Phase 1** (Worker + Hono + D1 + Drizzle + migrations) — done.
+- **Phase 2** (Projects + content types + fields + entries domain model) — done.
+- **Phase 3** (admin auth + dashboard + dynamic editor) — in progress. better-auth backend,
+  login flow, and authenticated admin CRUD routes for projects/content-types/entries are
+  done, along with Projects/Content Types/Field Definitions screens in `apps/admin`. Still
+  open: the entries list and the actual dynamic entry editor (a form rendered from a content
+  type's field definitions).
+
+CI is green on `develop`.
