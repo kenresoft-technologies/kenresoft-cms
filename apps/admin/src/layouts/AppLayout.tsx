@@ -1,9 +1,12 @@
-import { Images, LayoutDashboard, LayoutList, LogOut, Settings } from 'lucide-react';
+import { useState } from 'react';
+import { Images, LayoutDashboard, LayoutList, LogOut, Search, Settings } from 'lucide-react';
 import { Navigate, NavLink, Outlet, useLocation } from 'react-router';
 
 import { authClient } from '@/lib/auth-client';
+import { CommandPalette } from '@/components/command-palette';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -65,6 +68,7 @@ function NavItems({ items, pathname }: { items: NavItem[]; pathname: string }) {
 export function AppLayout() {
   const { data: session, isPending } = authClient.useSession();
   const location = useLocation();
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
 
   if (isPending) {
     return <div className="flex min-h-svh items-center justify-center">Loading…</div>;
@@ -125,12 +129,20 @@ export function AppLayout() {
       <SidebarInset>
         <header className="flex items-center justify-between gap-2 border-b px-4 py-3">
           <SidebarTrigger />
-          <ThemeToggle />
+          <div className="flex items-center gap-1">
+            <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => setCommandPaletteOpen(true)}>
+              <Search />
+              Search
+              <kbd className="ml-1 rounded border bg-muted px-1.5 font-mono text-xs">⌘K</kbd>
+            </Button>
+            <ThemeToggle />
+          </div>
         </header>
         <main className="flex-1 p-6">
           <Outlet />
         </main>
       </SidebarInset>
+      <CommandPalette open={commandPaletteOpen} onOpenChange={setCommandPaletteOpen} />
     </SidebarProvider>
   );
 }
