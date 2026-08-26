@@ -1,5 +1,4 @@
-import { eq } from 'drizzle-orm';
-import { projects } from '@kenresoft/database';
+import { eq, projects } from '@kenresoft/database';
 import type { Database, NewProject, Project } from '@kenresoft/database';
 
 export async function createProject(

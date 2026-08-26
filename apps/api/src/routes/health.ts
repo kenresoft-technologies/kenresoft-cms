@@ -1,4 +1,4 @@
-import { sql } from 'drizzle-orm';
+import { sql } from '@kenresoft/database';
 import { Hono } from 'hono';
 
 import { getDb } from '../lib/db';

@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
+    "auth:generate": "pnpm dlx @better-auth/cli@1.4.21 generate --config ./auth-cli.config.ts --output ../../packages/database/schema/auth.ts -y",
     "build": "tsc --noEmit",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
@@ -13,7 +14,8 @@
   },
   "dependencies": {
     "@kenresoft/database": "workspace:*",
-    "drizzle-orm": "^0.44.5",
+    "better-auth": "1.4.21",
+    "drizzle-orm": "^0.45.2",
     "hono": "^4.10.7"
   },
   "devDependencies": {

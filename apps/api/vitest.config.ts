@@ -11,6 +11,12 @@ export default defineWorkersConfig(async () => {
           wrangler: { configPath: './wrangler.toml' },
           miniflare: {
             bindings: { TEST_MIGRATIONS: migrations },
+            // nodejs_compat + a compatibility_date past 2025-09-21 breaks
+            // @cloudflare/vitest-pool-workers (cloudflare/workers-sdk#11028). wrangler.toml
+            // keeps the real date for actual deploys; the test pool alone pins an earlier
+            // one to dodge the regression — nodejs_compat itself must stay on since
+            // better-auth needs node:async_hooks.
+            compatibilityDate: '2025-09-20',
           },
         },
       },

@@ -15,6 +15,13 @@
       "when": 1787741654012,
       "tag": "0001_gorgeous_stephen_strange",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1787743127046,
+      "tag": "0002_fat_vulture",
+      "breakpoints": true
     }
   ]
 }

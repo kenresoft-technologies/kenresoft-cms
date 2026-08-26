@@ -1,5 +1,4 @@
-import { and, eq } from 'drizzle-orm';
-import { contentTypes } from '@kenresoft/database';
+import { and, contentTypes, eq } from '@kenresoft/database';
 import type { ContentType, Database, NewContentType } from '@kenresoft/database';
 
 export async function createContentType(

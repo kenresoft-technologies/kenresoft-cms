@@ -4,4 +4,6 @@ export interface Bindings {
   CACHE_KV: KVNamespace;
   API_VERSION: string;
   CORS_ORIGINS: string;
+  BETTER_AUTH_SECRET: string;
+  BETTER_AUTH_URL: string;
 }

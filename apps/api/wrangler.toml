@@ -7,10 +7,8 @@
 name = "kenresoft-cms-api"
 main = "src/index.ts"
 compatibility_date = "2026-08-01"
-# nodejs_compat is not enabled yet — nothing in Phase 1 needs Node built-ins. Re-add for
-# Phase 3 (better-auth) if its D1/Drizzle adapter requires it; as of 2026-08-26 it currently
-# breaks @cloudflare/vitest-pool-workers (cloudflare/workers-sdk#11028).
-compatibility_flags = []
+# better-auth needs node:async_hooks (AsyncLocalStorage) at runtime.
+compatibility_flags = ["nodejs_compat"]
 
 [[d1_databases]]
 binding = "DB"
@@ -30,3 +28,6 @@ id = "REPLACE_WITH_REAL_KV_ID"
 API_VERSION = "v1"
 # Comma-separated allow-list per docs/ARCHITECTURE.md §9 — never "*". Override per environment.
 CORS_ORIGINS = "http://localhost:5173"
+BETTER_AUTH_URL = "http://localhost:8787"
+# BETTER_AUTH_SECRET is a real secret, not a var — set it in apps/api/.dev.vars for local dev
+# (see .dev.vars.example) and via `wrangler secret put BETTER_AUTH_SECRET` for deployed envs.
