@@ -50,6 +50,13 @@
       "when": 1787765846053,
       "tag": "0006_empty_thor",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1787768884176,
+      "tag": "0007_left_beyonder",
+      "breakpoints": true
     }
   ]
 }

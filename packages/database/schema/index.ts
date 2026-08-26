@@ -4,5 +4,8 @@ export * from './field-definitions';
 export * from './entries';
 export * from './entry-revisions';
 export * from './media';
+export * from './forms';
+export * from './form-fields';
+export * from './form-submissions';
 export * from './relations';
 export * from './auth';
