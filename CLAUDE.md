@@ -117,7 +117,31 @@ Per the roadmap in `docs/ARCHITECTURE.md` §20:
   'published'` at the query layer (`getPublishedEntryBySlug`/`listPublishedEntriesFor
   ContentType` in `apps/api/src/repositories/entries.ts`) — a draft matching the requested
   slug 404s exactly like a slug that doesn't exist, never distinguishable from the outside.
-  Not yet done: migrating routes to `@hono/zod-openapi` for generated API contracts, and the
-  public API caching layer (Cache API/KV) — both independent, substantial slices of their own.
+  Also done: Cloudflare Cache API edge caching on those routes (`Cache-Control: public,
+  max-age=300`), invalidated on every entry write and by the scheduled auto-publish sweep
+  (`apps/api/src/lib/public-cache.ts`) rather than left to expire blindly. Cache keys are
+  built against a fixed internal origin, not the real request host — the scheduled trigger
+  has no incoming request to read a host from at all, so a real-host-based key would have
+  silently broken invalidation from that path specifically. Not yet done: migrating routes to
+  `@hono/zod-openapi` for generated API contracts, and Workers KV as the caching layer's
+  documented (§12) secondary read-through tier — out of scope until cross-colo consistency is
+  an actual concern at Pathvera's traffic level.
+- **Phase 7** (forms + submissions + spam/rate limiting) — backend done, admin UI not started.
+  Form/FormField/FormSubmission tables (kept separate from ContentType/Entry — §7 treats
+  visitor-submitted data as categorically different from editor-authored content), admin CRUD
+  under `/api/v1/admin/forms` (creation owner-gated like content types), and an unauthenticated
+  `POST /api/v1/public/forms/:slug/submissions`. The public route: rate limited via the
+  Cloudflare Workers Rate Limiting binding (5/60s per client IP — new `[[ratelimits]]` entry in
+  `apps/api/wrangler.toml`), validated dynamically per-request against the form's own field
+  definitions (`apps/api/src/lib/form-submission-validation.ts`, since every form has different
+  fields, unlike content entries which have no server-side field validation at all currently),
+  and sanitized by stripping every `<`/`>` character from string values individually rather
+  than a `<tag>...</tag>` regex pair (a test caught that the pair-based version left a
+  stripped tag's own text content behind, e.g. `<script>alert(1)</script>` → `alert(1)`, not
+  empty — removing every angle bracket guarantees no tag can ever be reconstructed from the
+  output regardless of how the input was structured). Not yet done: any `apps/admin` UI for
+  building forms or reviewing submissions — the API is fully usable without it today (e.g. a
+  hand-written contact form on the eventual Astro site could call it directly), there's just
+  no in-CMS way to create a form yet apart from calling the admin API.
 
 CI is green on `develop`.
