@@ -31,12 +31,8 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
+import { formatBytes } from '@/lib/format';
 import type { Media } from '@/lib/types';
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  return `${(bytes / 1024).toFixed(bytes < 1024 * 1024 ? 0 : 1)} ${bytes < 1024 * 1024 ? 'KB' : 'MB'}`;
-}
 
 function UploadMediaDialog() {
   const [open, setOpen] = useState(false);
@@ -200,7 +196,7 @@ export function MediaLibraryPage() {
                 <p className="truncate text-sm font-medium">{item.filename}</p>
                 <p className="text-xs text-muted-foreground">
                   {item.width && item.height ? `${item.width}×${item.height} · ` : ''}
-                  {formatSize(item.size)}
+                  {formatBytes(item.size)}
                 </p>
                 <DeleteMediaAlert item={item} />
               </CardContent>

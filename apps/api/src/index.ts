@@ -9,6 +9,7 @@ import { invalidatePublicEntryCache } from './lib/public-cache';
 import { getContentTypeById } from './repositories/content-types';
 import { publishDueEntries } from './repositories/entries';
 import { contentTypesRoute } from './routes/admin/content-types';
+import { dashboardRoute } from './routes/admin/dashboard';
 import { entriesRoute } from './routes/admin/entries';
 import { formsRoute } from './routes/admin/forms';
 import { mediaRoute } from './routes/admin/media';
@@ -33,6 +34,7 @@ app.route('/api/v1/public/forms', publicFormsRoute);
 app.route('/api/v1/public', publicContentRoute);
 
 app.use('/api/v1/admin/*', requireSession);
+app.route('/api/v1/admin/dashboard', dashboardRoute);
 app.route('/api/v1/admin/content-types', contentTypesRoute);
 app.route('/api/v1/admin/entries', entriesRoute);
 app.route('/api/v1/admin/media', mediaRoute);

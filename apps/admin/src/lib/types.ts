@@ -85,3 +85,18 @@ export interface Media {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface DashboardStats {
+  contentTypeCount: number;
+  entryCounts: { draft: number; published: number };
+  mediaCount: number;
+  mediaStorageBytes: number;
+  recentEntries: {
+    id: string;
+    slug: string;
+    status: EntryStatus;
+    contentTypeId: string;
+    contentTypeName: string;
+    updatedAt: string;
+  }[];
+}
