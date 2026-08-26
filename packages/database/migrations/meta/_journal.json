@@ -43,6 +43,13 @@
       "when": 1787762721557,
       "tag": "0005_stiff_fallen_one",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1787765846053,
+      "tag": "0006_empty_thor",
+      "breakpoints": true
     }
   ]
 }
