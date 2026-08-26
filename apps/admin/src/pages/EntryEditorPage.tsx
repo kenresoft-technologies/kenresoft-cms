@@ -1,13 +1,25 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router';
+import { toast } from 'sonner';
 
 import { EntryRevisionHistory } from '@/components/entry-revision-history';
 import { FieldInput } from '@/components/field-input';
 import { ApiError } from '@/lib/api-client';
 import { useContentType } from '@/lib/queries/content-types';
-import { useCreateEntry, useEntry, useUpdateEntry } from '@/lib/queries/entries';
+import { useCreateEntry, useDeleteEntry, useEntry, useUpdateEntry } from '@/lib/queries/entries';
 import { useFieldDefinitions } from '@/lib/queries/field-definitions';
 import { ENTRY_STATUSES, type Entry, type EntryStatus, type FieldDefinition, type FieldType } from '@/lib/types';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { PageBreadcrumb } from '@/components/page-breadcrumb';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -69,12 +81,16 @@ function EntryForm({ contentTypeId, entryId, fields, entry }: EntryFormProps) {
     try {
       if (isNew) {
         await createEntry.mutateAsync({ slug, status, data, publishAt: publishAtIso });
+        toast.success('Entry created');
       } else {
         await updateEntry.mutateAsync({ slug, status, data, publishAt: publishAtIso });
+        toast.success('Entry saved');
       }
       void navigate(`/content-types/${contentTypeId}/entries`);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to save entry');
+      const message = err instanceof ApiError ? err.message : 'Failed to save entry';
+      setError(message);
+      toast.error(message);
     }
   }
 
@@ -137,6 +153,45 @@ function EntryForm({ contentTypeId, entryId, fields, entry }: EntryFormProps) {
   );
 }
 
+function DeleteEntryAlert({ contentTypeId, entryId, slug }: { contentTypeId: string; entryId: string; slug: string }) {
+  const navigate = useNavigate();
+  const deleteEntry = useDeleteEntry(contentTypeId, entryId);
+
+  async function handleDelete() {
+    try {
+      await deleteEntry.mutateAsync();
+      toast.success('Entry deleted');
+      void navigate(`/content-types/${contentTypeId}/entries`);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Failed to delete entry');
+    }
+  }
+
+  return (
+    <AlertDialog>
+      <AlertDialogTrigger asChild>
+        <Button variant="outline" disabled={deleteEntry.isPending}>
+          Delete
+        </Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Delete "{slug}"?</AlertDialogTitle>
+          <AlertDialogDescription>
+            This permanently removes the entry and its revision history. This cannot be undone.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction variant="destructive" onClick={handleDelete}>
+            Delete
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
 export function EntryEditorPage() {
   const { contentTypeId, entryId } = useParams<{
     contentTypeId: string;
@@ -168,8 +223,15 @@ export function EntryEditorPage() {
 
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">{isNew ? 'New entry' : 'Edit entry'}</h1>
-        {!isNew && entryId ? (
-          <EntryRevisionHistory contentTypeId={contentTypeId ?? ''} entryId={entryId} />
+        {!isNew && entryId && contentTypeId ? (
+          <div className="flex items-center gap-2">
+            <EntryRevisionHistory contentTypeId={contentTypeId} entryId={entryId} />
+            <DeleteEntryAlert
+              contentTypeId={contentTypeId}
+              entryId={entryId}
+              slug={entry?.slug ?? ''}
+            />
+          </div>
         ) : null}
       </div>
 

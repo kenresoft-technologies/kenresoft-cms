@@ -38,7 +38,6 @@ describe('MediaLibraryPage', () => {
     getMock.mockReset();
     uploadMock.mockReset();
     deleteMock.mockReset();
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
   });
 
   it('lists uploaded media with dimensions and size', async () => {
@@ -100,7 +99,7 @@ describe('MediaLibraryPage', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
 
-  it('deletes a media item after confirmation', async () => {
+  it('deletes a media item after confirming in the alert dialog', async () => {
     getMock.mockResolvedValue([
       {
         id: 'm-1',
@@ -118,8 +117,34 @@ describe('MediaLibraryPage', () => {
     await waitFor(() => expect(screen.getByText('photo.png')).toBeInTheDocument());
 
     await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    const alert = await screen.findByRole('alertdialog');
+    expect(within(alert).getByText('Delete "photo.png"?')).toBeInTheDocument();
+    await userEvent.click(within(alert).getByRole('button', { name: 'Delete' }));
 
-    expect(window.confirm).toHaveBeenCalled();
     await waitFor(() => expect(deleteMock).toHaveBeenCalledWith('/api/v1/admin/media/m-1'));
+  });
+
+  it('does not delete when the alert dialog is cancelled', async () => {
+    getMock.mockResolvedValue([
+      {
+        id: 'm-1',
+        filename: 'photo.png',
+        contentType: 'image/png',
+        size: 1024,
+        width: 10,
+        height: 10,
+        altText: null,
+      },
+    ]);
+
+    renderPage();
+    await waitFor(() => expect(screen.getByText('photo.png')).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    const alert = await screen.findByRole('alertdialog');
+    await userEvent.click(within(alert).getByRole('button', { name: 'Cancel' }));
+
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+    expect(deleteMock).not.toHaveBeenCalled();
   });
 });

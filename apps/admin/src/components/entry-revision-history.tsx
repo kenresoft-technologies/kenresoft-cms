@@ -1,5 +1,7 @@
 import { History } from 'lucide-react';
+import { toast } from 'sonner';
 
+import { ApiError } from '@/lib/api-client';
 import { useEntryRevisions, useRestoreEntryRevision } from '@/lib/queries/entries';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -66,16 +68,18 @@ export function EntryRevisionHistory({ contentTypeId, entryId }: EntryRevisionHi
                 variant="outline"
                 size="sm"
                 disabled={restoreRevision.isPending}
-                onClick={() => restoreRevision.mutate(revision.id)}
+                onClick={() =>
+                  restoreRevision.mutate(revision.id, {
+                    onSuccess: () => toast.success('Revision restored'),
+                    onError: (err) =>
+                      toast.error(err instanceof ApiError ? err.message : 'Failed to restore revision'),
+                  })
+                }
               >
                 Restore
               </Button>
             </div>
           ))}
-
-          {restoreRevision.isError ? (
-            <p className="text-sm text-destructive">Failed to restore revision.</p>
-          ) : null}
         </div>
       </SheetContent>
     </Sheet>

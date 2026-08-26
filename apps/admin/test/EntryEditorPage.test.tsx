@@ -1,22 +1,23 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { EntryEditorPage } from '@/pages/EntryEditorPage';
 
-const { getMock, postMock, patchMock } = vi.hoisted(() => ({
+const { getMock, postMock, patchMock, deleteMock } = vi.hoisted(() => ({
   getMock: vi.fn(),
   postMock: vi.fn(),
   patchMock: vi.fn(),
+  deleteMock: vi.fn(),
 }));
 
 vi.mock('@/lib/api-client', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api-client')>('@/lib/api-client');
   return {
     ...actual,
-    apiClient: { ...actual.apiClient, get: getMock, post: postMock, patch: patchMock },
+    apiClient: { ...actual.apiClient, get: getMock, post: postMock, patch: patchMock, delete: deleteMock },
   };
 });
 
@@ -55,6 +56,7 @@ describe('EntryEditorPage', () => {
     getMock.mockReset();
     postMock.mockReset();
     patchMock.mockReset();
+    deleteMock.mockReset();
   });
 
   it('creates a new entry, defaulting field values by type, and posts the built data object', async () => {
@@ -112,5 +114,30 @@ describe('EntryEditorPage', () => {
         publishAt: null,
       }),
     );
+  });
+
+  it('deletes the entry after confirming in the alert dialog', async () => {
+    getMock.mockImplementation((path: string) => {
+      if (path.endsWith('/fields')) return Promise.resolve(fields);
+      if (path.endsWith('/revisions')) return Promise.resolve([]);
+      return Promise.resolve({
+        id: 'e-1',
+        slug: 'hello-world',
+        status: 'published',
+        data: { title: 'Hello World', featured: true },
+        publishAt: null,
+      });
+    });
+    deleteMock.mockResolvedValue(undefined);
+
+    renderEditor('/content-types/ct-1/entries/e-1');
+    await waitFor(() => expect(screen.getByLabelText('Slug')).toHaveValue('hello-world'));
+
+    await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    const alert = await screen.findByRole('alertdialog');
+    expect(within(alert).getByText('Delete "hello-world"?')).toBeInTheDocument();
+    await userEvent.click(within(alert).getByRole('button', { name: 'Delete' }));
+
+    await waitFor(() => expect(deleteMock).toHaveBeenCalledWith('/api/v1/admin/entries/e-1'));
   });
 });

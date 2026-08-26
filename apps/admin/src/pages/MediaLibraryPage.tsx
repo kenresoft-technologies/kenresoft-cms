@@ -1,8 +1,20 @@
 import { useState, type FormEvent } from 'react';
 import { ImageOff, Images, Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
 
 import { ApiError } from '@/lib/api-client';
 import { useDeleteMedia, useMediaList, useUploadMedia, mediaFileUrl } from '@/lib/queries/media';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { EmptyState } from '@/components/empty-state';
 import { PageBreadcrumb } from '@/components/page-breadcrumb';
 import { Button } from '@/components/ui/button';
@@ -19,6 +31,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
+import type { Media } from '@/lib/types';
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -43,11 +56,14 @@ function UploadMediaDialog() {
 
     try {
       await uploadMedia.mutateAsync({ file, altText: altText || undefined });
+      toast.success('Media uploaded');
       setFile(null);
       setAltText('');
       setOpen(false);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to upload media');
+      const message = err instanceof ApiError ? err.message : 'Failed to upload media';
+      setError(message);
+      toast.error(message);
     }
   }
 
@@ -94,9 +110,46 @@ function UploadMediaDialog() {
   );
 }
 
+function DeleteMediaAlert({ item }: { item: Media }) {
+  const deleteMedia = useDeleteMedia();
+
+  async function handleDelete() {
+    try {
+      await deleteMedia.mutateAsync(item.id);
+      toast.success('Media deleted');
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Failed to delete media');
+    }
+  }
+
+  return (
+    <AlertDialog>
+      <AlertDialogTrigger asChild>
+        <Button variant="outline" size="sm" className="mt-1" disabled={deleteMedia.isPending}>
+          <Trash2 />
+          Delete
+        </Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Delete "{item.filename}"?</AlertDialogTitle>
+          <AlertDialogDescription>
+            This permanently removes the file from storage. This cannot be undone.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction variant="destructive" onClick={handleDelete}>
+            Delete
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
 export function MediaLibraryPage() {
   const { data: mediaItems, isPending, error } = useMediaList();
-  const deleteMedia = useDeleteMedia();
 
   return (
     <div className="flex flex-col gap-6">
@@ -149,20 +202,7 @@ export function MediaLibraryPage() {
                   {item.width && item.height ? `${item.width}×${item.height} · ` : ''}
                   {formatSize(item.size)}
                 </p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="mt-1"
-                  disabled={deleteMedia.isPending}
-                  onClick={() => {
-                    if (window.confirm(`Delete "${item.filename}"? This cannot be undone.`)) {
-                      deleteMedia.mutate(item.id);
-                    }
-                  }}
-                >
-                  <Trash2 />
-                  Delete
-                </Button>
+                <DeleteMediaAlert item={item} />
               </CardContent>
             </Card>
           ))}

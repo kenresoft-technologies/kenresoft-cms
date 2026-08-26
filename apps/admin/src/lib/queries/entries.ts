@@ -50,6 +50,17 @@ export function useUpdateEntry(contentTypeId: string, id: string) {
   });
 }
 
+export function useDeleteEntry(contentTypeId: string, id: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => apiClient.delete<void>(`/api/v1/admin/entries/${id}`),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['entries', contentTypeId] });
+    },
+  });
+}
+
 export function useEntryRevisions(entryId: string) {
   return useQuery({
     queryKey: ['entries', 'by-id', entryId, 'revisions'],

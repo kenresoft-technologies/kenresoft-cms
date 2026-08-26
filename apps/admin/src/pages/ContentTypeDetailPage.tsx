@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { ListPlus } from 'lucide-react';
 import { Link, useParams } from 'react-router';
+import { toast } from 'sonner';
 
 import { ApiError } from '@/lib/api-client';
 import { useContentType } from '@/lib/queries/content-types';
@@ -41,13 +42,16 @@ function NewFieldDialog({ contentTypeId }: { contentTypeId: string }) {
 
     try {
       await createField.mutateAsync({ name, label, fieldType, required });
+      toast.success('Field added');
       setName('');
       setLabel('');
       setFieldType('text');
       setRequired(false);
       setOpen(false);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to create field');
+      const message = err instanceof ApiError ? err.message : 'Failed to create field';
+      setError(message);
+      toast.error(message);
     }
   }
 

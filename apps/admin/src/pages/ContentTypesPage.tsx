@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { ChevronRight, LayoutList } from 'lucide-react';
 import { Link } from 'react-router';
+import { toast } from 'sonner';
 
 import { ApiError } from '@/lib/api-client';
 import { authClient } from '@/lib/auth-client';
@@ -35,11 +36,14 @@ function NewContentTypeDialog() {
 
     try {
       await createContentType.mutateAsync({ name, slug });
+      toast.success('Content type created');
       setName('');
       setSlug('');
       setOpen(false);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to create content type');
+      const message = err instanceof ApiError ? err.message : 'Failed to create content type';
+      setError(message);
+      toast.error(message);
     }
   }
 
