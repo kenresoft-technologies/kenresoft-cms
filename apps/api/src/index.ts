@@ -1,4 +1,5 @@
 import { OpenAPIHono } from '@hono/zod-openapi';
+import { Scalar } from '@scalar/hono-api-reference';
 import { createDb } from '@kenresoft/database';
 
 import { createAuth } from './lib/auth';
@@ -54,6 +55,14 @@ app.doc('/api/v1/openapi.json', (c) => ({
     version: c.env.API_VERSION,
   },
 }));
+
+app.get(
+  '/api/v1/docs',
+  Scalar({
+    url: '/api/v1/openapi.json',
+    pageTitle: 'Kenresoft CMS API Reference',
+  }),
+);
 
 export default {
   fetch: app.fetch,
