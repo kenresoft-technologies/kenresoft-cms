@@ -11,6 +11,7 @@ import { FormsPage } from '@/pages/FormsPage';
 import { FormSubmissionsPage } from '@/pages/FormSubmissionsPage';
 import { LoginPage } from '@/pages/LoginPage';
 import { MediaLibraryPage } from '@/pages/MediaLibraryPage';
+import { ProfilePage } from '@/pages/ProfilePage';
 import { SettingsPage } from '@/pages/SettingsPage';
 import { UsersPage } from '@/pages/UsersPage';
 
@@ -31,6 +32,7 @@ export const router = createBrowserRouter([
       { path: 'forms/:formId/submissions', element: <FormSubmissionsPage /> },
       { path: 'settings', element: <SettingsPage /> },
       { path: 'users', element: <UsersPage /> },
+      { path: 'profile', element: <ProfilePage /> },
       { path: 'content-types/:contentTypeId', element: <ContentTypeDetailPage /> },
       { path: 'content-types/:contentTypeId/entries', element: <EntriesPage /> },
       { path: 'content-types/:contentTypeId/entries/:entryId', element: <EntryEditorPage /> },

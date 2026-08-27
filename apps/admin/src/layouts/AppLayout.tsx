@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { ClipboardList, Images, LayoutDashboard, LayoutList, LogOut, Search, Settings, Users } from 'lucide-react';
-import { Navigate, NavLink, Outlet, useLocation } from 'react-router';
+import { ClipboardList, Images, LayoutDashboard, LayoutList, LogOut, Search, Settings, User, Users } from 'lucide-react';
+import { Link, Navigate, NavLink, Outlet, useLocation } from 'react-router';
 
 import { authClient } from '@/lib/auth-client';
 import { CommandPalette } from '@/components/command-palette';
@@ -43,8 +43,10 @@ const configItems = [
   { to: '/settings', label: 'Settings', end: false, icon: Settings },
 ];
 
-function initials(email: string) {
-  return email.slice(0, 2).toUpperCase();
+function initials(label: string) {
+  const parts = label.trim().split(/\s+/);
+  if (parts.length > 1) return `${parts[0]![0]}${parts[parts.length - 1]![0]}`.toUpperCase();
+  return label.slice(0, 2).toUpperCase();
 }
 
 type NavItem = { to: string; label: string; end: boolean; icon: typeof LayoutDashboard };
@@ -107,20 +109,27 @@ export function AppLayout() {
             <DropdownMenuTrigger asChild>
               <SidebarMenuButton size="lg">
                 <Avatar className="size-6">
-                  <AvatarFallback>{initials(session.user.email)}</AvatarFallback>
+                  <AvatarFallback>{initials(session.user.name || session.user.email)}</AvatarFallback>
                 </Avatar>
-                <span className="truncate text-sm">{session.user.email}</span>
+                <span className="truncate text-sm">{session.user.name || session.user.email}</span>
               </SidebarMenuButton>
             </DropdownMenuTrigger>
             <DropdownMenuContent side="top" align="start" className="w-56">
               <DropdownMenuLabel className="font-normal">
                 <div className="flex flex-col gap-0.5">
-                  <span className="text-sm font-medium">{session.user.email}</span>
+                  <span className="text-sm font-medium">{session.user.name || session.user.email}</span>
                   <span className="text-xs text-muted-foreground capitalize">
                     {session.user.role}
                   </span>
                 </div>
               </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem asChild>
+                <Link to="/profile">
+                  <User />
+                  Profile
+                </Link>
+              </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => authClient.signOut()}>
                 <LogOut />
