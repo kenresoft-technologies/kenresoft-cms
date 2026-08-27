@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -54,7 +54,7 @@ describe('FormSubmissionsPage', () => {
 
     renderPage();
 
-    await waitFor(() => expect(screen.getByText('new')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('New')).toBeInTheDocument());
     expect(getMock).toHaveBeenCalledWith('/api/v1/admin/forms/f-1/submissions');
   });
 
@@ -80,13 +80,33 @@ describe('FormSubmissionsPage', () => {
     });
 
     renderPage();
-    await waitFor(() => expect(screen.getByText('new')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('New')).toBeInTheDocument());
 
     await userEvent.click(screen.getByRole('button', { name: /2026/ }));
 
     const dialog = await screen.findByRole('dialog');
     expect(dialog).toHaveTextContent('Email address');
     expect(dialog).toHaveTextContent('jane@example.com');
+  });
+
+  it('filters submissions by status', async () => {
+    const readSubmission = { ...submission, id: 'sub-2', status: 'read' as const };
+    getMock.mockImplementation((path: string) => {
+      if (path.endsWith('/submissions')) return Promise.resolve([submission, readSubmission]);
+      if (path.endsWith('/fields')) return Promise.resolve([]);
+      return Promise.resolve({ id: 'f-1', name: 'Contact', slug: 'contact' });
+    });
+
+    renderPage();
+    await waitFor(() => expect(screen.getByText('New')).toBeInTheDocument());
+    expect(screen.getByText('Read')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('combobox'));
+    await userEvent.click(screen.getByRole('option', { name: 'New' }));
+
+    const table = screen.getByRole('table');
+    expect(within(table).getByText('New')).toBeInTheDocument();
+    expect(within(table).queryByText('Read')).not.toBeInTheDocument();
   });
 
   it('marks a submission read via the row action menu', async () => {
@@ -98,7 +118,7 @@ describe('FormSubmissionsPage', () => {
     patchMock.mockResolvedValue({ ...submission, status: 'read' });
 
     renderPage();
-    await waitFor(() => expect(screen.getByText('new')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('New')).toBeInTheDocument());
 
     await userEvent.click(screen.getByRole('button', { name: 'Submission actions' }));
     await userEvent.click(await screen.findByRole('menuitem', { name: 'Mark read' }));

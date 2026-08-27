@@ -7,10 +7,12 @@ import type { ColumnDef } from '@tanstack/react-table';
 import { ApiError } from '@/lib/api-client';
 import { authClient } from '@/lib/auth-client';
 import { useCreateForm, useForms } from '@/lib/queries/forms';
+import { useFormFields } from '@/lib/queries/form-fields';
 import type { Form } from '@/lib/types';
 import { DataTable } from '@/components/data-table';
 import { EmptyState } from '@/components/empty-state';
 import { PageBreadcrumb } from '@/components/page-breadcrumb';
+import { PageHeader } from '@/components/page-header';
 import { TableSkeleton } from '@/components/table-skeleton';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -27,6 +29,17 @@ import {
 } from '@/components/ui/dialog';
 import { Table, TableHeader, TableHead, TableRow } from '@/components/ui/table';
 
+function FieldsCountCell({ formId }: { formId: string }) {
+  const { data: fields, isPending } = useFormFields(formId);
+  if (isPending) return <span className="text-muted-foreground">…</span>;
+  const count = fields?.length ?? 0;
+  return (
+    <span className="text-muted-foreground">
+      {count} {count === 1 ? 'field' : 'fields'}
+    </span>
+  );
+}
+
 const columns: ColumnDef<Form>[] = [
   { accessorKey: 'name', header: 'Name', cell: ({ row }) => <span className="font-medium">{row.original.name}</span> },
   {
@@ -36,6 +49,21 @@ const columns: ColumnDef<Form>[] = [
       <Badge variant="outline" className="font-mono font-normal text-muted-foreground">
         {row.original.slug}
       </Badge>
+    ),
+  },
+  {
+    id: 'fields',
+    header: 'Fields',
+    enableSorting: false,
+    cell: ({ row }) => <FieldsCountCell formId={row.original.id} />,
+  },
+  {
+    accessorKey: 'updatedAt',
+    header: 'Updated',
+    sortingFn: (rowA, rowB) =>
+      new Date(rowA.original.updatedAt).getTime() - new Date(rowB.original.updatedAt).getTime(),
+    cell: ({ row }) => (
+      <span className="text-muted-foreground">{new Date(row.original.updatedAt).toLocaleDateString()}</span>
     ),
   },
   {
@@ -121,13 +149,11 @@ export function FormsPage() {
     <div className="flex flex-col gap-6">
       <PageBreadcrumb items={[{ label: 'Forms' }]} />
 
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Forms</h1>
-          <p className="text-muted-foreground">Forms visitors can submit, like Contact or Newsletter signup.</p>
-        </div>
-        {isOwner ? <NewFormDialog /> : null}
-      </div>
+      <PageHeader
+        title="Forms"
+        description="Forms visitors can submit, like Contact or Newsletter signup."
+        actions={isOwner ? <NewFormDialog /> : undefined}
+      />
 
       {error ? <p className="text-destructive">{error.message}</p> : null}
 
@@ -138,9 +164,11 @@ export function FormsPage() {
               <TableRow>
                 <TableHead>Name</TableHead>
                 <TableHead>Slug</TableHead>
+                <TableHead>Fields</TableHead>
+                <TableHead>Updated</TableHead>
               </TableRow>
             </TableHeader>
-            <TableSkeleton columns={2} />
+            <TableSkeleton columns={4} />
           </Table>
         </div>
       ) : null}

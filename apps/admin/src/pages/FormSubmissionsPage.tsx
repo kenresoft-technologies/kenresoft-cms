@@ -12,8 +12,9 @@ import type { FormSubmission, FormSubmissionStatus } from '@/lib/types';
 import { DataTable } from '@/components/data-table';
 import { EmptyState } from '@/components/empty-state';
 import { PageBreadcrumb } from '@/components/page-breadcrumb';
+import { PageHeader } from '@/components/page-header';
+import { StatusBadge } from '@/components/status-badge';
 import { TableSkeleton } from '@/components/table-skeleton';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -28,13 +29,10 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableHeader, TableHead, TableRow } from '@/components/ui/table';
 
-const STATUS_VARIANT: Record<FormSubmissionStatus, 'default' | 'secondary' | 'outline'> = {
-  new: 'default',
-  read: 'secondary',
-  archived: 'outline',
-};
+type StatusFilter = 'all' | FormSubmissionStatus;
 
 function ViewSubmissionDialog({
   submission,
@@ -121,8 +119,15 @@ export function FormSubmissionsPage() {
   const { data: fields } = useFormFields(formId ?? '');
   const { data: submissions, isPending, error } = useFormSubmissions(formId ?? '');
   const [viewing, setViewing] = useState<FormSubmission | null>(null);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
 
   const fieldLabels = useMemo(() => new Map((fields ?? []).map((field) => [field.name, field.label])), [fields]);
+
+  const filteredSubmissions = useMemo(
+    () =>
+      statusFilter === 'all' ? (submissions ?? []) : (submissions ?? []).filter((s) => s.status === statusFilter),
+    [submissions, statusFilter],
+  );
 
   const columns = useMemo<ColumnDef<FormSubmission>[]>(
     () => [
@@ -140,7 +145,7 @@ export function FormSubmissionsPage() {
       {
         accessorKey: 'status',
         header: 'Status',
-        cell: ({ row }) => <Badge variant={STATUS_VARIANT[row.original.status]}>{row.original.status}</Badge>,
+        cell: ({ row }) => <StatusBadge status={row.original.status} />,
       },
       {
         id: 'actions',
@@ -162,10 +167,10 @@ export function FormSubmissionsPage() {
         ]}
       />
 
-      <div>
-        <h1 className="text-2xl font-semibold">Submissions</h1>
-        <p className="text-muted-foreground">{form ? `Visitor submissions for ${form.name}.` : 'Visitor submissions.'}</p>
-      </div>
+      <PageHeader
+        title="Submissions"
+        description={form ? `Visitor submissions for ${form.name}.` : 'Visitor submissions.'}
+      />
 
       {error ? <p className="text-destructive">{error.message}</p> : null}
 
@@ -189,7 +194,24 @@ export function FormSubmissionsPage() {
       ) : null}
 
       {submissions && submissions.length > 0 ? (
-        <DataTable columns={columns} data={submissions} searchPlaceholder="Search submissions…" />
+        <DataTable
+          columns={columns}
+          data={filteredSubmissions}
+          searchPlaceholder="Search submissions…"
+          toolbar={
+            <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as StatusFilter)}>
+              <SelectTrigger size="sm" className="w-36">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All statuses</SelectItem>
+                <SelectItem value="new">New</SelectItem>
+                <SelectItem value="read">Read</SelectItem>
+                <SelectItem value="archived">Archived</SelectItem>
+              </SelectContent>
+            </Select>
+          }
+        />
       ) : null}
 
       <ViewSubmissionDialog

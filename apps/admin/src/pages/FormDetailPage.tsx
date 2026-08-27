@@ -8,10 +8,11 @@ import { useForm } from '@/lib/queries/forms';
 import { useCreateFormField, useFormFields } from '@/lib/queries/form-fields';
 import { FORM_FIELD_TYPES, type FormFieldType } from '@/lib/types';
 import { EmptyState } from '@/components/empty-state';
+import { FieldTypeBadge, fieldTypeIcon } from '@/components/field-type-badge';
 import { OptionListEditor } from '@/components/option-list-editor';
 import { PageBreadcrumb } from '@/components/page-breadcrumb';
+import { PageHeader } from '@/components/page-header';
 import { TableSkeleton } from '@/components/table-skeleton';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -102,11 +103,15 @@ function NewFormFieldDialog({ formId }: { formId: string }) {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {FORM_FIELD_TYPES.map((type) => (
-                  <SelectItem key={type} value={type}>
-                    {type}
-                  </SelectItem>
-                ))}
+                {FORM_FIELD_TYPES.map((type) => {
+                  const Icon = fieldTypeIcon(type);
+                  return (
+                    <SelectItem key={type} value={type}>
+                      <Icon className="size-4 text-muted-foreground" />
+                      {type}
+                    </SelectItem>
+                  );
+                })}
               </SelectContent>
             </Select>
           </div>
@@ -148,18 +153,18 @@ export function FormDetailPage() {
         ]}
       />
 
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">{form?.name ?? 'Fields'}</h1>
-          <p className="text-muted-foreground">Fields define what a submitter fills in.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" asChild>
-            <Link to={`/forms/${formId}/submissions`}>View submissions</Link>
-          </Button>
-          {formId ? <NewFormFieldDialog formId={formId} /> : null}
-        </div>
-      </div>
+      <PageHeader
+        title={form?.name ?? 'Fields'}
+        description={fields ? `${fields.length} ${fields.length === 1 ? 'field' : 'fields'}` : 'Fields define what a submitter fills in.'}
+        actions={
+          <>
+            <Button variant="outline" asChild>
+              <Link to={`/forms/${formId}/submissions`}>View submissions</Link>
+            </Button>
+            {formId ? <NewFormFieldDialog formId={formId} /> : null}
+          </>
+        }
+      />
 
       {error ? <p className="text-destructive">{error.message}</p> : null}
 
@@ -200,7 +205,7 @@ export function FormDetailPage() {
                   <TableCell className="font-mono text-sm">{field.name}</TableCell>
                   <TableCell>{field.label}</TableCell>
                   <TableCell>
-                    <Badge variant="outline">{field.fieldType}</Badge>
+                    <FieldTypeBadge fieldType={field.fieldType} />
                   </TableCell>
                   <TableCell className="text-muted-foreground">{field.required ? 'Yes' : 'No'}</TableCell>
                 </TableRow>
