@@ -1,29 +1,30 @@
 # Kenresoft CMS — Astro example
 
-A minimal, standalone Astro site that renders published content from a Kenresoft CMS
-deployment's **public** API (`/api/v1/public/...` — no auth, no database access). It exists to
-demonstrate the intended shape of Phase 8 (`docs/ARCHITECTURE.md` §20: "Astro integration and
-Pathvera production integration") — this is a generic reference, not the real Pathvera site.
+A minimal Astro site that renders published content from a Kenresoft CMS deployment's
+**public** API, via the typed `@kenresoft/astro` client — no auth, no database access, no
+credentials of any kind. See [`docs/ASTRO.md`](../../docs/ASTRO.md) for the full guide
+(architecture, environment variables, static-vs-SSR rationale, known limitations); this is a
+generic reference, not the real Pathvera site.
 
-This is **not** part of the repo's pnpm workspace. A real Astro site consuming a Kenresoft CMS
-deployment lives in its own project, possibly its own repo entirely — this example is set up
-the same way on purpose, with its own `package.json` and `node_modules`.
+This **is** part of the repo's pnpm workspace (`pnpm-workspace.yaml` lists `examples/*`), so it
+can depend on `@kenresoft/astro` (`../../integrations/astro`) as an ordinary `workspace:*`
+package — a plain `pnpm install` at the repo root wires it up via a symlink, same as any other
+internal package.
 
 ## What it does
 
-- `src/lib/cms.ts` — a small `fetch`-based client for the public API, typed by hand (not
-  imported from `@kenresoft/contracts`, since an external site wouldn't have access to that
-  package).
-- `/blog` — lists every published entry of a `blog-post` content type
-  (`GET /api/v1/public/blog-post`).
-- `/blog/:slug` — renders one entry by slug (`GET /api/v1/public/blog-post/:slug`), including
-  its rich-text body field as HTML.
-- Static output (`astro.config.mjs`) — every page fetches at **build time**. Rebuild the site
-  to pick up newly published or edited entries; there's no live revalidation here.
+- `src/pages/blog/index.astro` — lists every published entry of a `blog-post` content type via
+  `cms.entries.list({ contentType: 'blog-post' })`.
+- `src/pages/blog/[slug].astro` — renders one entry by slug via
+  `cms.entries.get({ contentType: 'blog-post', slug })`, including its rich-text body field as
+  HTML and a "Published" date derived from the entry's `createdAt`.
+- Static output (`astro.config.mjs`) — every page fetches at **build time**. Rebuild the site to
+  pick up newly published or edited entries; there's no live revalidation here (`astro dev`, by
+  contrast, re-fetches on every request — see `docs/ASTRO.md`).
 
 ## Prerequisites
 
-This assumes a running Kenresoft CMS (`apps/api` + `apps/database` migrated — see the root
+A running Kenresoft CMS (`apps/api`, with `packages/database` migrated — see the root
 `README.md`) with:
 
 1. A content type whose **slug** is `blog-post` (the display name doesn't matter — the public
@@ -39,16 +40,17 @@ This assumes a running Kenresoft CMS (`apps/api` + `apps/database` migrated — 
 The public API only exposes entry data — there's currently no unauthenticated route for
 serving R2-backed media files (the only file-serving route, `GET /api/v1/admin/media/:id/file`,
 sits behind admin auth). A cover-image field on your Blog Post content type won't be
-renderable from this example until that gap is closed.
+renderable from this example until that gap is closed. See `docs/ASTRO.md`'s Known Limitations
+for the rest.
 
 ## Running it
 
 ```bash
+# from the repo root
+pnpm install
 cd examples/astro-site
-pnpm install --ignore-workspace   # this repo's pnpm-workspace.yaml doesn't list examples/*,
-                                   # and a plain `pnpm install` here would silently no-op
-cp .env.example .env               # points at your local API; edit if it's not on :8787
-pnpm dev
+cp .env.example .env   # points at your local API; edit if it's not on :8787
+pnpm dev                # http://localhost:4321
 ```
 
 `pnpm build` produces a static `dist/` you can preview with `pnpm preview`. `pnpm typecheck`

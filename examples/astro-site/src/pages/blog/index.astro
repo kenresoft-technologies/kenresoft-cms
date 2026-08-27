@@ -1,11 +1,13 @@
 ---
+import { createKenresoftClient } from '@kenresoft/astro';
 import BaseLayout from '../../layouts/BaseLayout.astro';
-import { listPublishedEntries } from '../../lib/cms';
+
+const cms = createKenresoftClient({ url: import.meta.env.PUBLIC_KENRESOFT_CMS_URL });
 
 // "blog-post" is this content type's slug, not its display name — set when it's created in
 // the admin (Content types → New). Change this if your deployment uses a different slug, or
 // if you're demonstrating a different content type entirely.
-const entries = await listPublishedEntries('blog-post');
+const entries = await cms.entries.list({ contentType: 'blog-post' });
 ---
 
 <BaseLayout title="Blog">

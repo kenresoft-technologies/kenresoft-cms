@@ -2,7 +2,7 @@
   "name": "kenresoft-cms-example-astro",
   "version": "0.1.0",
   "private": true,
-  "description": "Reference Astro site consuming a Kenresoft CMS deployment's public API. Not part of the pnpm workspace — a real consumer site wouldn't be either.",
+  "description": "Reference Astro site consuming a Kenresoft CMS deployment's public API via @kenresoft/astro.",
   "type": "module",
   "scripts": {
     "dev": "astro dev",
@@ -11,6 +11,8 @@
     "typecheck": "astro check"
   },
   "dependencies": {
+    "@kenresoft/astro": "workspace:*",
+    "@kenresoft/contracts": "workspace:*",
     "astro": "^5.1.0"
   },
   "devDependencies": {

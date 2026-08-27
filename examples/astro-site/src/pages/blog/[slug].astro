@@ -1,15 +1,16 @@
 ---
+import { createKenresoftClient } from '@kenresoft/astro';
+import type { Entry } from '@kenresoft/astro';
 import BaseLayout from '../../layouts/BaseLayout.astro';
-import { listPublishedEntries } from '../../lib/cms';
-import type { CmsEntry } from '../../lib/cms';
 
 export async function getStaticPaths() {
-  const entries = await listPublishedEntries('blog-post');
+  const cms = createKenresoftClient({ url: import.meta.env.PUBLIC_KENRESOFT_CMS_URL });
+  const entries = await cms.entries.list({ contentType: 'blog-post' });
   return entries.map((entry) => ({ params: { slug: entry.slug }, props: { entry } }));
 }
 
 interface Props {
-  entry: CmsEntry;
+  entry: Entry;
 }
 
 const { entry } = Astro.props as Props;
@@ -19,11 +20,20 @@ const title = String(entry.data.title ?? entry.slug);
 // authenticated editor/owner has explicitly published it — the same trust boundary as any
 // headless-CMS content field, not arbitrary visitor input.
 const body = entry.data.body;
+// No dedicated "published date" field exists on Entry — createdAt is the closest honest
+// stand-in available from the public API today (publishAt is nullable and only set for
+// entries that used scheduled publishing, so it's not reliably populated).
+const publishedDate = new Date(entry.createdAt).toLocaleDateString(undefined, {
+  year: 'numeric',
+  month: 'long',
+  day: 'numeric',
+});
 ---
 
 <BaseLayout title={title}>
   <article>
     <h1>{title}</h1>
+    <p><small>Published {publishedDate}</small></p>
     {typeof body === 'string' ? <div set:html={body} /> : null}
   </article>
 </BaseLayout>
