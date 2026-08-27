@@ -8,11 +8,14 @@ export const authClient = createAuthClient({
   basePath: '/api/v1/auth',
   plugins: [
     // Types session.user.role — mirrors the user.additionalFields in
-    // apps/api/src/lib/auth-options.ts. Described directly rather than importing that
-    // server-side type, since apps/admin has no dependency on apps/api.
+    // apps/api/src/lib/auth-options.ts, `input: false` included: without it, the inferred
+    // signUp.email() input type wrongly requires callers to supply `role` themselves, when
+    // the server actually ignores any client-sent value and assigns 'editor' by default (or
+    // 'owner' for the very first account) unconditionally. Described directly rather than
+    // importing that server-side type, since apps/admin has no dependency on apps/api.
     inferAdditionalFields({
       user: {
-        role: { type: 'string' },
+        role: { type: 'string', input: false },
       },
     }),
   ],

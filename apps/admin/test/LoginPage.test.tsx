@@ -5,15 +5,17 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { LoginPage } from '@/pages/LoginPage';
 
-const { useSessionMock, signInEmailMock } = vi.hoisted(() => ({
+const { useSessionMock, signInEmailMock, signUpEmailMock } = vi.hoisted(() => ({
   useSessionMock: vi.fn(),
   signInEmailMock: vi.fn(),
+  signUpEmailMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth-client', () => ({
   authClient: {
     useSession: useSessionMock,
     signIn: { email: signInEmailMock },
+    signUp: { email: signUpEmailMock },
   },
 }));
 
@@ -32,6 +34,7 @@ describe('LoginPage', () => {
   beforeEach(() => {
     useSessionMock.mockReset();
     signInEmailMock.mockReset();
+    signUpEmailMock.mockReset();
   });
 
   it('redirects to / when a session already exists', () => {
@@ -68,5 +71,57 @@ describe('LoginPage', () => {
       password: 'wrong-password',
     });
     await waitFor(() => expect(screen.getByText('Invalid credentials')).toBeInTheDocument());
+  });
+
+  it('shows a real error instead of hanging forever when the request throws', async () => {
+    // Regression guard for the exact bug that left the button stuck on "Signing in…"
+    // indefinitely against a real deployment: a CORS-rejected request throws rather than
+    // resolving to { error }, and the submit handler used to have no try/catch around it.
+    useSessionMock.mockReturnValue({ data: null, isPending: false });
+    signInEmailMock.mockRejectedValue(new TypeError('Failed to fetch'));
+
+    renderLoginPage();
+
+    await userEvent.type(screen.getByLabelText('Email'), 'user@pathvera.test');
+    await userEvent.type(screen.getByLabelText('Password'), 'whatever');
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+
+    await waitFor(() =>
+      expect(screen.getByText('Could not reach the server. Check your connection and try again.')).toBeInTheDocument(),
+    );
+    expect(screen.getByRole('button', { name: 'Sign in' })).not.toBeDisabled();
+  });
+
+  it('switches to sign-up mode, collects a name, and submits without a client-set role', async () => {
+    useSessionMock.mockReturnValue({ data: null, isPending: false });
+    signUpEmailMock.mockResolvedValue({ error: null });
+
+    renderLoginPage();
+
+    await userEvent.click(screen.getByRole('button', { name: "Don't have an account? Sign up" }));
+    expect(screen.getByText('Create an account')).toBeInTheDocument();
+
+    await userEvent.type(screen.getByLabelText('Name'), 'Ada Lovelace');
+    await userEvent.type(screen.getByLabelText('Email'), 'ada@pathvera.test');
+    await userEvent.type(screen.getByLabelText('Password'), 'correct horse battery staple');
+    await userEvent.click(screen.getByRole('button', { name: 'Create account' }));
+
+    expect(signUpEmailMock).toHaveBeenCalledWith({
+      email: 'ada@pathvera.test',
+      password: 'correct horse battery staple',
+      name: 'Ada Lovelace',
+    });
+  });
+
+  it('toggles back to sign-in mode', async () => {
+    useSessionMock.mockReturnValue({ data: null, isPending: false });
+
+    renderLoginPage();
+
+    await userEvent.click(screen.getByRole('button', { name: "Don't have an account? Sign up" }));
+    await userEvent.click(screen.getByRole('button', { name: 'Already have an account? Sign in' }));
+
+    expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument();
+    expect(screen.queryByLabelText('Name')).not.toBeInTheDocument();
   });
 });
