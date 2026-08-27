@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Images, LayoutDashboard, LayoutList, LogOut, Search, Settings } from 'lucide-react';
+import { Images, LayoutDashboard, LayoutList, LogOut, Search, Settings, Users } from 'lucide-react';
 import { Navigate, NavLink, Outlet, useLocation } from 'react-router';
 
 import { authClient } from '@/lib/auth-client';
@@ -37,7 +37,10 @@ const navItems = [
   { to: '/media', label: 'Media', end: false, icon: Images },
 ];
 
-const configItems = [{ to: '/settings', label: 'Settings', end: false, icon: Settings }];
+const configItems = [
+  { to: '/users', label: 'Users', end: false, icon: Users },
+  { to: '/settings', label: 'Settings', end: false, icon: Settings },
+];
 
 function initials(email: string) {
   return email.slice(0, 2).toUpperCase();

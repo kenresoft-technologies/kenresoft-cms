@@ -9,6 +9,7 @@ import { EntryEditorPage } from '@/pages/EntryEditorPage';
 import { LoginPage } from '@/pages/LoginPage';
 import { MediaLibraryPage } from '@/pages/MediaLibraryPage';
 import { SettingsPage } from '@/pages/SettingsPage';
+import { UsersPage } from '@/pages/UsersPage';
 
 export const router = createBrowserRouter([
   {
@@ -23,6 +24,7 @@ export const router = createBrowserRouter([
       { path: 'content-types', element: <ContentTypesPage /> },
       { path: 'media', element: <MediaLibraryPage /> },
       { path: 'settings', element: <SettingsPage /> },
+      { path: 'users', element: <UsersPage /> },
       { path: 'content-types/:contentTypeId', element: <ContentTypeDetailPage /> },
       { path: 'content-types/:contentTypeId/entries', element: <EntriesPage /> },
       { path: 'content-types/:contentTypeId/entries/:entryId', element: <EntryEditorPage /> },

@@ -101,6 +101,17 @@ export interface DashboardStats {
   }[];
 }
 
+export type UserRole = 'owner' | 'editor';
+
+export interface AdminUser {
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+  createdAt: string;
+  lastActiveAt: string | null;
+}
+
 export interface Settings {
   id: string;
   name: string;
