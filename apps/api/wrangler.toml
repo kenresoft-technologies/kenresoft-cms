@@ -1,8 +1,4 @@
 # Kenresoft CMS — API Worker
-# TODO(Phase 1): replace placeholder IDs below with real resources created via:
-#   wrangler d1 create kenresoft-cms-db
-#   wrangler r2 bucket create kenresoft-cms-media
-#   wrangler kv namespace create kenresoft-cms-cache
 
 name = "kenresoft-cms-api"
 main = "src/index.ts"
@@ -13,16 +9,16 @@ compatibility_flags = ["nodejs_compat"]
 [[d1_databases]]
 binding = "DB"
 database_name = "kenresoft-cms-db"
-database_id = "REPLACE_WITH_REAL_D1_ID"
+database_id = "29f46754-9256-4c0f-a2fc-90df8365d9aa"
 migrations_dir = "../../packages/database/migrations"
 
 [[r2_buckets]]
 binding = "MEDIA_BUCKET"
 bucket_name = "kenresoft-cms-media"
 
-[[kv_namespaces]]
-binding = "CACHE_KV"
-id = "REPLACE_WITH_REAL_KV_ID"
+# No KV namespace here — Workers KV as a secondary caching tier is documented
+# (docs/ARCHITECTURE.md §12) but not implemented; nothing in src/ reads or writes it yet, so
+# provisioning one would just be an unused resource. Add it back when that's actually built.
 
 [[ratelimits]]
 # Public form submissions (§9) — 5 per 60s per rate-limit key (IP address). namespace_id is
@@ -37,8 +33,15 @@ crons = ["*/5 * * * *"]
 
 [vars]
 API_VERSION = "v1"
-# Comma-separated allow-list per docs/ARCHITECTURE.md §9 — never "*". Override per environment.
+# Comma-separated allow-list per docs/ARCHITECTURE.md §9 — never "*". These are this Worker's
+# real deployed values; apps/api/.dev.vars overrides both back to localhost for local dev (see
+# .dev.vars.example) since .dev.vars overrides plain vars too, not just secrets.
+#
+# CORS only matters for browser-originated requests — apps/admin is the only one today (the
+# Astro integration fetches server-side, no Origin header involved). apps/admin has no deployed
+# home yet (deliberately deferred), so the only real admin origin right now is still the local
+# Vite dev server — add the admin's real origin here once it has one.
 CORS_ORIGINS = "http://localhost:5173"
-BETTER_AUTH_URL = "http://localhost:8787"
+BETTER_AUTH_URL = "https://kenresoft-cms-api.kenresoft.workers.dev"
 # BETTER_AUTH_SECRET is a real secret, not a var — set it in apps/api/.dev.vars for local dev
 # (see .dev.vars.example) and via `wrangler secret put BETTER_AUTH_SECRET` for deployed envs.
