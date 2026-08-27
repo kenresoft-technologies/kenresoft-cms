@@ -80,6 +80,7 @@ describe('SettingsPage', () => {
     await waitFor(() => expect(screen.getByLabelText('Site name')).toBeInTheDocument());
 
     await userEvent.type(screen.getByLabelText('Site name'), 'Pathvera Group');
+    await userEvent.click(screen.getByRole('tab', { name: 'Advanced' }));
     await userEvent.type(screen.getByPlaceholderText('flag-name'), 'newsletter-signup');
     await userEvent.click(screen.getByRole('button', { name: 'Add' }));
     expect(screen.getByText('newsletter-signup')).toBeInTheDocument();
@@ -91,6 +92,21 @@ describe('SettingsPage', () => {
         expect.objectContaining({ featureFlags: { 'newsletter-signup': true } }),
       ),
     );
+  });
+
+  it('organizes settings into General/Social/Advanced tabs', async () => {
+    useSessionMock.mockReturnValue({ data: { user: { role: 'owner', email: 'owner@pathvera.test' } } });
+    getMock.mockResolvedValue(null);
+
+    renderPage();
+    await waitFor(() => expect(screen.getByLabelText('Site name')).toBeInTheDocument());
+
+    expect(screen.queryByLabelText('Website')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('tab', { name: 'Social' }));
+    expect(screen.getByLabelText('Website')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Advanced' }));
+    expect(screen.getByLabelText('CORS origin')).toBeInTheDocument();
   });
 
   it('renders read-only, with no save button, for an editor', async () => {

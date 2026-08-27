@@ -7,12 +7,14 @@ import { authClient } from '@/lib/auth-client';
 import { useSettings, useUpdateSettings } from '@/lib/queries/settings';
 import type { Settings } from '@/lib/types';
 import { PageBreadcrumb } from '@/components/page-breadcrumb';
+import { PageHeader } from '@/components/page-header';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 const SOCIAL_PLATFORMS = [
   { key: 'website', label: 'Website' },
@@ -74,99 +76,117 @@ function SettingsForm({ settings, readOnly }: SettingsFormProps) {
 
   return (
     <form className="flex flex-col gap-6" onSubmit={handleSubmit}>
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="settings-name">Site name</Label>
-        <Input id="settings-name" required disabled={readOnly} value={name} onChange={(event) => setName(event.target.value)} />
-      </div>
+      <Tabs defaultValue="general">
+        <TabsList>
+          <TabsTrigger value="general">General</TabsTrigger>
+          <TabsTrigger value="social">Social</TabsTrigger>
+          <TabsTrigger value="advanced">Advanced</TabsTrigger>
+        </TabsList>
 
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="settings-contact-email">Contact email</Label>
-        <Input
-          id="settings-contact-email"
-          type="email"
-          disabled={readOnly}
-          value={contactEmail}
-          onChange={(event) => setContactEmail(event.target.value)}
-        />
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="settings-cors-origin">CORS origin</Label>
-        <Input
-          id="settings-cors-origin"
-          placeholder="https://pathvera.com"
-          disabled={readOnly}
-          value={corsOrigin}
-          onChange={(event) => setCorsOrigin(event.target.value)}
-        />
-        <p className="text-sm text-muted-foreground">
-          Informational reference only — the actual allow-list is configured via the
-          CORS_ORIGINS environment binding (§9).
-        </p>
-      </div>
-
-      <div className="flex flex-col gap-3">
-        <Label>Social links</Label>
-        {SOCIAL_PLATFORMS.map((platform) => (
-          <div key={platform.key} className="flex flex-col gap-2">
-            <Label htmlFor={`social-${platform.key}`} className="text-sm font-normal text-muted-foreground">
-              {platform.label}
-            </Label>
+        <TabsContent value="general" className="flex flex-col gap-6 pt-4">
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="settings-name">Site name</Label>
             <Input
-              id={`social-${platform.key}`}
+              id="settings-name"
+              required
               disabled={readOnly}
-              value={socialLinks[platform.key] ?? ''}
-              onChange={(event) => setSocialLinks((prev) => ({ ...prev, [platform.key]: event.target.value }))}
+              value={name}
+              onChange={(event) => setName(event.target.value)}
             />
           </div>
-        ))}
-      </div>
 
-      <div className="flex flex-col gap-3">
-        <Label>Feature flags</Label>
-        {featureFlags.length === 0 ? <p className="text-sm text-muted-foreground">No feature flags yet.</p> : null}
-        {featureFlags.map((flag, index) => (
-          <div key={flag.name} className="flex items-center gap-2">
-            <Checkbox
-              checked={flag.enabled}
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="settings-contact-email">Contact email</Label>
+            <Input
+              id="settings-contact-email"
+              type="email"
               disabled={readOnly}
-              onCheckedChange={(checked) =>
-                setFeatureFlags((prev) => prev.map((f, i) => (i === index ? { ...f, enabled: checked === true } : f)))
-              }
+              value={contactEmail}
+              onChange={(event) => setContactEmail(event.target.value)}
             />
-            <span className="flex-1 font-mono text-sm">{flag.name}</span>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="social" className="flex flex-col gap-3 pt-4">
+          <p className="text-sm text-muted-foreground">Links shown wherever this deployment surfaces social profiles.</p>
+          {SOCIAL_PLATFORMS.map((platform) => (
+            <div key={platform.key} className="flex flex-col gap-2">
+              <Label htmlFor={`social-${platform.key}`} className="text-sm font-normal text-muted-foreground">
+                {platform.label}
+              </Label>
+              <Input
+                id={`social-${platform.key}`}
+                disabled={readOnly}
+                value={socialLinks[platform.key] ?? ''}
+                onChange={(event) => setSocialLinks((prev) => ({ ...prev, [platform.key]: event.target.value }))}
+              />
+            </div>
+          ))}
+        </TabsContent>
+
+        <TabsContent value="advanced" className="flex flex-col gap-6 pt-4">
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="settings-cors-origin">CORS origin</Label>
+            <Input
+              id="settings-cors-origin"
+              placeholder="https://pathvera.com"
+              disabled={readOnly}
+              value={corsOrigin}
+              onChange={(event) => setCorsOrigin(event.target.value)}
+            />
+            <p className="text-sm text-muted-foreground">
+              Informational reference only — the actual allow-list is configured via the
+              CORS_ORIGINS environment binding (§9).
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-3">
+            <Label>Feature flags</Label>
+            {featureFlags.length === 0 ? <p className="text-sm text-muted-foreground">No feature flags yet.</p> : null}
+            {featureFlags.map((flag, index) => (
+              <div key={flag.name} className="flex items-center gap-2">
+                <Checkbox
+                  checked={flag.enabled}
+                  disabled={readOnly}
+                  onCheckedChange={(checked) =>
+                    setFeatureFlags((prev) => prev.map((f, i) => (i === index ? { ...f, enabled: checked === true } : f)))
+                  }
+                />
+                <span className="flex-1 font-mono text-sm">{flag.name}</span>
+                {!readOnly ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={`Remove ${flag.name}`}
+                    onClick={() => setFeatureFlags((prev) => prev.filter((_, i) => i !== index))}
+                  >
+                    <Trash2 />
+                  </Button>
+                ) : null}
+              </div>
+            ))}
             {!readOnly ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                aria-label={`Remove ${flag.name}`}
-                onClick={() => setFeatureFlags((prev) => prev.filter((_, i) => i !== index))}
-              >
-                <Trash2 />
-              </Button>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="flag-name"
+                  value={newFlagName}
+                  onChange={(event) => setNewFlagName(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault();
+                      addFlag();
+                    }
+                  }}
+                />
+                <Button type="button" variant="outline" onClick={addFlag}>
+                  Add
+                </Button>
+              </div>
             ) : null}
           </div>
-        ))}
-        {!readOnly ? (
-          <div className="flex gap-2">
-            <Input
-              placeholder="flag-name"
-              value={newFlagName}
-              onChange={(event) => setNewFlagName(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  event.preventDefault();
-                  addFlag();
-                }
-              }}
-            />
-            <Button type="button" variant="outline" onClick={addFlag}>
-              Add
-            </Button>
-          </div>
-        ) : null}
-      </div>
+        </TabsContent>
+      </Tabs>
 
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
@@ -190,13 +210,10 @@ export function SettingsPage() {
     <div className="flex max-w-2xl flex-col gap-6">
       <PageBreadcrumb items={[{ label: 'Settings' }]} />
 
-      <div>
-        <h1 className="text-2xl font-semibold">Settings</h1>
-        <p className="text-muted-foreground">
-          Site-wide configuration for this deployment (§6, §11).
-          {!isOwner ? ' Only owners can make changes.' : ''}
-        </p>
-      </div>
+      <PageHeader
+        title="Settings"
+        description={`Site-wide configuration for this deployment (§6, §11).${!isOwner ? ' Only owners can make changes.' : ''}`}
+      />
 
       {isPending ? (
         <Card>
