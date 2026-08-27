@@ -122,4 +122,41 @@ describe('DataTable', () => {
 
     expect(onRowClick).not.toHaveBeenCalled();
   });
+
+  it('renders no selection checkboxes or bulk bar by default', () => {
+    render(<DataTable columns={columns} data={rows(3)} bulkActions={() => <button>Delete</button>} />);
+
+    expect(screen.queryAllByRole('checkbox')).toHaveLength(0);
+    expect(screen.queryByText('Delete')).not.toBeInTheDocument();
+  });
+
+  it('shows the bulk actions bar once rows are selected, and clears it via the callback', async () => {
+    render(
+      <DataTable
+        columns={columns}
+        data={rows(3)}
+        enableRowSelection
+        bulkActions={(selected, clear) => (
+          <button onClick={clear}>Delete {selected.length}</button>
+        )}
+      />,
+    );
+
+    expect(screen.queryByText(/Delete \d/)).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getAllByRole('checkbox', { name: 'Select row' })[0]!);
+
+    expect(screen.getByText('1 selected')).toBeInTheDocument();
+    expect(screen.getByText('Delete 1')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByText('Delete 1'));
+
+    expect(screen.queryByText('1 selected')).not.toBeInTheDocument();
+  });
+
+  it('renders a toolbar next to the search input', () => {
+    render(<DataTable columns={columns} data={rows(3)} toolbar={<span>Status: All</span>} />);
+
+    expect(screen.getByText('Status: All')).toBeInTheDocument();
+  });
 });

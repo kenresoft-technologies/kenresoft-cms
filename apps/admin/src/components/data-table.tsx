@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import {
   flexRender,
   getCoreRowModel,
@@ -7,11 +7,13 @@ import {
   getSortedRowModel,
   useReactTable,
   type ColumnDef,
+  type RowSelectionState,
   type SortingState,
 } from '@tanstack/react-table';
 import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
@@ -20,6 +22,12 @@ interface DataTableProps<TData, TValue> {
   data: TData[];
   searchPlaceholder?: string;
   onRowClick?: (row: TData) => void;
+  /** Adds a checkbox column and enables selection state, off by default. */
+  enableRowSelection?: boolean;
+  /** Rendered next to the search input — e.g. a status filter select. */
+  toolbar?: ReactNode;
+  /** Rendered as a bar above the table once at least one row is selected. */
+  bulkActions?: (selectedRows: TData[], clearSelection: () => void) => ReactNode;
 }
 
 const INTERACTIVE_SELECTOR = 'a, button, [role="menuitem"], [role="button"]';
@@ -29,25 +37,56 @@ const SORT_ICON = {
   desc: ArrowDown,
 } as const;
 
-// Generic table shell (search + sort + pagination) shared by any page that lists rows of
-// domain data — shadcn ships this as a documented composition of TanStack Table and its own
-// Table primitives rather than a single drop-in component, so this is that composition, built
-// once here instead of per page.
+// Generic table shell (search + sort + pagination, optionally selection/toolbar/bulk actions)
+// shared by any page that lists rows of domain data — shadcn ships this as a documented
+// composition of TanStack Table and its own Table primitives rather than a single drop-in
+// component, so this is that composition, built once here instead of per page.
 export function DataTable<TData, TValue>({
   columns,
   data,
   searchPlaceholder = 'Search…',
   onRowClick,
+  enableRowSelection = false,
+  toolbar,
+  bulkActions,
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = useState('');
+  const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
+
+  const tableColumns = useMemo<ColumnDef<TData, TValue>[]>(() => {
+    if (!enableRowSelection) return columns;
+
+    const selectColumn: ColumnDef<TData, TValue> = {
+      id: 'select',
+      header: ({ table }) => (
+        <Checkbox
+          checked={table.getIsAllPageRowsSelected() || (table.getIsSomePageRowsSelected() && 'indeterminate')}
+          onCheckedChange={(value) => table.toggleAllPageRowsSelected(value === true)}
+          aria-label="Select all rows"
+        />
+      ),
+      cell: ({ row }) => (
+        <Checkbox
+          checked={row.getIsSelected()}
+          onCheckedChange={(value) => row.toggleSelected(value === true)}
+          aria-label="Select row"
+        />
+      ),
+      enableSorting: false,
+    };
+
+    return [selectColumn, ...columns];
+  }, [columns, enableRowSelection]);
 
   const table = useReactTable({
     data,
-    columns,
-    state: { sorting, globalFilter },
+    columns: tableColumns,
+    state: { sorting, globalFilter, rowSelection },
+    enableRowSelection,
     onSortingChange: setSorting,
     onGlobalFilterChange: setGlobalFilter,
+    onRowSelectionChange: setRowSelection,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
@@ -55,14 +94,27 @@ export function DataTable<TData, TValue>({
     initialState: { pagination: { pageSize: 10 } },
   });
 
+  const selectedRows = table.getSelectedRowModel().rows.map((row) => row.original);
+
   return (
     <div className="flex flex-col gap-3">
-      <Input
-        placeholder={searchPlaceholder}
-        value={globalFilter}
-        onChange={(event) => setGlobalFilter(event.target.value)}
-        className="max-w-sm"
-      />
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          placeholder={searchPlaceholder}
+          value={globalFilter}
+          onChange={(event) => setGlobalFilter(event.target.value)}
+          className="max-w-sm"
+        />
+        {toolbar}
+      </div>
+
+      {bulkActions && selectedRows.length > 0 ? (
+        <div className="flex items-center justify-between rounded-lg border bg-muted/40 px-3 py-2">
+          <span className="text-sm font-medium">{selectedRows.length} selected</span>
+          <div className="flex items-center gap-2">{bulkActions(selectedRows, () => setRowSelection({}))}</div>
+        </div>
+      ) : null}
+
       <div className="rounded-xl border">
         <Table>
           <TableHeader>
@@ -97,6 +149,7 @@ export function DataTable<TData, TValue>({
               table.getRowModel().rows.map((row) => (
                 <TableRow
                   key={row.id}
+                  data-state={row.getIsSelected() ? 'selected' : undefined}
                   className={onRowClick ? 'group cursor-pointer' : 'group'}
                   onClick={
                     onRowClick
@@ -115,7 +168,7 @@ export function DataTable<TData, TValue>({
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={columns.length} className="h-24 text-center text-muted-foreground">
+                <TableCell colSpan={tableColumns.length} className="h-24 text-center text-muted-foreground">
                   No results.
                 </TableCell>
               </TableRow>
