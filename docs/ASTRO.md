@@ -55,7 +55,19 @@ work, not a rename of this package (see Future work).
   (`apps/api/src/routes/public/media.ts`), unauthenticated like the entry routes, edge-cached
   for a year via the same Cache API pattern as entries (`lib/public-cache.ts`) since media is
   immutable once uploaded — no edit endpoint, only create/delete — and invalidated on delete.
-- A `KenresoftApiError` thrown for any other non-2xx response, carrying the HTTP status.
+- `forms.submit({ formSlug, data })` — submits a public form. Rate limited server-side
+  (5/60s per client IP) and validated against that form's own field definitions — there's no
+  client-side equivalent of those definitions to validate against here (no public
+  form-metadata endpoint either), so a validation failure only surfaces after a real request.
+- A `KenresoftApiError` thrown for any other non-2xx response from `entries.*`/`media.url`'s
+  underlying fetch, carrying the HTTP status; for `forms.submit`, thrown for *any* non-2xx
+  response (400/404/429 are all meaningful outcomes here, not something to paper over), with
+  `issues` populated for a 400 (the field-level validation errors).
+
+This covers the entire public API surface (`docs/ARCHITECTURE.md` §8) — there's nothing else
+public to wrap. The admin API (creating/editing content types, entries, media, users, forms)
+is deliberately never exposed here; that boundary is the whole point of the CMS-first
+architecture (§4/§9), not something this client works around.
 
 There's deliberately no `contentTypes.list()`/`contentTypes.get()`. The public API has no
 endpoint for content-type metadata (field definitions, etc.) — only `apps/admin`'s

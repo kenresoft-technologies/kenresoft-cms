@@ -1,10 +1,10 @@
-import type { Entry } from '@kenresoft/contracts';
+import type { Entry, FormSubmission } from '@kenresoft/contracts';
 
-// Type-only import — Entry is erased at compile time, so this package never actually depends
-// on zod (or anything else @kenresoft/contracts pulls in) at runtime. It exists purely so
-// this client's return types stay in sync with the API's real response shape instead of a
+// Type-only imports — erased at compile time, so this package never actually depends on zod
+// (or anything else @kenresoft/contracts pulls in) at runtime. They exist purely so this
+// client's return types stay in sync with the API's real response shapes instead of a
 // hand-maintained copy — see the "Types" note in docs/ASTRO.md.
-export type { Entry };
+export type { Entry, FormSubmission };
 
 export interface KenresoftClientConfig {
   /** Base URL of a Kenresoft CMS deployment, e.g. "http://localhost:8787" in local dev. */
@@ -13,16 +13,27 @@ export interface KenresoftClientConfig {
   fetch?: typeof fetch;
 }
 
-// Thrown for any non-2xx, non-404 response. A 404 is not an error from this client's
-// perspective — see notFound() below — since "no content type with that slug" and "no
-// published entry with that slug" are both normal, expected outcomes for public content.
+export interface FormSubmissionIssue {
+  path: (string | number)[];
+  message: string;
+}
+
+// Thrown for any non-2xx, non-404 response from entries.list/entries.get (a 404 there is not
+// an error from this client's perspective — see request() below — since "no content type with
+// that slug" and "no published entry with that slug" are both normal, expected outcomes for
+// public content), and for ANY non-2xx response from forms.submit, where 400/404/429 are all
+// meaningfully different outcomes a caller needs to handle, not something to paper over as
+// null. `issues` is populated only for a 400 from forms.submit — the form-specific field
+// validation errors (apps/api/src/lib/form-submission-validation.ts).
 export class KenresoftApiError extends Error {
   status: number;
+  issues: FormSubmissionIssue[] | undefined;
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, issues?: FormSubmissionIssue[]) {
     super(message);
     this.name = 'KenresoftApiError';
     this.status = status;
+    this.issues = issues;
   }
 }
 
@@ -39,6 +50,17 @@ export interface GetEntryOptions extends ListEntriesOptions {
 export interface MediaUrlOptions {
   /** A Media item's id — typically the value stored in a `media`-type field on an Entry. */
   id: string;
+}
+
+export interface SubmitFormOptions {
+  /** The form's slug, not its display name — e.g. "contact". */
+  formSlug: string;
+  /**
+   * Field values keyed by each field's name. No fixed shape — validated server-side against
+   * that form's own field definitions (there's no client-side equivalent of those definitions
+   * to validate against here, since there's no public form-metadata endpoint either).
+   */
+  data: Record<string, unknown>;
 }
 
 export interface KenresoftClient {
@@ -67,6 +89,15 @@ export interface KenresoftClient {
      * bad id 404s when the browser requests it, same as a broken image link anywhere else.
      */
     url(options: MediaUrlOptions): string;
+  };
+  forms: {
+    /**
+     * Submits a public form. Rate limited server-side (5/60s per client IP) and validated
+     * against the form's own field definitions — throws KenresoftApiError with `issues`
+     * populated for a validation failure (400), and without `issues` for a nonexistent form
+     * (404) or exceeding the rate limit (429).
+     */
+    submit(options: SubmitFormOptions): Promise<FormSubmission>;
   };
 }
 
@@ -103,6 +134,29 @@ export function createKenresoftClient(config: KenresoftClientConfig): KenresoftC
     media: {
       url({ id }) {
         return `${baseUrl}/api/v1/public/media/${id}/file`;
+      },
+    },
+    forms: {
+      async submit({ formSlug, data }) {
+        const path = `/api/v1/public/forms/${formSlug}/submissions`;
+        const response = await doFetch(`${baseUrl}${path}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+        });
+
+        if (!response.ok) {
+          const body = (await response.json().catch(() => null)) as
+            | { error?: string; issues?: FormSubmissionIssue[] }
+            | null;
+          throw new KenresoftApiError(
+            response.status,
+            body?.error ?? `Kenresoft CMS API request failed: POST ${path} -> ${response.status}`,
+            body?.issues,
+          );
+        }
+
+        return (await response.json()) as FormSubmission;
       },
     },
   };
