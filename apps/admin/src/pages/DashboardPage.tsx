@@ -1,21 +1,41 @@
 import { useMemo } from 'react';
-import { ArrowRight, FileText, Image as ImageIcon, LayoutList, type LucideIcon } from 'lucide-react';
+import {
+  ArrowRight,
+  ClipboardList,
+  FileText,
+  Image as ImageIcon,
+  LayoutList,
+  Plus,
+  Upload,
+  Users as UsersIcon,
+  type LucideIcon,
+} from 'lucide-react';
 import { Link } from 'react-router';
 import { Cell, Pie, PieChart } from 'recharts';
 
 import { formatBytes } from '@/lib/format';
 import { useDashboardStats } from '@/lib/queries/dashboard';
-import { Badge } from '@/components/ui/badge';
+import { useForms } from '@/lib/queries/forms';
+import { useUsers } from '@/lib/queries/users';
+import { PageHeader } from '@/components/page-header';
+import { StatusBadge } from '@/components/status-badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
 import type { ChartConfig } from '@/components/ui/chart';
 import { Skeleton } from '@/components/ui/skeleton';
+import type { DashboardStats } from '@/lib/types';
 
 const chartConfig = {
   draft: { label: 'Draft', color: 'var(--chart-1)' },
   published: { label: 'Published', color: 'var(--chart-2)' },
 } satisfies ChartConfig;
+
+const QUICK_ACTIONS = [
+  { to: '/content-types', label: 'New content type', description: 'Define a reusable shape for your content', icon: LayoutList },
+  { to: '/media', label: 'Upload media', description: 'Add images to your library', icon: Upload },
+  { to: '/forms', label: 'New form', description: 'Start collecting visitor submissions', icon: ClipboardList },
+] as const;
 
 function StatCard({
   icon: Icon,
@@ -30,17 +50,70 @@ function StatCard({
 }) {
   return (
     <Card>
-      <CardContent className="flex items-start gap-4">
+      <CardContent className="flex items-start gap-3">
         <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
           <Icon className="size-5 text-primary" />
         </div>
-        <div>
-          <p className="text-sm text-muted-foreground">{label}</p>
-          <p className="text-2xl font-semibold">{value}</p>
-          {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
+        <div className="min-w-0">
+          <p className="truncate text-sm text-muted-foreground">{label}</p>
+          <p className="text-2xl font-semibold tracking-tight">{value}</p>
+          {hint ? <p className="truncate text-xs text-muted-foreground">{hint}</p> : null}
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function QuickActionsCard() {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Quick actions</CardTitle>
+        <CardDescription>Jump straight into common tasks.</CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-1">
+        {QUICK_ACTIONS.map((action) => (
+          <Link
+            key={action.to}
+            to={action.to}
+            className="group flex items-center gap-3 rounded-lg p-2 -mx-2 hover:bg-muted/50"
+          >
+            <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground group-hover:text-foreground">
+              <action.icon className="size-4" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium">{action.label}</p>
+              <p className="truncate text-xs text-muted-foreground">{action.description}</p>
+            </div>
+            <Plus className="size-4 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+          </Link>
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
+function EntryList({ entries, emptyMessage }: { entries: DashboardStats['recentEntries']; emptyMessage: string }) {
+  if (entries.length === 0) {
+    return <p className="text-sm text-muted-foreground">{emptyMessage}</p>;
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      {entries.map((entry) => (
+        <Link
+          key={entry.id}
+          to={`/content-types/${entry.contentTypeId}/entries/${entry.id}`}
+          className="flex items-center justify-between gap-2 rounded-lg border p-2 hover:bg-muted/50"
+        >
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <span className="truncate text-sm font-medium">{entry.slug}</span>
+            <span className="truncate text-xs text-muted-foreground">{entry.contentTypeName}</span>
+          </div>
+          <StatusBadge status={entry.status} />
+        </Link>
+      ))}
+    </div>
   );
 }
 
@@ -71,6 +144,8 @@ function OnboardingCard() {
 
 export function DashboardPage() {
   const { data: stats, isPending } = useDashboardStats();
+  const { data: forms } = useForms();
+  const { data: users } = useUsers();
 
   const chartData = useMemo(
     () =>
@@ -83,12 +158,11 @@ export function DashboardPage() {
     [stats],
   );
 
+  const drafts = useMemo(() => stats?.recentEntries.filter((entry) => entry.status === 'draft') ?? [], [stats]);
+
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Dashboard</h1>
-        <p className="text-muted-foreground">Welcome to Kenresoft CMS.</p>
-      </div>
+      <PageHeader title="Dashboard" description="Welcome back — here's what's happening across your content." />
 
       {isPending ? (
         <div className="grid gap-4 sm:grid-cols-3">
@@ -102,7 +176,7 @@ export function DashboardPage() {
 
       {stats && stats.contentTypeCount > 0 ? (
         <>
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
             <StatCard icon={LayoutList} label="Content types" value={String(stats.contentTypeCount)} />
             <StatCard
               icon={FileText}
@@ -111,6 +185,8 @@ export function DashboardPage() {
               hint={`${stats.entryCounts.published} published, ${stats.entryCounts.draft} draft`}
             />
             <StatCard icon={ImageIcon} label="Media" value={String(stats.mediaCount)} hint={formatBytes(stats.mediaStorageBytes)} />
+            <StatCard icon={ClipboardList} label="Forms" value={String(forms?.length ?? 0)} />
+            <StatCard icon={UsersIcon} label="Users" value={String(users?.length ?? 0)} />
           </div>
 
           <div className="grid gap-4 lg:grid-cols-3">
@@ -138,29 +214,27 @@ export function DashboardPage() {
               </CardContent>
             </Card>
 
+            <QuickActionsCard />
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-2">
             <Card>
               <CardHeader>
                 <CardTitle>Recent activity</CardTitle>
                 <CardDescription>Last updated entries.</CardDescription>
               </CardHeader>
-              <CardContent className="flex flex-col gap-3">
-                {stats.recentEntries.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">Nothing yet.</p>
-                ) : (
-                  stats.recentEntries.map((entry) => (
-                    <Link
-                      key={entry.id}
-                      to={`/content-types/${entry.contentTypeId}/entries/${entry.id}`}
-                      className="flex items-center justify-between gap-2 rounded-lg border p-2 hover:bg-muted/50"
-                    >
-                      <div className="flex flex-col gap-0.5 overflow-hidden">
-                        <span className="truncate text-sm font-medium">{entry.slug}</span>
-                        <span className="truncate text-xs text-muted-foreground">{entry.contentTypeName}</span>
-                      </div>
-                      <Badge variant={entry.status === 'published' ? 'default' : 'secondary'}>{entry.status}</Badge>
-                    </Link>
-                  ))
-                )}
+              <CardContent>
+                <EntryList entries={stats.recentEntries} emptyMessage="Nothing yet." />
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Drafts</CardTitle>
+                <CardDescription>Unpublished entries among recent activity.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <EntryList entries={drafts} emptyMessage="No drafts among recently updated entries." />
               </CardContent>
             </Card>
           </div>
