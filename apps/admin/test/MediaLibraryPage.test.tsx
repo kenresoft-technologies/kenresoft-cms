@@ -116,12 +116,42 @@ describe('MediaLibraryPage', () => {
     renderPage();
     await waitFor(() => expect(screen.getByText('photo.png')).toBeInTheDocument());
 
-    await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Delete photo.png' }));
     const alert = await screen.findByRole('alertdialog');
     expect(within(alert).getByText('Delete "photo.png"?')).toBeInTheDocument();
     await userEvent.click(within(alert).getByRole('button', { name: 'Delete' }));
 
     await waitFor(() => expect(deleteMock).toHaveBeenCalledWith('/api/v1/admin/media/m-1'));
+  });
+
+  it('filters the grid by filename search', async () => {
+    getMock.mockResolvedValue([
+      { id: 'm-1', filename: 'photo.png', contentType: 'image/png', size: 1024, width: 10, height: 10, altText: null },
+      { id: 'm-2', filename: 'banner.jpg', contentType: 'image/jpeg', size: 2048, width: 20, height: 20, altText: null },
+    ]);
+
+    renderPage();
+    await waitFor(() => expect(screen.getByText('photo.png')).toBeInTheDocument());
+    expect(screen.getByText('banner.jpg')).toBeInTheDocument();
+
+    await userEvent.type(screen.getByPlaceholderText('Search media…'), 'photo');
+
+    expect(screen.getByText('photo.png')).toBeInTheDocument();
+    expect(screen.queryByText('banner.jpg')).not.toBeInTheDocument();
+  });
+
+  it('switches to list view and shows the same items in a table', async () => {
+    getMock.mockResolvedValue([
+      { id: 'm-1', filename: 'photo.png', contentType: 'image/png', size: 1024, width: 10, height: 10, altText: null },
+    ]);
+
+    renderPage();
+    await waitFor(() => expect(screen.getByText('photo.png')).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole('button', { name: 'List view' }));
+
+    expect(screen.getByRole('table')).toBeInTheDocument();
+    expect(screen.getByText('photo.png')).toBeInTheDocument();
   });
 
   it('does not delete when the alert dialog is cancelled', async () => {
@@ -140,7 +170,7 @@ describe('MediaLibraryPage', () => {
     renderPage();
     await waitFor(() => expect(screen.getByText('photo.png')).toBeInTheDocument());
 
-    await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Delete photo.png' }));
     const alert = await screen.findByRole('alertdialog');
     await userEvent.click(within(alert).getByRole('button', { name: 'Cancel' }));
 
