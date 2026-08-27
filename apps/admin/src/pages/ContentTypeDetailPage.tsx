@@ -280,7 +280,8 @@ export function ContentTypeDetailPage() {
       <PageBreadcrumb
         items={[
           { label: 'Content types', to: '/content-types' },
-          { label: contentType?.name ?? '…' },
+          { label: contentType?.name ?? '…', to: `/content-types/${contentTypeId}` },
+          { label: 'Fields' },
         ]}
       />
 
@@ -326,17 +327,17 @@ export function ContentTypeDetailPage() {
 
       {fields && fields.length > 0 ? (
         <div className="rounded-xl border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-8" />
-                <TableHead>Name</TableHead>
-                <TableHead>Label</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Required</TableHead>
-              </TableRow>
-            </TableHeader>
-            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-8" />
+                  <TableHead>Name</TableHead>
+                  <TableHead>Label</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Required</TableHead>
+                </TableRow>
+              </TableHeader>
               <SortableContext items={fields.map((field) => field.id)} strategy={verticalListSortingStrategy}>
                 <TableBody>
                   {fields.map((field) => (
@@ -344,8 +345,8 @@ export function ContentTypeDetailPage() {
                   ))}
                 </TableBody>
               </SortableContext>
-            </DndContext>
-          </Table>
+            </Table>
+          </DndContext>
         </div>
       ) : null}
     </div>
