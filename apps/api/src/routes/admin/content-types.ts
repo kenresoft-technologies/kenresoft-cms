@@ -68,9 +68,11 @@ contentTypesRoute.post('/:id/fields', async (c) => {
   const parsed = await parseJsonBody(c, createFieldDefinitionSchema);
   if ('error' in parsed) return parsed.error;
 
+  const existingFields = await listFieldDefinitionsForContentType(db, contentType.id);
   const field = await createFieldDefinition(db, {
     ...parsed.data,
     contentTypeId: contentType.id,
+    sortOrder: parsed.data.sortOrder ?? existingFields.length,
   });
   return c.json(field, 201);
 });

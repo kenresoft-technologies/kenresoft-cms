@@ -110,6 +110,34 @@ describe('admin routes (real D1)', () => {
     expect(afterDeleteRes.status).toBe(404);
   });
 
+  it('orders fields by creation order, not alphabetically, when sortOrder is omitted', async () => {
+    const cookie = await freshCookie();
+    const headers = { Cookie: cookie, 'Content-Type': 'application/json' };
+
+    const contentType = await (
+      await SELF.fetch('https://example.com/api/v1/admin/content-types', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ name: 'Blog Post', slug: 'blog-post' }),
+      })
+    ).json<{ id: string }>();
+
+    for (const name of ['title', 'body', 'excerpt']) {
+      await SELF.fetch(`https://example.com/api/v1/admin/content-types/${contentType.id}/fields`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ name, label: name, fieldType: 'text' }),
+      });
+    }
+
+    const fields = await (
+      await SELF.fetch(`https://example.com/api/v1/admin/content-types/${contentType.id}/fields`, {
+        headers: { Cookie: cookie },
+      })
+    ).json<{ name: string }[]>();
+    expect(fields.map((f) => f.name)).toEqual(['title', 'body', 'excerpt']);
+  });
+
   it('validates request bodies with Zod before touching the database', async () => {
     const cookie = await freshCookie();
 

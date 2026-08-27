@@ -6,7 +6,9 @@ export const createFieldDefinitionSchema = z.object({
   label: z.string().min(1).max(200),
   fieldType: z.enum(FIELD_TYPES),
   required: z.boolean().optional().default(false),
-  sortOrder: z.number().int().optional().default(0),
+  // No default here — the route auto-assigns the next position when omitted, so fields added
+  // one at a time (the common case) come back in creation order instead of all tying at 0.
+  sortOrder: z.number().int().optional(),
   config: z.record(z.string(), z.unknown()).nullable().optional(),
 });
 
