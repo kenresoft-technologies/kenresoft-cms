@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import { sqliteTable, text, integer, uniqueIndex, index } from 'drizzle-orm/sqlite-core';
 
 import { contentTypes } from './content-types';
+import { user } from './auth';
 // ENTRY_STATUSES itself lives in packages/contracts — see field-definitions.ts for why.
 import type { EntryStatus } from '@kenresoft/contracts';
 
@@ -21,6 +22,11 @@ export const entries = sqliteTable(
     // Nullable — set while still Draft to queue a Cron Trigger transition to Published once
     // it elapses (§13). Null means "no schedule," not "publish immediately."
     publishAt: integer('publish_at', { mode: 'timestamp' }),
+    // Nullable: the account that created this entry, when there was one — mirrors
+    // entry_revisions.createdBy (a future system-triggered creation may not have one). Set
+    // once at creation and never changed by later edits, unlike entry_revisions.createdBy
+    // which records the author of every individual save.
+    createdBy: text('created_by').references(() => user.id, { onDelete: 'set null' }),
     // Field values keyed by FieldDefinition.name — validated against the content type's
     // field definitions at the API layer, not the DB layer.
     data: text('data', { mode: 'json' })
