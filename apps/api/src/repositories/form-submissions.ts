@@ -1,5 +1,5 @@
 import { desc, eq, formSubmissions } from '@kenresoft/database';
-import type { Database, FormSubmission, NewFormSubmission } from '@kenresoft/database';
+import type { Database, FormSubmission, FormSubmissionStatus, NewFormSubmission } from '@kenresoft/database';
 
 export async function createFormSubmission(
   db: Database,
@@ -14,4 +14,17 @@ export function listFormSubmissions(db: Database, formId: string): Promise<FormS
     where: eq(formSubmissions.formId, formId),
     orderBy: desc(formSubmissions.createdAt),
   });
+}
+
+export function getFormSubmissionById(db: Database, id: string) {
+  return db.query.formSubmissions.findFirst({ where: eq(formSubmissions.id, id) });
+}
+
+export async function updateFormSubmissionStatus(
+  db: Database,
+  id: string,
+  status: FormSubmissionStatus,
+): Promise<FormSubmission> {
+  const [row] = await db.update(formSubmissions).set({ status }).where(eq(formSubmissions.id, id)).returning();
+  return row!;
 }

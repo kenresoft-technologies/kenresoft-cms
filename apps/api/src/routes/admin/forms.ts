@@ -6,9 +6,14 @@ import type { Bindings } from '../../lib/env';
 import type { AuthedVariables } from '../../middleware/require-session';
 import { requireRole } from '../../middleware/require-role';
 import { createFormField, listFormFields } from '../../repositories/form-fields';
-import { listFormSubmissions } from '../../repositories/form-submissions';
+import {
+  getFormSubmissionById,
+  listFormSubmissions,
+  updateFormSubmissionStatus,
+} from '../../repositories/form-submissions';
 import { createForm, getFormById, listForms } from '../../repositories/forms';
 import { createFormFieldSchema } from '../../validators/form-fields';
+import { updateFormSubmissionStatusSchema } from '../../validators/form-submissions';
 import { createFormSchema } from '../../validators/forms';
 
 export const formsRoute = new Hono<{ Bindings: Bindings; Variables: AuthedVariables }>();
@@ -73,4 +78,25 @@ formsRoute.get('/:id/submissions', async (c) => {
     return c.json({ error: 'Form not found' }, 404);
   }
   return c.json(await listFormSubmissions(db, form.id));
+});
+
+// No role gate — triaging submissions (new/read/archived) is an editorial action, same as
+// entry create/edit, which also has no server-side role check.
+formsRoute.patch('/:id/submissions/:submissionId', async (c) => {
+  const db = getDb(c);
+  const form = await getFormById(db, c.req.param('id'));
+  if (!form) {
+    return c.json({ error: 'Form not found' }, 404);
+  }
+
+  const submission = await getFormSubmissionById(db, c.req.param('submissionId'));
+  if (!submission || submission.formId !== form.id) {
+    return c.json({ error: 'Submission not found' }, 404);
+  }
+
+  const parsed = await parseJsonBody(c, updateFormSubmissionStatusSchema);
+  if ('error' in parsed) return parsed.error;
+
+  const updated = await updateFormSubmissionStatus(db, submission.id, parsed.data.status);
+  return c.json(updated);
 });

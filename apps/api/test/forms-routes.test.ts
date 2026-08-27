@@ -166,6 +166,67 @@ describe('forms routes (real D1)', () => {
     expect(body.data).not.toHaveProperty('unexpectedField');
   });
 
+  it('updates a submission\'s status', async () => {
+    const cookie = await authedCookie('forms-status-admin@pathvera.test');
+    const form = await createContactForm(cookie);
+
+    await SELF.fetch('https://example.com/api/v1/public/forms/contact/submissions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': 'status-test-1' },
+      body: JSON.stringify({ name: 'Jane', email: 'jane@example.com' }),
+    });
+    const [submission] = await (
+      await SELF.fetch(`https://example.com/api/v1/admin/forms/${form.id}/submissions`, {
+        headers: { Cookie: cookie },
+      })
+    ).json<{ id: string; status: string }[]>();
+    expect(submission?.status).toBe('new');
+
+    const response = await SELF.fetch(
+      `https://example.com/api/v1/admin/forms/${form.id}/submissions/${submission!.id}`,
+      {
+        method: 'PATCH',
+        headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'read' }),
+      },
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ status: 'read' });
+  });
+
+  it('404s updating a submission that does not belong to the given form', async () => {
+    const cookie = await authedCookie('forms-status-mismatch-admin@pathvera.test');
+    const formA = await createContactForm(cookie);
+    const formB = await (
+      await SELF.fetch('https://example.com/api/v1/admin/forms', {
+        method: 'POST',
+        headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Other', slug: 'other' }),
+      })
+    ).json<{ id: string }>();
+
+    await SELF.fetch('https://example.com/api/v1/public/forms/contact/submissions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': 'status-test-2' },
+      body: JSON.stringify({ name: 'Jane', email: 'jane@example.com' }),
+    });
+    const [submission] = await (
+      await SELF.fetch(`https://example.com/api/v1/admin/forms/${formA.id}/submissions`, {
+        headers: { Cookie: cookie },
+      })
+    ).json<{ id: string }[]>();
+
+    const response = await SELF.fetch(
+      `https://example.com/api/v1/admin/forms/${formB.id}/submissions/${submission!.id}`,
+      {
+        method: 'PATCH',
+        headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'read' }),
+      },
+    );
+    expect(response.status).toBe(404);
+  });
+
   it('rate limits repeat submissions from the same client', async () => {
     const cookie = await authedCookie('forms-ratelimit-admin@pathvera.test');
     await createContactForm(cookie);
