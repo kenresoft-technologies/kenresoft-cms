@@ -8,6 +8,8 @@
 @theme inline {
     --font-heading: var(--font-sans);
     --font-sans: 'Geist Variable', sans-serif;
+    --color-success-foreground: var(--success-foreground);
+    --color-success: var(--success);
     --color-accent-brand-foreground: var(--accent-brand-foreground);
     --color-accent-brand: var(--accent-brand);
     --color-sidebar-ring: var(--sidebar-ring);
@@ -61,6 +63,8 @@
     --accent-brand-foreground: oklch(0.985 0 0);
     --primary: var(--accent-brand);
     --primary-foreground: var(--accent-brand-foreground);
+    --success: oklch(0.6 0.15 145);
+    --success-foreground: oklch(0.985 0 0);
     --secondary: oklch(0.97 0 0);
     --secondary-foreground: oklch(0.205 0 0);
     --muted: oklch(0.97 0 0);
@@ -98,6 +102,8 @@
     --accent-brand-foreground: oklch(0.16 0 0);
     --primary: var(--accent-brand);
     --primary-foreground: var(--accent-brand-foreground);
+    --success: oklch(0.72 0.16 145);
+    --success-foreground: oklch(0.16 0 0);
     --secondary: oklch(0.269 0 0);
     --secondary-foreground: oklch(0.985 0 0);
     --muted: oklch(0.269 0 0);
