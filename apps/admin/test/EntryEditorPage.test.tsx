@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes } from 'react-router';
+import { createMemoryRouter, RouterProvider } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { EntryEditorPage } from '@/pages/EntryEditorPage';
@@ -37,16 +37,18 @@ function renderEditor(path: string) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
+  // useBlocker (unsaved-changes navigation guard) requires a data router, not the plain
+  // <MemoryRouter>/<Routes> pairing used elsewhere in this test suite.
+  const router = createMemoryRouter(
+    [
+      { path: '/content-types/:contentTypeId/entries/:entryId', element: <EntryEditorPage /> },
+      { path: '/content-types/:contentTypeId/entries', element: <div>Entries list placeholder</div> },
+    ],
+    { initialEntries: [path] },
+  );
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[path]}>
-        <Routes>
-          <Route
-            path="/content-types/:contentTypeId/entries/:entryId"
-            element={<EntryEditorPage />}
-          />
-        </Routes>
-      </MemoryRouter>
+      <RouterProvider router={router} />
     </QueryClientProvider>,
   );
 }
@@ -114,6 +116,75 @@ describe('EntryEditorPage', () => {
         publishAt: null,
       }),
     );
+  });
+
+  it('shows an unsaved-changes indicator once a field is edited, and clears it after saving', async () => {
+    getMock.mockResolvedValue(fields);
+    postMock.mockResolvedValue({ id: 'e-1' });
+
+    renderEditor('/content-types/ct-1/entries/new');
+
+    await waitFor(() => expect(screen.getByLabelText('Title')).toBeInTheDocument());
+    expect(screen.queryByText('Unsaved changes')).not.toBeInTheDocument();
+
+    await userEvent.type(screen.getByLabelText('Slug'), 'hello-world');
+    expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
+
+    await userEvent.type(screen.getByLabelText('Title'), 'Hello World');
+    await userEvent.click(screen.getByRole('button', { name: 'Save entry' }));
+
+    await waitFor(() => expect(screen.getByText('Entries list placeholder')).toBeInTheDocument());
+  });
+
+  it('blocks in-app navigation away from unsaved changes until the user confirms', async () => {
+    getMock.mockImplementation((path: string) => {
+      if (path.endsWith('/fields')) return Promise.resolve(fields);
+      if (path.endsWith('/revisions')) return Promise.resolve([]);
+      return Promise.resolve({
+        id: 'e-1',
+        slug: 'hello-world',
+        status: 'published',
+        data: { title: 'Hello World', featured: true },
+        publishAt: null,
+      });
+    });
+
+    renderEditor('/content-types/ct-1/entries/e-1');
+    await waitFor(() => expect(screen.getByLabelText('Slug')).toHaveValue('hello-world'));
+
+    await userEvent.clear(screen.getByLabelText('Slug'));
+    await userEvent.type(screen.getByLabelText('Slug'), 'changed-slug');
+
+    await userEvent.click(screen.getByRole('link', { name: 'Entries' }));
+
+    const dialog = await screen.findByRole('alertdialog');
+    expect(within(dialog).getByText('Leave without saving?')).toBeInTheDocument();
+    expect(screen.queryByText('Entries list placeholder')).not.toBeInTheDocument();
+
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Leave' }));
+    await waitFor(() => expect(screen.getByText('Entries list placeholder')).toBeInTheDocument());
+  });
+
+  it('shows current field values in the Preview tab', async () => {
+    getMock.mockImplementation((path: string) => {
+      if (path.endsWith('/fields')) return Promise.resolve(fields);
+      if (path.endsWith('/revisions')) return Promise.resolve([]);
+      return Promise.resolve({
+        id: 'e-1',
+        slug: 'hello-world',
+        status: 'published',
+        data: { title: 'Hello World', featured: true },
+        publishAt: null,
+      });
+    });
+
+    renderEditor('/content-types/ct-1/entries/e-1');
+    await waitFor(() => expect(screen.getByLabelText('Slug')).toHaveValue('hello-world'));
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Preview' }));
+
+    expect(screen.getByText('Hello World')).toBeInTheDocument();
+    expect(screen.getByText('Yes')).toBeInTheDocument(); // Featured: true
   });
 
   it('deletes the entry after confirming in the alert dialog', async () => {

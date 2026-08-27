@@ -1,5 +1,5 @@
-import { useState, type FormEvent } from 'react';
-import { useNavigate, useParams } from 'react-router';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useBlocker, useNavigate, useParams } from 'react-router';
 import { toast } from 'sonner';
 
 import { EntryRevisionHistory } from '@/components/entry-revision-history';
@@ -23,15 +23,24 @@ import {
 import { PageBreadcrumb } from '@/components/page-breadcrumb';
 import { PageHeader } from '@/components/page-header';
 import { StatusBadge } from '@/components/status-badge';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 function defaultValueForType(fieldType: FieldType): unknown {
   return fieldType === 'boolean' ? false : '';
+}
+
+function formatPreviewValue(value: unknown): string {
+  if (value === null || value === undefined || value === '') return '—';
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  if (Array.isArray(value)) return value.length ? value.join(', ') : '—';
+  return String(value);
 }
 
 // The datetime-local input works in the viewer's local time and has no timezone info, so
@@ -100,10 +109,7 @@ function EntryForm({ contentTypeId, entryId, fields, entry }: EntryFormProps) {
   const createEntry = useCreateEntry(contentTypeId);
   const updateEntry = useUpdateEntry(contentTypeId, entryId);
 
-  const [slug, setSlug] = useState(entry?.slug ?? '');
-  const [status, setStatus] = useState<EntryStatus>(entry?.status ?? 'draft');
-  const [publishAt, setPublishAt] = useState(() => toDatetimeLocalValue(entry?.publishAt ?? null));
-  const [data, setData] = useState<Record<string, unknown>>(() => {
+  const [initialData] = useState<Record<string, unknown>>(() => {
     if (entry) return entry.data;
     const defaults: Record<string, unknown> = {};
     for (const field of fields) {
@@ -111,7 +117,37 @@ function EntryForm({ contentTypeId, entryId, fields, entry }: EntryFormProps) {
     }
     return defaults;
   });
+  const [initialSlug] = useState(entry?.slug ?? '');
+  const [initialStatus] = useState<EntryStatus>(entry?.status ?? 'draft');
+  const [initialPublishAt] = useState(() => toDatetimeLocalValue(entry?.publishAt ?? null));
+
+  const [slug, setSlug] = useState(initialSlug);
+  const [status, setStatus] = useState<EntryStatus>(initialStatus);
+  const [publishAt, setPublishAt] = useState(initialPublishAt);
+  const [data, setData] = useState<Record<string, unknown>>(initialData);
   const [error, setError] = useState<string | null>(null);
+
+  const isDirty =
+    slug !== initialSlug ||
+    status !== initialStatus ||
+    publishAt !== initialPublishAt ||
+    JSON.stringify(data) !== JSON.stringify(initialData);
+
+  // Navigating away programmatically right after a successful save would otherwise trip the
+  // in-app blocker below too (isDirty can still read true for the render where navigate() is
+  // called) — this ref lets that one navigation bypass it without waiting for state to settle.
+  const justSavedRef = useRef(false);
+
+  const blocker = useBlocker(() => isDirty && !justSavedRef.current);
+
+  useEffect(() => {
+    if (!isDirty) return;
+    function handleBeforeUnload(event: BeforeUnloadEvent) {
+      event.preventDefault();
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isDirty]);
 
   async function save(statusOverride?: EntryStatus) {
     setError(null);
@@ -126,6 +162,7 @@ function EntryForm({ contentTypeId, entryId, fields, entry }: EntryFormProps) {
         await updateEntry.mutateAsync(payload);
         toast.success('Entry saved');
       }
+      justSavedRef.current = true;
       void navigate(`/content-types/${contentTypeId}/entries`);
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to save entry';
@@ -144,31 +181,54 @@ function EntryForm({ contentTypeId, entryId, fields, entry }: EntryFormProps) {
   return (
     <form className="flex flex-col gap-6" onSubmit={handleSubmit}>
       <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
-        <Card className="h-fit">
-          <CardHeader>
-            <CardTitle>Content</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="entry-slug">Slug</Label>
-              <Input
-                id="entry-slug"
-                required
-                className="text-base"
-                value={slug}
-                onChange={(event) => setSlug(event.target.value)}
-              />
-            </div>
+        <Card className="h-fit gap-0 py-0">
+          <Tabs defaultValue="edit">
+            <CardHeader className="flex-row items-center justify-between border-b py-4">
+              <CardTitle>Content</CardTitle>
+              <TabsList>
+                <TabsTrigger value="edit">Edit</TabsTrigger>
+                <TabsTrigger value="preview">Preview</TabsTrigger>
+              </TabsList>
+            </CardHeader>
+            <CardContent className="py-4">
+              <TabsContent value="edit" className="flex flex-col gap-4">
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="entry-slug">Slug</Label>
+                  <Input
+                    id="entry-slug"
+                    required
+                    className="text-base"
+                    value={slug}
+                    onChange={(event) => setSlug(event.target.value)}
+                  />
+                </div>
 
-            {fields.map((field) => (
-              <FieldInput
-                key={field.id}
-                field={field}
-                value={data[field.name]}
-                onChange={(value) => setData((prev) => ({ ...prev, [field.name]: value }))}
-              />
-            ))}
-          </CardContent>
+                {fields.map((field) => (
+                  <FieldInput
+                    key={field.id}
+                    field={field}
+                    value={data[field.name]}
+                    onChange={(value) => setData((prev) => ({ ...prev, [field.name]: value }))}
+                  />
+                ))}
+              </TabsContent>
+
+              <TabsContent value="preview" className="flex flex-col">
+                <div className="flex items-center justify-between gap-4 border-b py-2">
+                  <span className="text-sm font-medium text-muted-foreground">Slug</span>
+                  <span className="text-right text-sm break-words">{slug || '—'}</span>
+                </div>
+                {fields.map((field) => (
+                  <div key={field.id} className="flex items-start justify-between gap-4 border-b py-2 last:border-0">
+                    <span className="shrink-0 text-sm font-medium text-muted-foreground">{field.label}</span>
+                    <span className="max-w-[70%] text-right text-sm break-words">
+                      {formatPreviewValue(data[field.name])}
+                    </span>
+                  </div>
+                ))}
+              </TabsContent>
+            </CardContent>
+          </Tabs>
         </Card>
 
         <div className="flex flex-col gap-4">
@@ -181,6 +241,12 @@ function EntryForm({ contentTypeId, entryId, fields, entry }: EntryFormProps) {
                 <span className="text-sm text-muted-foreground">Current</span>
                 <StatusBadge status={status} />
               </div>
+              {isDirty ? (
+                <Badge variant="outline" className="w-fit gap-1.5 border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                  <span className="size-1.5 rounded-full bg-amber-500" />
+                  Unsaved changes
+                </Badge>
+              ) : null}
               <Select value={status} onValueChange={(value) => setStatus(value as EntryStatus)}>
                 <SelectTrigger id="entry-status" className="w-full">
                   <SelectValue />
@@ -263,6 +329,23 @@ function EntryForm({ contentTypeId, entryId, fields, entry }: EntryFormProps) {
       </div>
 
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
+
+      <AlertDialog open={blocker.state === 'blocked'} onOpenChange={(open) => !open && blocker.reset?.()}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Leave without saving?</AlertDialogTitle>
+            <AlertDialogDescription>
+              You have unsaved changes to this entry. If you leave now, they'll be lost.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => blocker.reset?.()}>Keep editing</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" onClick={() => blocker.proceed?.()}>
+              Leave
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </form>
   );
 }
