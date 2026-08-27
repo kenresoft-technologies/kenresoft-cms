@@ -1,11 +1,26 @@
 # Kenresoft CMS — Architecture & Technical Specification
 
-Version 0.7 — Foundation Specification
+Version 0.8 — Foundation Specification
 First production target: Pathvera Group website
 Vision: Cloudflare-native, API-first, reusable, scalable, open-source-ready CMS
 Status: Proposed / Ready for implementation
 
 ## Changelog
+
+**v0.8 (2026-08-27)** — Closes the public-media gap the v0.7 Astro work surfaced but didn't
+fix: a new unauthenticated `GET /api/v1/public/media/:id/file` (§14), mounted before the
+generic `/api/v1/public/:contentType` catch-all (same ordering reason `/public/forms` already
+needed — "media" would otherwise parse as a content-type slug). Edge-cached via the Cache API
+for a year (media is immutable — no edit endpoint) and explicitly invalidated when the admin
+DELETE route runs, mirroring the entry-cache invalidation discipline already in place. Added
+`media.url({ id })` to `@kenresoft/astro` (pure URL construction, no fetch) and wired
+`examples/astro-site` to render a featured image when a `media`-type field is present —
+falling back to the entry's title for `<img alt>` since Media's real `altText` still isn't
+exposed publicly (a separate, smaller, deliberately-undecided question — see `docs/ASTRO.md`).
+Two other things intentionally left alone rather than silently built: a public
+content-type-metadata endpoint, and SSR/webhook revalidation for the Astro example — both
+real product decisions, not defects, flagged as open in `docs/ASTRO.md` rather than resolved
+unilaterally.
 
 **v0.7 (2026-08-27)** — Phase 8's local Astro integration (§15/§20), scoped strictly to local
 development per the phase boundary — no production deployment attempted or claimed.
@@ -618,6 +633,13 @@ of time (an announcement, a dated blog post) without keeping a session open unti
 - Support deletion and orphan cleanup.
 - Use direct or multipart R2 uploads when file size/performance requires it.
 - Do not store large media blobs in D1.
+- **File serving**: `GET /api/v1/admin/media/:id/file` (admin-gated) and `GET
+  /api/v1/public/media/:id/file` (public, unauthenticated, edge-cached for a year since media
+  is immutable — create/delete only, no edit endpoint). Media has no draft/published concept,
+  so the public route has no status to hide: once uploaded, any id is servable, the same trust
+  model as any CDN-backed asset URL. Alt text/dimensions are not exposed publicly — only the
+  file bytes — a public metadata endpoint is a separate, not-yet-made decision (§15/docs/
+  ASTRO.md's Known limitations).
 
 ---
 
@@ -644,11 +666,12 @@ Astro site
               +--> R2   (not yet — see docs/ASTRO.md's Known Limitations)
 ```
 
-**Status (2026-08-27): Phase 1 (local integration) is done** — see `docs/ASTRO.md` for the
-full guide, and `examples/astro-site/` for a working reference consumer verified against a
-real local deployment (build + dev server, real published entries, draft/publish enforcement
-confirmed end-to-end). Phase 2 (production deployment of an Astro site alongside a Kenresoft
-CMS deployment) is not started; §20's Phase 8 tracks it.
+**Status (2026-08-27): Phase 1 (local integration) is done, including public media serving**
+— see `docs/ASTRO.md` for the full guide, and `examples/astro-site/` for a working reference
+consumer verified against a real local deployment (build + dev server, real published entries,
+draft/publish enforcement confirmed end-to-end, featured images served via the public media
+route). Phase 2 (production deployment of an Astro site alongside a Kenresoft CMS deployment)
+is not started; §20's Phase 8 tracks it.
 
 Astro's official Cloudflare adapter currently supports deployment to Cloudflare Workers and
 provides access to Cloudflare platform capabilities. Astro 6 uses Cloudflare's workerd

@@ -50,6 +50,11 @@ work, not a rename of this package (see Future work).
 - `entries.get({ contentType, slug })` — one published entry, or `null` if it doesn't exist
   *or* isn't published (the public API doesn't distinguish those two cases — see
   `docs/ARCHITECTURE.md` §6/§14 — and neither does this client).
+- `media.url({ id })` — the public URL for a Media item's file bytes (URL construction only,
+  no fetch — use it directly as an `<img src>`). Backed by `GET /api/v1/public/media/:id/file`
+  (`apps/api/src/routes/public/media.ts`), unauthenticated like the entry routes, edge-cached
+  for a year via the same Cache API pattern as entries (`lib/public-cache.ts`) since media is
+  immutable once uploaded — no edit endpoint, only create/delete — and invalidated on delete.
 - A `KenresoftApiError` thrown for any other non-2xx response, carrying the HTTP status.
 
 There's deliberately no `contentTypes.list()`/`contentTypes.get()`. The public API has no
@@ -64,6 +69,7 @@ Kenresoft CMS/API (wrangler dev, :8787)
         |
         |  GET /api/v1/public/:contentType
         |  GET /api/v1/public/:contentType/:slug
+        |  GET /api/v1/public/media/:id/file
         v
 @kenresoft/astro  (integrations/astro)
         |
@@ -167,15 +173,12 @@ next phase, not a small extension of this one.
 
 ## Known limitations
 
-- **No public media endpoint.** The only route that serves an R2-backed media file's bytes is
-  `GET /api/v1/admin/media/:id/file`, which sits behind admin authentication
-  (`docs/ARCHITECTURE.md` §14 doesn't yet specify a public one either). A `media`-type field on
-  a content type has no way to be resolved to a fetchable URL from the public API today, so
-  `examples/astro-site` does not render a featured image, and no Astro site can until this gap
-  is closed.
-- **No public content-type metadata endpoint.** By design, per above — but it does mean a
-  generic Astro page can't discover a content type's field list at build/request time; it has
-  to know the field names it expects in advance (as `examples/astro-site`'s pages do).
+- **No public content-type metadata endpoint — by design, not a bug.** A generic Astro page
+  can't discover a content type's field list at build/request time; it has to know the field
+  names it expects in advance (as `examples/astro-site`'s pages do). Exposing field
+  definitions publicly is a real product decision (it reveals internal content-modeling
+  structure to anyone), not something to add unilaterally — flagged here as a decision point
+  for whoever owns that call, not committed to either way.
 - **Static output means content edits need a rebuild.** See Static vs SSR above.
 - A rare, non-deterministic `astro build` exit-code flake was observed once during Phase 1
   verification on this Windows/Node 24 environment (`Assertion failed:
@@ -187,12 +190,20 @@ next phase, not a small extension of this one.
 
 ## Future work
 
-Not implemented in this phase, deliberately (see `docs/ARCHITECTURE.md` §20's phase boundaries
-and this doc's Cloudflare compatibility section):
+Not implemented, deliberately (see `docs/ARCHITECTURE.md` §20's phase boundaries and this
+doc's Cloudflare compatibility section) — listed as open decisions, not commitments:
 
-- A public media-serving endpoint, so featured images become renderable.
-- SSR/webhook-triggered revalidation for `examples/astro-site`, so content edits don't require
-  a manual rebuild.
+- **Public media metadata** (alt text, width/height) — only the file bytes are public today
+  (`media.url()` above). `examples/astro-site` falls back to the entry's title as an `<img
+  alt>` since Media's real `altText` (set on upload in the admin) isn't reachable publicly.
+  A small `GET /api/v1/public/media/:id` returning just `{ altText, contentType, width,
+  height }` would close this — deliberately not built alongside the file route itself, since
+  it's a separate, smaller decision about how much Media metadata should be public.
+- **Public content-type metadata** — see Known limitations above; a decision point, not a gap
+  being tracked toward a default "yes."
+- **SSR/webhook-triggered revalidation** for `examples/astro-site`, so content edits don't
+  require a manual rebuild — static output was Phase 1's deliberate choice (see Static vs SSR
+  above), not a placeholder for a foregone SSR migration.
 - A framework-generic SDK (`@kenresoft/sdk` or similar) that `@kenresoft/astro` could become a
   thin wrapper around, for Next.js/Vue/Flutter/etc. consumers — today those frameworks call the
   public API directly, which is a fully supported, first-class path (`docs/ARCHITECTURE.md`

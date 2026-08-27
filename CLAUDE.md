@@ -253,5 +253,18 @@ Per the roadmap in `docs/ARCHITECTURE.md` §20:
   any public Astro consumer yet. Production deployment (provisioning real Cloudflare resources
   for the CMS, deploying an Astro site alongside it) is explicitly out of scope for this phase
   and not started.
+- **Public media serving** (closing the gap noted above) — done: a new unauthenticated `GET
+  /api/v1/public/media/:id/file`, mounted before the generic `/api/v1/public/:contentType`
+  catch-all (same reason `/public/forms` needed the same treatment), edge-cached for a year via
+  the Cache API (media is immutable — no edit endpoint, only create/delete) and invalidated on
+  delete. `@kenresoft/astro` gained `media.url({ id })`; `examples/astro-site` now renders a
+  featured image when a `media`-type field is present, using the entry's title as `<img alt>`
+  since Media's real `altText` still isn't exposed publicly. Verified live end-to-end against
+  the running local deployment (upload → public fetch returns byte-identical file with the
+  correct `Cache-Control` → delete via admin → public route 404s, confirming the cache
+  invalidation actually fires, not just that the code compiles). Two adjacent gaps flagged as
+  open product decisions rather than silently resolved either way: a public
+  content-type-metadata endpoint, and SSR/webhook revalidation for the Astro example (still
+  static, rebuild-to-see-changes) — see `docs/ASTRO.md`'s Known limitations.
 
 CI is green on `develop`.
