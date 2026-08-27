@@ -117,7 +117,7 @@ export function EntriesPage() {
   const navigate = useNavigate();
   const { contentTypeId } = useParams<{ contentTypeId: string }>();
   const { data: contentType } = useContentType(contentTypeId ?? '');
-  const { data: entries, isPending, error } = useEntries(contentTypeId ?? '');
+  const { data: entries, isPending, error, refetch } = useEntries(contentTypeId ?? '');
   const deleteEntry = useDeleteEntryById(contentTypeId ?? '');
   const updateStatus = useUpdateEntryStatusById(contentTypeId ?? '');
 
@@ -255,10 +255,11 @@ export function EntriesPage() {
           data={filteredEntries}
           searchPlaceholder="Search entries…"
           onRowClick={(row) => navigate(`/content-types/${contentTypeId}/entries/${row.id}`)}
+          onRefresh={() => void refetch()}
           enableRowSelection
           toolbar={
             <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as StatusFilter)}>
-              <SelectTrigger size="sm" className="w-36">
+              <SelectTrigger size="sm" className="w-36" aria-label="Filter by status">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

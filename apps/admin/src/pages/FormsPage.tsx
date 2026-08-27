@@ -143,7 +143,7 @@ export function FormsPage() {
   const navigate = useNavigate();
   const { data: session } = authClient.useSession();
   const isOwner = session?.user.role === 'owner';
-  const { data: forms, isPending, error } = useForms();
+  const { data: forms, isPending, error, refetch } = useForms();
 
   return (
     <div className="flex flex-col gap-6">
@@ -187,6 +187,7 @@ export function FormsPage() {
           data={forms}
           searchPlaceholder="Search forms…"
           onRowClick={(row) => navigate(`/forms/${row.id}`)}
+          onRefresh={() => void refetch()}
         />
       ) : null}
     </div>

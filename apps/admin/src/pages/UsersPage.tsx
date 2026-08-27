@@ -56,7 +56,7 @@ function RoleCell({ user, canEdit }: { user: AdminUser; canEdit: boolean }) {
 export function UsersPage() {
   const { data: session } = authClient.useSession();
   const isOwner = session?.user.role === 'owner';
-  const { data: users, isPending, error } = useUsers();
+  const { data: users, isPending, error, refetch } = useUsers();
 
   const columns = useMemo<ColumnDef<AdminUser>[]>(
     () => [
@@ -123,7 +123,12 @@ export function UsersPage() {
       ) : null}
 
       {users && users.length > 0 ? (
-        <DataTable columns={columns} data={users} searchPlaceholder="Search users…" />
+        <DataTable
+          columns={columns}
+          data={users}
+          searchPlaceholder="Search users…"
+          onRefresh={() => void refetch()}
+        />
       ) : null}
     </div>
   );

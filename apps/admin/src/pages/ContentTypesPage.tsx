@@ -161,7 +161,7 @@ export function ContentTypesPage() {
   const navigate = useNavigate();
   const { data: session } = authClient.useSession();
   const isOwner = session?.user.role === 'owner';
-  const { data: contentTypes, isPending, error } = useContentTypes();
+  const { data: contentTypes, isPending, error, refetch } = useContentTypes();
 
   return (
     <div className="flex flex-col gap-6">
@@ -209,6 +209,7 @@ export function ContentTypesPage() {
           data={contentTypes}
           searchPlaceholder="Search content types…"
           onRowClick={(row) => navigate(`/content-types/${row.id}`)}
+          onRefresh={() => void refetch()}
         />
       ) : null}
     </div>

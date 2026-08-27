@@ -117,7 +117,7 @@ export function FormSubmissionsPage() {
   const { formId } = useParams<{ formId: string }>();
   const { data: form } = useForm(formId ?? '');
   const { data: fields } = useFormFields(formId ?? '');
-  const { data: submissions, isPending, error } = useFormSubmissions(formId ?? '');
+  const { data: submissions, isPending, error, refetch } = useFormSubmissions(formId ?? '');
   const [viewing, setViewing] = useState<FormSubmission | null>(null);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
 
@@ -198,9 +198,10 @@ export function FormSubmissionsPage() {
           columns={columns}
           data={filteredSubmissions}
           searchPlaceholder="Search submissions…"
+          onRefresh={() => void refetch()}
           toolbar={
             <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as StatusFilter)}>
-              <SelectTrigger size="sm" className="w-36">
+              <SelectTrigger size="sm" className="w-36" aria-label="Filter by status">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

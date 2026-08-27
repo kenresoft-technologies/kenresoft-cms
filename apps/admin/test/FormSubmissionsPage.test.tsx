@@ -101,7 +101,7 @@ describe('FormSubmissionsPage', () => {
     await waitFor(() => expect(screen.getByText('New')).toBeInTheDocument());
     expect(screen.getByText('Read')).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('combobox'));
+    await userEvent.click(screen.getByRole('combobox', { name: 'Filter by status' }));
     await userEvent.click(screen.getByRole('option', { name: 'New' }));
 
     const table = screen.getByRole('table');

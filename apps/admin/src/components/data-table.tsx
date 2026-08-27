@@ -7,14 +7,16 @@ import {
   getSortedRowModel,
   useReactTable,
   type ColumnDef,
+  type PaginationState,
   type RowSelectionState,
   type SortingState,
 } from '@tanstack/react-table';
-import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 interface DataTableProps<TData, TValue> {
@@ -28,9 +30,12 @@ interface DataTableProps<TData, TValue> {
   toolbar?: ReactNode;
   /** Rendered as a bar above the table once at least one row is selected. */
   bulkActions?: (selectedRows: TData[], clearSelection: () => void) => ReactNode;
+  /** Renders a refresh button next to the search input; called on click. */
+  onRefresh?: () => void;
 }
 
 const INTERACTIVE_SELECTOR = 'a, button, [role="menuitem"], [role="button"]';
+const PAGE_SIZE_OPTIONS = [10, 20, 50] as const;
 
 const SORT_ICON = {
   asc: ArrowUp,
@@ -49,10 +54,12 @@ export function DataTable<TData, TValue>({
   enableRowSelection = false,
   toolbar,
   bulkActions,
+  onRefresh,
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = useState('');
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
+  const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 10 });
 
   const tableColumns = useMemo<ColumnDef<TData, TValue>[]>(() => {
     if (!enableRowSelection) return columns;
@@ -82,19 +89,22 @@ export function DataTable<TData, TValue>({
   const table = useReactTable({
     data,
     columns: tableColumns,
-    state: { sorting, globalFilter, rowSelection },
+    state: { sorting, globalFilter, rowSelection, pagination },
     enableRowSelection,
     onSortingChange: setSorting,
     onGlobalFilterChange: setGlobalFilter,
     onRowSelectionChange: setRowSelection,
+    onPaginationChange: setPagination,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
-    initialState: { pagination: { pageSize: 10 } },
   });
 
   const selectedRows = table.getSelectedRowModel().rows.map((row) => row.original);
+  const totalRows = table.getFilteredRowModel().rows.length;
+  const firstRow = totalRows === 0 ? 0 : pagination.pageIndex * pagination.pageSize + 1;
+  const lastRow = Math.min(totalRows, (pagination.pageIndex + 1) * pagination.pageSize);
 
   return (
     <div className="flex flex-col gap-3">
@@ -106,6 +116,11 @@ export function DataTable<TData, TValue>({
           className="max-w-sm"
         />
         {toolbar}
+        {onRefresh ? (
+          <Button variant="ghost" size="icon-sm" aria-label="Refresh" className="ml-auto" onClick={onRefresh}>
+            <RefreshCw />
+          </Button>
+        ) : null}
       </div>
 
       {bulkActions && selectedRows.length > 0 ? (
@@ -176,11 +191,30 @@ export function DataTable<TData, TValue>({
           </TableBody>
         </Table>
       </div>
-      {table.getPageCount() > 1 ? (
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">
-            Page {table.getState().pagination.pageIndex + 1} of {table.getPageCount()}
-          </p>
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-muted-foreground">
+          {totalRows === 0 ? '0 results' : `Showing ${firstRow} to ${lastRow} of ${totalRows} results`}
+        </p>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">Per page</span>
+            <Select
+              value={String(pagination.pageSize)}
+              onValueChange={(value) => setPagination({ pageIndex: 0, pageSize: Number(value) })}
+            >
+              <SelectTrigger size="sm" className="w-18" aria-label="Rows per page">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PAGE_SIZE_OPTIONS.map((size) => (
+                  <SelectItem key={size} value={String(size)}>
+                    {size}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <div className="flex gap-2">
             <Button
               variant="outline"
@@ -197,7 +231,7 @@ export function DataTable<TData, TValue>({
             </Button>
           </div>
         </div>
-      ) : null}
+      </div>
     </div>
   );
 }

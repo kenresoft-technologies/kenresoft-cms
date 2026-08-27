@@ -85,7 +85,7 @@ describe('EntriesPage', () => {
     await waitFor(() => expect(screen.getByText('hello-world')).toBeInTheDocument());
     expect(screen.getByText('draft-post')).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('combobox'));
+    await userEvent.click(screen.getByRole('combobox', { name: 'Filter by status' }));
     await userEvent.click(screen.getByRole('option', { name: 'Published' }));
 
     expect(screen.getByText('hello-world')).toBeInTheDocument();

@@ -20,13 +20,20 @@ function rows(count: number): Row[] {
 }
 
 describe('DataTable', () => {
-  it('renders every row when data fits on one page', () => {
+  it('renders every row when data fits on one page, with a results summary', () => {
     render(<DataTable columns={columns} data={rows(3)} />);
 
     expect(screen.getByText('Row 0')).toBeInTheDocument();
     expect(screen.getByText('Row 1')).toBeInTheDocument();
     expect(screen.getByText('Row 2')).toBeInTheDocument();
-    expect(screen.queryByText(/Page \d+ of \d+/)).not.toBeInTheDocument();
+    expect(screen.getByText('Showing 1 to 3 of 3 results')).toBeInTheDocument();
+  });
+
+  it('shows a 0-results summary and no rows when there is no data', () => {
+    render(<DataTable columns={columns} data={rows(0)} />);
+
+    expect(screen.getByText('0 results')).toBeInTheDocument();
+    expect(screen.getByText('No results.')).toBeInTheDocument();
   });
 
   it('filters rows via the search input', async () => {
@@ -63,15 +70,42 @@ describe('DataTable', () => {
   it('paginates when data exceeds the page size', async () => {
     render(<DataTable columns={columns} data={rows(15)} />);
 
-    expect(screen.getByText('Page 1 of 2')).toBeInTheDocument();
+    expect(screen.getByText('Showing 1 to 10 of 15 results')).toBeInTheDocument();
     expect(screen.getByText('Row 0')).toBeInTheDocument();
     expect(screen.queryByText('Row 10')).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'Next' }));
 
-    expect(screen.getByText('Page 2 of 2')).toBeInTheDocument();
+    expect(screen.getByText('Showing 11 to 15 of 15 results')).toBeInTheDocument();
     expect(screen.getByText('Row 10')).toBeInTheDocument();
     expect(screen.queryByText('Row 0')).not.toBeInTheDocument();
+  });
+
+  it('changes page size via the Per page select', async () => {
+    render(<DataTable columns={columns} data={rows(15)} />);
+
+    expect(screen.getByText('Showing 1 to 10 of 15 results')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('combobox'));
+    await userEvent.click(screen.getByRole('option', { name: '20' }));
+
+    expect(screen.getByText('Showing 1 to 15 of 15 results')).toBeInTheDocument();
+    expect(screen.getByText('Row 10')).toBeInTheDocument();
+  });
+
+  it('calls onRefresh when the refresh button is clicked', async () => {
+    const onRefresh = vi.fn();
+    render(<DataTable columns={columns} data={rows(3)} onRefresh={onRefresh} />);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+
+    expect(onRefresh).toHaveBeenCalledOnce();
+  });
+
+  it('does not render a refresh button when onRefresh is not passed', () => {
+    render(<DataTable columns={columns} data={rows(3)} />);
+
+    expect(screen.queryByRole('button', { name: 'Refresh' })).not.toBeInTheDocument();
   });
 
   it('calls onRowClick with the row data when a row is clicked', async () => {

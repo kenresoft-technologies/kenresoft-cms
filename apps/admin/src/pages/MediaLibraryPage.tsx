@@ -1,5 +1,5 @@
 import { useMemo, useState, type FormEvent, type ReactNode } from 'react';
-import { Grid3x3, ImageOff, Images, List, Trash2 } from 'lucide-react';
+import { Grid3x3, ImageOff, Images, List, RefreshCw, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { ColumnDef } from '@tanstack/react-table';
 
@@ -296,7 +296,7 @@ function MediaList({ items }: { items: Media[] }) {
 }
 
 export function MediaLibraryPage() {
-  const { data: mediaItems, isPending, error } = useMediaList();
+  const { data: mediaItems, isPending, error, refetch } = useMediaList();
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
@@ -363,6 +363,9 @@ export function MediaLibraryPage() {
                 ))}
               </SelectContent>
             </Select>
+            <Button variant="ghost" size="icon-sm" aria-label="Refresh" onClick={() => void refetch()}>
+              <RefreshCw />
+            </Button>
             <div className="ml-auto flex items-center gap-1">
               <Button
                 variant={viewMode === 'grid' ? 'outline' : 'ghost'}
