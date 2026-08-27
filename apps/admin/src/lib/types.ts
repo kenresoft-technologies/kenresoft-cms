@@ -1,162 +1,43 @@
-// Local response shapes for the admin API — timestamps are strings over the wire, unlike
-// packages/database's Date-typed columns, so these are intentionally not shared with the
-// backend (importing the DB package into a browser bundle isn't desirable either — its
-// schema modules pull in drizzle-orm). Phase 6 (docs/ARCHITECTURE.md §20) replaces this with
-// generated contract types shared through packages/contracts.
-export interface ContentType {
-  id: string;
-  name: string;
-  slug: string;
-  description: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
+// Single source of truth for the admin API's wire shapes now lives in packages/contracts,
+// shared with apps/api's own Zod-validated routes (docs/ARCHITECTURE.md §8/§20 Phase 6) —
+// this file is a thin re-export barrel so the ~20 files across this app that already
+// `import type {...} from '@/lib/types'` don't need touching individually.
+//
+// The const-array value import below deliberately reaches past @kenresoft/contracts' own
+// barrel (api/index.ts) straight to schemas/enums.ts. Confirmed empirically: importing
+// FIELD_TYPES etc. via the barrel — even after splitting enums into their own zod-free file —
+// still pulled zod into this app's production bundle, because Rollup didn't fully separate
+// individual bindings through the barrel's chain of `export *` re-exports spanning several
+// zod-schema-bearing files. A direct path to the one file that never imports zod at all
+// sidesteps that entirely — confirmed by grepping the built bundle for ZodError/ZodObject/
+// ZodType before and after (present via the barrel, absent via this direct path).
+export {
+  ENTRY_STATUSES,
+  FIELD_TYPES,
+  FORM_FIELD_TYPES,
+  FORM_SUBMISSION_STATUSES,
+  MEDIA_CONTENT_TYPES,
+  USER_ROLES,
+} from '@kenresoft/contracts/schemas/enums';
 
-// Mirrors packages/database/schema/field-definitions.ts FIELD_TYPES.
-export const FIELD_TYPES = [
-  'text',
-  'textarea',
-  'rich_text',
-  'number',
-  'boolean',
-  'date',
-  'datetime',
-  'slug',
-  'email',
-  'url',
-  'select',
-  'multi_select',
-  'media',
-  'reference',
-] as const;
-
-export type FieldType = (typeof FIELD_TYPES)[number];
-
-export interface FieldDefinition {
-  id: string;
-  contentTypeId: string;
-  name: string;
-  label: string;
-  fieldType: FieldType;
-  required: boolean;
-  sortOrder: number;
-  config: Record<string, unknown> | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export const ENTRY_STATUSES = ['draft', 'published'] as const;
-export type EntryStatus = (typeof ENTRY_STATUSES)[number];
-
-export interface Entry {
-  id: string;
-  contentTypeId: string;
-  slug: string;
-  status: EntryStatus;
-  data: Record<string, unknown>;
-  publishAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface EntryRevision {
-  id: string;
-  entryId: string;
-  slug: string;
-  status: EntryStatus;
-  data: Record<string, unknown>;
-  createdBy: string | null;
-  createdAt: string;
-}
-
-// Mirrors packages/database/schema/media.ts MEDIA_CONTENT_TYPES.
-export const MEDIA_CONTENT_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'] as const;
-export type MediaContentType = (typeof MEDIA_CONTENT_TYPES)[number];
-
-export interface Media {
-  id: string;
-  key: string;
-  filename: string;
-  contentType: MediaContentType;
-  size: number;
-  width: number | null;
-  height: number | null;
-  altText: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface DashboardStats {
-  contentTypeCount: number;
-  entryCounts: { draft: number; published: number };
-  mediaCount: number;
-  mediaStorageBytes: number;
-  recentEntries: {
-    id: string;
-    slug: string;
-    status: EntryStatus;
-    contentTypeId: string;
-    contentTypeName: string;
-    updatedAt: string;
-  }[];
-}
-
-export type UserRole = 'owner' | 'editor';
-
-export interface AdminUser {
-  id: string;
-  name: string;
-  email: string;
-  role: UserRole;
-  createdAt: string;
-  lastActiveAt: string | null;
-}
-
-// Mirrors packages/database/schema/forms.ts / form-fields.ts / form-submissions.ts. Forms are
-// deliberately separate from ContentType/Entry — visitor-submitted data, not editor-authored
-// content (§7).
-export interface Form {
-  id: string;
-  name: string;
-  slug: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export const FORM_FIELD_TYPES = ['text', 'textarea', 'email', 'url', 'number', 'select', 'checkbox', 'date'] as const;
-export type FormFieldType = (typeof FORM_FIELD_TYPES)[number];
-
-export interface FormField {
-  id: string;
-  formId: string;
-  name: string;
-  label: string;
-  fieldType: FormFieldType;
-  required: boolean;
-  sortOrder: number;
-  config: Record<string, unknown> | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export const FORM_SUBMISSION_STATUSES = ['new', 'read', 'archived'] as const;
-export type FormSubmissionStatus = (typeof FORM_SUBMISSION_STATUSES)[number];
-
-export interface FormSubmission {
-  id: string;
-  formId: string;
-  data: Record<string, unknown>;
-  status: FormSubmissionStatus;
-  createdAt: string;
-}
-
-export interface Settings {
-  id: string;
-  name: string;
-  contactEmail: string | null;
-  socialLinks: Record<string, string> | null;
-  corsOrigin: string | null;
-  featureFlags: Record<string, boolean> | null;
-  createdAt: string;
-  updatedAt: string;
-}
+// Type-only — fully erased at build regardless of which contracts module defines them, so
+// these go through the normal barrel.
+export type {
+  AdminUser,
+  ContentType,
+  DashboardStats,
+  Entry,
+  EntryRevision,
+  EntryStatus,
+  FieldDefinition,
+  FieldType,
+  Form,
+  FormField,
+  FormFieldType,
+  FormSubmission,
+  FormSubmissionStatus,
+  Media,
+  MediaContentType,
+  Settings,
+  UserRole,
+} from '@kenresoft/contracts';

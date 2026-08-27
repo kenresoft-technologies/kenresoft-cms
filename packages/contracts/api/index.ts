@@ -3,6 +3,7 @@ export * from '../schemas/content-types';
 export * from '../schemas/dashboard';
 export * from '../schemas/entries';
 export * from '../schemas/entry-revisions';
+export * from '../schemas/enums';
 export * from '../schemas/health';
 export * from '../schemas/field-definitions';
 export * from '../schemas/form-fields';

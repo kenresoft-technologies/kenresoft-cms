@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { ENTRY_STATUSES } from './entries';
+import { ENTRY_STATUSES } from './enums';
 
 // Read/restore only — no request schema, an EntryRevision is never created directly, only
 // snapshotted internally on entry writes.

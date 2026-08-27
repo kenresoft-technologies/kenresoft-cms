@@ -1,8 +1,6 @@
 import { z } from 'zod';
 
-export const FORM_FIELD_TYPES = ['text', 'textarea', 'email', 'url', 'number', 'select', 'checkbox', 'date'] as const;
-
-export type FormFieldType = (typeof FORM_FIELD_TYPES)[number];
+import { FORM_FIELD_TYPES } from './enums';
 
 export const formFieldSchema = z.object({
   id: z.string(),

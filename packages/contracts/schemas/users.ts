@@ -1,8 +1,6 @@
 import { z } from 'zod';
 
-export const USER_ROLES = ['owner', 'editor'] as const;
-
-export type UserRole = (typeof USER_ROLES)[number];
+import { USER_ROLES } from './enums';
 
 export const adminUserSchema = z.object({
   id: z.string(),

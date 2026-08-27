@@ -1,8 +1,6 @@
 import { z } from 'zod';
 
-export const FORM_SUBMISSION_STATUSES = ['new', 'read', 'archived'] as const;
-
-export type FormSubmissionStatus = (typeof FORM_SUBMISSION_STATUSES)[number];
+import { FORM_SUBMISSION_STATUSES } from './enums';
 
 // No create-request schema — public form submissions are validated dynamically against the
 // form's own field definitions (apps/api/src/lib/form-submission-validation.ts), not a fixed

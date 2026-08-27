@@ -5,6 +5,10 @@
   "type": "module",
   "main": "./api/index.ts",
   "types": "./api/index.ts",
+  "exports": {
+    ".": "./api/index.ts",
+    "./schemas/enums": "./schemas/enums.ts"
+  },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "lint": "eslint ."

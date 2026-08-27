@@ -1,10 +1,7 @@
 import { z } from 'zod';
 
 import { slugSchema } from './common';
-
-export const ENTRY_STATUSES = ['draft', 'published'] as const;
-
-export type EntryStatus = (typeof ENTRY_STATUSES)[number];
+import { ENTRY_STATUSES } from './enums';
 
 export const entrySchema = z.object({
   id: z.string(),
