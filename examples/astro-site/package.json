@@ -12,7 +12,6 @@
   },
   "dependencies": {
     "@kenresoft/astro": "workspace:*",
-    "@kenresoft/contracts": "workspace:*",
     "astro": "^5.1.0"
   },
   "devDependencies": {

@@ -20,6 +20,7 @@ import { usersRoute } from './routes/admin/users';
 import { healthRoute } from './routes/health';
 import { publicContentRoute } from './routes/public/content';
 import { publicFormsRoute } from './routes/public/forms';
+import { publicMediaRoute } from './routes/public/media';
 import type { Bindings } from './lib/env';
 import type { AuthedVariables } from './middleware/require-session';
 
@@ -32,9 +33,10 @@ app.route('/api/v1/health', healthRoute);
 
 app.on(['GET', 'POST'], '/api/v1/auth/*', (c) => createAuth(c.env).handler(c.req.raw));
 
-// Mounted before the more general /api/v1/public/:contentType catchall so "forms" is never
-// ambiguous with a content-type slug.
+// Mounted before the more general /api/v1/public/:contentType catchall so "forms"/"media" are
+// never ambiguous with a content-type slug.
 app.route('/api/v1/public/forms', publicFormsRoute);
+app.route('/api/v1/public/media', publicMediaRoute);
 app.route('/api/v1/public', publicContentRoute);
 
 app.use('/api/v1/admin/*', requireSession);

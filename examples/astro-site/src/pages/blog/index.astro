@@ -21,12 +21,23 @@ const entries = await cms.entries.list({ contentType: 'blog-post' });
       </p>
     ) : (
       <ul>
-        {entries.map((entry) => (
-          <li>
-            <a href={`/blog/${entry.slug}`}>{String(entry.data.title ?? entry.slug)}</a>
-            {entry.data.excerpt ? <p>{String(entry.data.excerpt)}</p> : null}
-          </li>
-        ))}
+        {entries.map((entry) => {
+          const title = String(entry.data.title ?? entry.slug);
+          return (
+            <li>
+              {typeof entry.data.featuredImage === 'string' ? (
+                // Media's own altText (set on upload in the admin) isn't exposed by the
+                // public API — only the file bytes are (§14/docs/ASTRO.md). Falling back to
+                // the entry's title is an imperfect but honest stand-in; a real deployment
+                // wanting real per-image alt text would need a small public media-metadata
+                // endpoint, which is future work, not built here.
+                <img src={cms.media.url({ id: entry.data.featuredImage })} alt={title} width="320" />
+              ) : null}
+              <a href={`/blog/${entry.slug}`}>{title}</a>
+              {entry.data.excerpt ? <p>{String(entry.data.excerpt)}</p> : null}
+            </li>
+          );
+        })}
       </ul>
     )
   }

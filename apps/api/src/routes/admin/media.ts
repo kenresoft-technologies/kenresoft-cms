@@ -5,6 +5,7 @@ import type { Media } from '@kenresoft/contracts';
 import { getDb } from '../../lib/db';
 import { sniffImage } from '../../lib/image-metadata';
 import { createOpenApiApp } from '../../lib/openapi';
+import { invalidatePublicMediaCache } from '../../lib/public-cache';
 import { createMedia, deleteMedia, getMediaById, listMedia } from '../../repositories/media';
 import type { Bindings } from '../../lib/env';
 import type { AuthedVariables } from '../../middleware/require-session';
@@ -195,6 +196,9 @@ mediaRoute.openapi(
 
     await c.env.MEDIA_BUCKET.delete(row.key);
     await deleteMedia(db, row.id);
+    // Without this, a deleted file would keep being served from the public route's edge
+    // cache for up to a year (lib/public-cache.ts's media TTL).
+    await invalidatePublicMediaCache(row.id);
 
     return c.body(null, 204);
   },

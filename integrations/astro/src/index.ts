@@ -36,6 +36,11 @@ export interface GetEntryOptions extends ListEntriesOptions {
   slug: string;
 }
 
+export interface MediaUrlOptions {
+  /** A Media item's id — typically the value stored in a `media`-type field on an Entry. */
+  id: string;
+}
+
 export interface KenresoftClient {
   entries: {
     /**
@@ -54,6 +59,14 @@ export interface KenresoftClient {
      * exist, from the public API's perspective).
      */
     get(options: GetEntryOptions): Promise<Entry | null>;
+  };
+  media: {
+    /**
+     * The public URL for a media item's file bytes — URL construction only, no fetch (an
+     * `<img src>` or similar consumes it directly). Doesn't validate that the id exists; a
+     * bad id 404s when the browser requests it, same as a broken image link anywhere else.
+     */
+    url(options: MediaUrlOptions): string;
   };
 }
 
@@ -85,6 +98,11 @@ export function createKenresoftClient(config: KenresoftClientConfig): KenresoftC
       },
       get({ contentType, slug }) {
         return request<Entry>(`/api/v1/public/${contentType}/${slug}`);
+      },
+    },
+    media: {
+      url({ id }) {
+        return `${baseUrl}/api/v1/public/media/${id}/file`;
       },
     },
   };

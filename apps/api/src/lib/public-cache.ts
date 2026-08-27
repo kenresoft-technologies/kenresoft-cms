@@ -33,3 +33,18 @@ export async function invalidatePublicEntryCache(
     cache.delete(publicCacheKey(`/api/v1/public/${contentTypeSlug}/${entrySlug}`)),
   ]);
 }
+
+// Media is immutable once uploaded (§14: create/delete only, no edit endpoint), so a public
+// file route can safely use a far longer TTL than entries get above.
+const PUBLIC_MEDIA_CACHE_TTL_SECONDS = 31536000; // 1 year
+
+export function publicMediaCacheControlHeader(): string {
+  return `public, max-age=${PUBLIC_MEDIA_CACHE_TTL_SECONDS}, immutable`;
+}
+
+// Deleting media is rare but real (§14 supports it) — without this, a deleted file would keep
+// being served from the edge cache for up to a year.
+export async function invalidatePublicMediaCache(id: string): Promise<void> {
+  const cache = caches.default;
+  await cache.delete(publicCacheKey(`/api/v1/public/media/${id}/file`));
+}
