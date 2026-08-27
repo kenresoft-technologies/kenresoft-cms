@@ -71,6 +71,22 @@ Status section).
 To also try the Astro integration once the CMS is running: `cd examples/astro-site && cp
 .env.example .env && pnpm dev` — see [`docs/ASTRO.md`](docs/ASTRO.md).
 
+## Live deployment
+
+The API is deployed to `https://kenresoft-cms-api.kenresoft.workers.dev` (`apps/api`'s
+`wrangler.toml`). `apps/admin` has no deployed home yet — to manage the live deployment's
+content, run the admin app locally against it instead of the local API:
+
+```bash
+cd apps/admin
+cp .env.live.example .env.live
+pnpm dev:live
+```
+
+This is a separate Vite mode (`--mode live`, its own `.env.live`) from the normal `pnpm dev`,
+so it doesn't disturb your usual local-API workflow — both can even run at once, on different
+ports.
+
 ## Package manager
 
 This repo uses **pnpm** exclusively. Do not use npm or yarn.
