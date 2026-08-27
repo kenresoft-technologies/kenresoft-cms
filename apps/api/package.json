@@ -13,7 +13,10 @@
     "lint": "eslint ."
   },
   "dependencies": {
+    "@hono/zod-openapi": "^1.6.1",
+    "@kenresoft/contracts": "workspace:*",
     "@kenresoft/database": "workspace:*",
+    "@scalar/hono-api-reference": "^0.11.16",
     "better-auth": "1.4.21",
     "drizzle-orm": "^0.45.2",
     "hono": "^4.10.7",

@@ -9,6 +9,9 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint ."
   },
+  "dependencies": {
+    "zod": "^4.4.3"
+  },
   "devDependencies": {
     "@kenresoft/config": "workspace:*",
     "eslint": "^10.9.1",
