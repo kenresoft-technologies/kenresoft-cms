@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { FORM_FIELD_TYPES } from '@kenresoft/database';
+import { FORM_FIELD_TYPES } from '@kenresoft/contracts';
 
 export const createFormFieldSchema = z.object({
   name: z.string().min(1).max(100),

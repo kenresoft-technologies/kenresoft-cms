@@ -2,9 +2,10 @@ import { sql } from 'drizzle-orm';
 import { sqliteTable, text, integer, uniqueIndex, index } from 'drizzle-orm/sqlite-core';
 
 import { contentTypes } from './content-types';
+// ENTRY_STATUSES itself lives in packages/contracts — see field-definitions.ts for why.
+import type { EntryStatus } from '@kenresoft/contracts';
 
-export const ENTRY_STATUSES = ['draft', 'published'] as const;
-export type EntryStatus = (typeof ENTRY_STATUSES)[number];
+export type { EntryStatus };
 
 export const entries = sqliteTable(
   'entries',

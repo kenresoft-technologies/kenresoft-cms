@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { FIELD_TYPES } from '@kenresoft/database';
+import { FIELD_TYPES } from '@kenresoft/contracts';
 
 export const createFieldDefinitionSchema = z.object({
   name: z.string().min(1).max(100),

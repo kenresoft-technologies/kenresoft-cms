@@ -2,26 +2,13 @@ import { sql } from 'drizzle-orm';
 import { sqliteTable, text, integer, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 import { contentTypes } from './content-types';
+// FIELD_TYPES itself lives in packages/contracts, not here — apps/admin consumes it as a
+// runtime value, and this module calls sqliteTable(...) at module scope (a side effect that
+// would drag drizzle-orm into the browser bundle if the array were imported from here
+// directly). This is a type-only import, fully erased at build.
+import type { FieldType } from '@kenresoft/contracts';
 
-// Initial content field types per docs/ARCHITECTURE.md §6.1.
-export const FIELD_TYPES = [
-  'text',
-  'textarea',
-  'rich_text',
-  'number',
-  'boolean',
-  'date',
-  'datetime',
-  'slug',
-  'email',
-  'url',
-  'select',
-  'multi_select',
-  'media',
-  'reference',
-] as const;
-
-export type FieldType = (typeof FIELD_TYPES)[number];
+export type { FieldType };
 
 export const fieldDefinitions = sqliteTable(
   'field_definitions',

@@ -2,20 +2,10 @@ import { sql } from 'drizzle-orm';
 import { sqliteTable, text, integer, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 import { forms } from './forms';
+// FORM_FIELD_TYPES itself lives in packages/contracts — see field-definitions.ts for why.
+import type { FormFieldType } from '@kenresoft/contracts';
 
-// Initial form field types per docs/ARCHITECTURE.md §18.
-export const FORM_FIELD_TYPES = [
-  'text',
-  'textarea',
-  'email',
-  'url',
-  'number',
-  'select',
-  'checkbox',
-  'date',
-] as const;
-
-export type FormFieldType = (typeof FORM_FIELD_TYPES)[number];
+export type { FormFieldType };
 
 export const formFields = sqliteTable(
   'form_fields',

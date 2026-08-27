@@ -1,11 +1,9 @@
 import { sql } from 'drizzle-orm';
 import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
+// MEDIA_CONTENT_TYPES itself lives in packages/contracts — see field-definitions.ts for why.
+import type { MediaContentType } from '@kenresoft/contracts';
 
-// Raster image types accepted for V1 (§14) — verified against the file's actual bytes at
-// upload time, not the client-supplied Content-Type (§9: never trust browser-provided MIME
-// types alone). Other media (PDF/doc, etc.) is future work.
-export const MEDIA_CONTENT_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'] as const;
-export type MediaContentType = (typeof MEDIA_CONTENT_TYPES)[number];
+export type { MediaContentType };
 
 export const media = sqliteTable('media', {
   id: text('id')

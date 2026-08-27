@@ -2,9 +2,10 @@ import { sql } from 'drizzle-orm';
 import { sqliteTable, text, integer, index } from 'drizzle-orm/sqlite-core';
 
 import { forms } from './forms';
+// FORM_SUBMISSION_STATUSES itself lives in packages/contracts — see field-definitions.ts for why.
+import type { FormSubmissionStatus } from '@kenresoft/contracts';
 
-export const FORM_SUBMISSION_STATUSES = ['new', 'read', 'archived'] as const;
-export type FormSubmissionStatus = (typeof FORM_SUBMISSION_STATUSES)[number];
+export type { FormSubmissionStatus };
 
 // Deliberately separate from Entry (§7) — a public submission is never CMS content, and
 // keeping the tables apart means a bug in one write path can't leak into the other's data.

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ENTRY_STATUSES } from '@kenresoft/database';
+import { ENTRY_STATUSES } from '@kenresoft/contracts';
 
 import { slugSchema } from './common';
 
