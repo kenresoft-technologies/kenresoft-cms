@@ -129,7 +129,7 @@ export function DataTable<TData, TValue>({
                       {header.isPlaceholder ? null : header.column.getCanSort() ? (
                         <button
                           type="button"
-                          className="flex items-center gap-1 hover:text-foreground"
+                          className="flex items-center gap-1 uppercase hover:text-foreground"
                           onClick={header.column.getToggleSortingHandler()}
                         >
                           {flexRender(header.column.columnDef.header, header.getContext())}
