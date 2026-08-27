@@ -1,5 +1,6 @@
 import { createBrowserRouter } from 'react-router';
 
+import { AllEntriesPage } from '@/pages/AllEntriesPage';
 import { AppLayout } from '@/layouts/AppLayout';
 import { ContentTypeDetailPage } from '@/pages/ContentTypeDetailPage';
 import { ContentTypesPage } from '@/pages/ContentTypesPage';
@@ -25,6 +26,7 @@ export const router = createBrowserRouter([
     element: <AppLayout />,
     children: [
       { index: true, element: <DashboardPage /> },
+      { path: 'entries', element: <AllEntriesPage /> },
       { path: 'content-types', element: <ContentTypesPage /> },
       { path: 'media', element: <MediaLibraryPage /> },
       { path: 'forms', element: <FormsPage /> },

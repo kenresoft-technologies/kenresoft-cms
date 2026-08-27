@@ -29,6 +29,7 @@ export type {
   Entry,
   EntryRevision,
   EntryStatus,
+  EntryWithContentType,
   FieldDefinition,
   FieldType,
   Form,

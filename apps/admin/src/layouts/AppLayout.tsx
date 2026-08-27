@@ -1,5 +1,16 @@
 import { useState } from 'react';
-import { ClipboardList, Images, LayoutDashboard, LayoutList, LogOut, Search, Settings, User, Users } from 'lucide-react';
+import {
+  ClipboardList,
+  FileText,
+  Images,
+  LayoutDashboard,
+  LayoutList,
+  LogOut,
+  Search,
+  Settings,
+  User,
+  Users,
+} from 'lucide-react';
 import { Link, Navigate, NavLink, Outlet, useLocation } from 'react-router';
 
 import { authClient } from '@/lib/auth-client';
@@ -33,7 +44,10 @@ import {
 
 const overviewItems = [{ to: '/', label: 'Dashboard', end: true, icon: LayoutDashboard }];
 
-const contentItems = [{ to: '/content-types', label: 'Content types', end: false, icon: LayoutList }];
+const contentItems = [
+  { to: '/content-types', label: 'Content types', end: false, icon: LayoutList },
+  { to: '/entries', label: 'Entries', end: false, icon: FileText },
+];
 
 const engagementItems = [
   { to: '/media', label: 'Media', end: false, icon: Images },

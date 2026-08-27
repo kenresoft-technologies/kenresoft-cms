@@ -53,6 +53,10 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
               <LayoutList />
               Content types
             </CommandItem>
+            <CommandItem value="Entries" onSelect={() => go('/entries')}>
+              <FileText />
+              Entries
+            </CommandItem>
             <CommandItem value="Media" onSelect={() => go('/media')}>
               <Images />
               Media

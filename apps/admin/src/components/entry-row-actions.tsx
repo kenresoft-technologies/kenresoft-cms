@@ -22,14 +22,19 @@ function slugCopy(slug: string) {
 // content type) — each row already carries its own contentTypeId, so this component's own
 // per-content-type hooks (useCreateEntry/useUpdateEntryStatusById) work correctly in either
 // context without the caller needing to know which page it's rendering in.
-export function EntryRowActions({
+//
+// Generic over the row's own entry type (plain Entry on EntriesPage, the richer
+// EntryWithContentType on AllEntriesPage) so onRequestDelete can be typed as that same
+// caller-specific shape — AllEntriesPage's delete-confirmation state needs the extra
+// contentTypeName/authorName fields it already has on hand, not just the Entry subset.
+export function EntryRowActions<TEntry extends Entry>({
   entry,
   contentTypeId,
   onRequestDelete,
 }: {
-  entry: Entry;
+  entry: TEntry;
   contentTypeId: string;
-  onRequestDelete: (entry: Entry) => void;
+  onRequestDelete: (entry: TEntry) => void;
 }) {
   const navigate = useNavigate();
   const createEntry = useCreateEntry(contentTypeId);
