@@ -1,0 +1,31 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { listPublishedEntries } from '../../lib/cms';
+
+// "blog-post" is this content type's slug, not its display name — set when it's created in
+// the admin (Content types → New). Change this if your deployment uses a different slug, or
+// if you're demonstrating a different content type entirely.
+const entries = await listPublishedEntries('blog-post');
+---
+
+<BaseLayout title="Blog">
+  <h1>Blog</h1>
+
+  {
+    entries.length === 0 ? (
+      <p>
+        No published entries yet for the <code>blog-post</code> content type. Create one in the
+        admin, publish it, then rebuild this site.
+      </p>
+    ) : (
+      <ul>
+        {entries.map((entry) => (
+          <li>
+            <a href={`/blog/${entry.slug}`}>{String(entry.data.title ?? entry.slug)}</a>
+            {entry.data.excerpt ? <p>{String(entry.data.excerpt)}</p> : null}
+          </li>
+        ))}
+      </ul>
+    )
+  }
+</BaseLayout>

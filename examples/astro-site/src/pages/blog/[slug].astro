@@ -1,0 +1,29 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { listPublishedEntries } from '../../lib/cms';
+import type { CmsEntry } from '../../lib/cms';
+
+export async function getStaticPaths() {
+  const entries = await listPublishedEntries('blog-post');
+  return entries.map((entry) => ({ params: { slug: entry.slug }, props: { entry } }));
+}
+
+interface Props {
+  entry: CmsEntry;
+}
+
+const { entry } = Astro.props as Props;
+const title = String(entry.data.title ?? entry.slug);
+// The rich-text field (Tiptap, docs/ARCHITECTURE.md §25) is stored and returned as HTML.
+// set:html is safe here because this content only reaches the public API once an
+// authenticated editor/owner has explicitly published it — the same trust boundary as any
+// headless-CMS content field, not arbitrary visitor input.
+const body = entry.data.body;
+---
+
+<BaseLayout title={title}>
+  <article>
+    <h1>{title}</h1>
+    {typeof body === 'string' ? <div set:html={body} /> : null}
+  </article>
+</BaseLayout>
