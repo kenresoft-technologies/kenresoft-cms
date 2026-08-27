@@ -1,4 +1,5 @@
 export * from '../schemas/common';
+export * from '../schemas/dashboard';
 export * from '../schemas/entries';
 export * from '../schemas/health';
 export * from '../schemas/field-definitions';
