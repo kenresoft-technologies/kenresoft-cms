@@ -93,8 +93,10 @@ Per the roadmap in `docs/ARCHITECTURE.md` §20:
   rendered from a content type's field definitions), and role-differentiated authorization —
   the first signup becomes owner, everyone after defaults to editor, and only owners can
   create content types (this gate moved from project creation in the v0.5 revision above).
-  Not yet done: any owner-only surface beyond content-type creation (no invite/promote flow
-  exists yet).
+  The owner-only surface beyond content-type creation now exists too: a Users page
+  (`GET /api/v1/admin/users` + owner-gated `PATCH /:id/role`) lists every user with their
+  last-active time (derived from the session table, no new column) and lets an owner change
+  roles inline — rejected with 400 if it would leave the deployment with zero owners.
 - **Phase 4** (draft/publish + scheduled publishing + revisions + restore) — done:
   `EntryRevision` entity snapshotting every entry write (create/update/restore/auto-publish),
   a `GET .../entries/:id/revisions` + `POST .../entries/:id/revisions/:revisionId/restore` API,
@@ -123,7 +125,7 @@ Per the roadmap in `docs/ARCHITECTURE.md` §20:
   `@hono/zod-openapi` for generated API contracts, and Workers KV as the caching layer's
   documented (§12) secondary read-through tier — out of scope until cross-colo consistency is
   an actual concern at Pathvera's traffic level.
-- **Phase 7** (forms + submissions + spam/rate limiting) — backend done, admin UI not started.
+- **Phase 7** (forms + submissions + spam/rate limiting) — done, backend and admin UI both.
   Form/FormField/FormSubmission tables (kept separate from ContentType/Entry — §7 treats
   visitor-submitted data as categorically different from editor-authored content), admin CRUD
   under `/api/v1/admin/forms` (creation owner-gated like content types), and an unauthenticated
@@ -136,10 +138,12 @@ Per the roadmap in `docs/ARCHITECTURE.md` §20:
   than a `<tag>...</tag>` regex pair (a test caught that the pair-based version left a
   stripped tag's own text content behind, e.g. `<script>alert(1)</script>` → `alert(1)`, not
   empty — removing every angle bracket guarantees no tag can ever be reconstructed from the
-  output regardless of how the input was structured). Not yet done: any `apps/admin` UI for
-  building forms or reviewing submissions — the API is fully usable without it today (e.g. a
-  hand-written contact form on the eventual Astro site could call it directly), there's just
-  no in-CMS way to create a form yet apart from calling the admin API.
+  output regardless of how the input was structured). The `apps/admin` UI closing this phase:
+  a Forms list + field builder (reuses the same `OptionListEditor` as content-type fields, now
+  extracted into a shared component) and a submissions inbox with a status-triage action menu
+  backed by a new `PATCH /api/v1/admin/forms/:id/submissions/:submissionId` endpoint — no
+  `requireRole` gate, since triaging is an editorial action like entry editing, not a
+  structural one.
 - **Admin UI polish** (not a roadmap phase — a cross-cutting pass over the `apps/admin` work
   from Phases 3–5) — done: `window.confirm` replaced with shadcn `AlertDialog` everywhere
   destructive, plus `sonner` toast feedback on every mutation across content types, entries,
@@ -162,5 +166,21 @@ Per the roadmap in `docs/ARCHITECTURE.md` §20:
   explicitly; and drag-to-reorder on the field list via dnd-kit, backed by a new
   `PATCH /api/v1/admin/content-types/:id/fields/reorder` endpoint that requires the given
   field ids to exactly match the content type's existing set before writing anything.
+- **Admin UI redesign** (not a roadmap phase — a second cross-cutting pass, prompted by live
+  user testing that found the UI "not there yet" next to the backend) — done, 12 small
+  commits: a single indigo-blue `--accent-brand` design token feeding `--primary`/`--ring`/
+  `--sidebar-primary` everywhere those are already referenced (no per-component reskin
+  needed); removed the dialog/sheet/alert-dialog backdrop blur (`bg-black/50`, no
+  `backdrop-blur`); raised control heights one step across buttons/inputs/selects/table cells,
+  which read as visibly cramped next to body text; fixed dnd-kit rendering its hidden
+  accessibility live-region as an invalid direct child of `<table>` (`DndContext` now wraps
+  the whole `Table`, not just `TableBody`); fixed `ContentTypesPage`/`EntriesPage` rows only
+  being clickable on the exact link text — `DataTable` gained an optional `onRowClick` prop
+  guarded against clicks on interactive descendants and post-text-selection clicks, so pages
+  opt in via `useNavigate()` while the component itself stays router-agnostic; the Users and
+  Forms-admin-UI work described under Phases 3 and 7 above; and a Profile page
+  (`apps/admin/src/pages/ProfilePage.tsx`) using better-auth's base client `updateUser`/
+  `changePassword` methods directly — zero new backend, and deliberately no phone/bio fields
+  since the `user` schema has no such columns to back them.
 
 CI is green on `develop`.
