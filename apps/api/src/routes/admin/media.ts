@@ -1,23 +1,62 @@
-import { Hono } from 'hono';
+import { createRoute, z } from '@hono/zod-openapi';
+import { altTextSchema, mediaSchema } from '@kenresoft/contracts';
+import type { Media } from '@kenresoft/contracts';
 
 import { getDb } from '../../lib/db';
 import { sniffImage } from '../../lib/image-metadata';
+import { createOpenApiApp } from '../../lib/openapi';
+import { createMedia, deleteMedia, getMediaById, listMedia } from '../../repositories/media';
 import type { Bindings } from '../../lib/env';
 import type { AuthedVariables } from '../../middleware/require-session';
-import { createMedia, deleteMedia, getMediaById, listMedia } from '../../repositories/media';
-import { altTextSchema } from '../../validators/media';
+import type { Media as DbMedia } from '@kenresoft/database';
 
-export const mediaRoute = new Hono<{ Bindings: Bindings; Variables: AuthedVariables }>();
+export const mediaRoute = createOpenApiApp<{ Bindings: Bindings; Variables: AuthedVariables }>();
+
+const notFoundSchema = z.object({ error: z.string() });
+const idParamSchema = z.object({ id: z.string().min(1) });
 
 // §14: reasonable upload ceiling for a corporate-site media library, not a hard platform
 // limit — revisit if a client's use case needs larger files.
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 
-mediaRoute.get('/', async (c) => {
-  const db = getDb(c);
-  return c.json(await listMedia(db));
-});
+function toMedia(row: DbMedia): Media {
+  return {
+    id: row.id,
+    key: row.key,
+    filename: row.filename,
+    contentType: row.contentType,
+    size: row.size,
+    width: row.width,
+    height: row.height,
+    altText: row.altText,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
 
+mediaRoute.openapi(
+  createRoute({
+    method: 'get',
+    path: '/',
+    tags: ['Media'],
+    summary: 'List every media item',
+    responses: {
+      200: {
+        description: 'Every media item, newest first.',
+        content: { 'application/json': { schema: z.array(mediaSchema) } },
+      },
+    },
+  }),
+  async (c) => {
+    const db = getDb(c);
+    return c.json((await listMedia(db)).map(toMedia), 200);
+  },
+);
+
+// Multipart upload — validates the file's actual bytes via magic-number sniffing rather than
+// a declared Content-Type, so it doesn't fit a static Zod request-body schema and stays a
+// plain (non-.openapi()) route. Registered with the registry directly below purely so it
+// still shows up in the generated doc, since a plain route otherwise wouldn't.
 mediaRoute.post('/', async (c) => {
   const form = await c.req.formData().catch(() => null);
   if (!form) {
@@ -65,9 +104,34 @@ mediaRoute.post('/', async (c) => {
     altText: altTextParsed.data ?? null,
   });
 
-  return c.json(row, 201);
+  return c.json(toMedia(row), 201);
 });
 
+mediaRoute.openAPIRegistry.registerPath({
+  method: 'post',
+  path: '/',
+  tags: ['Media'],
+  summary: 'Upload a media file',
+  description:
+    'multipart/form-data with a `file` field (required) and an `altText` field (optional). ' +
+    'The file is accepted or rejected by sniffing its actual bytes, not its declared MIME type.',
+  request: {
+    body: { content: { 'multipart/form-data': { schema: z.object({ file: z.string().openapi({ type: 'string', format: 'binary' }), altText: z.string().optional() }) } } },
+  },
+  responses: {
+    201: {
+      description: 'The created media item.',
+      content: { 'application/json': { schema: mediaSchema } },
+    },
+    400: {
+      description: 'Missing/oversized file, or an unrecognized image format.',
+      content: { 'application/json': { schema: notFoundSchema } },
+    },
+  },
+});
+
+// Streams the raw image bytes — not a JSON response, so this stays a plain route too (with a
+// docs-only registerPath below for the same reason as the upload route above).
 mediaRoute.get('/:id/file', async (c) => {
   const db = getDb(c);
   const row = await getMediaById(db, c.req.param('id'));
@@ -88,15 +152,50 @@ mediaRoute.get('/:id/file', async (c) => {
   });
 });
 
-mediaRoute.delete('/:id', async (c) => {
-  const db = getDb(c);
-  const row = await getMediaById(db, c.req.param('id'));
-  if (!row) {
-    return c.json({ error: 'Media not found' }, 404);
-  }
-
-  await c.env.MEDIA_BUCKET.delete(row.key);
-  await deleteMedia(db, row.id);
-
-  return c.body(null, 204);
+mediaRoute.openAPIRegistry.registerPath({
+  method: 'get',
+  path: '/{id}/file',
+  tags: ['Media'],
+  summary: 'Download a media file',
+  request: { params: idParamSchema },
+  responses: {
+    200: {
+      description: 'The raw file bytes.',
+      content: { 'image/png': {}, 'image/jpeg': {}, 'image/gif': {}, 'image/webp': {} },
+    },
+    404: {
+      description: 'No media with that id, or the file is missing from storage.',
+      content: { 'application/json': { schema: notFoundSchema } },
+    },
+  },
 });
+
+mediaRoute.openapi(
+  createRoute({
+    method: 'delete',
+    path: '/{id}',
+    tags: ['Media'],
+    summary: 'Delete a media item',
+    request: { params: idParamSchema },
+    responses: {
+      204: { description: 'The media item was deleted.' },
+      404: {
+        description: 'No media with that id.',
+        content: { 'application/json': { schema: notFoundSchema } },
+      },
+    },
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const db = getDb(c);
+    const row = await getMediaById(db, id);
+    if (!row) {
+      return c.json({ error: 'Media not found' }, 404);
+    }
+
+    await c.env.MEDIA_BUCKET.delete(row.key);
+    await deleteMedia(db, row.id);
+
+    return c.body(null, 204);
+  },
+);
