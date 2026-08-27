@@ -1,5 +1,12 @@
-import { and, contentTypes, desc, entries, entryRevisions, eq, lte } from '@kenresoft/database';
+import { and, contentTypes, desc, entries, entryRevisions, eq, lte, user } from '@kenresoft/database';
 import type { Database, Entry, EntryRevision, NewEntry } from '@kenresoft/database';
+
+export interface EntryWithContentType extends Entry {
+  contentTypeName: string;
+  contentTypeSlug: string;
+  authorName: string | null;
+  authorEmail: string | null;
+}
 
 type EntryWriteInput = {
   slug?: NewEntry['slug'] | undefined;
@@ -37,7 +44,7 @@ export async function createEntry(
 
   const [entry] = await db
     .insert(entries)
-    .values({ ...input, contentTypeId })
+    .values({ ...input, contentTypeId, createdBy })
     .returning();
   await snapshotRevision(db, entry!, createdBy);
   return entry!;
@@ -48,6 +55,32 @@ export function listEntriesForContentType(
   contentTypeId: string,
 ): Promise<Entry[]> {
   return db.query.entries.findMany({ where: eq(entries.contentTypeId, contentTypeId) });
+}
+
+// Backs the unified admin "all entries" listing — every entry across every content type,
+// joined with the content type's name/slug and the author's name/email (both nullable: a
+// system-triggered write, e.g. the scheduled-publish Cron Trigger, has no acting user).
+export function listAllEntriesWithContentType(db: Database): Promise<EntryWithContentType[]> {
+  return db
+    .select({
+      id: entries.id,
+      contentTypeId: entries.contentTypeId,
+      slug: entries.slug,
+      status: entries.status,
+      data: entries.data,
+      publishAt: entries.publishAt,
+      createdAt: entries.createdAt,
+      updatedAt: entries.updatedAt,
+      createdBy: entries.createdBy,
+      contentTypeName: contentTypes.name,
+      contentTypeSlug: contentTypes.slug,
+      authorName: user.name,
+      authorEmail: user.email,
+    })
+    .from(entries)
+    .innerJoin(contentTypes, eq(entries.contentTypeId, contentTypes.id))
+    .leftJoin(user, eq(entries.createdBy, user.id))
+    .orderBy(desc(entries.updatedAt));
 }
 
 export function getEntryBySlug(

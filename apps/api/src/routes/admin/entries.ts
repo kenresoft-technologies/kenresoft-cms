@@ -3,9 +3,10 @@ import {
   createEntrySchema,
   entryRevisionSchema,
   entrySchema,
+  entryWithContentTypeSchema,
   updateEntrySchema,
 } from '@kenresoft/contracts';
-import type { Entry, EntryRevision, EntryStatus } from '@kenresoft/contracts';
+import type { Entry, EntryRevision, EntryStatus, EntryWithContentType } from '@kenresoft/contracts';
 import { z } from 'zod';
 
 import { getDb } from '../../lib/db';
@@ -18,17 +19,23 @@ import {
   createEntry,
   deleteEntry,
   getEntryById,
+  listAllEntriesWithContentType,
   listEntriesForContentType,
   listEntryRevisions,
   restoreEntryRevision,
   updateEntry,
 } from '../../repositories/entries';
+import type { EntryWithContentType as DbEntryWithContentType } from '../../repositories/entries';
 import type { Database, Entry as DbEntry, EntryRevision as DbEntryRevision } from '@kenresoft/database';
 
 export const entriesRoute = createOpenApiApp<{ Bindings: Bindings; Variables: AuthedVariables }>();
 
 const notFoundSchema = z.object({ error: z.string() });
-const listQuerySchema = z.object({ contentTypeId: z.string().min(1) });
+// contentTypeId is optional: present -> entries for that one content type (unchanged
+// behavior); absent -> every entry across every content type, joined with its content type
+// and author (§ unified admin Entries view).
+const listQuerySchema = z.object({ contentTypeId: z.string().min(1).optional() });
+const createEntryQuerySchema = z.object({ contentTypeId: z.string().min(1) });
 const idParamSchema = z.object({ id: z.string().min(1) });
 const revisionParamsSchema = z.object({ id: z.string().min(1), revisionId: z.string().min(1) });
 
@@ -42,6 +49,16 @@ function toEntry(row: DbEntry): Entry {
     publishAt: row.publishAt ? row.publishAt.toISOString() : null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+function toEntryWithContentType(row: DbEntryWithContentType): EntryWithContentType {
+  return {
+    ...toEntry(row),
+    contentTypeName: row.contentTypeName,
+    contentTypeSlug: row.contentTypeSlug,
+    authorName: row.authorName,
+    authorEmail: row.authorEmail,
   };
 }
 
@@ -74,19 +91,28 @@ entriesRoute.openapi(
     method: 'get',
     path: '/',
     tags: ['Entries'],
-    summary: 'List entries for a content type',
+    summary: 'List entries for a content type, or every entry across every content type',
     request: { query: listQuerySchema },
     responses: {
       200: {
-        description: 'Every entry for the given content type.',
-        content: { 'application/json': { schema: z.array(entrySchema) } },
+        description:
+          'Entries for the given content type when contentTypeId is set; otherwise every ' +
+          'entry across every content type, each with its content type and author joined in.',
+        content: {
+          'application/json': {
+            schema: z.union([z.array(entrySchema), z.array(entryWithContentTypeSchema)]),
+          },
+        },
       },
     },
   }),
   async (c) => {
     const { contentTypeId } = c.req.valid('query');
     const db = getDb(c);
-    return c.json((await listEntriesForContentType(db, contentTypeId)).map(toEntry), 200);
+    if (contentTypeId) {
+      return c.json((await listEntriesForContentType(db, contentTypeId)).map(toEntry), 200);
+    }
+    return c.json((await listAllEntriesWithContentType(db)).map(toEntryWithContentType), 200);
   },
 );
 
@@ -97,7 +123,7 @@ entriesRoute.openapi(
     tags: ['Entries'],
     summary: 'Create an entry',
     request: {
-      query: listQuerySchema,
+      query: createEntryQuerySchema,
       body: { content: { 'application/json': { schema: createEntrySchema } } },
     },
     responses: {

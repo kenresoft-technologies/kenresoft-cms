@@ -36,3 +36,16 @@ export const updateEntrySchema = z.object({
 export type Entry = z.infer<typeof entrySchema>;
 export type CreateEntryInput = z.infer<typeof createEntrySchema>;
 export type UpdateEntryInput = z.infer<typeof updateEntrySchema>;
+
+// Admin-only — backs the unified "all entries" listing across every content type. Deliberately
+// NOT folded into entrySchema: entrySchema is reused verbatim by the public, unauthenticated
+// content API (apps/api/src/routes/public/content.ts), and this shape's authorName/authorEmail
+// would leak an internal user's identity to anonymous visitors if it were.
+export const entryWithContentTypeSchema = entrySchema.extend({
+  contentTypeName: z.string(),
+  contentTypeSlug: z.string(),
+  authorName: z.string().nullable(),
+  authorEmail: z.string().nullable(),
+});
+
+export type EntryWithContentType = z.infer<typeof entryWithContentTypeSchema>;

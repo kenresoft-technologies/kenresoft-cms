@@ -110,6 +110,90 @@ describe('admin routes (real D1)', () => {
     expect(afterDeleteRes.status).toBe(404);
   });
 
+  it('persists the creating user as the entry author, surfaced via the unified entries listing', async () => {
+    const cookie = await freshCookie();
+    const headers = { Cookie: cookie, 'Content-Type': 'application/json' };
+
+    const contentTypeRes = await SELF.fetch('https://example.com/api/v1/admin/content-types', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ name: 'Blog Post', slug: 'blog-post' }),
+    });
+    const contentType = await contentTypeRes.json<{ id: string }>();
+
+    await SELF.fetch(`https://example.com/api/v1/admin/entries?contentTypeId=${contentType.id}`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ slug: 'hello-world', data: {} }),
+    });
+
+    const listRes = await SELF.fetch('https://example.com/api/v1/admin/entries', {
+      headers: { Cookie: cookie },
+    });
+    expect(listRes.status).toBe(200);
+    const listed = await listRes.json<{ slug: string; authorEmail: string | null }[]>();
+    expect(listed).toHaveLength(1);
+    expect(listed[0]!.slug).toBe('hello-world');
+    expect(listed[0]!.authorEmail).toMatch(/@pathvera\.test$/);
+  });
+
+  it('the unified entries listing (no contentTypeId) spans every content type', async () => {
+    const cookie = await freshCookie();
+    const headers = { Cookie: cookie, 'Content-Type': 'application/json' };
+
+    const blogRes = await SELF.fetch('https://example.com/api/v1/admin/content-types', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ name: 'Blog Post', slug: 'blog-post' }),
+    });
+    const blog = await blogRes.json<{ id: string }>();
+
+    const serviceRes = await SELF.fetch('https://example.com/api/v1/admin/content-types', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ name: 'Service', slug: 'service' }),
+    });
+    const service = await serviceRes.json<{ id: string }>();
+
+    await SELF.fetch(`https://example.com/api/v1/admin/entries?contentTypeId=${blog.id}`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ slug: 'hello-world', data: {} }),
+    });
+    await SELF.fetch(`https://example.com/api/v1/admin/entries?contentTypeId=${service.id}`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ slug: 'admissions-support', data: {} }),
+    });
+
+    const listRes = await SELF.fetch('https://example.com/api/v1/admin/entries', {
+      headers: { Cookie: cookie },
+    });
+    expect(listRes.status).toBe(200);
+    const listed = await listRes.json<{ slug: string; contentTypeName: string; contentTypeSlug: string }[]>();
+    expect(listed).toHaveLength(2);
+    expect(listed).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ slug: 'hello-world', contentTypeName: 'Blog Post', contentTypeSlug: 'blog-post' }),
+        expect.objectContaining({
+          slug: 'admissions-support',
+          contentTypeName: 'Service',
+          contentTypeSlug: 'service',
+        }),
+      ]),
+    );
+
+    // The scoped form (contentTypeId set) keeps its original, narrower shape — no
+    // contentTypeName/authorEmail leaking into a response callers already know the scope of.
+    const scopedRes = await SELF.fetch(
+      `https://example.com/api/v1/admin/entries?contentTypeId=${blog.id}`,
+      { headers: { Cookie: cookie } },
+    );
+    const scoped = await scopedRes.json<Record<string, unknown>[]>();
+    expect(scoped).toHaveLength(1);
+    expect(scoped[0]).not.toHaveProperty('contentTypeName');
+  });
+
   it('orders fields by creation order, not alphabetically, when sortOrder is omitted', async () => {
     const cookie = await freshCookie();
     const headers = { Cookie: cookie, 'Content-Type': 'application/json' };
