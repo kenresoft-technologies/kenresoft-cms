@@ -1,11 +1,41 @@
 # Kenresoft CMS — Architecture & Technical Specification
 
-Version 0.6 — Foundation Specification
+Version 0.7 — Foundation Specification
 First production target: Pathvera Group website
 Vision: Cloudflare-native, API-first, reusable, scalable, open-source-ready CMS
 Status: Proposed / Ready for implementation
 
 ## Changelog
+
+**v0.7 (2026-08-27)** — Phase 8's local Astro integration (§15/§20), scoped strictly to local
+development per the phase boundary — no production deployment attempted or claimed.
+
+- **`@kenresoft/astro`** (new `integrations/astro/` workspace package) — a typed client
+  (`createKenresoftClient`) wrapping the public API's two entry routes
+  (`entries.list`/`entries.get`). Deliberately thin: no `contentTypes.list()`, since the public
+  API has no content-type-metadata endpoint to back one (only the admin API does). Types come
+  from `@kenresoft/contracts`' `Entry` via a type-only import, so they're erased at compile
+  time and never pull zod into a consumer's runtime bundle — same discipline as the zod-bundle
+  lesson recorded in the v0.6 entry below, applied to a new package.
+- **`examples/astro-site`** rebuilt on top of that client (previously a hand-rolled `fetch`
+  wrapper) — verified end-to-end against a real local deployment: created a draft entry via the
+  admin API, confirmed the public API 404s it, published it, confirmed the public API and
+  `astro dev` both serve it immediately, edited it, confirmed a previously-built static `dist/`
+  correctly still shows the pre-edit content, then confirmed a rebuild picks up the edit.
+- **Repository structure change**: `pnpm-workspace.yaml` now includes `integrations/*` and
+  `examples/*` (previously only `apps/*`/`packages/*`). `examples/astro-site` had briefly been
+  kept deliberately outside the workspace (needing `pnpm install --ignore-workspace`) to mimic
+  an external consumer with no monorepo access — reversed once `@kenresoft/astro` existed and
+  needed a real, friction-free consumption path from that example; a real SDK's own example app
+  living in the SDK's own monorepo is the standard pattern, and preserving the workaround past
+  the point it served a purpose would have been awkward tooling for its own sake.
+- **New `docs/ASTRO.md`** — the full guide (architecture, local dev, environment variables,
+  static-vs-SSR rationale, known limitations, future work). §15 below is now a summary pointing
+  to it rather than the sole source.
+- **Known gap surfaced by this work, not yet fixed**: there is no public, unauthenticated route
+  for serving R2-backed media files (only the admin-gated `GET /api/v1/admin/media/:id/file`
+  exists), so a `media`-type field can't be rendered by any public consumer — Astro or
+  otherwise — yet.
 
 **v0.6 (2026-08-27)** — Completes Phase 6's last item: `packages/contracts` is populated and
 `apps/api` fully migrated to `@hono/zod-openapi`, closing the largest concrete gap found in a
@@ -314,8 +344,11 @@ kenresoft-cms/
 │   │   └── api/
 │   ├── types/
 │   └── config/
+├── integrations/
+│   └── astro/        — @kenresoft/astro, the first-class Astro client (§15)
 ├── docs/
 ├── examples/
+│   └── astro-site/   — reference Astro consumer built on @kenresoft/astro
 ├── tests/
 ├── .github/
 │   └── workflows/
@@ -590,21 +623,32 @@ of time (an announcement, a dated blog post) without keeping a session open unti
 
 ## 15. Astro Integration
 
-Astro is a first-class frontend target. The CMS provides a clean REST API and, later, a
-typed JavaScript/TypeScript SDK. An optional Astro integration package can be developed
-after the API stabilizes.
+Astro is a first-class, officially supported frontend target — not a requirement. The CMS is
+frontend-agnostic; the public API (§8) is the only integration boundary, and any framework
+(Next.js, Vue, Flutter, ...) can call it directly with a plain `fetch()`. Astro gets a typed
+client, `@kenresoft/astro` (`integrations/astro/`), so Astro developers don't have to hand-roll
+`fetch()` calls or know the API's internal shape — but the CMS core never imports anything
+Astro-specific, and nothing about the client is actually Astro-specific at the code level
+either (it's a plain fetch wrapper any JS/TS project could use — see
+`integrations/astro/README.md`).
 
 ```
 Astro site
    |
-   +--> @kenresoft/cms-sdk (future)
+   +--> @kenresoft/astro
               |
               v
-        Kenresoft CMS API
+        Kenresoft CMS public API   (GET /api/v1/public/...)
               |
               +--> D1
-              +--> R2
+              +--> R2   (not yet — see docs/ASTRO.md's Known Limitations)
 ```
+
+**Status (2026-08-27): Phase 1 (local integration) is done** — see `docs/ASTRO.md` for the
+full guide, and `examples/astro-site/` for a working reference consumer verified against a
+real local deployment (build + dev server, real published entries, draft/publish enforcement
+confirmed end-to-end). Phase 2 (production deployment of an Astro site alongside a Kenresoft
+CMS deployment) is not started; §20's Phase 8 tracks it.
 
 Astro's official Cloudflare adapter currently supports deployment to Cloudflare Workers and
 provides access to Cloudflare platform capabilities. Astro 6 uses Cloudflare's workerd
@@ -688,7 +732,7 @@ runtime for development, useful for production-parity testing.
 | 5 | R2 media library |
 | 6 | Public/admin REST API + OpenAPI (`@hono/zod-openapi`) + public API caching (Cache API/KV) |
 | 7 | Forms + submissions + spam/rate limiting |
-| 8 | Astro integration and Pathvera production integration |
+| 8 | Astro integration (local: done, §15) and Pathvera production integration (not started) |
 | 9 | Testing, security hardening, backups and migration testing |
 | 10 | Open-source documentation, examples and release process |
 

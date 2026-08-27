@@ -218,5 +218,40 @@ Per the roadmap in `docs/ARCHITECTURE.md` §20:
   Media). Zero new npm dependencies — `ui/tabs.tsx` (Settings, the Entry Editor's Preview tab)
   and row selection (TanStack Table's built-in `enableRowSelection`) were already available,
   just unused until now.
+- **Settings redesign + unified Submissions + docs catch-up** (not a roadmap phase — a fourth
+  cross-cutting pass) — done: Settings replaced its three-tab General/Social/Advanced layout
+  with a left-nav, one-section-at-a-time IA covering the full set a serious CMS admin needs
+  (General, Appearance, Security, Notifications, Social, Storage, Database, API, Users &
+  Permissions, Webhooks, Advanced) — only General/Appearance/Social/API/Users &
+  Permissions/Advanced are wired to something real (CORS moved out of Advanced into a new API
+  section, which also links to the already-existing-but-unsurfaced Scalar docs/OpenAPI JSON;
+  Appearance hosts a real Light/Dark/System control on a new shared `ThemeProvider`, replacing
+  the top-bar toggle's old local-only state so both stay in sync); the rest render a
+  `ComingSoonSection` describing what they'll cover instead of a fake control. A new unified
+  `/submissions` view (mirroring the earlier unified `/entries` view) lists every form
+  submission across every form via a new `GET /api/v1/admin/submissions`, joined with each
+  submission's form name/slug the same way `listEntriesWithContentType` joins content-type/
+  author — `listFormSubmissions` became `listSubmissionsWithForm(db, formId?)` so the existing
+  per-form Submissions page picked up the join too. `README.md` was also brought back in line
+  with reality (it had still said "Phase 0, no application code yet").
+- **Astro integration, Phase 1 (local only)** — done, see `docs/ASTRO.md` for the full guide.
+  A new `@kenresoft/astro` workspace package (`integrations/astro/`) — a typed client
+  (`createKenresoftClient`) wrapping the public API's `entries.list`/`entries.get`, deliberately
+  without a `contentTypes.list()` since no public content-type-metadata endpoint exists to back
+  one. `examples/astro-site` (previously a hand-rolled `fetch` wrapper) was rebuilt on top of
+  it and brought into the pnpm workspace (`pnpm-workspace.yaml` now lists `integrations/*` and
+  `examples/*`) so it can depend on `@kenresoft/astro` via a normal `workspace:*` link instead
+  of the `--ignore-workspace` standalone install it briefly needed. Verified end-to-end against
+  a real local deployment: created a draft entry via the admin API, confirmed the public API
+  404s it exactly like a nonexistent slug, published it, confirmed both the public API and
+  `astro dev` serve it immediately, edited it, confirmed a previously-built static `dist/`
+  correctly still showed the pre-edit content, then confirmed a rebuild picked up the edit —
+  demonstrating the documented "static output needs a rebuild for new content" behavior isn't
+  just asserted but actually true. Surfaced a real, not-yet-fixed gap: there's no public,
+  unauthenticated route for serving R2-backed media files (only the admin-gated `GET
+  /api/v1/admin/media/:id/file` exists), so a `media`-type field can't be rendered by this or
+  any public Astro consumer yet. Production deployment (provisioning real Cloudflare resources
+  for the CMS, deploying an Astro site alongside it) is explicitly out of scope for this phase
+  and not started.
 
 CI is green on `develop`.

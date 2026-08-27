@@ -18,7 +18,8 @@ publishing and revisions, the R2 media library, the public + admin REST API (Ope
 caching), and forms with spam/rate-limited public submissions. Three cross-cutting UI passes
 on top of that took `apps/admin` from functional CRUD screens to a full admin experience —
 dashboard, command palette, drag-to-reorder fields, a redesigned Settings area, unified Entries
-and Submissions views, dark mode, and more.
+and Submissions views, dark mode, and more. Phase 8's local Astro integration is also done —
+see [`docs/ASTRO.md`](docs/ASTRO.md) — with production deployment still outstanding.
 
 For the authoritative, continuously-updated account of what's done and what isn't, see the
 **Status** section of [`CLAUDE.md`](CLAUDE.md). For the target end state, see
@@ -35,8 +36,11 @@ packages/
   contracts/  @kenresoft/contracts  — Shared Zod schemas + API contract, used by api/admin/SDK
   types/      @kenresoft/types      — Shared TypeScript types
   config/     @kenresoft/config     — Shared ESLint/TS/Prettier base config
-docs/       Architecture and reference documentation
-examples/   Reserved for example integrations (e.g. an Astro consumer site) — not yet populated
+integrations/
+  astro/      @kenresoft/astro      — Typed client for consuming the public API from Astro
+docs/       Architecture and reference documentation, including docs/ASTRO.md
+examples/
+  astro-site/ Reference Astro site built on @kenresoft/astro — see its own README
 tests/      Reserved for cross-package integration/E2E tests — not yet populated
 ```
 
@@ -63,6 +67,9 @@ can also be run independently — `pnpm --filter @kenresoft/api dev` /
 The first account created through the admin's sign-up flow becomes the deployment's owner;
 everyone who signs up after that defaults to editor (see the Phase 3 entry in `CLAUDE.md`'s
 Status section).
+
+To also try the Astro integration once the CMS is running: `cd examples/astro-site && cp
+.env.example .env && pnpm dev` — see [`docs/ASTRO.md`](docs/ASTRO.md).
 
 ## Package manager
 
