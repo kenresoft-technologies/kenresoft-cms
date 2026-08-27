@@ -61,6 +61,34 @@ export function useDeleteEntry(contentTypeId: string, id: string) {
   });
 }
 
+// Row/bulk actions on a list page need to delete or change the status of whichever entry the
+// user just acted on, not one fixed id known when the component mounts — unlike
+// useDeleteEntry/useUpdateEntry above (built for the single-entry editor, where the id is
+// fixed for the page's lifetime), these take the id as a mutate-time argument so one hook
+// instance at the list page's top level covers every row.
+export function useDeleteEntryById(contentTypeId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => apiClient.delete<void>(`/api/v1/admin/entries/${id}`),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['entries', contentTypeId] });
+    },
+  });
+}
+
+export function useUpdateEntryStatusById(contentTypeId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, status }: { id: string; status: EntryStatus }) =>
+      apiClient.patch<Entry>(`/api/v1/admin/entries/${id}`, { status }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['entries', contentTypeId] });
+    },
+  });
+}
+
 export function useEntryRevisions(entryId: string) {
   return useQuery({
     queryKey: ['entries', 'by-id', entryId, 'revisions'],
