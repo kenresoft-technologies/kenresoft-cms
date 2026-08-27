@@ -92,6 +92,22 @@ describe('settings routes (real D1)', () => {
     expect(response.status).toBe(400);
   });
 
+  // Regression guard written against today's parseJsonBody behavior, before this route
+  // migrates to OpenAPIHono's built-in body validation (see the packages/contracts +
+  // @hono/zod-openapi migration) — malformed JSON syntax (not just a schema mismatch) has no
+  // existing test coverage anywhere, and framework body-parsing changes are exactly the kind
+  // of thing that can silently turn a 400 into a 500.
+  it('rejects a malformed (non-JSON) request body with 400, not 500', async () => {
+    const cookie = await authedCookie('settings-malformed-json@pathvera.test');
+
+    const response = await SELF.fetch('https://example.com/api/v1/admin/settings', {
+      method: 'PUT',
+      headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+      body: '{not valid json',
+    });
+    expect(response.status).toBe(400);
+  });
+
   it('rejects every settings route without a session', async () => {
     const response = await SELF.fetch('https://example.com/api/v1/admin/settings');
     expect(response.status).toBe(401);

@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+import { OpenAPIHono } from '@hono/zod-openapi';
 import { createDb } from '@kenresoft/database';
 
 import { createAuth } from './lib/auth';
@@ -21,7 +21,7 @@ import { publicFormsRoute } from './routes/public/forms';
 import type { Bindings } from './lib/env';
 import type { AuthedVariables } from './middleware/require-session';
 
-const app = new Hono<{ Bindings: Bindings; Variables: AuthedVariables }>();
+const app = new OpenAPIHono<{ Bindings: Bindings; Variables: AuthedVariables }>();
 
 app.use('*', securityHeaders);
 app.use('*', corsMiddleware);
@@ -43,6 +43,17 @@ app.route('/api/v1/admin/media', mediaRoute);
 app.route('/api/v1/admin/forms', formsRoute);
 app.route('/api/v1/admin/settings', settingsRoute);
 app.route('/api/v1/admin/users', usersRoute);
+
+// Aggregates every route registered via .openapi() across the top-level app and its mounted
+// OpenAPIHono sub-apps — routes not yet migrated off plain Hono (§ commit sequence) simply
+// don't appear here yet, without breaking anything they still handle requests for.
+app.doc('/api/v1/openapi.json', (c) => ({
+  openapi: '3.1.0',
+  info: {
+    title: 'Kenresoft CMS API',
+    version: c.env.API_VERSION,
+  },
+}));
 
 export default {
   fetch: app.fetch,

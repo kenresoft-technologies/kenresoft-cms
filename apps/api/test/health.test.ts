@@ -24,4 +24,12 @@ describe('GET /api/v1/health', () => {
 
     expect(response.headers.get('Access-Control-Allow-Origin')).toBeNull();
   });
+
+  it('serves a valid OpenAPI document describing this route', async () => {
+    const response = await SELF.fetch('https://example.com/api/v1/openapi.json');
+
+    expect(response.status).toBe(200);
+    const doc = await response.json<{ paths: Record<string, unknown> }>();
+    expect(doc.paths).toHaveProperty('/api/v1/health');
+  });
 });
