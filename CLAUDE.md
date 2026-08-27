@@ -110,19 +110,28 @@ Per the roadmap in `docs/ARCHITECTURE.md` §20:
   image-metadata.ts`), never the client-supplied Content-Type or filename extension — see
   `docs/ARCHITECTURE.md` §9/§14. Not yet done: WebP dimension parsing (verified but stored as
   null — VP8/VP8L/VP8X each encode dimensions differently).
-- **Phase 6** (public/admin REST API + OpenAPI + public API caching) — in progress. Done:
+- **Phase 6** (public/admin REST API + OpenAPI + public API caching) — done.
   `GET /api/v1/public/:contentType` + `GET /api/v1/public/:contentType/:slug`, unauthenticated,
   addressed by content-type/entry slug rather than internal ids. Filters to `status =
   'published'` at the query layer (`getPublishedEntryBySlug`/`listPublishedEntriesFor
   ContentType` in `apps/api/src/repositories/entries.ts`) — a draft matching the requested
   slug 404s exactly like a slug that doesn't exist, never distinguishable from the outside.
-  Also done: Cloudflare Cache API edge caching on those routes (`Cache-Control: public,
+  Cloudflare Cache API edge caching on those routes (`Cache-Control: public,
   max-age=300`), invalidated on every entry write and by the scheduled auto-publish sweep
   (`apps/api/src/lib/public-cache.ts`) rather than left to expire blindly. Cache keys are
   built against a fixed internal origin, not the real request host — the scheduled trigger
   has no incoming request to read a host from at all, so a real-host-based key would have
-  silently broken invalidation from that path specifically. Not yet done: migrating routes to
-  `@hono/zod-openapi` for generated API contracts, and Workers KV as the caching layer's
+  silently broken invalidation from that path specifically. Every route now migrated to
+  `@hono/zod-openapi` (`apps/api/src/lib/openapi.ts`'s `createOpenApiApp()` factory pins a
+  shared validation-error shape across every route), backed by request/response Zod schemas
+  in the new `packages/contracts` package — the single source of truth shared with
+  `apps/admin`, which now imports its types from there instead of hand-duplicating ~160 lines
+  of interfaces. A generated OpenAPI document is served at `/api/v1/openapi.json` and a Scalar
+  reference UI at `/api/v1/docs` (its own scoped CSP exception in `security-headers.ts`, since
+  the strict site-wide default blocks Scalar's assets outright). Two routes — media upload
+  (multipart, byte-sniffed) and public form submissions (validated dynamically per-form) —
+  don't fit a static request schema and stay outside `.openapi()`'s validation, registered
+  for documentation only via `registerPath()`. Not yet done: Workers KV as the caching layer's
   documented (§12) secondary read-through tier — out of scope until cross-colo consistency is
   an actual concern at Pathvera's traffic level.
 - **Phase 7** (forms + submissions + spam/rate limiting) — done, backend and admin UI both.

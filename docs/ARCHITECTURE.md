@@ -1,11 +1,40 @@
 # Kenresoft CMS — Architecture & Technical Specification
 
-Version 0.5 — Foundation Specification
+Version 0.6 — Foundation Specification
 First production target: Pathvera Group website
 Vision: Cloudflare-native, API-first, reusable, scalable, open-source-ready CMS
 Status: Proposed / Ready for implementation
 
 ## Changelog
+
+**v0.6 (2026-08-27)** — Completes Phase 6's last item: `packages/contracts` is populated and
+`apps/api` fully migrated to `@hono/zod-openapi`, closing the largest concrete gap found in a
+product-direction audit (Kenresoft CMS is no longer scoped as "Pathvera's CMS" but as a
+reusable, eventually open-source platform other developers would adopt — see the roadmap
+framing in §2 and the non-goals in §19, both of which already anticipated this).
+
+- **API contracts (§8)** — every route's request/response Zod schema now lives in
+  `packages/contracts/schemas/*.ts`, the single source of truth shared between `apps/api`
+  (runtime validation) and `apps/admin` (TypeScript types, zero runtime cost). Deleted
+  `apps/api/src/validators/` and its hand-rolled `parseJsonBody` helper entirely. Two routes
+  — media upload (multipart, validated by sniffing file bytes) and public form submissions
+  (validated dynamically per-form) — don't fit a static request schema and stay outside
+  `.openapi()`'s validation, but are still registered for documentation via
+  `openAPIRegistry.registerPath()` so the generated doc stays complete.
+- **Generated OpenAPI document and reference UI** — `GET /api/v1/openapi.json` and a Scalar
+  reference page at `GET /api/v1/docs` (chosen over Swagger UI for a more premium/modern
+  presentation, matching the product's developer-experience bar). Required a scoped CSP
+  exception for exactly the `/docs` path — the security-headers middleware's strict
+  `default-src 'none'` (§9) otherwise blocks Scalar's own assets outright.
+- **Architectural lesson worth recording** — a `packages/contracts` schema file that defines
+  both a plain runtime-value enum array and Zod schemas built from it cannot be safely
+  tree-shaken: Rollup can't prove a third-party `z.object(...)` call is side-effect-free, so
+  importing just the enum still pulls the whole module (zod included) into any bundle that
+  imports it. Runtime-value enums now live in `packages/contracts/schemas/enums.ts` with zero
+  zod import, and `apps/admin` imports that file via an explicit `exports` subpath
+  (`@kenresoft/contracts/schemas/enums`) rather than the package's main barrel, which still
+  entangled things even after the enums moved out. Confirmed by grepping the built admin
+  bundle for `ZodError`/`ZodObject`/`ZodType` before and after the fix.
 
 **v0.5 (2026-08-26)** — Removed the multi-tenant/shared-installation assumption. Kenresoft
 CMS is now a **single-site-per-deployment** CMS: every deployment (its own Cloudflare
@@ -804,7 +833,7 @@ The architecture should be ambitious while the implementation remains incrementa
 
 ## 27. Specification Status
 
-This is Version 0.5. It is an implementation-oriented architectural baseline, not an
+This is Version 0.6. It is an implementation-oriented architectural baseline, not an
 immutable contract. Database schema details, exact API routes and deployment topology may
 still be refined as later phases land. Any change should be recorded in the Changelog above
 so this document stays synchronized with the implementation.
