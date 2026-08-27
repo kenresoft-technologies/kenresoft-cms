@@ -1,20 +1,15 @@
 import { useMemo, useState } from 'react';
-import { Copy, FileText, MoreHorizontal, Plus, Trash2 } from 'lucide-react';
+import { FileText, Plus, Trash2 } from 'lucide-react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { toast } from 'sonner';
 import type { ColumnDef } from '@tanstack/react-table';
 
-import { ApiError } from '@/lib/api-client';
 import { useContentType } from '@/lib/queries/content-types';
-import {
-  useCreateEntry,
-  useDeleteEntryById,
-  useEntries,
-  useUpdateEntryStatusById,
-} from '@/lib/queries/entries';
+import { useDeleteEntryById, useEntries, useUpdateEntryStatusById } from '@/lib/queries/entries';
 import type { Entry, EntryStatus } from '@/lib/types';
 import { DataTable } from '@/components/data-table';
 import { EmptyState } from '@/components/empty-state';
+import { EntryRowActions } from '@/components/entry-row-actions';
 import { PageBreadcrumb } from '@/components/page-breadcrumb';
 import { PageHeader } from '@/components/page-header';
 import { StatusBadge } from '@/components/status-badge';
@@ -30,88 +25,10 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableHeader, TableHead, TableRow } from '@/components/ui/table';
 
 type StatusFilter = 'all' | EntryStatus;
-
-function slugCopy(slug: string) {
-  return `${slug}-copy`;
-}
-
-function RowActions({
-  entry,
-  contentTypeId,
-  onRequestDelete,
-}: {
-  entry: Entry;
-  contentTypeId: string;
-  onRequestDelete: (entry: Entry) => void;
-}) {
-  const navigate = useNavigate();
-  const createEntry = useCreateEntry(contentTypeId);
-  const updateStatus = useUpdateEntryStatusById(contentTypeId);
-  const nextStatus: EntryStatus = entry.status === 'published' ? 'draft' : 'published';
-
-  async function handleDuplicate() {
-    try {
-      const created = await createEntry.mutateAsync({
-        slug: slugCopy(entry.slug),
-        status: 'draft',
-        data: entry.data,
-        publishAt: null,
-      });
-      toast.success('Entry duplicated');
-      void navigate(`/content-types/${contentTypeId}/entries/${created.id}`);
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : 'Failed to duplicate entry');
-    }
-  }
-
-  function handleToggleStatus() {
-    updateStatus.mutate(
-      { id: entry.id, status: nextStatus },
-      {
-        onSuccess: () => toast.success(nextStatus === 'published' ? 'Entry published' : 'Entry unpublished'),
-        onError: (err) => toast.error(err instanceof ApiError ? err.message : 'Failed to update status'),
-      },
-    );
-  }
-
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon-sm" aria-label="Entry actions" className="opacity-0 group-hover:opacity-100">
-          <MoreHorizontal />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuItem asChild>
-          <Link to={`/content-types/${contentTypeId}/entries/${entry.id}`}>Edit</Link>
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={handleDuplicate} disabled={createEntry.isPending}>
-          <Copy />
-          Duplicate
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={handleToggleStatus} disabled={updateStatus.isPending}>
-          {nextStatus === 'published' ? 'Publish' : 'Unpublish'}
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem variant="destructive" onClick={() => onRequestDelete(entry)}>
-          <Trash2 />
-          Delete
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
 
 export function EntriesPage() {
   const navigate = useNavigate();
@@ -192,7 +109,7 @@ export function EntriesPage() {
         enableSorting: false,
         cell: ({ row }) =>
           contentTypeId ? (
-            <RowActions entry={row.original} contentTypeId={contentTypeId} onRequestDelete={setPendingDelete} />
+            <EntryRowActions entry={row.original} contentTypeId={contentTypeId} onRequestDelete={setPendingDelete} />
           ) : null,
       },
     ],

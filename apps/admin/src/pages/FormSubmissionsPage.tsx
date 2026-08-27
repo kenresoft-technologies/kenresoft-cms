@@ -80,12 +80,7 @@ function SubmissionActions({ formId, submission }: { formId: string; submission:
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label="Submission actions"
-          className="opacity-0 group-hover:opacity-100"
-        >
+        <Button variant="ghost" size="icon-sm" aria-label="Submission actions">
           <MoreHorizontal />
         </Button>
       </DropdownMenuTrigger>

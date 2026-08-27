@@ -172,11 +172,21 @@ function MediaGrid({ items }: { items: Media[] }) {
         <Card key={item.id} size="sm" className="group overflow-hidden py-0">
           <div className="relative aspect-square overflow-hidden">
             <MediaThumbnail item={item} className="size-full object-cover transition-transform group-hover:scale-105" />
-            <div className="absolute inset-0 flex items-end justify-end bg-black/0 p-2 opacity-0 transition-all group-hover:bg-black/30 group-hover:opacity-100">
+            {/* The dark wash is a hover-only visual flourish; the delete button itself stays
+                rendered and clickable without hovering first, so it's reachable on touch
+                devices, which have no hover state at all — subtly toned at rest, full
+                destructive-red only once hovered/focused. */}
+            <div className="pointer-events-none absolute inset-0 bg-black/0 transition-colors group-hover:bg-black/20" />
+            <div className="absolute top-2 right-2">
               <DeleteMediaAlert
                 item={item}
                 trigger={
-                  <Button variant="destructive" size="icon-sm" aria-label={`Delete ${item.filename}`}>
+                  <Button
+                    variant="secondary"
+                    size="icon-sm"
+                    aria-label={`Delete ${item.filename}`}
+                    className="bg-background/80 text-foreground hover:bg-destructive/20 hover:text-destructive"
+                  >
                     <Trash2 />
                   </Button>
                 }
@@ -253,12 +263,7 @@ function MediaList({ items }: { items: Media[] }) {
           <DeleteMediaAlert
             item={row.original}
             trigger={
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label={`Delete ${row.original.filename}`}
-                className="opacity-0 group-hover:opacity-100"
-              >
+              <Button variant="ghost" size="icon-sm" aria-label={`Delete ${row.original.filename}`}>
                 <Trash2 />
               </Button>
             }
