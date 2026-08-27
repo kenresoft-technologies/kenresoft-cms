@@ -1,9 +1,10 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router';
-import { FileText, Images, LayoutDashboard, LayoutList, Settings, Users } from 'lucide-react';
+import { ClipboardList, FileText, Images, LayoutDashboard, LayoutList, Settings, Users } from 'lucide-react';
 
 import { useContentTypes } from '@/lib/queries/content-types';
 import { useDashboardStats } from '@/lib/queries/dashboard';
+import { useForms } from '@/lib/queries/forms';
 import { Command, CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 
 interface CommandPaletteProps {
@@ -16,6 +17,7 @@ interface CommandPaletteProps {
 export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const navigate = useNavigate();
   const { data: contentTypes } = useContentTypes();
+  const { data: forms } = useForms();
   const { data: stats } = useDashboardStats();
 
   useEffect(() => {
@@ -55,6 +57,10 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
               <Images />
               Media
             </CommandItem>
+            <CommandItem value="Forms" onSelect={() => go('/forms')}>
+              <ClipboardList />
+              Forms
+            </CommandItem>
             <CommandItem value="Users" onSelect={() => go('/users')}>
               <Users />
               Users
@@ -74,6 +80,16 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
                 >
                   <LayoutList />
                   {contentType.name}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          ) : null}
+          {forms && forms.length > 0 ? (
+            <CommandGroup heading="Forms">
+              {forms.map((form) => (
+                <CommandItem key={form.id} value={form.name} onSelect={() => go(`/forms/${form.id}`)}>
+                  <ClipboardList />
+                  {form.name}
                 </CommandItem>
               ))}
             </CommandGroup>

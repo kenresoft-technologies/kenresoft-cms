@@ -6,6 +6,9 @@ import { ContentTypesPage } from '@/pages/ContentTypesPage';
 import { DashboardPage } from '@/pages/DashboardPage';
 import { EntriesPage } from '@/pages/EntriesPage';
 import { EntryEditorPage } from '@/pages/EntryEditorPage';
+import { FormDetailPage } from '@/pages/FormDetailPage';
+import { FormsPage } from '@/pages/FormsPage';
+import { FormSubmissionsPage } from '@/pages/FormSubmissionsPage';
 import { LoginPage } from '@/pages/LoginPage';
 import { MediaLibraryPage } from '@/pages/MediaLibraryPage';
 import { SettingsPage } from '@/pages/SettingsPage';
@@ -23,6 +26,9 @@ export const router = createBrowserRouter([
       { index: true, element: <DashboardPage /> },
       { path: 'content-types', element: <ContentTypesPage /> },
       { path: 'media', element: <MediaLibraryPage /> },
+      { path: 'forms', element: <FormsPage /> },
+      { path: 'forms/:formId', element: <FormDetailPage /> },
+      { path: 'forms/:formId/submissions', element: <FormSubmissionsPage /> },
       { path: 'settings', element: <SettingsPage /> },
       { path: 'users', element: <UsersPage /> },
       { path: 'content-types/:contentTypeId', element: <ContentTypeDetailPage /> },

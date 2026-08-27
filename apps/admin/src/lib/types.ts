@@ -112,6 +112,44 @@ export interface AdminUser {
   lastActiveAt: string | null;
 }
 
+// Mirrors packages/database/schema/forms.ts / form-fields.ts / form-submissions.ts. Forms are
+// deliberately separate from ContentType/Entry — visitor-submitted data, not editor-authored
+// content (§7).
+export interface Form {
+  id: string;
+  name: string;
+  slug: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const FORM_FIELD_TYPES = ['text', 'textarea', 'email', 'url', 'number', 'select', 'checkbox', 'date'] as const;
+export type FormFieldType = (typeof FORM_FIELD_TYPES)[number];
+
+export interface FormField {
+  id: string;
+  formId: string;
+  name: string;
+  label: string;
+  fieldType: FormFieldType;
+  required: boolean;
+  sortOrder: number;
+  config: Record<string, unknown> | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const FORM_SUBMISSION_STATUSES = ['new', 'read', 'archived'] as const;
+export type FormSubmissionStatus = (typeof FORM_SUBMISSION_STATUSES)[number];
+
+export interface FormSubmission {
+  id: string;
+  formId: string;
+  data: Record<string, unknown>;
+  status: FormSubmissionStatus;
+  createdAt: string;
+}
+
 export interface Settings {
   id: string;
   name: string;

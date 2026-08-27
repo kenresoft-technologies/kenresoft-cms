@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Images, LayoutDashboard, LayoutList, LogOut, Search, Settings, Users } from 'lucide-react';
+import { ClipboardList, Images, LayoutDashboard, LayoutList, LogOut, Search, Settings, Users } from 'lucide-react';
 import { Navigate, NavLink, Outlet, useLocation } from 'react-router';
 
 import { authClient } from '@/lib/auth-client';
@@ -35,6 +35,7 @@ const navItems = [
   { to: '/', label: 'Dashboard', end: true, icon: LayoutDashboard },
   { to: '/content-types', label: 'Content types', end: false, icon: LayoutList },
   { to: '/media', label: 'Media', end: false, icon: Images },
+  { to: '/forms', label: 'Forms', end: false, icon: ClipboardList },
 ];
 
 const configItems = [
