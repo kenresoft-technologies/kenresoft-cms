@@ -133,7 +133,7 @@ describe('EntryEditorPage', () => {
     renderEditor('/content-types/ct-1/entries/e-1');
     await waitFor(() => expect(screen.getByLabelText('Slug')).toHaveValue('hello-world'));
 
-    await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Delete entry' }));
     const alert = await screen.findByRole('alertdialog');
     expect(within(alert).getByText('Delete "hello-world"?')).toBeInTheDocument();
     await userEvent.click(within(alert).getByRole('button', { name: 'Delete' }));

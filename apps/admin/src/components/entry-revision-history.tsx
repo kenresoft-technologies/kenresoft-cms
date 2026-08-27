@@ -18,18 +18,19 @@ import { Skeleton } from '@/components/ui/skeleton';
 interface EntryRevisionHistoryProps {
   contentTypeId: string;
   entryId: string;
+  className?: string;
 }
 
-export function EntryRevisionHistory({ contentTypeId, entryId }: EntryRevisionHistoryProps) {
+export function EntryRevisionHistory({ contentTypeId, entryId, className }: EntryRevisionHistoryProps) {
   const { data: revisions, isPending } = useEntryRevisions(entryId);
   const restoreRevision = useRestoreEntryRevision(contentTypeId, entryId);
 
   return (
     <Sheet>
       <SheetTrigger asChild>
-        <Button variant="outline">
+        <Button variant="outline" className={className}>
           <History />
-          History
+          View history
         </Button>
       </SheetTrigger>
       <SheetContent>
