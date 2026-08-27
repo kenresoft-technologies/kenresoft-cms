@@ -39,9 +39,12 @@ API_VERSION = "v1"
 #
 # CORS only matters for browser-originated requests — apps/admin is the only one today (the
 # Astro integration fetches server-side, no Origin header involved). apps/admin has no deployed
-# home yet (deliberately deferred), so the only real admin origin right now is still the local
-# Vite dev server — add the admin's real origin here once it has one.
-CORS_ORIGINS = "http://localhost:5173"
+# home yet (deliberately deferred), so the only real admin origin right now is the local Vite
+# dev server — but Vite auto-increments past 5173 whenever that port's already taken (a normal,
+# frequent occurrence with several dev servers running at once), so a handful of adjacent ports
+# are allow-listed rather than just one. Add the admin's real deployed origin here once it has
+# one, and drop these once dev:live typically lands on a stable port.
+CORS_ORIGINS = "http://localhost:5173,http://localhost:5174,http://localhost:5175,http://localhost:5176,http://localhost:5177"
 BETTER_AUTH_URL = "https://kenresoft-cms-api.kenresoft.workers.dev"
 # BETTER_AUTH_SECRET is a real secret, not a var — set it in apps/api/.dev.vars for local dev
 # (see .dev.vars.example) and via `wrangler secret put BETTER_AUTH_SECRET` for deployed envs.

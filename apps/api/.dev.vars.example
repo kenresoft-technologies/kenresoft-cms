@@ -4,5 +4,5 @@ BETTER_AUTH_SECRET=replace-with-a-32-plus-character-random-value
 # .dev.vars overrides both plain vars and secrets during `wrangler dev` (unlike wrangler.toml's
 # [env.*] sections, which don't inherit from top-level at all), so these two lines are what
 # keep local dev pointed at localhost instead of the real deployment.
-CORS_ORIGINS=http://localhost:5173
+CORS_ORIGINS=http://localhost:5173,http://localhost:5174,http://localhost:5175,http://localhost:5176,http://localhost:5177
 BETTER_AUTH_URL=http://localhost:8787
