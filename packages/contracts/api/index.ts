@@ -1,4 +1,5 @@
 export * from '../schemas/common';
+export * from '../schemas/content-types';
 export * from '../schemas/dashboard';
 export * from '../schemas/entries';
 export * from '../schemas/health';
