@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AppLayout } from '@/layouts/AppLayout';
+import { ThemeProvider } from '@/lib/theme';
 import { TooltipProvider } from '@/components/ui/tooltip';
 
 const { useSessionMock, signOutMock, getMock } = vi.hoisted(() => ({
@@ -28,19 +29,21 @@ vi.mock('@/lib/api-client', async () => {
 function renderAppLayout() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <MemoryRouter initialEntries={['/']}>
-          <Routes>
-            <Route path="/login" element={<div>Login placeholder</div>} />
-            <Route path="/" element={<AppLayout />}>
-              <Route index element={<div>Protected content</div>} />
-              <Route path="content-types" element={<div>Content types page</div>} />
-            </Route>
-          </Routes>
-        </MemoryRouter>
-      </TooltipProvider>
-    </QueryClientProvider>,
+    <ThemeProvider>
+      <QueryClientProvider client={queryClient}>
+        <TooltipProvider>
+          <MemoryRouter initialEntries={['/']}>
+            <Routes>
+              <Route path="/login" element={<div>Login placeholder</div>} />
+              <Route path="/" element={<AppLayout />}>
+                <Route index element={<div>Protected content</div>} />
+                <Route path="content-types" element={<div>Content types page</div>} />
+              </Route>
+            </Routes>
+          </MemoryRouter>
+        </TooltipProvider>
+      </QueryClientProvider>
+    </ThemeProvider>,
   );
 }
 
