@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { SettingsPage } from '@/pages/SettingsPage';
+import { ThemeProvider } from '@/lib/theme';
 
 const { getMock, putMock, useSessionMock } = vi.hoisted(() => ({
   getMock: vi.fn(),
@@ -26,11 +27,13 @@ function renderPage() {
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   return render(
-    <QueryClientProvider client={queryClient}>
-      <MemoryRouter>
-        <SettingsPage />
-      </MemoryRouter>
-    </QueryClientProvider>,
+    <ThemeProvider>
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <SettingsPage />
+        </MemoryRouter>
+      </QueryClientProvider>
+    </ThemeProvider>,
   );
 }
 
@@ -41,7 +44,7 @@ describe('SettingsPage', () => {
     useSessionMock.mockReset();
   });
 
-  it('lets an owner fill in and save settings', async () => {
+  it('lets an owner fill in and save the General section', async () => {
     useSessionMock.mockReturnValue({ data: { user: { role: 'owner', email: 'owner@pathvera.test' } } });
     getMock.mockResolvedValue(null);
     putMock.mockResolvedValue({
@@ -58,7 +61,7 @@ describe('SettingsPage', () => {
 
     await waitFor(() => expect(screen.getByLabelText('Site name')).toBeInTheDocument());
     await userEvent.type(screen.getByLabelText('Site name'), 'Pathvera Group');
-    await userEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
 
     await waitFor(() =>
       expect(putMock).toHaveBeenCalledWith('/api/v1/admin/settings', {
@@ -71,21 +74,22 @@ describe('SettingsPage', () => {
     );
   });
 
-  it('adds and removes a feature flag before saving', async () => {
+  it('disables Save until a change is made, then adds and removes a feature flag before saving', async () => {
     useSessionMock.mockReturnValue({ data: { user: { role: 'owner', email: 'owner@pathvera.test' } } });
     getMock.mockResolvedValue(null);
     putMock.mockResolvedValue({ id: 's-1', name: 'x', updatedAt: '2026-01-01T00:00:00.000Z' });
 
     renderPage();
     await waitFor(() => expect(screen.getByLabelText('Site name')).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled();
 
-    await userEvent.type(screen.getByLabelText('Site name'), 'Pathvera Group');
-    await userEvent.click(screen.getByRole('tab', { name: 'Advanced' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Advanced' }));
     await userEvent.type(screen.getByPlaceholderText('flag-name'), 'newsletter-signup');
     await userEvent.click(screen.getByRole('button', { name: 'Add' }));
     expect(screen.getByText('newsletter-signup')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save changes' })).toBeEnabled();
 
-    await userEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     await waitFor(() =>
       expect(putMock).toHaveBeenCalledWith(
         '/api/v1/admin/settings',
@@ -94,7 +98,7 @@ describe('SettingsPage', () => {
     );
   });
 
-  it('organizes settings into General/Social/Advanced tabs', async () => {
+  it('navigates between sections, including Appearance and the not-yet-available ones', async () => {
     useSessionMock.mockReturnValue({ data: { user: { role: 'owner', email: 'owner@pathvera.test' } } });
     getMock.mockResolvedValue(null);
 
@@ -102,11 +106,19 @@ describe('SettingsPage', () => {
     await waitFor(() => expect(screen.getByLabelText('Site name')).toBeInTheDocument());
 
     expect(screen.queryByLabelText('Website')).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole('tab', { name: 'Social' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Social' }));
     expect(screen.getByLabelText('Website')).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('tab', { name: 'Advanced' }));
+    await userEvent.click(screen.getByRole('button', { name: 'API' }));
     expect(screen.getByLabelText('CORS origin')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /API reference/ })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /Appearance/ }));
+    expect(screen.getByRole('radiogroup', { name: 'Theme' })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /Security/ }));
+    expect(screen.getByText('Not yet available')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Save changes' })).not.toBeInTheDocument();
   });
 
   it('renders read-only, with no save button, for an editor', async () => {
@@ -125,7 +137,7 @@ describe('SettingsPage', () => {
 
     await waitFor(() => expect(screen.getByLabelText('Site name')).toHaveValue('Pathvera Group'));
     expect(screen.getByLabelText('Site name')).toBeDisabled();
-    expect(screen.queryByRole('button', { name: 'Save settings' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Save changes' })).not.toBeInTheDocument();
     expect(screen.getByText('Only owners can make changes.', { exact: false })).toBeInTheDocument();
   });
 });
