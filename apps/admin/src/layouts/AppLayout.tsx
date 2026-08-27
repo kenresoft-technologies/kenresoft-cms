@@ -31,14 +31,16 @@ import {
   SidebarTrigger,
 } from '@/components/ui/sidebar';
 
-const navItems = [
-  { to: '/', label: 'Dashboard', end: true, icon: LayoutDashboard },
-  { to: '/content-types', label: 'Content types', end: false, icon: LayoutList },
+const overviewItems = [{ to: '/', label: 'Dashboard', end: true, icon: LayoutDashboard }];
+
+const contentItems = [{ to: '/content-types', label: 'Content types', end: false, icon: LayoutList }];
+
+const engagementItems = [
   { to: '/media', label: 'Media', end: false, icon: Images },
   { to: '/forms', label: 'Forms', end: false, icon: ClipboardList },
 ];
 
-const configItems = [
+const adminItems = [
   { to: '/users', label: 'Users', end: false, icon: Users },
   { to: '/settings', label: 'Settings', end: false, icon: Settings },
 ];
@@ -86,21 +88,34 @@ export function AppLayout() {
 
   return (
     <SidebarProvider>
-      <Sidebar>
+      <Sidebar collapsible="icon">
         <SidebarHeader className="px-3 py-3">
-          <span className="text-lg font-semibold">Kenresoft CMS</span>
+          <span className="truncate text-lg font-semibold group-data-[collapsible=icon]:hidden">
+            Kenresoft CMS
+          </span>
         </SidebarHeader>
         <SidebarContent>
           <SidebarGroup>
-            <SidebarGroupLabel>Content</SidebarGroupLabel>
             <SidebarGroupContent>
-              <NavItems items={navItems} pathname={location.pathname} />
+              <NavItems items={overviewItems} pathname={location.pathname} />
             </SidebarGroupContent>
           </SidebarGroup>
           <SidebarGroup>
-            <SidebarGroupLabel>Configuration</SidebarGroupLabel>
+            <SidebarGroupLabel>Content</SidebarGroupLabel>
             <SidebarGroupContent>
-              <NavItems items={configItems} pathname={location.pathname} />
+              <NavItems items={contentItems} pathname={location.pathname} />
+            </SidebarGroupContent>
+          </SidebarGroup>
+          <SidebarGroup>
+            <SidebarGroupLabel>Media &amp; Forms</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <NavItems items={engagementItems} pathname={location.pathname} />
+            </SidebarGroupContent>
+          </SidebarGroup>
+          <SidebarGroup>
+            <SidebarGroupLabel>Administration</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <NavItems items={adminItems} pathname={location.pathname} />
             </SidebarGroupContent>
           </SidebarGroup>
         </SidebarContent>
@@ -108,10 +123,12 @@ export function AppLayout() {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <SidebarMenuButton size="lg">
-                <Avatar className="size-6">
+                <Avatar className="size-6 shrink-0">
                   <AvatarFallback>{initials(session.user.name || session.user.email)}</AvatarFallback>
                 </Avatar>
-                <span className="truncate text-sm">{session.user.name || session.user.email}</span>
+                <span className="truncate text-sm group-data-[collapsible=icon]:hidden">
+                  {session.user.name || session.user.email}
+                </span>
               </SidebarMenuButton>
             </DropdownMenuTrigger>
             <DropdownMenuContent side="top" align="start" className="w-56">
