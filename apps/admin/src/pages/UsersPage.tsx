@@ -10,6 +10,7 @@ import type { AdminUser, UserRole } from '@/lib/types';
 import { DataTable } from '@/components/data-table';
 import { EmptyState } from '@/components/empty-state';
 import { PageBreadcrumb } from '@/components/page-breadcrumb';
+import { PageHeader } from '@/components/page-header';
 import { TableSkeleton } from '@/components/table-skeleton';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -93,12 +94,10 @@ export function UsersPage() {
     <div className="flex flex-col gap-6">
       <PageBreadcrumb items={[{ label: 'Users' }]} />
 
-      <div>
-        <h1 className="text-2xl font-semibold">Users</h1>
-        <p className="text-muted-foreground">
-          {isOwner ? 'Everyone with access to this admin, and their role.' : 'Everyone with access to this admin.'}
-        </p>
-      </div>
+      <PageHeader
+        title="Users"
+        description={isOwner ? 'Everyone with access to this admin, and their role.' : 'Everyone with access to this admin.'}
+      />
 
       {error ? <p className="text-destructive">{error.message}</p> : null}
 
