@@ -6,7 +6,7 @@ import type { ColumnDef } from '@tanstack/react-table';
 
 import { useContentType } from '@/lib/queries/content-types';
 import { useDeleteEntryById, useEntries, useUpdateEntryStatusById } from '@/lib/queries/entries';
-import type { Entry, EntryStatus } from '@/lib/types';
+import type { EntryStatus, EntryWithContentType } from '@/lib/types';
 import { DataTable } from '@/components/data-table';
 import { EmptyState } from '@/components/empty-state';
 import { EntryRowActions } from '@/components/entry-row-actions';
@@ -39,7 +39,7 @@ export function EntriesPage() {
   const updateStatus = useUpdateEntryStatusById(contentTypeId ?? '');
 
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
-  const [pendingDelete, setPendingDelete] = useState<Entry | Entry[] | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<EntryWithContentType | EntryWithContentType[] | null>(null);
 
   const filteredEntries = useMemo(
     () => (statusFilter === 'all' ? (entries ?? []) : (entries ?? []).filter((entry) => entry.status === statusFilter)),
@@ -61,7 +61,7 @@ export function EntriesPage() {
     setPendingDelete(null);
   }
 
-  async function handleBulkPublish(rows: Entry[], status: EntryStatus, clearSelection: () => void) {
+  async function handleBulkPublish(rows: EntryWithContentType[], status: EntryStatus, clearSelection: () => void) {
     const results = await Promise.allSettled(
       rows.map((entry) => updateStatus.mutateAsync({ id: entry.id, status })),
     );
@@ -75,7 +75,7 @@ export function EntriesPage() {
     clearSelection();
   }
 
-  const columns = useMemo<ColumnDef<Entry>[]>(
+  const columns = useMemo<ColumnDef<EntryWithContentType>[]>(
     () => [
       {
         accessorKey: 'slug',
@@ -88,6 +88,11 @@ export function EntriesPage() {
             {row.original.slug}
           </Link>
         ),
+      },
+      {
+        accessorKey: 'authorName',
+        header: 'Author',
+        cell: ({ row }) => <span className="text-muted-foreground">{row.original.authorName ?? '—'}</span>,
       },
       {
         accessorKey: 'status',
@@ -149,11 +154,12 @@ export function EntriesPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Slug</TableHead>
+                <TableHead>Author</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Updated</TableHead>
               </TableRow>
             </TableHeader>
-            <TableSkeleton columns={3} />
+            <TableSkeleton columns={4} />
           </Table>
         </div>
       ) : null}

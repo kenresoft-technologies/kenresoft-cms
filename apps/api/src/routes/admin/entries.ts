@@ -19,8 +19,7 @@ import {
   createEntry,
   deleteEntry,
   getEntryById,
-  listAllEntriesWithContentType,
-  listEntriesForContentType,
+  listEntriesWithContentType,
   listEntryRevisions,
   restoreEntryRevision,
   updateEntry,
@@ -96,23 +95,18 @@ entriesRoute.openapi(
     responses: {
       200: {
         description:
-          'Entries for the given content type when contentTypeId is set; otherwise every ' +
-          'entry across every content type, each with its content type and author joined in.',
-        content: {
-          'application/json': {
-            schema: z.union([z.array(entrySchema), z.array(entryWithContentTypeSchema)]),
-          },
-        },
+          'Entries for the given content type when contentTypeId is set, otherwise every ' +
+          'entry across every content type — either way, each with its content type and ' +
+          'author joined in.',
+        content: { 'application/json': { schema: z.array(entryWithContentTypeSchema) } },
       },
     },
   }),
   async (c) => {
     const { contentTypeId } = c.req.valid('query');
     const db = getDb(c);
-    if (contentTypeId) {
-      return c.json((await listEntriesForContentType(db, contentTypeId)).map(toEntry), 200);
-    }
-    return c.json((await listAllEntriesWithContentType(db)).map(toEntryWithContentType), 200);
+    const rows = await listEntriesWithContentType(db, contentTypeId);
+    return c.json(rows.map(toEntryWithContentType), 200);
   },
 );
 

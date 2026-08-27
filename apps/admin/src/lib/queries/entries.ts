@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { apiClient } from '@/lib/api-client';
-import type { Entry, EntryRevision, EntryStatus } from '@/lib/types';
+import type { Entry, EntryRevision, EntryStatus, EntryWithContentType } from '@/lib/types';
 
 type EntryWriteInput = {
   slug: string;
@@ -10,10 +10,14 @@ type EntryWriteInput = {
   publishAt?: string | null;
 };
 
+// The API returns the same joined shape (content type + author) whether or not
+// contentTypeId is set — scoped here to one content type, so this page can show an Author
+// column too, not just the unified AllEntriesPage.
 export function useEntries(contentTypeId: string) {
   return useQuery({
     queryKey: ['entries', contentTypeId],
-    queryFn: () => apiClient.get<Entry[]>(`/api/v1/admin/entries?contentTypeId=${contentTypeId}`),
+    queryFn: () =>
+      apiClient.get<EntryWithContentType[]>(`/api/v1/admin/entries?contentTypeId=${contentTypeId}`),
     enabled: Boolean(contentTypeId),
   });
 }

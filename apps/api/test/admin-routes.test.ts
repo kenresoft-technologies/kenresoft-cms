@@ -183,15 +183,16 @@ describe('admin routes (real D1)', () => {
       ]),
     );
 
-    // The scoped form (contentTypeId set) keeps its original, narrower shape — no
-    // contentTypeName/authorEmail leaking into a response callers already know the scope of.
+    // The scoped form (contentTypeId set) uses the same joined shape, just filtered to one
+    // content type — so the per-content-type Entries page can show an Author column too, not
+    // just the unified one.
     const scopedRes = await SELF.fetch(
       `https://example.com/api/v1/admin/entries?contentTypeId=${blog.id}`,
       { headers: { Cookie: cookie } },
     );
-    const scoped = await scopedRes.json<Record<string, unknown>[]>();
+    const scoped = await scopedRes.json<{ slug: string; contentTypeName: string }[]>();
     expect(scoped).toHaveLength(1);
-    expect(scoped[0]).not.toHaveProperty('contentTypeName');
+    expect(scoped[0]).toMatchObject({ slug: 'hello-world', contentTypeName: 'Blog Post' });
   });
 
   it('orders fields by creation order, not alphabetically, when sortOrder is omitted', async () => {

@@ -50,16 +50,34 @@ describe('EntriesPage', () => {
     postMock.mockReset().mockResolvedValue({ id: 'e-copy' });
   });
 
-  it('lists entries scoped to the content type, with a status badge', async () => {
+  it('lists entries scoped to the content type, with a status badge and author', async () => {
     mockEntries([
-      { id: 'e-1', slug: 'hello-world', status: 'published', updatedAt: '2026-01-01T00:00:00.000Z' },
+      {
+        id: 'e-1',
+        slug: 'hello-world',
+        status: 'published',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+        authorName: 'Jane Doe',
+      },
     ]);
 
     renderPage();
 
     await waitFor(() => expect(screen.getByText('hello-world')).toBeInTheDocument());
     expect(screen.getByText('Published')).toBeInTheDocument();
+    expect(screen.getByText('Jane Doe')).toBeInTheDocument();
     expect(getMock).toHaveBeenCalledWith('/api/v1/admin/entries?contentTypeId=ct-1');
+  });
+
+  it('shows an em dash when an entry has no author', async () => {
+    mockEntries([
+      { id: 'e-1', slug: 'hello-world', status: 'published', updatedAt: '2026-01-01T00:00:00.000Z', authorName: null },
+    ]);
+
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('hello-world')).toBeInTheDocument());
+    expect(screen.getByText('—')).toBeInTheDocument();
   });
 
   it('shows an empty state and a New entry link pointing at the create route', async () => {

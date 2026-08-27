@@ -50,17 +50,15 @@ export async function createEntry(
   return entry!;
 }
 
-export function listEntriesForContentType(
+// Backs both the per-content-type Entries page and the unified admin "all entries" listing —
+// the same joined shape (content type name/slug, author name/email — both nullable: a
+// system-triggered write, e.g. the scheduled-publish Cron Trigger, has no acting user)
+// either way, so both screens can show an Author column, not just the unified one. Pass
+// contentTypeId to scope to one content type; omit it for every entry across every type.
+export function listEntriesWithContentType(
   db: Database,
-  contentTypeId: string,
-): Promise<Entry[]> {
-  return db.query.entries.findMany({ where: eq(entries.contentTypeId, contentTypeId) });
-}
-
-// Backs the unified admin "all entries" listing — every entry across every content type,
-// joined with the content type's name/slug and the author's name/email (both nullable: a
-// system-triggered write, e.g. the scheduled-publish Cron Trigger, has no acting user).
-export function listAllEntriesWithContentType(db: Database): Promise<EntryWithContentType[]> {
+  contentTypeId?: string,
+): Promise<EntryWithContentType[]> {
   return db
     .select({
       id: entries.id,
@@ -80,6 +78,7 @@ export function listAllEntriesWithContentType(db: Database): Promise<EntryWithCo
     .from(entries)
     .innerJoin(contentTypes, eq(entries.contentTypeId, contentTypes.id))
     .leftJoin(user, eq(entries.createdBy, user.id))
+    .where(contentTypeId ? eq(entries.contentTypeId, contentTypeId) : undefined)
     .orderBy(desc(entries.updatedAt));
 }
 
