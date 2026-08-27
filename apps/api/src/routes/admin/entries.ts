@@ -1,8 +1,16 @@
-import { Hono } from 'hono';
+import { createRoute } from '@hono/zod-openapi';
+import {
+  createEntrySchema,
+  entryRevisionSchema,
+  entrySchema,
+  updateEntrySchema,
+} from '@kenresoft/contracts';
+import type { Entry, EntryRevision, EntryStatus } from '@kenresoft/contracts';
+import { z } from 'zod';
 
 import { getDb } from '../../lib/db';
 import { invalidatePublicEntryCache } from '../../lib/public-cache';
-import { parseJsonBody } from '../../lib/validate';
+import { createOpenApiApp } from '../../lib/openapi';
 import type { Bindings } from '../../lib/env';
 import type { AuthedVariables } from '../../middleware/require-session';
 import { getContentTypeById } from '../../repositories/content-types';
@@ -15,105 +23,255 @@ import {
   restoreEntryRevision,
   updateEntry,
 } from '../../repositories/entries';
-import { createEntrySchema, updateEntrySchema } from '../../validators/entries';
-import type { Database, Entry } from '@kenresoft/database';
+import type { Database, Entry as DbEntry, EntryRevision as DbEntryRevision } from '@kenresoft/database';
 
-export const entriesRoute = new Hono<{ Bindings: Bindings; Variables: AuthedVariables }>();
+export const entriesRoute = createOpenApiApp<{ Bindings: Bindings; Variables: AuthedVariables }>();
+
+const notFoundSchema = z.object({ error: z.string() });
+const listQuerySchema = z.object({ contentTypeId: z.string().min(1) });
+const idParamSchema = z.object({ id: z.string().min(1) });
+const revisionParamsSchema = z.object({ id: z.string().min(1), revisionId: z.string().min(1) });
+
+function toEntry(row: DbEntry): Entry {
+  return {
+    id: row.id,
+    contentTypeId: row.contentTypeId,
+    slug: row.slug,
+    status: row.status as EntryStatus,
+    data: row.data,
+    publishAt: row.publishAt ? row.publishAt.toISOString() : null,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+function toEntryRevision(row: DbEntryRevision): EntryRevision {
+  return {
+    id: row.id,
+    entryId: row.entryId,
+    slug: row.slug,
+    status: row.status as EntryStatus,
+    data: row.data,
+    createdBy: row.createdBy,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
 
 // Best-effort: every write to an entry could change what the public API's cached responses
 // for its content type return (§13), so every write path below calls this regardless of the
 // entry's actual status — deleting a cache key that was never populated is a harmless no-op.
 async function invalidateCacheForEntry(
   db: Database,
-  entry: Pick<Entry, 'contentTypeId' | 'slug'>,
+  entry: Pick<DbEntry, 'contentTypeId' | 'slug'>,
 ): Promise<void> {
   const contentType = await getContentTypeById(db, entry.contentTypeId);
   if (!contentType) return;
   await invalidatePublicEntryCache(contentType.slug, entry.slug);
 }
 
-entriesRoute.get('/', async (c) => {
-  const contentTypeId = c.req.query('contentTypeId');
-  if (!contentTypeId) {
-    return c.json({ error: 'contentTypeId query parameter is required' }, 400);
-  }
+entriesRoute.openapi(
+  createRoute({
+    method: 'get',
+    path: '/',
+    tags: ['Entries'],
+    summary: 'List entries for a content type',
+    request: { query: listQuerySchema },
+    responses: {
+      200: {
+        description: 'Every entry for the given content type.',
+        content: { 'application/json': { schema: z.array(entrySchema) } },
+      },
+    },
+  }),
+  async (c) => {
+    const { contentTypeId } = c.req.valid('query');
+    const db = getDb(c);
+    return c.json((await listEntriesForContentType(db, contentTypeId)).map(toEntry), 200);
+  },
+);
 
-  const db = getDb(c);
-  return c.json(await listEntriesForContentType(db, contentTypeId));
-});
+entriesRoute.openapi(
+  createRoute({
+    method: 'post',
+    path: '/',
+    tags: ['Entries'],
+    summary: 'Create an entry',
+    request: {
+      query: listQuerySchema,
+      body: { content: { 'application/json': { schema: createEntrySchema } } },
+    },
+    responses: {
+      201: {
+        description: 'The created entry.',
+        content: { 'application/json': { schema: entrySchema } },
+      },
+      404: {
+        description: 'No content type with that id.',
+        content: { 'application/json': { schema: notFoundSchema } },
+      },
+    },
+  }),
+  async (c) => {
+    const { contentTypeId } = c.req.valid('query');
+    const input = c.req.valid('json');
+    const db = getDb(c);
+    try {
+      const entry = await createEntry(db, contentTypeId, input, c.get('user').id);
+      c.executionCtx.waitUntil(invalidateCacheForEntry(db, entry));
+      return c.json(toEntry(entry), 201);
+    } catch {
+      return c.json({ error: 'Content type not found' }, 404);
+    }
+  },
+);
 
-entriesRoute.post('/', async (c) => {
-  const contentTypeId = c.req.query('contentTypeId');
-  if (!contentTypeId) {
-    return c.json({ error: 'contentTypeId query parameter is required' }, 400);
-  }
+entriesRoute.openapi(
+  createRoute({
+    method: 'get',
+    path: '/{id}',
+    tags: ['Entries'],
+    summary: 'Get an entry by id',
+    request: { params: idParamSchema },
+    responses: {
+      200: {
+        description: 'The entry.',
+        content: { 'application/json': { schema: entrySchema } },
+      },
+      404: {
+        description: 'No entry with that id.',
+        content: { 'application/json': { schema: notFoundSchema } },
+      },
+    },
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const db = getDb(c);
+    const entry = await getEntryById(db, id);
+    if (!entry) {
+      return c.json({ error: 'Entry not found' }, 404);
+    }
+    return c.json(toEntry(entry), 200);
+  },
+);
 
-  const parsed = await parseJsonBody(c, createEntrySchema);
-  if ('error' in parsed) return parsed.error;
-
-  const db = getDb(c);
-  try {
-    const entry = await createEntry(db, contentTypeId, parsed.data, c.get('user').id);
+entriesRoute.openapi(
+  createRoute({
+    method: 'patch',
+    path: '/{id}',
+    tags: ['Entries'],
+    summary: 'Update an entry',
+    request: {
+      params: idParamSchema,
+      body: { content: { 'application/json': { schema: updateEntrySchema } } },
+    },
+    responses: {
+      200: {
+        description: 'The updated entry.',
+        content: { 'application/json': { schema: entrySchema } },
+      },
+      404: {
+        description: 'No entry with that id.',
+        content: { 'application/json': { schema: notFoundSchema } },
+      },
+    },
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const input = c.req.valid('json');
+    const db = getDb(c);
+    const entry = await updateEntry(db, id, input, c.get('user').id);
+    if (!entry) {
+      return c.json({ error: 'Entry not found' }, 404);
+    }
     c.executionCtx.waitUntil(invalidateCacheForEntry(db, entry));
-    return c.json(entry, 201);
-  } catch {
-    return c.json({ error: 'Content type not found' }, 404);
-  }
-});
+    return c.json(toEntry(entry), 200);
+  },
+);
 
-entriesRoute.get('/:id', async (c) => {
-  const db = getDb(c);
-  const entry = await getEntryById(db, c.req.param('id'));
-  if (!entry) {
-    return c.json({ error: 'Entry not found' }, 404);
-  }
-  return c.json(entry);
-});
+entriesRoute.openapi(
+  createRoute({
+    method: 'delete',
+    path: '/{id}',
+    tags: ['Entries'],
+    summary: 'Delete an entry',
+    request: { params: idParamSchema },
+    responses: {
+      204: { description: 'The entry was deleted.' },
+      404: {
+        description: 'No entry with that id.',
+        content: { 'application/json': { schema: notFoundSchema } },
+      },
+    },
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const db = getDb(c);
+    const entry = await getEntryById(db, id);
+    if (!entry) {
+      return c.json({ error: 'Entry not found' }, 404);
+    }
+    await deleteEntry(db, entry.id);
+    c.executionCtx.waitUntil(invalidateCacheForEntry(db, entry));
+    return c.body(null, 204);
+  },
+);
 
-entriesRoute.patch('/:id', async (c) => {
-  const parsed = await parseJsonBody(c, updateEntrySchema);
-  if ('error' in parsed) return parsed.error;
+entriesRoute.openapi(
+  createRoute({
+    method: 'get',
+    path: '/{id}/revisions',
+    tags: ['Entries'],
+    summary: "List an entry's revision history",
+    request: { params: idParamSchema },
+    responses: {
+      200: {
+        description: 'Every revision, newest first.',
+        content: { 'application/json': { schema: z.array(entryRevisionSchema) } },
+      },
+      404: {
+        description: 'No entry with that id.',
+        content: { 'application/json': { schema: notFoundSchema } },
+      },
+    },
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const db = getDb(c);
+    const entry = await getEntryById(db, id);
+    if (!entry) {
+      return c.json({ error: 'Entry not found' }, 404);
+    }
+    const revisions = await listEntryRevisions(db, entry.id);
+    return c.json(revisions.map(toEntryRevision), 200);
+  },
+);
 
-  const db = getDb(c);
-  const entry = await updateEntry(db, c.req.param('id'), parsed.data, c.get('user').id);
-  if (!entry) {
-    return c.json({ error: 'Entry not found' }, 404);
-  }
-  c.executionCtx.waitUntil(invalidateCacheForEntry(db, entry));
-  return c.json(entry);
-});
-
-entriesRoute.delete('/:id', async (c) => {
-  const db = getDb(c);
-  const entry = await getEntryById(db, c.req.param('id'));
-  if (!entry) {
-    return c.json({ error: 'Entry not found' }, 404);
-  }
-  await deleteEntry(db, entry.id);
-  c.executionCtx.waitUntil(invalidateCacheForEntry(db, entry));
-  return c.body(null, 204);
-});
-
-entriesRoute.get('/:id/revisions', async (c) => {
-  const db = getDb(c);
-  const entry = await getEntryById(db, c.req.param('id'));
-  if (!entry) {
-    return c.json({ error: 'Entry not found' }, 404);
-  }
-  return c.json(await listEntryRevisions(db, entry.id));
-});
-
-entriesRoute.post('/:id/revisions/:revisionId/restore', async (c) => {
-  const db = getDb(c);
-  const entry = await restoreEntryRevision(
-    db,
-    c.req.param('id'),
-    c.req.param('revisionId'),
-    c.get('user').id,
-  );
-  if (!entry) {
-    return c.json({ error: 'Entry or revision not found' }, 404);
-  }
-  c.executionCtx.waitUntil(invalidateCacheForEntry(db, entry));
-  return c.json(entry);
-});
+entriesRoute.openapi(
+  createRoute({
+    method: 'post',
+    path: '/{id}/revisions/{revisionId}/restore',
+    tags: ['Entries'],
+    summary: 'Restore an entry to a past revision',
+    request: { params: revisionParamsSchema },
+    responses: {
+      200: {
+        description: 'The entry, restored to the given revision (itself snapshotted first).',
+        content: { 'application/json': { schema: entrySchema } },
+      },
+      404: {
+        description: 'No entry or revision matching those ids.',
+        content: { 'application/json': { schema: notFoundSchema } },
+      },
+    },
+  }),
+  async (c) => {
+    const { id, revisionId } = c.req.valid('param');
+    const db = getDb(c);
+    const entry = await restoreEntryRevision(db, id, revisionId, c.get('user').id);
+    if (!entry) {
+      return c.json({ error: 'Entry or revision not found' }, 404);
+    }
+    c.executionCtx.waitUntil(invalidateCacheForEntry(db, entry));
+    return c.json(toEntry(entry), 200);
+  },
+);
