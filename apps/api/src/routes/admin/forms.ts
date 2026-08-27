@@ -1,9 +1,17 @@
-import { Hono } from 'hono';
+import { createRoute } from '@hono/zod-openapi';
+import {
+  createFormFieldSchema,
+  createFormSchema,
+  formFieldSchema,
+  formSchema,
+  formSubmissionSchema,
+  updateFormSubmissionStatusSchema,
+} from '@kenresoft/contracts';
+import type { Form, FormField, FormFieldType, FormSubmission, FormSubmissionStatus } from '@kenresoft/contracts';
+import { z } from 'zod';
 
 import { getDb } from '../../lib/db';
-import { parseJsonBody } from '../../lib/validate';
-import type { Bindings } from '../../lib/env';
-import type { AuthedVariables } from '../../middleware/require-session';
+import { createOpenApiApp } from '../../lib/openapi';
 import { requireRole } from '../../middleware/require-role';
 import { createFormField, listFormFields } from '../../repositories/form-fields';
 import {
@@ -12,91 +20,268 @@ import {
   updateFormSubmissionStatus,
 } from '../../repositories/form-submissions';
 import { createForm, getFormById, listForms } from '../../repositories/forms';
-import { createFormFieldSchema } from '../../validators/form-fields';
-import { updateFormSubmissionStatusSchema } from '../../validators/form-submissions';
-import { createFormSchema } from '../../validators/forms';
+import type { Bindings } from '../../lib/env';
+import type { AuthedVariables } from '../../middleware/require-session';
+import type {
+  Form as DbForm,
+  FormField as DbFormField,
+  FormSubmission as DbFormSubmission,
+} from '@kenresoft/database';
 
-export const formsRoute = new Hono<{ Bindings: Bindings; Variables: AuthedVariables }>();
+export const formsRoute = createOpenApiApp<{ Bindings: Bindings; Variables: AuthedVariables }>();
 
-formsRoute.get('/', async (c) => {
-  const db = getDb(c);
-  return c.json(await listForms(db));
-});
+const notFoundSchema = z.object({ error: z.string() });
+const idParamSchema = z.object({ id: z.string().min(1) });
+const submissionParamsSchema = z.object({ id: z.string().min(1), submissionId: z.string().min(1) });
+
+function toForm(row: DbForm): Form {
+  return {
+    id: row.id,
+    name: row.name,
+    slug: row.slug,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+function toFormField(row: DbFormField): FormField {
+  return {
+    id: row.id,
+    formId: row.formId,
+    name: row.name,
+    label: row.label,
+    fieldType: row.fieldType as FormFieldType,
+    required: row.required,
+    sortOrder: row.sortOrder,
+    config: row.config ?? null,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+function toFormSubmission(row: DbFormSubmission): FormSubmission {
+  return {
+    id: row.id,
+    formId: row.formId,
+    data: row.data,
+    status: row.status as FormSubmissionStatus,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+formsRoute.openapi(
+  createRoute({
+    method: 'get',
+    path: '/',
+    tags: ['Forms'],
+    summary: 'List every form',
+    responses: {
+      200: {
+        description: 'Every form.',
+        content: { 'application/json': { schema: z.array(formSchema) } },
+      },
+    },
+  }),
+  async (c) => {
+    const db = getDb(c);
+    return c.json((await listForms(db)).map(toForm), 200);
+  },
+);
 
 // Forms are a top-level structural resource, same as content types (§11) — creating one is
 // an owner-level action.
-formsRoute.post('/', requireRole('owner'), async (c) => {
-  const parsed = await parseJsonBody(c, createFormSchema);
-  if ('error' in parsed) return parsed.error;
+formsRoute.openapi(
+  createRoute({
+    method: 'post',
+    path: '/',
+    tags: ['Forms'],
+    summary: 'Create a form (owner only)',
+    middleware: requireRole('owner'),
+    request: {
+      body: { content: { 'application/json': { schema: createFormSchema } } },
+    },
+    responses: {
+      201: {
+        description: 'The created form.',
+        content: { 'application/json': { schema: formSchema } },
+      },
+    },
+  }),
+  async (c) => {
+    const input = c.req.valid('json');
+    const db = getDb(c);
+    const form = await createForm(db, input);
+    return c.json(toForm(form), 201);
+  },
+);
 
-  const db = getDb(c);
-  const form = await createForm(db, parsed.data);
-  return c.json(form, 201);
-});
+formsRoute.openapi(
+  createRoute({
+    method: 'get',
+    path: '/{id}',
+    tags: ['Forms'],
+    summary: 'Get a form by id',
+    request: { params: idParamSchema },
+    responses: {
+      200: {
+        description: 'The form.',
+        content: { 'application/json': { schema: formSchema } },
+      },
+      404: {
+        description: 'No form with that id.',
+        content: { 'application/json': { schema: notFoundSchema } },
+      },
+    },
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const db = getDb(c);
+    const form = await getFormById(db, id);
+    if (!form) {
+      return c.json({ error: 'Form not found' }, 404);
+    }
+    return c.json(toForm(form), 200);
+  },
+);
 
-formsRoute.get('/:id', async (c) => {
-  const db = getDb(c);
-  const form = await getFormById(db, c.req.param('id'));
-  if (!form) {
-    return c.json({ error: 'Form not found' }, 404);
-  }
-  return c.json(form);
-});
+formsRoute.openapi(
+  createRoute({
+    method: 'get',
+    path: '/{id}/fields',
+    tags: ['Forms'],
+    summary: "List a form's field definitions",
+    request: { params: idParamSchema },
+    responses: {
+      200: {
+        description: 'Every field definition, in display order.',
+        content: { 'application/json': { schema: z.array(formFieldSchema) } },
+      },
+      404: {
+        description: 'No form with that id.',
+        content: { 'application/json': { schema: notFoundSchema } },
+      },
+    },
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const db = getDb(c);
+    const form = await getFormById(db, id);
+    if (!form) {
+      return c.json({ error: 'Form not found' }, 404);
+    }
+    const fields = await listFormFields(db, form.id);
+    return c.json(fields.map(toFormField), 200);
+  },
+);
 
-formsRoute.get('/:id/fields', async (c) => {
-  const db = getDb(c);
-  const form = await getFormById(db, c.req.param('id'));
-  if (!form) {
-    return c.json({ error: 'Form not found' }, 404);
-  }
-  return c.json(await listFormFields(db, form.id));
-});
+formsRoute.openapi(
+  createRoute({
+    method: 'post',
+    path: '/{id}/fields',
+    tags: ['Forms'],
+    summary: 'Add a field definition to a form',
+    request: {
+      params: idParamSchema,
+      body: { content: { 'application/json': { schema: createFormFieldSchema } } },
+    },
+    responses: {
+      201: {
+        description: 'The created field definition.',
+        content: { 'application/json': { schema: formFieldSchema } },
+      },
+      404: {
+        description: 'No form with that id.',
+        content: { 'application/json': { schema: notFoundSchema } },
+      },
+    },
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const db = getDb(c);
+    const form = await getFormById(db, id);
+    if (!form) {
+      return c.json({ error: 'Form not found' }, 404);
+    }
 
-formsRoute.post('/:id/fields', async (c) => {
-  const db = getDb(c);
-  const form = await getFormById(db, c.req.param('id'));
-  if (!form) {
-    return c.json({ error: 'Form not found' }, 404);
-  }
+    const input = c.req.valid('json');
+    const existingFields = await listFormFields(db, form.id);
+    const field = await createFormField(db, {
+      ...input,
+      formId: form.id,
+      sortOrder: input.sortOrder ?? existingFields.length,
+    });
+    return c.json(toFormField(field), 201);
+  },
+);
 
-  const parsed = await parseJsonBody(c, createFormFieldSchema);
-  if ('error' in parsed) return parsed.error;
-
-  const existingFields = await listFormFields(db, form.id);
-  const field = await createFormField(db, {
-    ...parsed.data,
-    formId: form.id,
-    sortOrder: parsed.data.sortOrder ?? existingFields.length,
-  });
-  return c.json(field, 201);
-});
-
-formsRoute.get('/:id/submissions', async (c) => {
-  const db = getDb(c);
-  const form = await getFormById(db, c.req.param('id'));
-  if (!form) {
-    return c.json({ error: 'Form not found' }, 404);
-  }
-  return c.json(await listFormSubmissions(db, form.id));
-});
+formsRoute.openapi(
+  createRoute({
+    method: 'get',
+    path: '/{id}/submissions',
+    tags: ['Forms'],
+    summary: "List a form's submissions",
+    request: { params: idParamSchema },
+    responses: {
+      200: {
+        description: 'Every submission, newest first.',
+        content: { 'application/json': { schema: z.array(formSubmissionSchema) } },
+      },
+      404: {
+        description: 'No form with that id.',
+        content: { 'application/json': { schema: notFoundSchema } },
+      },
+    },
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const db = getDb(c);
+    const form = await getFormById(db, id);
+    if (!form) {
+      return c.json({ error: 'Form not found' }, 404);
+    }
+    const submissions = await listFormSubmissions(db, form.id);
+    return c.json(submissions.map(toFormSubmission), 200);
+  },
+);
 
 // No role gate — triaging submissions (new/read/archived) is an editorial action, same as
 // entry create/edit, which also has no server-side role check.
-formsRoute.patch('/:id/submissions/:submissionId', async (c) => {
-  const db = getDb(c);
-  const form = await getFormById(db, c.req.param('id'));
-  if (!form) {
-    return c.json({ error: 'Form not found' }, 404);
-  }
+formsRoute.openapi(
+  createRoute({
+    method: 'patch',
+    path: '/{id}/submissions/{submissionId}',
+    tags: ['Forms'],
+    summary: "Update a submission's triage status",
+    request: {
+      params: submissionParamsSchema,
+      body: { content: { 'application/json': { schema: updateFormSubmissionStatusSchema } } },
+    },
+    responses: {
+      200: {
+        description: 'The updated submission.',
+        content: { 'application/json': { schema: formSubmissionSchema } },
+      },
+      404: {
+        description: 'No form or submission matching those ids.',
+        content: { 'application/json': { schema: notFoundSchema } },
+      },
+    },
+  }),
+  async (c) => {
+    const { id, submissionId } = c.req.valid('param');
+    const db = getDb(c);
+    const form = await getFormById(db, id);
+    if (!form) {
+      return c.json({ error: 'Form not found' }, 404);
+    }
 
-  const submission = await getFormSubmissionById(db, c.req.param('submissionId'));
-  if (!submission || submission.formId !== form.id) {
-    return c.json({ error: 'Submission not found' }, 404);
-  }
+    const submission = await getFormSubmissionById(db, submissionId);
+    if (!submission || submission.formId !== form.id) {
+      return c.json({ error: 'Submission not found' }, 404);
+    }
 
-  const parsed = await parseJsonBody(c, updateFormSubmissionStatusSchema);
-  if ('error' in parsed) return parsed.error;
-
-  const updated = await updateFormSubmissionStatus(db, submission.id, parsed.data.status);
-  return c.json(updated);
-});
+    const { status } = c.req.valid('json');
+    const updated = await updateFormSubmissionStatus(db, submission.id, status);
+    return c.json(toFormSubmission(updated), 200);
+  },
+);
