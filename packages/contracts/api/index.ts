@@ -7,3 +7,4 @@ export * from '../schemas/form-fields';
 export * from '../schemas/form-submissions';
 export * from '../schemas/media';
 export * from '../schemas/settings';
+export * from '../schemas/users';
