@@ -48,13 +48,28 @@ describe('ContentTypesPage', () => {
     });
   });
 
-  it('lists content types returned by the API', async () => {
-    getMock.mockResolvedValue([{ id: 'ct-1', name: 'Blog Post', slug: 'blog-post' }]);
+  it('lists content types returned by the API, with description, field count, and updated date', async () => {
+    getMock.mockImplementation((path: string) =>
+      path.includes('/fields')
+        ? Promise.resolve([{ id: 'f-1' }, { id: 'f-2' }])
+        : Promise.resolve([
+            {
+              id: 'ct-1',
+              name: 'Blog Post',
+              slug: 'blog-post',
+              description: 'Long-form articles',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-02T00:00:00.000Z',
+            },
+          ]),
+    );
 
     renderPage();
 
     await waitFor(() => expect(screen.getByText('Blog Post')).toBeInTheDocument());
     expect(screen.getByText('blog-post')).toBeInTheDocument();
+    expect(screen.getByText('Long-form articles')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('2 fields')).toBeInTheDocument());
     expect(getMock).toHaveBeenCalledWith('/api/v1/admin/content-types');
   });
 

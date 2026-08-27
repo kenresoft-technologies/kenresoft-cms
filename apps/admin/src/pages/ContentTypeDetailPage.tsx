@@ -22,10 +22,11 @@ import {
 } from '@/lib/queries/field-definitions';
 import { FIELD_TYPES, type FieldDefinition, type FieldType } from '@/lib/types';
 import { EmptyState } from '@/components/empty-state';
+import { FieldTypeBadge, fieldTypeIcon } from '@/components/field-type-badge';
 import { OptionListEditor } from '@/components/option-list-editor';
 import { PageBreadcrumb } from '@/components/page-breadcrumb';
+import { PageHeader } from '@/components/page-header';
 import { TableSkeleton } from '@/components/table-skeleton';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -125,11 +126,15 @@ function NewFieldDialog({ contentTypeId }: { contentTypeId: string }) {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {FIELD_TYPES.map((type) => (
-                  <SelectItem key={type} value={type}>
-                    {type}
-                  </SelectItem>
-                ))}
+                {FIELD_TYPES.map((type) => {
+                  const Icon = fieldTypeIcon(type);
+                  return (
+                    <SelectItem key={type} value={type}>
+                      <Icon className="size-4 text-muted-foreground" />
+                      {type}
+                    </SelectItem>
+                  );
+                })}
               </SelectContent>
             </Select>
           </div>
@@ -199,7 +204,7 @@ function SortableFieldRow({ field }: { field: FieldDefinition }) {
       <TableCell className="font-mono text-sm">{field.name}</TableCell>
       <TableCell>{field.label}</TableCell>
       <TableCell>
-        <Badge variant="outline">{field.fieldType}</Badge>
+        <FieldTypeBadge fieldType={field.fieldType} />
       </TableCell>
       <TableCell className="text-muted-foreground">{field.required ? 'Yes' : 'No'}</TableCell>
     </TableRow>
@@ -238,18 +243,22 @@ export function ContentTypeDetailPage() {
         ]}
       />
 
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">{contentType?.name ?? 'Fields'}</h1>
-          <p className="text-muted-foreground">Fields define what the entry editor renders.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" asChild>
-            <Link to={`/content-types/${contentTypeId}/entries`}>View entries</Link>
-          </Button>
-          {contentTypeId ? <NewFieldDialog contentTypeId={contentTypeId} /> : null}
-        </div>
-      </div>
+      <PageHeader
+        title={contentType?.name ?? 'Fields'}
+        description={
+          fields
+            ? `${fields.length} ${fields.length === 1 ? 'field' : 'fields'}${contentType?.description ? ` · ${contentType.description}` : ''}`
+            : 'Fields define what the entry editor renders.'
+        }
+        actions={
+          <>
+            <Button variant="outline" asChild>
+              <Link to={`/content-types/${contentTypeId}/entries`}>View entries</Link>
+            </Button>
+            {contentTypeId ? <NewFieldDialog contentTypeId={contentTypeId} /> : null}
+          </>
+        }
+      />
 
       {error ? <p className="text-destructive">{error.message}</p> : null}
 

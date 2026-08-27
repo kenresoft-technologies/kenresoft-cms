@@ -7,10 +7,12 @@ import type { ColumnDef } from '@tanstack/react-table';
 import { ApiError } from '@/lib/api-client';
 import { authClient } from '@/lib/auth-client';
 import { useContentTypes, useCreateContentType } from '@/lib/queries/content-types';
+import { useFieldDefinitions } from '@/lib/queries/field-definitions';
 import type { ContentType } from '@/lib/types';
 import { DataTable } from '@/components/data-table';
 import { EmptyState } from '@/components/empty-state';
 import { PageBreadcrumb } from '@/components/page-breadcrumb';
+import { PageHeader } from '@/components/page-header';
 import { TableSkeleton } from '@/components/table-skeleton';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -27,14 +29,30 @@ import {
 } from '@/components/ui/dialog';
 import { Table, TableHeader, TableHead, TableRow } from '@/components/ui/table';
 
+function FieldsCountCell({ contentTypeId }: { contentTypeId: string }) {
+  const { data: fields, isPending } = useFieldDefinitions(contentTypeId);
+  if (isPending) return <span className="text-muted-foreground">…</span>;
+  const count = fields?.length ?? 0;
+  return (
+    <span className="text-muted-foreground">
+      {count} {count === 1 ? 'field' : 'fields'}
+    </span>
+  );
+}
+
 const columns: ColumnDef<ContentType>[] = [
   {
     accessorKey: 'name',
     header: 'Name',
     cell: ({ row }) => (
-      <Link to={`/content-types/${row.original.id}`} className="font-medium hover:underline">
-        {row.original.name}
-      </Link>
+      <div className="flex flex-col">
+        <Link to={`/content-types/${row.original.id}`} className="font-medium hover:underline">
+          {row.original.name}
+        </Link>
+        {row.original.description ? (
+          <span className="max-w-xs truncate text-xs text-muted-foreground">{row.original.description}</span>
+        ) : null}
+      </div>
     ),
   },
   {
@@ -44,6 +62,21 @@ const columns: ColumnDef<ContentType>[] = [
       <Badge variant="outline" className="font-mono font-normal text-muted-foreground">
         {row.original.slug}
       </Badge>
+    ),
+  },
+  {
+    id: 'fields',
+    header: 'Fields',
+    enableSorting: false,
+    cell: ({ row }) => <FieldsCountCell contentTypeId={row.original.id} />,
+  },
+  {
+    accessorKey: 'updatedAt',
+    header: 'Updated',
+    sortingFn: (rowA, rowB) =>
+      new Date(rowA.original.updatedAt).getTime() - new Date(rowB.original.updatedAt).getTime(),
+    cell: ({ row }) => (
+      <span className="text-muted-foreground">{new Date(row.original.updatedAt).toLocaleDateString()}</span>
     ),
   },
   {
@@ -134,13 +167,11 @@ export function ContentTypesPage() {
     <div className="flex flex-col gap-6">
       <PageBreadcrumb items={[{ label: 'Content types' }]} />
 
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Content types</h1>
-          <p className="text-muted-foreground">Reusable types such as Blog Post or Service.</p>
-        </div>
-        {isOwner ? <NewContentTypeDialog /> : null}
-      </div>
+      <PageHeader
+        title="Content types"
+        description="Reusable types such as Blog Post or Service."
+        actions={isOwner ? <NewContentTypeDialog /> : undefined}
+      />
 
       {error ? <p className="text-destructive">{error.message}</p> : null}
 
@@ -151,9 +182,11 @@ export function ContentTypesPage() {
               <TableRow>
                 <TableHead>Name</TableHead>
                 <TableHead>Slug</TableHead>
+                <TableHead>Fields</TableHead>
+                <TableHead>Updated</TableHead>
               </TableRow>
             </TableHeader>
-            <TableSkeleton columns={2} />
+            <TableSkeleton columns={4} />
           </Table>
         </div>
       ) : null}
