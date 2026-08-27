@@ -3,6 +3,7 @@ import {
   ClipboardList,
   FileText,
   Images,
+  Inbox,
   LayoutDashboard,
   LayoutList,
   LogOut,
@@ -52,6 +53,7 @@ const contentItems = [
 const engagementItems = [
   { to: '/media', label: 'Media', end: false, icon: Images },
   { to: '/forms', label: 'Forms', end: false, icon: ClipboardList },
+  { to: '/submissions', label: 'Submissions', end: false, icon: Inbox },
 ];
 
 const adminItems = [

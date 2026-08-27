@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router';
-import { ClipboardList, FileText, Images, LayoutDashboard, LayoutList, Settings, Users } from 'lucide-react';
+import { ClipboardList, FileText, Images, Inbox, LayoutDashboard, LayoutList, Settings, Users } from 'lucide-react';
 
 import { useContentTypes } from '@/lib/queries/content-types';
 import { useDashboardStats } from '@/lib/queries/dashboard';
@@ -64,6 +64,10 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
             <CommandItem value="Forms" onSelect={() => go('/forms')}>
               <ClipboardList />
               Forms
+            </CommandItem>
+            <CommandItem value="Submissions" onSelect={() => go('/submissions')}>
+              <Inbox />
+              Submissions
             </CommandItem>
             <CommandItem value="Users" onSelect={() => go('/users')}>
               <Users />

@@ -227,6 +227,43 @@ describe('forms routes (real D1)', () => {
     expect(response.status).toBe(404);
   });
 
+  it('lists every submission across every form, joined with its form name/slug', async () => {
+    const cookie = await authedCookie('forms-all-submissions-admin@pathvera.test');
+    const contact = await createContactForm(cookie);
+    const newsletter = await (
+      await SELF.fetch('https://example.com/api/v1/admin/forms', {
+        method: 'POST',
+        headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Newsletter', slug: 'newsletter' }),
+      })
+    ).json<{ id: string }>();
+    await SELF.fetch(`https://example.com/api/v1/admin/forms/${newsletter.id}/fields`, {
+      method: 'POST',
+      headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'email', label: 'Email', fieldType: 'email', required: true }),
+    });
+
+    await SELF.fetch('https://example.com/api/v1/public/forms/contact/submissions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': 'all-submissions-test-1' },
+      body: JSON.stringify({ name: 'Jane', email: 'jane@example.com' }),
+    });
+    await SELF.fetch('https://example.com/api/v1/public/forms/newsletter/submissions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': 'all-submissions-test-2' },
+      body: JSON.stringify({ email: 'reader@example.com' }),
+    });
+
+    const response = await SELF.fetch('https://example.com/api/v1/admin/submissions', {
+      headers: { Cookie: cookie },
+    });
+    expect(response.status).toBe(200);
+    const submissions = await response.json<{ formId: string; formName: string; formSlug: string }[]>();
+    expect(submissions).toHaveLength(2);
+    expect(submissions.map((s) => s.formName).sort()).toEqual(['Contact', 'Newsletter']);
+    expect(submissions.find((s) => s.formId === contact.id)?.formSlug).toBe('contact');
+  });
+
   it('rate limits repeat submissions from the same client', async () => {
     const cookie = await authedCookie('forms-ratelimit-admin@pathvera.test');
     await createContactForm(cookie);

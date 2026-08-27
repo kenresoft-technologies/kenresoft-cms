@@ -1,6 +1,7 @@
 import { createBrowserRouter } from 'react-router';
 
 import { AllEntriesPage } from '@/pages/AllEntriesPage';
+import { AllSubmissionsPage } from '@/pages/AllSubmissionsPage';
 import { AppLayout } from '@/layouts/AppLayout';
 import { ContentTypeDetailPage } from '@/pages/ContentTypeDetailPage';
 import { ContentTypesPage } from '@/pages/ContentTypesPage';
@@ -32,6 +33,7 @@ export const router = createBrowserRouter([
       { path: 'forms', element: <FormsPage /> },
       { path: 'forms/:formId', element: <FormDetailPage /> },
       { path: 'forms/:formId/submissions', element: <FormSubmissionsPage /> },
+      { path: 'submissions', element: <AllSubmissionsPage /> },
       { path: 'settings', element: <SettingsPage /> },
       { path: 'users', element: <UsersPage /> },
       { path: 'profile', element: <ProfilePage /> },

@@ -19,3 +19,13 @@ export const updateFormSubmissionStatusSchema = z.object({
 
 export type FormSubmission = z.infer<typeof formSubmissionSchema>;
 export type UpdateFormSubmissionStatusInput = z.infer<typeof updateFormSubmissionStatusSchema>;
+
+// Admin-only — backs the unified "all submissions" listing across every form, the same way
+// entryWithContentTypeSchema backs the unified entries listing (packages/contracts/schemas/
+// entries.ts). formName/formSlug let that page show which form each row came from.
+export const formSubmissionWithFormSchema = formSubmissionSchema.extend({
+  formName: z.string(),
+  formSlug: z.string(),
+});
+
+export type FormSubmissionWithForm = z.infer<typeof formSubmissionWithFormSchema>;

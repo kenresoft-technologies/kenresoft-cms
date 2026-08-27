@@ -5,9 +5,17 @@ import {
   formFieldSchema,
   formSchema,
   formSubmissionSchema,
+  formSubmissionWithFormSchema,
   updateFormSubmissionStatusSchema,
 } from '@kenresoft/contracts';
-import type { Form, FormField, FormFieldType, FormSubmission, FormSubmissionStatus } from '@kenresoft/contracts';
+import type {
+  Form,
+  FormField,
+  FormFieldType,
+  FormSubmission,
+  FormSubmissionStatus,
+  FormSubmissionWithForm,
+} from '@kenresoft/contracts';
 import { z } from 'zod';
 
 import { getDb } from '../../lib/db';
@@ -16,7 +24,7 @@ import { requireRole } from '../../middleware/require-role';
 import { createFormField, listFormFields } from '../../repositories/form-fields';
 import {
   getFormSubmissionById,
-  listFormSubmissions,
+  listSubmissionsWithForm,
   updateFormSubmissionStatus,
 } from '../../repositories/form-submissions';
 import { createForm, getFormById, listForms } from '../../repositories/forms';
@@ -66,6 +74,20 @@ function toFormSubmission(row: DbFormSubmission): FormSubmission {
     data: row.data,
     status: row.status as FormSubmissionStatus,
     createdAt: row.createdAt.toISOString(),
+  };
+}
+
+export function toFormSubmissionWithForm(
+  row: Awaited<ReturnType<typeof listSubmissionsWithForm>>[number],
+): FormSubmissionWithForm {
+  return {
+    id: row.id,
+    formId: row.formId,
+    data: row.data,
+    status: row.status as FormSubmissionStatus,
+    createdAt: row.createdAt.toISOString(),
+    formName: row.formName,
+    formSlug: row.formSlug,
   };
 }
 
@@ -224,7 +246,7 @@ formsRoute.openapi(
     responses: {
       200: {
         description: 'Every submission, newest first.',
-        content: { 'application/json': { schema: z.array(formSubmissionSchema) } },
+        content: { 'application/json': { schema: z.array(formSubmissionWithFormSchema) } },
       },
       404: {
         description: 'No form with that id.',
@@ -239,8 +261,8 @@ formsRoute.openapi(
     if (!form) {
       return c.json({ error: 'Form not found' }, 404);
     }
-    const submissions = await listFormSubmissions(db, form.id);
-    return c.json(submissions.map(toFormSubmission), 200);
+    const submissions = await listSubmissionsWithForm(db, form.id);
+    return c.json(submissions.map(toFormSubmissionWithForm), 200);
   },
 );
 

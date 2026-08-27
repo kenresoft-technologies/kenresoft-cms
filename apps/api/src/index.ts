@@ -15,6 +15,7 @@ import { entriesRoute } from './routes/admin/entries';
 import { formsRoute } from './routes/admin/forms';
 import { mediaRoute } from './routes/admin/media';
 import { settingsRoute } from './routes/admin/settings';
+import { submissionsRoute } from './routes/admin/submissions';
 import { usersRoute } from './routes/admin/users';
 import { healthRoute } from './routes/health';
 import { publicContentRoute } from './routes/public/content';
@@ -42,6 +43,7 @@ app.route('/api/v1/admin/content-types', contentTypesRoute);
 app.route('/api/v1/admin/entries', entriesRoute);
 app.route('/api/v1/admin/media', mediaRoute);
 app.route('/api/v1/admin/forms', formsRoute);
+app.route('/api/v1/admin/submissions', submissionsRoute);
 app.route('/api/v1/admin/settings', settingsRoute);
 app.route('/api/v1/admin/users', usersRoute);
 

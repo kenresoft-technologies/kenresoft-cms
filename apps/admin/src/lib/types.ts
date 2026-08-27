@@ -37,6 +37,7 @@ export type {
   FormFieldType,
   FormSubmission,
   FormSubmissionStatus,
+  FormSubmissionWithForm,
   Media,
   MediaContentType,
   Settings,
