@@ -1,6 +1,6 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { ColumnDef } from '@tanstack/react-table';
 
 import { DataTable } from '@/components/data-table';
@@ -72,5 +72,54 @@ describe('DataTable', () => {
     expect(screen.getByText('Page 2 of 2')).toBeInTheDocument();
     expect(screen.getByText('Row 10')).toBeInTheDocument();
     expect(screen.queryByText('Row 0')).not.toBeInTheDocument();
+  });
+
+  it('calls onRowClick with the row data when a row is clicked', async () => {
+    const onRowClick = vi.fn();
+    render(<DataTable columns={columns} data={rows(3)} onRowClick={onRowClick} />);
+
+    await userEvent.click(screen.getByText('Row 1'));
+
+    expect(onRowClick).toHaveBeenCalledExactlyOnceWith(rows(3)[1]);
+  });
+
+  it('does not double-fire onRowClick when clicking a link inside a cell', async () => {
+    const onRowClick = vi.fn();
+    const linkColumns: ColumnDef<Row>[] = [
+      {
+        accessorKey: 'name',
+        header: 'Name',
+        cell: ({ row }) => (
+          <a href={`/${row.original.id}`} onClick={(event) => event.preventDefault()}>
+            {row.original.name}
+          </a>
+        ),
+      },
+      { accessorKey: 'id', header: 'ID' },
+    ];
+    render(<DataTable columns={linkColumns} data={rows(3)} onRowClick={onRowClick} />);
+
+    await userEvent.click(screen.getByRole('link', { name: 'Row 1' }));
+
+    expect(onRowClick).not.toHaveBeenCalled();
+  });
+
+  it('does not call onRowClick when the click follows a text selection', async () => {
+    const onRowClick = vi.fn();
+    render(<DataTable columns={columns} data={rows(3)} onRowClick={onRowClick} />);
+
+    const cell = screen.getByText('Row 1');
+    const range = document.createRange();
+    range.selectNodeContents(cell);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+
+    // fireEvent (unlike userEvent) doesn't mimic a browser's mousedown-collapses-selection
+    // behavior, so the selection set above survives until this click — matching the real
+    // scenario of a click landing right after a drag-to-select gesture.
+    fireEvent.click(cell);
+
+    expect(onRowClick).not.toHaveBeenCalled();
   });
 });

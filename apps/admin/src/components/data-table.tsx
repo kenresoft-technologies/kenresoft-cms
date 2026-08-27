@@ -19,7 +19,10 @@ interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[];
   data: TData[];
   searchPlaceholder?: string;
+  onRowClick?: (row: TData) => void;
 }
+
+const INTERACTIVE_SELECTOR = 'a, button, [role="menuitem"], [role="button"]';
 
 const SORT_ICON = {
   asc: ArrowUp,
@@ -30,7 +33,12 @@ const SORT_ICON = {
 // domain data — shadcn ships this as a documented composition of TanStack Table and its own
 // Table primitives rather than a single drop-in component, so this is that composition, built
 // once here instead of per page.
-export function DataTable<TData, TValue>({ columns, data, searchPlaceholder = 'Search…' }: DataTableProps<TData, TValue>) {
+export function DataTable<TData, TValue>({
+  columns,
+  data,
+  searchPlaceholder = 'Search…',
+  onRowClick,
+}: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = useState('');
 
@@ -87,7 +95,19 @@ export function DataTable<TData, TValue>({ columns, data, searchPlaceholder = 'S
           <TableBody>
             {table.getRowModel().rows.length ? (
               table.getRowModel().rows.map((row) => (
-                <TableRow key={row.id} className="group">
+                <TableRow
+                  key={row.id}
+                  className={onRowClick ? 'group cursor-pointer' : 'group'}
+                  onClick={
+                    onRowClick
+                      ? (event) => {
+                          if ((event.target as HTMLElement).closest(INTERACTIVE_SELECTOR)) return;
+                          if (window.getSelection()?.toString()) return;
+                          onRowClick(row.original);
+                        }
+                      : undefined
+                  }
+                >
                   {row.getVisibleCells().map((cell) => (
                     <TableCell key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>
                   ))}

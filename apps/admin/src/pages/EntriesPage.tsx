@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { FileText, Plus } from 'lucide-react';
-import { Link, useParams } from 'react-router';
+import { Link, useNavigate, useParams } from 'react-router';
 import type { ColumnDef } from '@tanstack/react-table';
 
 import { useContentType } from '@/lib/queries/content-types';
@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import { Table, TableHeader, TableHead, TableRow } from '@/components/ui/table';
 
 export function EntriesPage() {
+  const navigate = useNavigate();
   const { contentTypeId } = useParams<{ contentTypeId: string }>();
   const { data: contentType } = useContentType(contentTypeId ?? '');
   const { data: entries, isPending, error } = useEntries(contentTypeId ?? '');
@@ -110,7 +111,12 @@ export function EntriesPage() {
       ) : null}
 
       {entries && entries.length > 0 ? (
-        <DataTable columns={columns} data={entries} searchPlaceholder="Search entries…" />
+        <DataTable
+          columns={columns}
+          data={entries}
+          searchPlaceholder="Search entries…"
+          onRowClick={(row) => navigate(`/content-types/${contentTypeId}/entries/${row.id}`)}
+        />
       ) : null}
     </div>
   );

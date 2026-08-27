@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { ChevronRight, LayoutList } from 'lucide-react';
-import { Link } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import type { ColumnDef } from '@tanstack/react-table';
 
@@ -12,6 +12,7 @@ import { DataTable } from '@/components/data-table';
 import { EmptyState } from '@/components/empty-state';
 import { PageBreadcrumb } from '@/components/page-breadcrumb';
 import { TableSkeleton } from '@/components/table-skeleton';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -39,7 +40,11 @@ const columns: ColumnDef<ContentType>[] = [
   {
     accessorKey: 'slug',
     header: 'Slug',
-    cell: ({ row }) => <span className="text-muted-foreground">{row.original.slug}</span>,
+    cell: ({ row }) => (
+      <Badge variant="outline" className="font-mono font-normal text-muted-foreground">
+        {row.original.slug}
+      </Badge>
+    ),
   },
   {
     id: 'chevron',
@@ -120,6 +125,7 @@ function NewContentTypeDialog() {
 }
 
 export function ContentTypesPage() {
+  const navigate = useNavigate();
   const { data: session } = authClient.useSession();
   const isOwner = session?.user.role === 'owner';
   const { data: contentTypes, isPending, error } = useContentTypes();
@@ -165,7 +171,12 @@ export function ContentTypesPage() {
       ) : null}
 
       {contentTypes && contentTypes.length > 0 ? (
-        <DataTable columns={columns} data={contentTypes} searchPlaceholder="Search content types…" />
+        <DataTable
+          columns={columns}
+          data={contentTypes}
+          searchPlaceholder="Search content types…"
+          onRowClick={(row) => navigate(`/content-types/${row.id}`)}
+        />
       ) : null}
     </div>
   );
