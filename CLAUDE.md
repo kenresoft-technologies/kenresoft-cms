@@ -191,5 +191,32 @@ Per the roadmap in `docs/ARCHITECTURE.md` §20:
   (`apps/admin/src/pages/ProfilePage.tsx`) using better-auth's base client `updateUser`/
   `changePassword` methods directly — zero new backend, and deliberately no phone/bio fields
   since the `user` schema has no such columns to back them.
+- **Admin UI/UX polish pass** (not a roadmap phase — a third cross-cutting pass, prompted by a
+  product-direction brief asking the admin to read as a mature CMS rather than a basic CRUD
+  dashboard, while explicitly preserving the existing architecture and foundation) — done, 13
+  commits, every screen verified live in both themes: a `--color-success` token so "published"
+  reads as its own color instead of borrowing `--accent-brand` (freeing the brand color for
+  actions/links/focus/active states); refined sidebar (taller rows, left accent bar on the
+  active item, real icon-rail collapse — `SidebarMenuButton`'s `tooltip` prop existed before
+  this pass but was dead code under `collapsible="offcanvas"`, which never reaches the
+  collapsed state that renders it) and table primitives (uppercase muted headers — caught a
+  real CSS gotcha where sortable columns render through a `<button>`, and browsers' UA
+  stylesheet resets `text-transform` on buttons, so the uppercase silently never applied there
+  without setting it explicitly); new shared `PageHeader`, `StatusBadge`, and
+  `FieldTypeBadge`/`fieldTypeIcon` (content-type and form field builders both draw from
+  overlapping `FieldType`/`FormFieldType` unions, so one icon map covers both); `DataTable`
+  gained opt-in `enableRowSelection`/`toolbar`/`bulkActions` props, defaulted off so every
+  existing caller was unaffected, now used by Entries, Media, and Form Submissions. The Entry
+  Editor got a two-column editorial layout (Status/Publishing/Metadata/History/Danger-zone
+  sidebar), an unsaved-changes guard (`useBlocker` — requires a data router, which
+  `apps/admin/src/routes/router.tsx` already used), and a read-only Preview tab. Entries and
+  Media got status/type filters plus bulk actions (looped over the existing single-item
+  endpoints via `Promise.allSettled`, not new bulk endpoints). Deliberately did **not** add
+  delete actions on content types, content-type fields, forms, form fields, or form
+  submissions — confirmed by reading every `apps/api/src/routes/admin/*.ts` route file that
+  none of those have a `DELETE` route; delete stayed exactly where it already worked (Entries,
+  Media). Zero new npm dependencies — `ui/tabs.tsx` (Settings, the Entry Editor's Preview tab)
+  and row selection (TanStack Table's built-in `enableRowSelection`) were already available,
+  just unused until now.
 
 CI is green on `develop`.
