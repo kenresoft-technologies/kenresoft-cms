@@ -18,6 +18,22 @@ export const authOptions = {
   emailAndPassword: {
     enabled: true,
   },
+  advanced: {
+    defaultCookieAttributes: {
+      // better-auth's default (`SameSite=Lax`) is fine when the admin and API share a site,
+      // but they don't in every deployment shape this project actually uses: apps/admin has
+      // no deployed home yet, so managing a live deployment means running it locally against
+      // the remote API (docs in README.md's "Live deployment" section) — genuinely
+      // cross-site, not just cross-port, from the browser's perspective. A Lax cookie is
+      // still *set* by a cross-site response, but never *sent back* on the next cross-site
+      // request, so the very next session check silently fails — the sign-in POST succeeds
+      // (a real account gets created/authenticated server-side) while the browser never
+      // becomes visibly signed in. `None` requires `Secure` (HTTPS), which every real
+      // deployment already uses; local dev keeps working since browsers treat `localhost` as
+      // secure even over plain HTTP.
+      sameSite: 'none',
+    },
+  },
   user: {
     additionalFields: {
       role: {
