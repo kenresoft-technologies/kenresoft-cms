@@ -266,5 +266,52 @@ Per the roadmap in `docs/ARCHITECTURE.md` §20:
   open product decisions rather than silently resolved either way: a public
   content-type-metadata endpoint, and SSR/webhook revalidation for the Astro example (still
   static, rebuild-to-see-changes) — see `docs/ASTRO.md`'s Known limitations.
+- **Astro SSR migration** (closing the "static, rebuild-to-see-changes" gap flagged above) —
+  done: `examples/astro-site` switched from static output to server rendering
+  (`@astrojs/cloudflare`, pinned to `^12.6.13` since the `14.x` line needs Astro 7 and the
+  project is on Astro 5.18.2), so a published edit is visible on the next request with no
+  rebuild. `blog/[slug].astro` dropped `getStaticPaths()` in favor of fetching per-request and
+  404ing when the slug doesn't resolve.
+- **CI/CD pipeline** (`.github/workflows/deploy.yml`, `docs/DEPLOYMENT.md`) — done, and
+  deliberately **opt-in per fork**, not wired to Kenresoft's own Cloudflare account: every job
+  is gated behind `vars.DEPLOY_ENABLED == 'true'` (a repo variable a fork owner sets
+  themselves), uses `environment: production` for protection rules, and reads its Cloudflare
+  target from that fork's own `vars`/`secrets` — nothing here assumes or references a
+  particular account. `ci.yml` stays build-and-test only. `docs/DEPLOYMENT.md` documents the
+  manual `wrangler deploy` path (no CI required) plus a Backups and recovery section (verified
+  D1 export/restore, R2 backup flagged as an open gap).
+- **Phase 9 (security hardening + backup drill + broader E2E)** — done: rate limiting extended
+  from forms-only to `/api/v1/auth/*` (10/60s POST-only, new `AUTH_RATE_LIMITER` binding); a
+  real `wrangler d1 export --remote`/restore drill verified against a live deployment, not just
+  documented; and the Playwright E2E suite (`apps/admin/e2e/`) substantially extended —
+  content-type/field CRUD+rename+publish, form/field CRUD+public submission, add/remove user
+  with a full sign-out/sign-in-as-the-new-user round trip through the real login form, global
+  variable CRUD, and Examples-template form creation, all run against a dedicated port/D1-state
+  harness (`e2e/setup.mjs`) so E2E never collides with a developer's normal `wrangler dev`.
+  Surfaced and fixed a real bug along the way: `SameSite=None` cookies need the literal
+  `Secure` attribute or browsers silently drop them, regardless of the connection's actual
+  scheme — this had been breaking local sign-in generally, not just under E2E.
+- **Role model expansion + session monitoring + richer Users page** (not a roadmap phase — a
+  fifth cross-cutting pass, prompted by direct user feedback after trying the admin: a report of
+  a stuck first-login flow, a request to surface better-auth's session table for monitoring, a
+  request for SonicJS's four-role Admin/Editor/Author/Viewer split instead of this app's
+  original two, and a screenshot of SonicJS's own Users page as a UI density/maturity
+  reference). Roles/sessions/Users-UI items are done; the login-flow report is still open — an
+  automated reproduction of the exact reported steps completed cleanly, which rules out the
+  leading same-tab-redirect theory but hasn't identified a cause, so it needs more repro detail
+  (exact URL/environment tested) before further diagnosis. Renamed `owner` → `admin`
+  (data-only migration, same privileges) and added **Author** (create entries freely; edit/
+  delete only entries they created — `canWriteEntry()` in `apps/api/src/routes/admin/
+  entries.ts`; unrestricted reads) and **Viewer** (read-only everywhere via a new global
+  `blockViewerMutations` middleware, rather than threading a check through every route) —
+  see `docs/ARCHITECTURE.md` §10 for the full model. Content-type/form field management, ungated
+  until now, requires admin/editor like every other structural write, with the `apps/admin` UI
+  gated to match. Session monitoring: `GET /api/v1/admin/users/:id/sessions` +
+  `DELETE .../sessions/:sessionId` (a plain row delete, not better-auth's heavier admin plugin —
+  deliberately avoided, per an existing code comment), surfaced as a per-row Sessions dialog on
+  the Users page. The Users page itself: stat cards (total/active/administrators/active-this-
+  week), role and activity-status filters, a client-side CSV export, and avatar initials — all
+  derived from data already in the existing list response, no new aggregate endpoint. Extracted
+  `StatCard` out of `DashboardPage` into a shared component now that Users needs the same piece.
 
 CI is green on `develop`.
