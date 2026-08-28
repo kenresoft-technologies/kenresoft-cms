@@ -129,3 +129,30 @@ deploys can never race each other.
 
 None of this is required — `wrangler deploy` / `wrangler pages deploy` from your own machine or
 CI provider is just as valid a way to ship changes.
+
+## Backups and recovery
+
+**D1** (content types, entries, forms, users, settings, media *metadata*): export and restore
+both work, verified end-to-end against a real deployment —
+
+```bash
+wrangler d1 export your-cms-db --remote --output backup.sql
+```
+
+This briefly makes the database unavailable to serve queries while the export runs (a few
+seconds at this project's data volume) — plan around that if you automate it. Restoring is the
+same file, applied with `wrangler d1 execute your-cms-db --remote --file backup.sql`, or loaded
+into any local SQLite tool (`sqlite3 test.db < backup.sql`) to inspect or verify a backup
+without touching the live database, which is how this exact export/restore path was verified
+while writing this doc.
+
+There's no built-in scheduling for this — run it by hand, or put the export command on a cron
+somewhere you control (it's a normal `wrangler` CLI call, nothing D1-specific about scheduling
+it).
+
+**R2** (media file bytes — D1 only stores each file's metadata and its R2 key, never the
+binary, `docs/ARCHITECTURE.md` §9/§14): there's no equivalent single-command bucket export.
+R2 is S3-API-compatible, so an S3-aware sync tool (e.g. `rclone`) pointed at your bucket's S3
+endpoint (from the Cloudflare dashboard → R2 → your bucket → Settings) is the practical way to
+mirror it somewhere else. This is a real, currently-open gap for this project — there's no
+scripted or scheduled R2 backup shipped here yet, just the mechanism to build one on.
