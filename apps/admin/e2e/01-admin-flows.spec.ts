@@ -2,19 +2,19 @@ import { test, expect } from '@playwright/test';
 
 // Numbered so this file runs before 02-login.spec.ts under the default single-worker,
 // non-parallel config (playwright.config.ts) — it depends on being the very first signup
-// against the freshly-reset local D1 (e2e/setup.mjs) to become the deployment's owner
+// against the freshly-reset local D1 (e2e/setup.mjs) to become the deployment's admin
 // (docs/ARCHITECTURE.md §10), which content-type and form creation both require.
 const API_URL = 'http://localhost:8788';
 const ownerEmail = `e2e-owner-${Date.now()}@kenresoft.test`;
 
 test.describe.configure({ mode: 'serial' });
 
-test.describe('admin flows (owner)', () => {
+test.describe('admin flows (admin)', () => {
   test.beforeAll(async ({ browser }) => {
     const page = await browser.newPage();
     await page.goto('/login');
     await page.getByRole('button', { name: 'Create an account' }).click();
-    await page.getByLabel('Name').fill('E2E Owner');
+    await page.getByLabel('Name').fill('E2E Admin');
     await page.getByLabel('Email').fill(ownerEmail);
     await page.getByLabel('Password', { exact: true }).fill('correct horse battery staple');
     await page.getByRole('button', { name: 'Create account' }).click();
@@ -130,10 +130,12 @@ test.describe('admin flows (owner)', () => {
     await page.getByRole('button', { name: 'Sign in' }).click();
     await page.waitForURL('/');
 
+    const inviteeEmail = `e2e-invitee-${Date.now()}@kenresoft.test`;
+
     await page.goto('/users');
     await page.getByRole('button', { name: 'Add user' }).click();
     await page.getByLabel('Name').fill('E2E Invitee');
-    await page.getByLabel('Email').fill(`e2e-invitee-${Date.now()}@kenresoft.test`);
+    await page.getByLabel('Email').fill(inviteeEmail);
     await page.getByRole('button', { name: 'Create user' }).click();
     await expect(page.getByText('User created')).toBeVisible();
 
@@ -146,6 +148,30 @@ test.describe('admin flows (owner)', () => {
     const inviteeRow = page.getByRole('row', { name: /E2E Invitee/ });
     await expect(inviteeRow).toBeVisible();
 
+    // The actual bug report this covers: sign out of the admin session, then sign in through
+    // the real login UI as the just-created user with the copied temporary password — not just
+    // asserting the password's shape, or that the API accepts it directly.
+    await page.getByRole('button', { name: 'E2E Admin' }).click();
+    await page.getByRole('menuitem', { name: 'Sign out' }).click();
+    await page.waitForURL('/login');
+
+    await page.getByLabel('Email').fill(inviteeEmail);
+    await page.getByLabel('Password', { exact: true }).fill(temporaryPassword);
+    await page.getByRole('button', { name: 'Sign in' }).click();
+    await page.waitForURL('/', { timeout: 10_000 });
+    await expect(page.getByRole('button', { name: 'E2E Invitee' })).toBeVisible();
+
+    // Back to the admin to clean up.
+    await page.getByRole('button', { name: 'E2E Invitee' }).click();
+    await page.getByRole('menuitem', { name: 'Sign out' }).click();
+    await page.waitForURL('/login');
+    await page.getByLabel('Email').fill(ownerEmail);
+    await page.getByLabel('Password', { exact: true }).fill('correct horse battery staple');
+    await page.getByRole('button', { name: 'Sign in' }).click();
+    await page.waitForURL('/');
+
+    await page.goto('/users');
+    await expect(inviteeRow).toBeVisible();
     await inviteeRow.getByRole('button', { name: /^Remove/ }).click();
     await page.getByRole('alertdialog').getByRole('button', { name: 'Remove' }).click();
     await expect(page.getByText('User removed')).toBeVisible();

@@ -43,7 +43,7 @@ describe('ContentTypesPage', () => {
     postMock.mockReset();
     useSessionMock.mockReset();
     useSessionMock.mockReturnValue({
-      data: { user: { email: 'owner@pathvera.test', role: 'owner' } },
+      data: { user: { email: 'admin@pathvera.test', role: 'admin' } },
       isPending: false,
     });
   });
@@ -81,7 +81,7 @@ describe('ContentTypesPage', () => {
     await waitFor(() => expect(screen.getByText('No content types yet')).toBeInTheDocument());
   });
 
-  it('hides the New content type action for an editor, since only owners can create them', async () => {
+  it('hides the New content type action for an editor, since only admins can create them', async () => {
     useSessionMock.mockReturnValue({
       data: { user: { email: 'editor@pathvera.test', role: 'editor' } },
       isPending: false,

@@ -18,7 +18,7 @@ if (!existsSync(envFile)) {
 
 // A dedicated persist-to location — never the developer's normal `wrangler dev` local D1
 // (which may hold real-ish content they're working with) — reset on every run so the E2E
-// suite's "first signup becomes owner" assumption (docs/ARCHITECTURE.md §10) holds every time,
+// suite's "first signup becomes admin" assumption (docs/ARCHITECTURE.md §10) holds every time,
 // not just the first.
 rmSync(path.join(repoRoot, 'apps/api/.wrangler/e2e-state'), { recursive: true, force: true });
 

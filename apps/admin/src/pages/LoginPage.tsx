@@ -125,7 +125,7 @@ export function LoginPage() {
             <p className="text-base text-muted-foreground">
               {mode === 'sign-in'
                 ? 'Welcome back — enter your credentials to continue.'
-                : 'The first account created on this deployment becomes its owner.'}
+                : 'The first account created on this deployment becomes its admin.'}
             </p>
           </div>
 

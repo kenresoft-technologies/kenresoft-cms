@@ -45,7 +45,7 @@ export function CacheSection({ readOnly }: { readOnly: boolean }) {
         description="Re-derives and deletes the cache key for every published entry and media file — for when you don't want to wait out the TTL above."
       >
         {readOnly ? (
-          <p className="text-sm text-muted-foreground">Only an owner can purge the cache.</p>
+          <p className="text-sm text-muted-foreground">Only an admin can purge the cache.</p>
         ) : (
           <div>
             <Button type="button" variant="outline" disabled={purgeCache.isPending} onClick={() => void handlePurge()}>

@@ -4,6 +4,7 @@ import { Link, useParams } from 'react-router';
 import { toast } from 'sonner';
 
 import { ApiError } from '@/lib/api-client';
+import { authClient } from '@/lib/auth-client';
 import { useForm, useUpdateForm } from '@/lib/queries/forms';
 import { useCreateFormField, useDeleteFormField, useFormFields, useUpdateFormField } from '@/lib/queries/form-fields';
 import { FORM_FIELD_TYPES, type FormField, type FormFieldType } from '@/lib/types';
@@ -248,6 +249,10 @@ function EditFormForm({
 
 export function FormDetailPage() {
   const { formId } = useParams<{ formId: string }>();
+  const { data: session } = authClient.useSession();
+  // Matches the API's own gate (apps/api/src/routes/admin/forms.ts) — author and viewer
+  // can't rename the form or manage its fields, only admin/editor.
+  const canManageFields = session?.user.role === 'admin' || session?.user.role === 'editor';
   const { data: form } = useForm(formId ?? '');
   const { data: fields, isPending, error } = useFormFields(formId ?? '');
   const deleteField = useDeleteFormField(formId ?? '');
@@ -283,8 +288,10 @@ export function FormDetailPage() {
             <Button variant="outline" asChild>
               <Link to={`/forms/${formId}/submissions`}>View submissions</Link>
             </Button>
-            {form && formId ? <EditFormDialog formId={formId} name={form.name} slug={form.slug} /> : null}
-            {formId ? (
+            {canManageFields && form && formId ? (
+              <EditFormDialog formId={formId} name={form.name} slug={form.slug} />
+            ) : null}
+            {canManageFields && formId ? (
               <FormFieldDialog
                 formId={formId}
                 trigger={
@@ -344,26 +351,28 @@ export function FormDetailPage() {
                   </TableCell>
                   <TableCell className="text-muted-foreground">{field.required ? 'Yes' : 'No'}</TableCell>
                   <TableCell className="w-20 text-right">
-                    <div className="flex justify-end gap-1">
-                      <FormFieldDialog
-                        formId={formId}
-                        field={field}
-                        trigger={
-                          <Button variant="ghost" size="icon-sm" aria-label={`Edit ${field.label}`}>
-                            <Pencil />
-                          </Button>
-                        }
-                      />
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        aria-label={`Delete ${field.label}`}
-                        className="text-muted-foreground hover:text-destructive"
-                        onClick={() => setPendingDelete(field)}
-                      >
-                        <Trash2 />
-                      </Button>
-                    </div>
+                    {canManageFields ? (
+                      <div className="flex justify-end gap-1">
+                        <FormFieldDialog
+                          formId={formId}
+                          field={field}
+                          trigger={
+                            <Button variant="ghost" size="icon-sm" aria-label={`Edit ${field.label}`}>
+                              <Pencil />
+                            </Button>
+                          }
+                        />
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={`Delete ${field.label}`}
+                          className="text-muted-foreground hover:text-destructive"
+                          onClick={() => setPendingDelete(field)}
+                        >
+                          <Trash2 />
+                        </Button>
+                      </div>
+                    ) : null}
                   </TableCell>
                 </TableRow>
               ))}

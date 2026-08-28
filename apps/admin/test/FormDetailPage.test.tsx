@@ -16,6 +16,10 @@ vi.mock('@/lib/api-client', async () => {
   return { ...actual, apiClient: { ...actual.apiClient, get: getMock, post: postMock } };
 });
 
+vi.mock('@/lib/auth-client', () => ({
+  authClient: { useSession: () => ({ data: { user: { role: 'admin' } } }) },
+}));
+
 function renderPage() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },

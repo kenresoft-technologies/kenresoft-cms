@@ -12,7 +12,7 @@ import { SETTINGS_SECTIONS, type SettingsSectionId } from './settings/sections';
 
 export function SettingsPage() {
   const { data: session } = authClient.useSession();
-  const isOwner = session?.user.role === 'owner';
+  const isAdmin = session?.user.role === 'admin';
   const { data: settings, isPending } = useSettings();
   const [activeSectionId, setActiveSectionId] = useState<SettingsSectionId>('general');
 
@@ -24,7 +24,7 @@ export function SettingsPage() {
 
       <PageHeader
         title="Settings"
-        description={`Administration and configuration for this deployment.${!isOwner ? ' Only owners can make changes.' : ''}`}
+        description={`Administration and configuration for this deployment.${!isAdmin ? ' Only admins can make changes.' : ''}`}
       />
 
       <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[220px_1fr]">
@@ -63,7 +63,7 @@ export function SettingsPage() {
               </CardContent>
             </Card>
           ) : (
-            activeSection.render({ settings: settings ?? null, readOnly: !isOwner })
+            activeSection.render({ settings: settings ?? null, readOnly: !isAdmin })
           )}
         </div>
       </div>

@@ -291,7 +291,7 @@ function NewFormDialog() {
 export function FormsPage() {
   const navigate = useNavigate();
   const { data: session } = authClient.useSession();
-  const isOwner = session?.user.role === 'owner';
+  const isAdmin = session?.user.role === 'admin';
   const { data: forms, isPending, error, refetch } = useForms();
 
   return (
@@ -304,8 +304,8 @@ export function FormsPage() {
         actions={
           <>
             <QuickReferenceDialog />
-            {isOwner ? <ExamplesDialog /> : null}
-            {isOwner ? <NewFormDialog /> : null}
+            {isAdmin ? <ExamplesDialog /> : null}
+            {isAdmin ? <NewFormDialog /> : null}
           </>
         }
       />
@@ -332,7 +332,7 @@ export function FormsPage() {
         <EmptyState
           icon={ClipboardList}
           title="No forms yet"
-          description={isOwner ? 'Create one to start collecting submissions.' : 'Ask an owner to create a form to get started.'}
+          description={isAdmin ? 'Create one to start collecting submissions.' : 'Ask an admin to create a form to get started.'}
         />
       ) : null}
 

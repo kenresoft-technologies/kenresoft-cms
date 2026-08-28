@@ -160,7 +160,7 @@ function NewContentTypeDialog() {
 export function ContentTypesPage() {
   const navigate = useNavigate();
   const { data: session } = authClient.useSession();
-  const isOwner = session?.user.role === 'owner';
+  const isAdmin = session?.user.role === 'admin';
   const { data: contentTypes, isPending, error, refetch } = useContentTypes();
 
   return (
@@ -170,7 +170,7 @@ export function ContentTypesPage() {
       <PageHeader
         title="Content types"
         description="Reusable types such as Blog Post or Service."
-        actions={isOwner ? <NewContentTypeDialog /> : undefined}
+        actions={isAdmin ? <NewContentTypeDialog /> : undefined}
       />
 
       {error ? <p className="text-destructive">{error.message}</p> : null}
@@ -196,9 +196,9 @@ export function ContentTypesPage() {
           icon={LayoutList}
           title="No content types yet"
           description={
-            isOwner
+            isAdmin
               ? 'Create one to start defining what your content looks like.'
-              : 'Ask an owner to create a content type to get started.'
+              : 'Ask an admin to create a content type to get started.'
           }
         />
       ) : null}

@@ -40,7 +40,7 @@ describe('FormsPage', () => {
     postMock.mockReset();
     useSessionMock.mockReset();
     useSessionMock.mockReturnValue({
-      data: { user: { email: 'owner@pathvera.test', role: 'owner' } },
+      data: { user: { email: 'admin@pathvera.test', role: 'admin' } },
       isPending: false,
     });
   });

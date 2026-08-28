@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 // Runs after 01-admin-flows.spec.ts (file-order, see that file's comment) — deliberately
-// signs up its OWN fresh user rather than reusing the owner from that file, since this test
+// signs up its OWN fresh user rather than reusing the admin from that file, since this test
 // only cares about the sign-in/sign-out UX and doesn't need any particular role.
 const email = `e2e-user-${Date.now()}@kenresoft.test`;
 const name = 'E2E User';

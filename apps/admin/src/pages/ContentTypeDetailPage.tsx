@@ -14,6 +14,7 @@ import { Link, useParams } from 'react-router';
 import { toast } from 'sonner';
 
 import { ApiError } from '@/lib/api-client';
+import { authClient } from '@/lib/auth-client';
 import { useContentType, useContentTypes, useUpdateContentType } from '@/lib/queries/content-types';
 import {
   useCreateFieldDefinition,
@@ -342,14 +343,17 @@ function ContentTypeForm({
 function SortableFieldRow({
   field,
   contentTypeId,
+  canEdit,
   onRequestDelete,
 }: {
   field: FieldDefinition;
   contentTypeId: string;
+  canEdit: boolean;
   onRequestDelete: (field: FieldDefinition) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: field.id,
+    disabled: !canEdit,
   });
 
   return (
@@ -359,15 +363,17 @@ function SortableFieldRow({
       className={isDragging ? 'relative z-10 bg-muted' : undefined}
     >
       <TableCell className="w-8">
-        <button
-          type="button"
-          className="cursor-grab touch-none text-muted-foreground hover:text-foreground active:cursor-grabbing"
-          aria-label={`Reorder ${field.label}`}
-          {...attributes}
-          {...listeners}
-        >
-          <GripVertical className="size-4" />
-        </button>
+        {canEdit ? (
+          <button
+            type="button"
+            className="cursor-grab touch-none text-muted-foreground hover:text-foreground active:cursor-grabbing"
+            aria-label={`Reorder ${field.label}`}
+            {...attributes}
+            {...listeners}
+          >
+            <GripVertical className="size-4" />
+          </button>
+        ) : null}
       </TableCell>
       <TableCell className="font-mono text-sm">{field.name}</TableCell>
       <TableCell>{field.label}</TableCell>
@@ -376,26 +382,28 @@ function SortableFieldRow({
       </TableCell>
       <TableCell className="text-muted-foreground">{field.required ? 'Yes' : 'No'}</TableCell>
       <TableCell className="w-20 text-right">
-        <div className="flex justify-end gap-1">
-          <FieldDialog
-            contentTypeId={contentTypeId}
-            field={field}
-            trigger={
-              <Button variant="ghost" size="icon-sm" aria-label={`Edit ${field.label}`}>
-                <Pencil />
-              </Button>
-            }
-          />
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label={`Delete ${field.label}`}
-            className="text-muted-foreground hover:text-destructive"
-            onClick={() => onRequestDelete(field)}
-          >
-            <Trash2 />
-          </Button>
-        </div>
+        {canEdit ? (
+          <div className="flex justify-end gap-1">
+            <FieldDialog
+              contentTypeId={contentTypeId}
+              field={field}
+              trigger={
+                <Button variant="ghost" size="icon-sm" aria-label={`Edit ${field.label}`}>
+                  <Pencil />
+                </Button>
+              }
+            />
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label={`Delete ${field.label}`}
+              className="text-muted-foreground hover:text-destructive"
+              onClick={() => onRequestDelete(field)}
+            >
+              <Trash2 />
+            </Button>
+          </div>
+        ) : null}
       </TableCell>
     </TableRow>
   );
@@ -403,6 +411,10 @@ function SortableFieldRow({
 
 export function ContentTypeDetailPage() {
   const { contentTypeId } = useParams<{ contentTypeId: string }>();
+  const { data: session } = authClient.useSession();
+  // Matches the API's own gate (apps/api/src/routes/admin/content-types.ts) — author and
+  // viewer can't rename the content type or manage its fields, only admin/editor.
+  const canManageFields = session?.user.role === 'admin' || session?.user.role === 'editor';
   const { data: contentType } = useContentType(contentTypeId ?? '');
   const { data: fields, isPending, error } = useFieldDefinitions(contentTypeId ?? '');
   const reorderFields = useReorderFieldDefinitions(contentTypeId ?? '');
@@ -459,7 +471,7 @@ export function ContentTypeDetailPage() {
             <Button variant="outline" asChild>
               <Link to={`/content-types/${contentTypeId}/entries`}>View entries</Link>
             </Button>
-            {contentType && contentTypeId ? (
+            {canManageFields && contentType && contentTypeId ? (
               <EditContentTypeDialog
                 contentTypeId={contentTypeId}
                 name={contentType.name}
@@ -467,7 +479,7 @@ export function ContentTypeDetailPage() {
                 description={contentType.description}
               />
             ) : null}
-            {contentTypeId ? (
+            {canManageFields && contentTypeId ? (
               <FieldDialog
                 contentTypeId={contentTypeId}
                 trigger={
@@ -531,6 +543,7 @@ export function ContentTypeDetailPage() {
                       key={field.id}
                       field={field}
                       contentTypeId={contentTypeId}
+                      canEdit={canManageFields}
                       onRequestDelete={setPendingDelete}
                     />
                   ))}

@@ -83,19 +83,19 @@ describe('AppLayout', () => {
 
   it('renders the outlet and user email when a session exists', () => {
     useSessionMock.mockReturnValue({
-      data: { user: { email: 'owner@pathvera.test', role: 'owner' } },
+      data: { user: { email: 'admin@pathvera.test', role: 'admin' } },
       isPending: false,
     });
 
     renderAppLayout();
 
     expect(screen.getByText('Protected content')).toBeInTheDocument();
-    expect(screen.getByText('owner@pathvera.test')).toBeInTheDocument();
+    expect(screen.getByText('admin@pathvera.test')).toBeInTheDocument();
   });
 
   it('opens the command palette from the header button and navigates from it', async () => {
     useSessionMock.mockReturnValue({
-      data: { user: { email: 'owner@pathvera.test', role: 'owner' } },
+      data: { user: { email: 'admin@pathvera.test', role: 'admin' } },
       isPending: false,
     });
 
@@ -110,7 +110,7 @@ describe('AppLayout', () => {
 
   it('toggles the command palette with ctrl+k', async () => {
     useSessionMock.mockReturnValue({
-      data: { user: { email: 'owner@pathvera.test', role: 'owner' } },
+      data: { user: { email: 'admin@pathvera.test', role: 'admin' } },
       isPending: false,
     });
 

@@ -4,7 +4,7 @@ import { Link } from 'react-router';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
-// User/role management already has its own full page (Users, owner-gated role changes) —
+// User/role management already has its own full page (Users, admin-gated role changes) —
 // this section is a pointer to it plus an accurate description of the role model, not a
 // duplicate of that page's logic.
 export function UsersPermissionsSection() {
@@ -17,14 +17,18 @@ export function UsersPermissionsSection() {
       <CardContent className="flex flex-col gap-4 pt-2">
         <div className="flex flex-col gap-2 text-sm text-muted-foreground">
           <p>
-            Kenresoft CMS has two roles: <span className="font-medium text-foreground">owner</span> and{' '}
-            <span className="font-medium text-foreground">editor</span>. The first person to sign up on a
-            deployment becomes its owner; everyone after defaults to editor.
+            Kenresoft CMS has four roles: <span className="font-medium text-foreground">admin</span>,{' '}
+            <span className="font-medium text-foreground">editor</span>,{' '}
+            <span className="font-medium text-foreground">author</span>, and{' '}
+            <span className="font-medium text-foreground">viewer</span>. The first person to sign up on a
+            deployment becomes its admin; everyone after defaults to editor.
           </p>
           <p>
-            Owners can create content types and forms, change other users&apos; roles, add or remove users, and
-            edit these settings. Editors can manage entries, media, and form submissions, but can&apos;t change
-            structure, roles, or the user list.
+            Admins can create content types and forms, change other users&apos; roles, add or remove users,
+            and edit these settings. Editors can manage any entry, media, and form submissions, plus
+            content-type and form fields, but can&apos;t change structure-level records, roles, or the user
+            list. Authors can create entries and edit or delete only the ones they created. Viewers can read
+            everything but make no changes.
           </p>
         </div>
         <div>

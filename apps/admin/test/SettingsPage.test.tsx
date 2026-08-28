@@ -44,8 +44,8 @@ describe('SettingsPage', () => {
     useSessionMock.mockReset();
   });
 
-  it('lets an owner fill in and save the General section', async () => {
-    useSessionMock.mockReturnValue({ data: { user: { role: 'owner', email: 'owner@pathvera.test' } } });
+  it('lets an admin fill in and save the General section', async () => {
+    useSessionMock.mockReturnValue({ data: { user: { role: 'admin', email: 'admin@pathvera.test' } } });
     getMock.mockResolvedValue(null);
     putMock.mockResolvedValue({
       id: 's-1',
@@ -75,7 +75,7 @@ describe('SettingsPage', () => {
   });
 
   it('disables Save until a change is made, then adds and removes a feature flag before saving', async () => {
-    useSessionMock.mockReturnValue({ data: { user: { role: 'owner', email: 'owner@pathvera.test' } } });
+    useSessionMock.mockReturnValue({ data: { user: { role: 'admin', email: 'admin@pathvera.test' } } });
     getMock.mockResolvedValue(null);
     putMock.mockResolvedValue({ id: 's-1', name: 'x', updatedAt: '2026-01-01T00:00:00.000Z' });
 
@@ -99,7 +99,7 @@ describe('SettingsPage', () => {
   });
 
   it('navigates between sections, including Appearance and the not-yet-available ones', async () => {
-    useSessionMock.mockReturnValue({ data: { user: { role: 'owner', email: 'owner@pathvera.test' } } });
+    useSessionMock.mockReturnValue({ data: { user: { role: 'admin', email: 'admin@pathvera.test' } } });
     getMock.mockResolvedValue(null);
 
     renderPage();
@@ -138,6 +138,6 @@ describe('SettingsPage', () => {
     await waitFor(() => expect(screen.getByLabelText('Site name')).toHaveValue('Pathvera Group'));
     expect(screen.getByLabelText('Site name')).toBeDisabled();
     expect(screen.queryByRole('button', { name: 'Save changes' })).not.toBeInTheDocument();
-    expect(screen.getByText('Only owners can make changes.', { exact: false })).toBeInTheDocument();
+    expect(screen.getByText('Only admins can make changes.', { exact: false })).toBeInTheDocument();
   });
 });

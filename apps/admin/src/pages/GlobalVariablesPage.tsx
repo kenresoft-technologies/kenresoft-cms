@@ -162,7 +162,10 @@ function EditVariableForm({ variable, onDone }: { variable: GlobalVariable; onDo
 
 export function GlobalVariablesPage() {
   const { data: session } = authClient.useSession();
-  const isOwner = session?.user.role === 'owner';
+  const isAdmin = session?.user.role === 'admin';
+  // Matches the API's own gate (apps/api/src/routes/admin/global-variables.ts) — author and
+  // viewer can't edit a value, only admin/editor.
+  const canEditValue = session?.user.role === 'admin' || session?.user.role === 'editor';
   const { data: variables, isPending, error, refetch } = useGlobalVariables();
   const deleteVariable = useDeleteGlobalVariable();
   const [pendingDelete, setPendingDelete] = useState<GlobalVariable | null>(null);
@@ -196,15 +199,17 @@ export function GlobalVariablesPage() {
         header: '',
         cell: ({ row }) => (
           <div className="flex justify-end gap-1">
-            <EditVariableDialog
-              variable={row.original}
-              trigger={
-                <Button variant="ghost" size="icon-sm" aria-label={`Edit ${row.original.key}`}>
-                  <Pencil />
-                </Button>
-              }
-            />
-            {isOwner ? (
+            {canEditValue ? (
+              <EditVariableDialog
+                variable={row.original}
+                trigger={
+                  <Button variant="ghost" size="icon-sm" aria-label={`Edit ${row.original.key}`}>
+                    <Pencil />
+                  </Button>
+                }
+              />
+            ) : null}
+            {isAdmin ? (
               <Button
                 variant="ghost"
                 size="icon-sm"
@@ -219,7 +224,7 @@ export function GlobalVariablesPage() {
         ),
       },
     ],
-    [isOwner],
+    [isAdmin, canEditValue],
   );
 
   return (
@@ -229,7 +234,7 @@ export function GlobalVariablesPage() {
       <PageHeader
         title="Global variables"
         description="Reusable key/value pairs, exposed read-only to the public API for frontends to consume."
-        actions={isOwner ? <NewVariableDialog /> : undefined}
+        actions={isAdmin ? <NewVariableDialog /> : undefined}
       />
 
       {error ? <p className="text-destructive">{error.message}</p> : null}

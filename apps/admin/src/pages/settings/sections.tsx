@@ -90,7 +90,7 @@ export const SETTINGS_SECTIONS: SettingsSectionMeta[] = [
         title="Notifications"
         icon={Bell}
         description="Email alerts for activity on this deployment."
-        planned={['New form submission alerts', 'Scheduled-publish confirmations', 'Owner digest emails']}
+        planned={['New form submission alerts', 'Scheduled-publish confirmations', 'Admin digest emails']}
       />
     ),
   },
