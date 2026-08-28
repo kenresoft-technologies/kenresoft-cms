@@ -253,6 +253,53 @@ contentTypesRoute.openapi(
   },
 );
 
+// Registered before /{id}/fields/{fieldId} below — Hono matches routes in registration
+// order, and a PATCH to /fields/reorder would otherwise be captured by that route first,
+// with "reorder" bound to :fieldId (a real regression this exact ordering caused once
+// already, caught by the existing field-reorder.test.ts).
+contentTypesRoute.openapi(
+  createRoute({
+    method: 'patch',
+    path: '/{id}/fields/reorder',
+    tags: ['Content types'],
+    summary: "Reorder a content type's field definitions",
+    request: {
+      params: idParamSchema,
+      body: { content: { 'application/json': { schema: reorderFieldDefinitionsSchema } } },
+    },
+    responses: {
+      200: {
+        description: 'Every field definition in its new order.',
+        content: { 'application/json': { schema: z.array(fieldDefinitionSchema) } },
+      },
+      400: {
+        description: "fieldIds didn't exactly match the content type's existing fields.",
+        content: { 'application/json': { schema: notFoundSchema } },
+      },
+      404: {
+        description: 'No content type with that id.',
+        content: { 'application/json': { schema: notFoundSchema } },
+      },
+    },
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const db = getDb(c);
+    const contentType = await getContentTypeById(db, id);
+    if (!contentType) {
+      return c.json({ error: 'Content type not found' }, 404);
+    }
+
+    const { fieldIds } = c.req.valid('json');
+    try {
+      const fields = await reorderFieldDefinitions(db, contentType.id, fieldIds);
+      return c.json(fields.map(toFieldDefinition), 200);
+    } catch {
+      return c.json({ error: "fieldIds must exactly match this content type's existing fields" }, 400);
+    }
+  },
+);
+
 // No role gate — matches field creation just above (adding/editing a field is treated as an
 // editorial action on this content type's shape, not a structural one like creating the
 // content type itself).
@@ -316,48 +363,5 @@ contentTypesRoute.openapi(
 
     await deleteFieldDefinition(db, fieldId);
     return c.body(null, 204);
-  },
-);
-
-contentTypesRoute.openapi(
-  createRoute({
-    method: 'patch',
-    path: '/{id}/fields/reorder',
-    tags: ['Content types'],
-    summary: "Reorder a content type's field definitions",
-    request: {
-      params: idParamSchema,
-      body: { content: { 'application/json': { schema: reorderFieldDefinitionsSchema } } },
-    },
-    responses: {
-      200: {
-        description: 'Every field definition in its new order.',
-        content: { 'application/json': { schema: z.array(fieldDefinitionSchema) } },
-      },
-      400: {
-        description: "fieldIds didn't exactly match the content type's existing fields.",
-        content: { 'application/json': { schema: notFoundSchema } },
-      },
-      404: {
-        description: 'No content type with that id.',
-        content: { 'application/json': { schema: notFoundSchema } },
-      },
-    },
-  }),
-  async (c) => {
-    const { id } = c.req.valid('param');
-    const db = getDb(c);
-    const contentType = await getContentTypeById(db, id);
-    if (!contentType) {
-      return c.json({ error: 'Content type not found' }, 404);
-    }
-
-    const { fieldIds } = c.req.valid('json');
-    try {
-      const fields = await reorderFieldDefinitions(db, contentType.id, fieldIds);
-      return c.json(fields.map(toFieldDefinition), 200);
-    } catch {
-      return c.json({ error: "fieldIds must exactly match this content type's existing fields" }, 400);
-    }
   },
 );
