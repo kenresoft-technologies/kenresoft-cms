@@ -45,7 +45,14 @@ publicMediaRoute.get('/:id/file', async (c) => {
     return c.json({ error: 'Media file missing from storage' }, 404);
   }
 
-  return new Response(object.body, {
+  // Buffered rather than passed through as object.body's ReadableStream: the cache
+  // middleware above calls c.res.clone() on every ok response, and cloning a
+  // stream-backed Response means teeing that stream — uploads are capped at 10MB
+  // (apps/api/src/routes/admin/media.ts's MAX_UPLOAD_BYTES), so buffering costs nothing
+  // real and sidesteps relying on stream-teeing behavior entirely.
+  const bytes = await object.arrayBuffer();
+
+  return new Response(bytes, {
     headers: { 'Content-Type': row.contentType },
   });
 });

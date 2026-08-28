@@ -64,6 +64,12 @@ describe('public media route (real D1 + R2)', () => {
 
     const first = await SELF.fetch(`https://example.com/api/v1/public/media/${uploaded.id}/file`);
     expect(first.status).toBe(200);
+    // Consuming the body isn't optional cleanup here — the route's cache middleware writes to
+    // the Cache API via ctx.waitUntil() (fire-and-forget, matching the identical pattern in
+    // publicContentRoute), and leaving this response's body unread left that background write
+    // (and, transitively, the next SELF.fetch call below) hanging indefinitely under
+    // @cloudflare/vitest-pool-workers — confirmed by bisecting per-test with `vitest -t`.
+    await first.arrayBuffer();
 
     // Bypasses the admin DELETE route entirely, so no cache invalidation runs — proves the
     // second fetch below is served from cache, not recomputed from R2.
@@ -80,6 +86,7 @@ describe('public media route (real D1 + R2)', () => {
 
     const first = await SELF.fetch(`https://example.com/api/v1/public/media/${uploaded.id}/file`);
     expect(first.status).toBe(200);
+    await first.arrayBuffer(); // see the previous test for why this matters here
 
     const deleteRes = await SELF.fetch(`https://example.com/api/v1/admin/media/${uploaded.id}`, {
       method: 'DELETE',
