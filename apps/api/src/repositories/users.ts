@@ -41,6 +41,10 @@ export function getUserById(db: Database, id: string) {
   return db.query.user.findFirst({ where: eq(user.id, id) });
 }
 
+export function getUserByEmail(db: Database, email: string) {
+  return db.query.user.findFirst({ where: eq(user.email, email) });
+}
+
 export async function countOwners(db: Database): Promise<number> {
   const [row] = await db.select({ count: count() }).from(user).where(eq(user.role, 'owner'));
   return row?.count ?? 0;
@@ -49,4 +53,11 @@ export async function countOwners(db: Database): Promise<number> {
 export async function updateUserRole(db: Database, id: string, role: 'owner' | 'editor') {
   const [row] = await db.update(user).set({ role }).where(eq(user.id, id)).returning();
   return row!;
+}
+
+// session/account both cascade-delete on user.id (packages/database/schema/auth.ts) — no
+// manual cleanup needed. entries.createdBy/entry_revisions.createdBy set null instead, so a
+// deleted user's past work stays attributed by nothing rather than disappearing.
+export async function deleteUser(db: Database, id: string): Promise<void> {
+  await db.delete(user).where(eq(user.id, id));
 }

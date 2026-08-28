@@ -114,4 +114,85 @@ describe('users routes (real D1)', () => {
     const response = await SELF.fetch('https://example.com/api/v1/admin/users');
     expect(response.status).toBe(401);
   });
+
+  it('creates a user with a temporary password (owner only), who can then sign in with it', async () => {
+    const ownerCookie = await authedCookie('create-owner@pathvera.test');
+    const editorCookie = await authedCookie('create-editor@pathvera.test');
+
+    const editorAttempt = await SELF.fetch('https://example.com/api/v1/admin/users', {
+      method: 'POST',
+      headers: { Cookie: editorCookie, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Should Fail', email: 'should-fail@pathvera.test' }),
+    });
+    expect(editorAttempt.status).toBe(403);
+
+    const response = await SELF.fetch('https://example.com/api/v1/admin/users', {
+      method: 'POST',
+      headers: { Cookie: ownerCookie, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'New Editor', email: 'new-editor@pathvera.test' }),
+    });
+    expect(response.status).toBe(201);
+    const body = await response.json<{ user: { email: string; role: string }; temporaryPassword: string }>();
+    expect(body.user).toMatchObject({ email: 'new-editor@pathvera.test', role: 'editor' });
+    expect(body.temporaryPassword.length).toBeGreaterThan(16);
+
+    const signInRes = await SELF.fetch('https://example.com/api/v1/auth/sign-in/email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'new-editor@pathvera.test', password: body.temporaryPassword }),
+    });
+    expect(signInRes.status).toBe(200);
+  });
+
+  it('rejects creating a user with an email that already exists', async () => {
+    const ownerCookie = await authedCookie('dupe-owner@pathvera.test');
+
+    const response = await SELF.fetch('https://example.com/api/v1/admin/users', {
+      method: 'POST',
+      headers: { Cookie: ownerCookie, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Dupe', email: 'dupe-owner@pathvera.test' }),
+    });
+    expect(response.status).toBe(400);
+  });
+
+  it('deletes a user (owner only), rejects deleting yourself or the last owner', async () => {
+    const ownerCookie = await authedCookie('delete-owner@pathvera.test');
+    const editorCookie = await authedCookie('delete-editor@pathvera.test');
+    const editorId = await userId(editorCookie);
+    const ownerId = await userId(ownerCookie);
+
+    const editorAttempt = await SELF.fetch(`https://example.com/api/v1/admin/users/${editorId}`, {
+      method: 'DELETE',
+      headers: { Cookie: editorCookie },
+    });
+    expect(editorAttempt.status).toBe(403);
+
+    const selfDelete = await SELF.fetch(`https://example.com/api/v1/admin/users/${ownerId}`, {
+      method: 'DELETE',
+      headers: { Cookie: ownerCookie },
+    });
+    expect(selfDelete.status).toBe(400);
+
+    const deleteRes = await SELF.fetch(`https://example.com/api/v1/admin/users/${editorId}`, {
+      method: 'DELETE',
+      headers: { Cookie: ownerCookie },
+    });
+    expect(deleteRes.status).toBe(204);
+
+    const listRes = await SELF.fetch('https://example.com/api/v1/admin/users', {
+      headers: { Cookie: ownerCookie },
+    });
+    const users = await listRes.json<{ email: string }[]>();
+    expect(users.map((u) => u.email)).toEqual(['delete-owner@pathvera.test']);
+  });
+
+  it('404s deleting a nonexistent user', async () => {
+    const ownerCookie = await authedCookie('delete-missing-owner@pathvera.test');
+
+    const response = await SELF.fetch('https://example.com/api/v1/admin/users/does-not-exist', {
+      method: 'DELETE',
+      headers: { Cookie: ownerCookie },
+    });
+    expect(response.status).toBe(404);
+  });
 });

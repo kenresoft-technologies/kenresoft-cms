@@ -23,3 +23,26 @@ export function useUpdateUserRole() {
     },
   });
 }
+
+export function useCreateUser() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: { name: string; email: string }) =>
+      apiClient.post<{ user: AdminUser; temporaryPassword: string }>('/api/v1/admin/users', input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: usersKey });
+    },
+  });
+}
+
+export function useDeleteUser() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => apiClient.delete<void>(`/api/v1/admin/users/${id}`),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: usersKey });
+    },
+  });
+}

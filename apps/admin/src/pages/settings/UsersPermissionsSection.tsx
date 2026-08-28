@@ -22,8 +22,9 @@ export function UsersPermissionsSection() {
             deployment becomes its owner; everyone after defaults to editor.
           </p>
           <p>
-            Owners can create content types and forms, change other users&apos; roles, and edit these settings.
-            Editors can manage entries, media, and form submissions, but can&apos;t change structure or roles.
+            Owners can create content types and forms, change other users&apos; roles, add or remove users, and
+            edit these settings. Editors can manage entries, media, and form submissions, but can&apos;t change
+            structure, roles, or the user list.
           </p>
         </div>
         <div>

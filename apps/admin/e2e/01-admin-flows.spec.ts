@@ -122,4 +122,33 @@ test.describe('admin flows (owner)', () => {
     await expect(page.getByText('No submissions yet')).not.toBeVisible();
     await expect(page.locator('table tbody tr')).toHaveCount(1);
   });
+
+  test('adds a user with a temporary password, then removes them', async ({ page }) => {
+    await page.goto('/login');
+    await page.getByLabel('Email').fill(ownerEmail);
+    await page.getByLabel('Password', { exact: true }).fill('correct horse battery staple');
+    await page.getByRole('button', { name: 'Sign in' }).click();
+    await page.waitForURL('/');
+
+    await page.goto('/users');
+    await page.getByRole('button', { name: 'Add user' }).click();
+    await page.getByLabel('Name').fill('E2E Invitee');
+    await page.getByLabel('Email').fill(`e2e-invitee-${Date.now()}@kenresoft.test`);
+    await page.getByRole('button', { name: 'Create user' }).click();
+    await expect(page.getByText('User created')).toBeVisible();
+
+    // The one-time temporary password dialog — a real random value, not a placeholder.
+    await expect(page.getByRole('heading', { name: 'E2E Invitee was added' })).toBeVisible();
+    const temporaryPassword = await page.getByLabel('Temporary password').inputValue();
+    expect(temporaryPassword.length).toBeGreaterThan(16);
+    await page.getByRole('button', { name: 'Done' }).click();
+
+    const inviteeRow = page.getByRole('row', { name: /E2E Invitee/ });
+    await expect(inviteeRow).toBeVisible();
+
+    await inviteeRow.getByRole('button', { name: /^Remove/ }).click();
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Remove' }).click();
+    await expect(page.getByText('User removed')).toBeVisible();
+    await expect(page.getByRole('row', { name: /E2E Invitee/ })).toHaveCount(0);
+  });
 });
