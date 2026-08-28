@@ -41,6 +41,7 @@ export type {
   GlobalVariable,
   Media,
   MediaContentType,
+  Session,
   Settings,
   UserRole,
 } from '@kenresoft/contracts';

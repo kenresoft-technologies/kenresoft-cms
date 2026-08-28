@@ -12,6 +12,9 @@ const STATUS_CONFIG: Record<string, { label: string; tone: StatusTone }> = {
   new: { label: 'New', tone: 'info' },
   read: { label: 'Read', tone: 'neutral' },
   archived: { label: 'Archived', tone: 'muted' },
+  // User activity status (UsersPage) — derived from lastActiveAt, not a stored field.
+  active: { label: 'Active', tone: 'success' },
+  'never-active': { label: 'Never signed in', tone: 'muted' },
 };
 
 const TONE_CLASSES: Record<StatusTone, string> = {

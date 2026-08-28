@@ -1,9 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { apiClient } from '@/lib/api-client';
-import type { AdminUser, UserRole } from '@/lib/types';
+import type { AdminUser, Session, UserRole } from '@/lib/types';
 
 const usersKey = ['users'] as const;
+const sessionsKey = (userId: string) => ['users', userId, 'sessions'] as const;
 
 export function useUsers() {
   return useQuery({
@@ -43,6 +44,26 @@ export function useDeleteUser() {
     mutationFn: (id: string) => apiClient.delete<void>(`/api/v1/admin/users/${id}`),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: usersKey });
+    },
+  });
+}
+
+export function useUserSessions(userId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: sessionsKey(userId),
+    queryFn: () => apiClient.get<Session[]>(`/api/v1/admin/users/${userId}/sessions`),
+    enabled,
+  });
+}
+
+export function useRevokeSession(userId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (sessionId: string) =>
+      apiClient.delete<void>(`/api/v1/admin/users/${userId}/sessions/${sessionId}`),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: sessionsKey(userId) });
     },
   });
 }

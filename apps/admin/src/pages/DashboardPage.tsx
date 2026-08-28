@@ -10,7 +10,6 @@ import {
   Plus,
   Upload,
   Users as UsersIcon,
-  type LucideIcon,
 } from 'lucide-react';
 import { Link } from 'react-router';
 import { Cell, Pie, PieChart } from 'recharts';
@@ -21,6 +20,7 @@ import { useDashboardStats } from '@/lib/queries/dashboard';
 import { useForms } from '@/lib/queries/forms';
 import { useUsers } from '@/lib/queries/users';
 import { PageHeader } from '@/components/page-header';
+import { StatCard } from '@/components/stat-card';
 import { StatusBadge } from '@/components/status-badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -39,33 +39,6 @@ const QUICK_ACTIONS = [
   { to: '/media', label: 'Upload media', description: 'Add images to your library', icon: Upload },
   { to: '/forms', label: 'New form', description: 'Start collecting visitor submissions', icon: ClipboardList },
 ] as const;
-
-function StatCard({
-  icon: Icon,
-  label,
-  value,
-  hint,
-}: {
-  icon: LucideIcon;
-  label: string;
-  value: string;
-  hint?: string;
-}) {
-  return (
-    <Card>
-      <CardContent className="flex items-start gap-3">
-        <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-          <Icon className="size-5 text-primary" />
-        </div>
-        <div className="min-w-0">
-          <p className="truncate text-sm text-muted-foreground">{label}</p>
-          <p className="text-2xl font-semibold tracking-tight">{value}</p>
-          {hint ? <p className="truncate text-xs text-muted-foreground">{hint}</p> : null}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
 
 function QuickActionsCard() {
   return (
