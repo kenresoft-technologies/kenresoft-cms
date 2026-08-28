@@ -1,9 +1,11 @@
 ---
 interface Props {
   title: string;
+  description?: string;
 }
 
-const { title } = Astro.props;
+const { title, description = "A Cloudflare-native, API-first content platform." } = Astro.props;
+const REPO_URL = 'https://github.com/kenresoft-technologies/kenresoft-cms';
 ---
 
 <!doctype html>
@@ -11,15 +13,191 @@ const { title } = Astro.props;
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content={description} />
     <title>{title}</title>
   </head>
   <body>
-    <header>
-      <a href="/">Kenresoft CMS example</a>
-      <nav><a href="/blog">Blog</a></nav>
+    <header class="site-header">
+      <a href="/" class="brand">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"></path>
+            <path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"></path>
+            <path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"></path>
+          </svg>
+        </span>
+        Kenresoft CMS
+      </a>
+      <nav class="site-nav">
+        <a href="/blog">Blog</a>
+        <a href={REPO_URL} target="_blank" rel="noreferrer">GitHub</a>
+      </nav>
     </header>
     <main>
       <slot />
     </main>
+    <footer class="site-footer">
+      <p>Kenresoft CMS — reusable, open-source, Cloudflare-native. MIT licensed.</p>
+      <p><a href={REPO_URL} target="_blank" rel="noreferrer">Source on GitHub →</a></p>
+    </footer>
   </body>
 </html>
+
+<style is:global>
+  :root {
+    --brand: oklch(0.53 0.18 262);
+    --brand-foreground: oklch(0.985 0 0);
+    --ink: oklch(0.2 0.01 262);
+    --ink-muted: oklch(0.45 0.01 262);
+    --surface: oklch(1 0 0);
+    --surface-muted: oklch(0.97 0.005 262);
+    --border: oklch(0.9 0.005 262);
+    --radius: 12px;
+    --max-width: 1120px;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    font-family:
+      ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    color: var(--ink);
+    background: var(--surface);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    margin: 0;
+    display: flex;
+    min-height: 100svh;
+    flex-direction: column;
+  }
+
+  main {
+    flex: 1;
+  }
+
+  a {
+    color: inherit;
+  }
+
+  img {
+    max-width: 100%;
+    display: block;
+  }
+
+  .site-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: 1.25rem 1.5rem;
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    font-weight: 600;
+    font-size: 1.05rem;
+    text-decoration: none;
+    color: var(--ink);
+  }
+
+  .brand-mark {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 8px;
+    background: var(--brand);
+    color: var(--brand-foreground);
+  }
+
+  .brand-mark svg {
+    width: 1.1rem;
+    height: 1.1rem;
+  }
+
+  .site-nav {
+    display: flex;
+    gap: 1.5rem;
+    font-size: 0.95rem;
+  }
+
+  .site-nav a {
+    text-decoration: none;
+    color: var(--ink-muted);
+    transition: color 0.15s ease;
+  }
+
+  .site-nav a:hover {
+    color: var(--ink);
+  }
+
+  .site-footer {
+    width: 100%;
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: 2.5rem 1.5rem 3rem;
+    border-top: 1px solid var(--border);
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 0.75rem;
+    color: var(--ink-muted);
+    font-size: 0.9rem;
+  }
+
+  .site-footer a {
+    text-decoration: none;
+    color: var(--ink-muted);
+  }
+
+  .site-footer a:hover {
+    color: var(--ink);
+  }
+
+  .button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.5rem;
+    border-radius: 10px;
+    font-weight: 600;
+    font-size: 0.95rem;
+    text-decoration: none;
+    transition:
+      transform 0.1s ease,
+      opacity 0.15s ease;
+  }
+
+  .button:active {
+    transform: translateY(1px);
+  }
+
+  .button-primary {
+    background: var(--brand);
+    color: var(--brand-foreground);
+  }
+
+  .button-primary:hover {
+    opacity: 0.9;
+  }
+
+  .button-secondary {
+    background: var(--surface-muted);
+    color: var(--ink);
+    border: 1px solid var(--border);
+  }
+
+  .button-secondary:hover {
+    background: var(--border);
+  }
+</style>

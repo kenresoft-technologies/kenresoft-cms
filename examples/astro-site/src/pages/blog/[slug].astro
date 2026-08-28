@@ -34,11 +34,75 @@ const publishedDate = new Date(entry.createdAt).toLocaleDateString(undefined, {
 });
 ---
 
-<BaseLayout title={title}>
-  <article>
+<BaseLayout title={`${title} — Kenresoft CMS`} description={typeof entry.data.excerpt === 'string' ? entry.data.excerpt : undefined}>
+  <article class="post">
+    <a class="back-link" href="/blog">← Back to blog</a>
     <h1>{title}</h1>
-    <p><small>Published {publishedDate}</small></p>
-    {featuredImageUrl ? <img src={featuredImageUrl} alt={title} /> : null}
-    {typeof body === 'string' ? <div set:html={body} /> : null}
+    <p class="post-meta">Published {publishedDate}</p>
+    {featuredImageUrl ? <img class="post-image" src={featuredImageUrl} alt={title} /> : null}
+    {typeof body === 'string' ? <div class="post-body" set:html={body} /> : null}
   </article>
 </BaseLayout>
+
+<style>
+  .post {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 3rem 1.5rem 5rem;
+  }
+
+  .back-link {
+    display: inline-block;
+    margin-bottom: 1.5rem;
+    color: var(--ink-muted);
+    text-decoration: none;
+    font-size: 0.9rem;
+  }
+
+  .back-link:hover {
+    color: var(--brand);
+  }
+
+  .post h1 {
+    margin: 0 0 0.5rem;
+    font-size: clamp(1.75rem, 4vw, 2.5rem);
+    line-height: 1.2;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  .post-meta {
+    margin: 0 0 2rem;
+    color: var(--ink-muted);
+    font-size: 0.9rem;
+  }
+
+  .post-image {
+    width: 100%;
+    border-radius: var(--radius);
+    margin-bottom: 2rem;
+  }
+
+  .post-body {
+    font-size: 1.05rem;
+    line-height: 1.7;
+  }
+
+  .post-body :global(p) {
+    margin: 0 0 1.25rem;
+  }
+
+  .post-body :global(h2),
+  .post-body :global(h3) {
+    margin: 2rem 0 1rem;
+    font-weight: 600;
+  }
+
+  .post-body :global(a) {
+    color: var(--brand);
+  }
+
+  .post-body :global(img) {
+    border-radius: var(--radius);
+  }
+</style>

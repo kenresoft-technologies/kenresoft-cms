@@ -1,14 +1,229 @@
 ---
+import { createKenresoftClient } from '@kenresoft/astro';
 import BaseLayout from '../layouts/BaseLayout.astro';
+
+const cms = createKenresoftClient({ url: import.meta.env.PUBLIC_KENRESOFT_CMS_URL });
+
+// "blog-post" is this content type's slug on this deployment — see examples/astro-site's
+// README for how to set that up on a fresh deployment. An empty array here (no content type
+// with that slug yet, or no published entries) is a normal, expected state, not an error —
+// the section below renders nothing rather than an empty heading in that case.
+const posts = await cms.entries.list({ contentType: 'blog-post' });
+const latestPosts = posts.slice(0, 3);
+
+const features = [
+  {
+    title: 'API-first, always',
+    body: 'Every piece of published content is available through one clean, unauthenticated REST API — documented with OpenAPI, no SDK required to get started.',
+  },
+  {
+    title: 'Astro as a first-class citizen',
+    body: '@kenresoft/astro is a typed client purpose-built for this integration: entries, media, and form submissions, with real TypeScript types generated from the API contract.',
+  },
+  {
+    title: 'Cloudflare-native',
+    body: 'Runs entirely on Workers, D1, and R2 — no separate database or file storage to provision, monitor, or pay for on top of the platform you already deploy to.',
+  },
+  {
+    title: 'A real editorial workflow',
+    body: 'Draft/publish states, scheduled publishing, full revision history with one-click restore — the parts of a CMS that matter once more than one person is editing content.',
+  },
+];
 ---
 
-<BaseLayout title="Kenresoft CMS example">
-  <h1>Kenresoft CMS + Astro</h1>
-  <p>
-    A minimal reference site that fetches from a Kenresoft CMS deployment's public API
-    (<code>src/lib/cms.ts</code>) and statically renders the result — no admin credentials, no
-    database access, just the same unauthenticated REST endpoints any visitor's browser could
-    call directly.
-  </p>
-  <p><a href="/blog">See it in action: the blog list →</a></p>
+<BaseLayout title="Kenresoft CMS — a Cloudflare-native, API-first content platform">
+  <section class="hero">
+    <div class="hero-inner">
+      <p class="eyebrow">Open source · Cloudflare-native · API-first</p>
+      <h1>Model content once. Publish it anywhere.</h1>
+      <p class="lede">
+        Kenresoft CMS is a reusable content platform built on Cloudflare Workers, D1, and R2 —
+        with a clean public REST API any frontend can call, and Astro as a first-class,
+        officially supported integration.
+      </p>
+      <div class="hero-actions">
+        <a class="button button-primary" href="https://github.com/kenresoft-technologies/kenresoft-cms" target="_blank" rel="noreferrer">
+          View on GitHub
+        </a>
+        <a class="button button-secondary" href={`${import.meta.env.PUBLIC_KENRESOFT_CMS_URL}/api/v1/docs`} target="_blank" rel="noreferrer">
+          API reference
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <section class="features">
+    <div class="features-grid">
+      {
+        features.map((feature) => (
+          <article class="feature-card">
+            <h2>{feature.title}</h2>
+            <p>{feature.body}</p>
+          </article>
+        ))
+      }
+    </div>
+  </section>
+
+  {
+    latestPosts.length > 0 ? (
+      <section class="latest">
+        <div class="latest-header">
+          <h2>From the blog</h2>
+          <a href="/blog">All posts →</a>
+        </div>
+        <div class="latest-grid">
+          {latestPosts.map((entry) => (
+            <a class="post-card" href={`/blog/${entry.slug}`}>
+              <h3>{String(entry.data.title ?? entry.slug)}</h3>
+              {entry.data.excerpt ? <p>{String(entry.data.excerpt)}</p> : null}
+            </a>
+          ))}
+        </div>
+      </section>
+    ) : null
+  }
 </BaseLayout>
+
+<style>
+  .hero {
+    padding: 5rem 1.5rem 4rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .hero-inner {
+    max-width: 760px;
+    margin: 0 auto;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.25rem;
+  }
+
+  .eyebrow {
+    margin: 0;
+    font-size: 0.85rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: var(--brand);
+  }
+
+  h1 {
+    margin: 0;
+    font-size: clamp(2.25rem, 5vw, 3.25rem);
+    line-height: 1.1;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+
+  .lede {
+    margin: 0;
+    font-size: 1.15rem;
+    line-height: 1.6;
+    color: var(--ink-muted);
+    max-width: 620px;
+  }
+
+  .hero-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    justify-content: center;
+    margin-top: 0.5rem;
+  }
+
+  .features {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: 4rem 1.5rem;
+  }
+
+  .features-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 1.5rem;
+  }
+
+  .feature-card {
+    padding: 1.75rem;
+    border-radius: var(--radius);
+    background: var(--surface-muted);
+    border: 1px solid var(--border);
+  }
+
+  .feature-card h2 {
+    margin: 0 0 0.5rem;
+    font-size: 1.05rem;
+    font-weight: 600;
+  }
+
+  .feature-card p {
+    margin: 0;
+    color: var(--ink-muted);
+    font-size: 0.95rem;
+    line-height: 1.55;
+  }
+
+  .latest {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: 1rem 1.5rem 5rem;
+  }
+
+  .latest-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 1.5rem;
+  }
+
+  .latest-header h2 {
+    margin: 0;
+    font-size: 1.4rem;
+    font-weight: 600;
+  }
+
+  .latest-header a {
+    text-decoration: none;
+    color: var(--brand);
+    font-size: 0.95rem;
+    font-weight: 500;
+  }
+
+  .latest-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 1.5rem;
+  }
+
+  .post-card {
+    display: block;
+    padding: 1.5rem;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    text-decoration: none;
+    color: var(--ink);
+    transition:
+      border-color 0.15s ease,
+      transform 0.1s ease;
+  }
+
+  .post-card:hover {
+    border-color: var(--brand);
+  }
+
+  .post-card h3 {
+    margin: 0 0 0.4rem;
+    font-size: 1.05rem;
+    font-weight: 600;
+  }
+
+  .post-card p {
+    margin: 0;
+    color: var(--ink-muted);
+    font-size: 0.9rem;
+    line-height: 1.5;
+  }
+</style>
