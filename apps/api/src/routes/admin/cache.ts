@@ -24,7 +24,7 @@ cacheRoute.openapi(
     path: '/purge',
     tags: ['Cache'],
     summary: 'Purge the public API edge cache (owner only)',
-    middleware: requireRole('owner'),
+    middleware: requireRole('admin'),
     responses: {
       200: {
         description: 'How many entry and media cache keys were purged.',

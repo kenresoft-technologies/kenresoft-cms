@@ -65,7 +65,7 @@ globalVariablesRoute.openapi(
     path: '/',
     tags: ['Global variables'],
     summary: 'Create a global variable (owner only)',
-    middleware: requireRole('owner'),
+    middleware: requireRole('admin'),
     request: {
       body: { content: { 'application/json': { schema: createGlobalVariableSchema } } },
     },
@@ -95,16 +95,19 @@ globalVariablesRoute.openapi(
   },
 );
 
-// No role gate — updating an existing variable's value (a phone number, an address) is
-// day-to-day editorial work, not a structural change; the key itself (what a frontend
-// actually references) is immutable once created, same reasoning as not allowing this route
-// to rename the key out from under any consumer relying on it.
+// admin/editor — updating an existing variable's value (a phone number, an address) is
+// day-to-day editorial work, not a structural change, but a global variable isn't scoped to
+// any one author's own content the way an entry is, so author stays excluded here (unlike
+// entries). The key itself (what a frontend actually references) is immutable once created,
+// same reasoning as not allowing this route to rename the key out from under any consumer
+// relying on it.
 globalVariablesRoute.openapi(
   createRoute({
     method: 'patch',
     path: '/{id}',
     tags: ['Global variables'],
     summary: "Update a global variable's value",
+    middleware: requireRole('admin', 'editor'),
     request: {
       params: idParamSchema,
       body: { content: { 'application/json': { schema: updateGlobalVariableSchema } } },
@@ -141,7 +144,7 @@ globalVariablesRoute.openapi(
     path: '/{id}',
     tags: ['Global variables'],
     summary: 'Delete a global variable (owner only)',
-    middleware: requireRole('owner'),
+    middleware: requireRole('admin'),
     request: { params: idParamSchema },
     responses: {
       204: { description: 'The global variable was deleted.' },

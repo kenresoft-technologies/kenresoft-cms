@@ -49,7 +49,8 @@ export const authOptions = {
         type: 'string',
         required: true,
         defaultValue: 'editor',
-        // Never client-settable at signup — only a trusted admin action may grant 'owner'.
+        // Never client-settable at signup — only a trusted admin action may grant a role
+        // above 'editor'.
         input: false,
       },
     },

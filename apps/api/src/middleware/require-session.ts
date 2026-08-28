@@ -3,9 +3,8 @@ import type { MiddlewareHandler } from 'hono';
 import { createAuth } from '../lib/auth';
 import type { Bindings } from '../lib/env';
 
-// Mirrors packages/database/schema/auth.ts's role column default and
-// src/lib/auth.ts's owner-bootstrap hook — the only two values ever assigned.
-export type Role = 'owner' | 'editor';
+// Mirrors @kenresoft/contracts' USER_ROLES and src/lib/auth.ts's admin-bootstrap hook.
+export type Role = 'admin' | 'editor' | 'author' | 'viewer';
 
 export interface SessionUser {
   id: string;

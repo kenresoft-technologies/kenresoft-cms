@@ -30,6 +30,15 @@ import type { Database, Entry as DbEntry, EntryRevision as DbEntryRevision } fro
 export const entriesRoute = createOpenApiApp<{ Bindings: Bindings; Variables: AuthedVariables }>();
 
 const notFoundSchema = z.object({ error: z.string() });
+const forbiddenSchema = z.object({ error: z.string() });
+
+// author may create freely and view every entry (the list/get routes below have no role
+// check), but can only write to entries they created themselves — admin and editor are
+// unrestricted (§10). viewer never reaches here at all (blocked globally for every mutation).
+function canWriteEntry(role: string, entry: Pick<DbEntry, 'createdBy'>, userId: string): boolean {
+  if (role === 'author') return entry.createdBy === userId;
+  return true;
+}
 // contentTypeId is optional: present -> entries for that one content type (unchanged
 // behavior); absent -> every entry across every content type, joined with its content type
 // and author (§ unified admin Entries view).
@@ -189,6 +198,10 @@ entriesRoute.openapi(
         description: 'The updated entry.',
         content: { 'application/json': { schema: entrySchema } },
       },
+      403: {
+        description: "An author's entry belonging to a different user.",
+        content: { 'application/json': { schema: forbiddenSchema } },
+      },
       404: {
         description: 'No entry with that id.',
         content: { 'application/json': { schema: notFoundSchema } },
@@ -197,9 +210,18 @@ entriesRoute.openapi(
   }),
   async (c) => {
     const { id } = c.req.valid('param');
-    const input = c.req.valid('json');
     const db = getDb(c);
-    const entry = await updateEntry(db, id, input, c.get('user').id);
+    const user = c.get('user');
+    const existing = await getEntryById(db, id);
+    if (!existing) {
+      return c.json({ error: 'Entry not found' }, 404);
+    }
+    if (!canWriteEntry(user.role, existing, user.id)) {
+      return c.json({ error: "You can only edit entries you created" }, 403);
+    }
+
+    const input = c.req.valid('json');
+    const entry = await updateEntry(db, id, input, user.id);
     if (!entry) {
       return c.json({ error: 'Entry not found' }, 404);
     }
@@ -217,6 +239,10 @@ entriesRoute.openapi(
     request: { params: idParamSchema },
     responses: {
       204: { description: 'The entry was deleted.' },
+      403: {
+        description: "An author's entry belonging to a different user.",
+        content: { 'application/json': { schema: forbiddenSchema } },
+      },
       404: {
         description: 'No entry with that id.',
         content: { 'application/json': { schema: notFoundSchema } },
@@ -226,10 +252,15 @@ entriesRoute.openapi(
   async (c) => {
     const { id } = c.req.valid('param');
     const db = getDb(c);
+    const user = c.get('user');
     const entry = await getEntryById(db, id);
     if (!entry) {
       return c.json({ error: 'Entry not found' }, 404);
     }
+    if (!canWriteEntry(user.role, entry, user.id)) {
+      return c.json({ error: 'You can only delete entries you created' }, 403);
+    }
+
     await deleteEntry(db, entry.id);
     c.executionCtx.waitUntil(invalidateCacheForEntry(db, entry));
     return c.body(null, 204);
@@ -278,6 +309,10 @@ entriesRoute.openapi(
         description: 'The entry, restored to the given revision (itself snapshotted first).',
         content: { 'application/json': { schema: entrySchema } },
       },
+      403: {
+        description: "An author's entry belonging to a different user.",
+        content: { 'application/json': { schema: forbiddenSchema } },
+      },
       404: {
         description: 'No entry or revision matching those ids.',
         content: { 'application/json': { schema: notFoundSchema } },
@@ -287,7 +322,16 @@ entriesRoute.openapi(
   async (c) => {
     const { id, revisionId } = c.req.valid('param');
     const db = getDb(c);
-    const entry = await restoreEntryRevision(db, id, revisionId, c.get('user').id);
+    const user = c.get('user');
+    const existing = await getEntryById(db, id);
+    if (!existing) {
+      return c.json({ error: 'Entry or revision not found' }, 404);
+    }
+    if (!canWriteEntry(user.role, existing, user.id)) {
+      return c.json({ error: 'You can only restore entries you created' }, 403);
+    }
+
+    const entry = await restoreEntryRevision(db, id, revisionId, user.id);
     if (!entry) {
       return c.json({ error: 'Entry or revision not found' }, 404);
     }

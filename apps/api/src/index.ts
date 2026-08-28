@@ -4,6 +4,7 @@ import { createDb } from '@kenresoft/database';
 
 import { createAuth } from './lib/auth';
 import { authRateLimit } from './middleware/auth-rate-limit';
+import { blockViewerMutations } from './middleware/block-viewer-mutations';
 import { corsMiddleware } from './middleware/cors';
 import { requireSession } from './middleware/require-session';
 import { securityHeaders } from './middleware/security-headers';
@@ -46,6 +47,7 @@ app.route('/api/v1/public/global-variables', publicGlobalVariablesRoute);
 app.route('/api/v1/public', publicContentRoute);
 
 app.use('/api/v1/admin/*', requireSession);
+app.use('/api/v1/admin/*', blockViewerMutations);
 app.route('/api/v1/admin/dashboard', dashboardRoute);
 app.route('/api/v1/admin/cache', cacheRoute);
 app.route('/api/v1/admin/content-types', contentTypesRoute);

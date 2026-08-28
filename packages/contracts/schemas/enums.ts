@@ -49,6 +49,14 @@ export const MEDIA_CONTENT_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'ima
 
 export type MediaContentType = (typeof MEDIA_CONTENT_TYPES)[number];
 
-export const USER_ROLES = ['owner', 'editor'] as const;
+// admin: everything, including structure (content types, forms), users, roles, settings,
+// cache. editor: everything editorial — any entry, form submission triage, media, content-type
+// and form FIELDS (not the content type/form's own existence) — no structure/users/settings.
+// author: entries they created only (create freely, edit/delete only their own); can't manage
+// media, forms, or structure. viewer: read-only everywhere, no writes at all. The first signup
+// on a deployment becomes admin (src/lib/auth.ts's bootstrap hook); everyone after defaults to
+// editor. Renamed from the original two-role ('owner'/'editor') model — packages/database's
+// 0011 migration rewrites every existing 'owner' row to 'admin'.
+export const USER_ROLES = ['admin', 'editor', 'author', 'viewer'] as const;
 
 export type UserRole = (typeof USER_ROLES)[number];

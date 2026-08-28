@@ -45,12 +45,12 @@ export function getUserByEmail(db: Database, email: string) {
   return db.query.user.findFirst({ where: eq(user.email, email) });
 }
 
-export async function countOwners(db: Database): Promise<number> {
-  const [row] = await db.select({ count: count() }).from(user).where(eq(user.role, 'owner'));
+export async function countAdmins(db: Database): Promise<number> {
+  const [row] = await db.select({ count: count() }).from(user).where(eq(user.role, 'admin'));
   return row?.count ?? 0;
 }
 
-export async function updateUserRole(db: Database, id: string, role: 'owner' | 'editor') {
+export async function updateUserRole(db: Database, id: string, role: 'admin' | 'editor' | 'author' | 'viewer') {
   const [row] = await db.update(user).set({ role }).where(eq(user.id, id)).returning();
   return row!;
 }

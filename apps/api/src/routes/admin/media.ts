@@ -6,6 +6,7 @@ import { getDb } from '../../lib/db';
 import { sniffImage } from '../../lib/image-metadata';
 import { createOpenApiApp } from '../../lib/openapi';
 import { invalidatePublicMediaCache } from '../../lib/public-cache';
+import { requireRole } from '../../middleware/require-role';
 import { createMedia, deleteMedia, getMediaById, listMedia } from '../../repositories/media';
 import type { Bindings } from '../../lib/env';
 import type { AuthedVariables } from '../../middleware/require-session';
@@ -58,7 +59,8 @@ mediaRoute.openapi(
 // a declared Content-Type, so it doesn't fit a static Zod request-body schema and stays a
 // plain (non-.openapi()) route. Registered with the registry directly below purely so it
 // still shows up in the generated doc, since a plain route otherwise wouldn't.
-mediaRoute.post('/', async (c) => {
+// author/viewer can't manage media (§10) — everyone else (admin/editor) can.
+mediaRoute.post('/', requireRole('admin', 'editor'), async (c) => {
   const form = await c.req.formData().catch(() => null);
   if (!form) {
     return c.json({ error: 'Expected multipart/form-data' }, 400);
@@ -177,6 +179,7 @@ mediaRoute.openapi(
     path: '/{id}',
     tags: ['Media'],
     summary: 'Delete a media item',
+    middleware: requireRole('admin', 'editor'),
     request: { params: idParamSchema },
     responses: {
       204: { description: 'The media item was deleted.' },

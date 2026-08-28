@@ -29,7 +29,20 @@ export const createdUserSchema = z.object({
   temporaryPassword: z.string(),
 });
 
+// A user's own admin session — better-auth's session table has more columns (id, token,
+// expiresAt, ...) than are useful to show; this is deliberately just the ones a "who's signed
+// in, from where, since when" admin view needs. Never includes the session token itself.
+export const sessionSchema = z.object({
+  id: z.string(),
+  ipAddress: z.string().nullable(),
+  userAgent: z.string().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  expiresAt: z.string(),
+});
+
 export type AdminUser = z.infer<typeof adminUserSchema>;
 export type UpdateUserRoleInput = z.infer<typeof updateUserRoleSchema>;
 export type CreateUserInput = z.infer<typeof createUserSchema>;
 export type CreatedUser = z.infer<typeof createdUserSchema>;
+export type Session = z.infer<typeof sessionSchema>;

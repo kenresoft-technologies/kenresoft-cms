@@ -48,17 +48,17 @@ describe('users routes (real D1)', () => {
     const editorAttempt = await SELF.fetch(`https://example.com/api/v1/admin/users/${editorId}/role`, {
       method: 'PATCH',
       headers: { Cookie: editorCookie, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ role: 'owner' }),
+      body: JSON.stringify({ role: 'admin' }),
     });
     expect(editorAttempt.status).toBe(403);
 
     const ownerAttempt = await SELF.fetch(`https://example.com/api/v1/admin/users/${editorId}/role`, {
       method: 'PATCH',
       headers: { Cookie: ownerCookie, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ role: 'owner' }),
+      body: JSON.stringify({ role: 'admin' }),
     });
     expect(ownerAttempt.status).toBe(200);
-    expect(await ownerAttempt.json()).toMatchObject({ role: 'owner' });
+    expect(await ownerAttempt.json()).toMatchObject({ role: 'admin' });
   });
 
   it('404s when changing the role of a nonexistent user', async () => {
@@ -87,7 +87,7 @@ describe('users routes (real D1)', () => {
       headers: { Cookie: ownerCookie },
     });
     const [user] = await stillOwner.json<{ role: string }[]>();
-    expect(user?.role).toBe('owner');
+    expect(user?.role).toBe('admin');
   });
 
   it('allows demoting an owner when a second owner remains', async () => {
@@ -98,7 +98,7 @@ describe('users routes (real D1)', () => {
     await SELF.fetch(`https://example.com/api/v1/admin/users/${secondOwnerId}/role`, {
       method: 'PATCH',
       headers: { Cookie: firstOwnerCookie, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ role: 'owner' }),
+      body: JSON.stringify({ role: 'admin' }),
     });
 
     const response = await SELF.fetch(`https://example.com/api/v1/admin/users/${secondOwnerId}/role`, {

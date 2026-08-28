@@ -24,7 +24,7 @@ describe('better-auth wiring (real D1)', () => {
     expect(response.status).toBe(200);
 
     const user = await db.query.user.findFirst();
-    expect(user).toMatchObject({ email: 'first@pathvera.test', role: 'owner' });
+    expect(user).toMatchObject({ email: 'first@pathvera.test', role: 'admin' });
   });
 
   it('defaults subsequent signups to editor', async () => {
@@ -40,7 +40,7 @@ describe('better-auth wiring (real D1)', () => {
 
   it('ignores a client-supplied role at signup (input: false)', async () => {
     await signUp('first@pathvera.test');
-    const response = await signUp('attacker@pathvera.test', { role: 'owner' });
+    const response = await signUp('attacker@pathvera.test', { role: 'admin' });
     expect(response.status).toBe(200);
 
     const attacker = await db.query.user.findFirst({

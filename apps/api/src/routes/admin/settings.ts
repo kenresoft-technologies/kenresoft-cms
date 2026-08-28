@@ -37,7 +37,7 @@ settingsRoute.openapi(
     path: '/',
     tags: ['Settings'],
     summary: 'Update the deployment settings (owner only)',
-    middleware: requireRole('owner'),
+    middleware: requireRole('admin'),
     request: {
       body: { content: { 'application/json': { schema: upsertSettingsSchema } } },
     },

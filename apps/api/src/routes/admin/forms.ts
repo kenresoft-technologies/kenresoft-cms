@@ -127,7 +127,7 @@ formsRoute.openapi(
     path: '/',
     tags: ['Forms'],
     summary: 'Create a form (owner only)',
-    middleware: requireRole('owner'),
+    middleware: requireRole('admin'),
     request: {
       body: { content: { 'application/json': { schema: createFormSchema } } },
     },
@@ -182,7 +182,7 @@ formsRoute.openapi(
     path: '/{id}',
     tags: ['Forms'],
     summary: 'Update a form (owner only)',
-    middleware: requireRole('owner'),
+    middleware: requireRole('admin'),
     request: {
       params: idParamSchema,
       body: { content: { 'application/json': { schema: updateFormSchema } } },
@@ -248,6 +248,7 @@ formsRoute.openapi(
     path: '/{id}/fields',
     tags: ['Forms'],
     summary: 'Add a field definition to a form',
+    middleware: requireRole('admin', 'editor'),
     request: {
       params: idParamSchema,
       body: { content: { 'application/json': { schema: createFormFieldSchema } } },
@@ -282,13 +283,14 @@ formsRoute.openapi(
   },
 );
 
-// No role gate — matches field creation just above.
+// admin/editor — matches field creation just above.
 formsRoute.openapi(
   createRoute({
     method: 'patch',
     path: '/{id}/fields/{fieldId}',
     tags: ['Forms'],
     summary: 'Update a field definition',
+    middleware: requireRole('admin', 'editor'),
     request: {
       params: fieldParamSchema,
       body: { content: { 'application/json': { schema: updateFormFieldSchema } } },
@@ -324,6 +326,7 @@ formsRoute.openapi(
     path: '/{id}/fields/{fieldId}',
     tags: ['Forms'],
     summary: 'Delete a field definition',
+    middleware: requireRole('admin', 'editor'),
     request: { params: fieldParamSchema },
     responses: {
       204: { description: 'The field was deleted.' },

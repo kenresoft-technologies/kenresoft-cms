@@ -4,9 +4,10 @@ import {
   createdUserSchema,
   createUserSchema,
   idParamSchema,
+  sessionSchema,
   updateUserRoleSchema,
 } from '@kenresoft/contracts';
-import type { AdminUser, UserRole } from '@kenresoft/contracts';
+import type { AdminUser, Session, UserRole } from '@kenresoft/contracts';
 import { z } from 'zod';
 
 import { createAuth } from '../../lib/auth';
@@ -14,17 +15,33 @@ import { getDb } from '../../lib/db';
 import { createOpenApiApp } from '../../lib/openapi';
 import { requireRole } from '../../middleware/require-role';
 import {
-  countOwners,
+  countAdmins,
   deleteUser,
   getUserByEmail,
   getUserById,
   listUsersWithLastActive,
   updateUserRole,
 } from '../../repositories/users';
+import { deleteSession, getSessionById, listSessionsForUser } from '../../repositories/sessions';
 import type { Bindings } from '../../lib/env';
 import type { AuthedVariables } from '../../middleware/require-session';
+import type { Session as DbSession } from '../../repositories/sessions';
 
 export const usersRoute = createOpenApiApp<{ Bindings: Bindings; Variables: AuthedVariables }>();
+
+const notFoundSchema = z.object({ error: z.string() });
+const sessionParamSchema = z.object({ id: z.string().min(1), sessionId: z.string().min(1) });
+
+function toSession(row: DbSession): Session {
+  return {
+    id: row.id,
+    ipAddress: row.ipAddress,
+    userAgent: row.userAgent,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+    expiresAt: row.expiresAt.toISOString(),
+  };
+}
 
 usersRoute.openapi(
   createRoute({
@@ -65,20 +82,20 @@ function generateTemporaryPassword(): string {
   return btoa(String.fromCharCode(...bytes)).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
 }
 
-// Owner-only, same as role changes. There's no email sending configured (§9), so this can't
+// Admin-only, same as role changes. There's no email sending configured (§9), so this can't
 // be a real invite-by-link flow — it creates the account directly via better-auth's own
 // sign-up (the same internal call the public /sign-up/email route makes) with a random
-// temporary password, returned once for the owner to share with the new user out-of-band.
+// temporary password, returned once for the admin to share with the new user out-of-band.
 // New signups already default to 'editor' (src/lib/auth.ts's bootstrap hook only grants
-// 'owner' to a literal first-ever signup) — an owner can promote them afterward via the
-// existing role control.
+// 'admin' to a literal first-ever signup) — an admin can promote or reassign them afterward
+// via the existing role control.
 usersRoute.openapi(
   createRoute({
     method: 'post',
     path: '/',
     tags: ['Users'],
-    summary: 'Create a user with a temporary password (owner only)',
-    middleware: requireRole('owner'),
+    summary: 'Create a user with a temporary password (admin only)',
+    middleware: requireRole('admin'),
     request: {
       body: { content: { 'application/json': { schema: createUserSchema } } },
     },
@@ -89,7 +106,7 @@ usersRoute.openapi(
       },
       400: {
         description: 'A user with that email already exists, or the input was invalid.',
-        content: { 'application/json': { schema: z.object({ error: z.string() }) } },
+        content: { 'application/json': { schema: notFoundSchema } },
       },
     },
   }),
@@ -128,16 +145,16 @@ usersRoute.openapi(
   },
 );
 
-// Role changes are owner-only. Beyond that, reject any change that would leave the
-// deployment with zero owners — a strict superset of "can't demote yourself," since it also
-// covers an owner demoting the last other owner.
+// Role changes are admin-only. Beyond that, reject any change that would leave the
+// deployment with zero admins — a strict superset of "can't demote yourself," since it also
+// covers an admin demoting the last other admin.
 usersRoute.openapi(
   createRoute({
     method: 'patch',
     path: '/{id}/role',
     tags: ['Users'],
-    summary: "Update a user's role (owner only)",
-    middleware: requireRole('owner'),
+    summary: "Update a user's role (admin only)",
+    middleware: requireRole('admin'),
     request: {
       params: idParamSchema,
       body: { content: { 'application/json': { schema: updateUserRoleSchema } } },
@@ -149,11 +166,11 @@ usersRoute.openapi(
       },
       404: {
         description: 'No user with that id.',
-        content: { 'application/json': { schema: z.object({ error: z.string() }) } },
+        content: { 'application/json': { schema: notFoundSchema } },
       },
       400: {
-        description: 'The change would leave the deployment with zero owners.',
-        content: { 'application/json': { schema: z.object({ error: z.string() }) } },
+        description: 'The change would leave the deployment with zero admins.',
+        content: { 'application/json': { schema: notFoundSchema } },
       },
     },
   }),
@@ -167,10 +184,10 @@ usersRoute.openapi(
 
     const { role } = c.req.valid('json');
 
-    if (target.role === 'owner' && role !== 'owner') {
-      const ownerCount = await countOwners(db);
-      if (ownerCount <= 1) {
-        return c.json({ error: 'Cannot remove the last remaining owner' }, 400);
+    if (target.role === 'admin' && role !== 'admin') {
+      const adminCount = await countAdmins(db);
+      if (adminCount <= 1) {
+        return c.json({ error: 'Cannot remove the last remaining admin' }, 400);
       }
     }
 
@@ -190,7 +207,7 @@ usersRoute.openapi(
   },
 );
 
-// Owner-only. Blocks the same "would leave zero owners" case as the role-change route above,
+// Admin-only. Blocks the same "would leave zero admins" case as the role-change route above,
 // plus removing your own account through this control specifically — self-removal is a
 // different, more deliberate action than this button, and not one this admin exposes yet.
 usersRoute.openapi(
@@ -198,18 +215,18 @@ usersRoute.openapi(
     method: 'delete',
     path: '/{id}',
     tags: ['Users'],
-    summary: 'Delete a user (owner only)',
-    middleware: requireRole('owner'),
+    summary: 'Delete a user (admin only)',
+    middleware: requireRole('admin'),
     request: { params: idParamSchema },
     responses: {
       204: { description: 'The user was deleted.' },
       404: {
         description: 'No user with that id.',
-        content: { 'application/json': { schema: z.object({ error: z.string() }) } },
+        content: { 'application/json': { schema: notFoundSchema } },
       },
       400: {
-        description: 'Deleting this user would leave the deployment with zero owners, or is your own account.',
-        content: { 'application/json': { schema: z.object({ error: z.string() }) } },
+        description: 'Deleting this user would leave the deployment with zero admins, or is your own account.',
+        content: { 'application/json': { schema: notFoundSchema } },
       },
     },
   }),
@@ -226,14 +243,79 @@ usersRoute.openapi(
       return c.json({ error: 'You cannot remove your own account here' }, 400);
     }
 
-    if (target.role === 'owner') {
-      const ownerCount = await countOwners(db);
-      if (ownerCount <= 1) {
-        return c.json({ error: 'Cannot remove the last remaining owner' }, 400);
+    if (target.role === 'admin') {
+      const adminCount = await countAdmins(db);
+      if (adminCount <= 1) {
+        return c.json({ error: 'Cannot remove the last remaining admin' }, 400);
       }
     }
 
     await deleteUser(db, target.id);
+    return c.body(null, 204);
+  },
+);
+
+// Admin-only — session monitoring (which device/IP a user is signed in from, and when they
+// were last active) is an administrative concern, same tier as the user list itself.
+usersRoute.openapi(
+  createRoute({
+    method: 'get',
+    path: '/{id}/sessions',
+    tags: ['Users'],
+    summary: "List a user's active sessions (admin only)",
+    middleware: requireRole('admin'),
+    request: { params: idParamSchema },
+    responses: {
+      200: {
+        description: 'Every session currently valid for this user, most recently active first.',
+        content: { 'application/json': { schema: z.array(sessionSchema) } },
+      },
+      404: {
+        description: 'No user with that id.',
+        content: { 'application/json': { schema: notFoundSchema } },
+      },
+    },
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const db = getDb(c);
+    const target = await getUserById(db, id);
+    if (!target) {
+      return c.json({ error: 'User not found' }, 404);
+    }
+
+    const sessions = await listSessionsForUser(db, id);
+    return c.json(sessions.map(toSession), 200);
+  },
+);
+
+// Admin-only. Deleting the row is enough to end the session immediately (repositories/
+// sessions.ts) — no separate "logged out" state to reconcile.
+usersRoute.openapi(
+  createRoute({
+    method: 'delete',
+    path: '/{id}/sessions/{sessionId}',
+    tags: ['Users'],
+    summary: "Revoke one of a user's sessions (admin only)",
+    middleware: requireRole('admin'),
+    request: { params: sessionParamSchema },
+    responses: {
+      204: { description: 'The session was revoked.' },
+      404: {
+        description: 'No user or session matching those ids.',
+        content: { 'application/json': { schema: notFoundSchema } },
+      },
+    },
+  }),
+  async (c) => {
+    const { id, sessionId } = c.req.valid('param');
+    const db = getDb(c);
+    const target = await getSessionById(db, sessionId);
+    if (!target || target.userId !== id) {
+      return c.json({ error: 'Session not found' }, 404);
+    }
+
+    await deleteSession(db, sessionId);
     return c.body(null, 204);
   },
 );

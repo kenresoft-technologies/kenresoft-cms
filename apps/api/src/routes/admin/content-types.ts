@@ -91,7 +91,7 @@ contentTypesRoute.openapi(
     path: '/',
     tags: ['Content types'],
     summary: 'Create a content type (owner only)',
-    middleware: requireRole('owner'),
+    middleware: requireRole('admin'),
     request: {
       body: { content: { 'application/json': { schema: createContentTypeSchema } } },
     },
@@ -152,7 +152,7 @@ contentTypesRoute.openapi(
     path: '/{id}',
     tags: ['Content types'],
     summary: 'Update a content type (owner only)',
-    middleware: requireRole('owner'),
+    middleware: requireRole('admin'),
     request: {
       params: idParamSchema,
       body: { content: { 'application/json': { schema: updateContentTypeSchema } } },
@@ -219,6 +219,7 @@ contentTypesRoute.openapi(
     path: '/{id}/fields',
     tags: ['Content types'],
     summary: 'Add a field definition to a content type',
+    middleware: requireRole('admin', 'editor'),
     request: {
       params: idParamSchema,
       body: { content: { 'application/json': { schema: createFieldDefinitionSchema } } },
@@ -263,6 +264,7 @@ contentTypesRoute.openapi(
     path: '/{id}/fields/reorder',
     tags: ['Content types'],
     summary: "Reorder a content type's field definitions",
+    middleware: requireRole('admin', 'editor'),
     request: {
       params: idParamSchema,
       body: { content: { 'application/json': { schema: reorderFieldDefinitionsSchema } } },
@@ -300,15 +302,16 @@ contentTypesRoute.openapi(
   },
 );
 
-// No role gate — matches field creation just above (adding/editing a field is treated as an
+// admin/editor — matches field creation just above (adding/editing a field is treated as an
 // editorial action on this content type's shape, not a structural one like creating the
-// content type itself).
+// content type itself, but still above author/viewer).
 contentTypesRoute.openapi(
   createRoute({
     method: 'patch',
     path: '/{id}/fields/{fieldId}',
     tags: ['Content types'],
     summary: 'Update a field definition',
+    middleware: requireRole('admin', 'editor'),
     request: {
       params: fieldParamSchema,
       body: { content: { 'application/json': { schema: updateFieldDefinitionSchema } } },
@@ -344,6 +347,7 @@ contentTypesRoute.openapi(
     path: '/{id}/fields/{fieldId}',
     tags: ['Content types'],
     summary: 'Delete a field definition',
+    middleware: requireRole('admin', 'editor'),
     request: { params: fieldParamSchema },
     responses: {
       204: { description: 'The field was deleted.' },
