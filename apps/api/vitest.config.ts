@@ -17,6 +17,15 @@ export default defineWorkersConfig(async () => {
               // never used outside the vitest-pool-workers runtime.
               BETTER_AUTH_SECRET: 'test-only-secret-not-used-outside-vitest-pool-workers',
             },
+            // Overrides wrangler.toml's real 10/60s AUTH_RATE_LIMITER — several test files
+            // sign up 10+ users each (admin-routes.test.ts, forms-routes.test.ts) inside a
+            // single fast test run, which would otherwise trip the production limit and
+            // produce spurious 429s unrelated to what each test is actually checking. The
+            // FORM_SUBMISSION_RATE_LIMITER's real 5/60s value is intentionally NOT overridden
+            // — forms-routes.test.ts has a dedicated test asserting its 429 behavior.
+            ratelimits: {
+              AUTH_RATE_LIMITER: { simple: { limit: 1000, period: 60 } },
+            },
             // nodejs_compat + a compatibility_date past 2025-09-21 breaks
             // @cloudflare/vitest-pool-workers (cloudflare/workers-sdk#11028). wrangler.toml
             // keeps the real date for actual deploys; the test pool alone pins an earlier

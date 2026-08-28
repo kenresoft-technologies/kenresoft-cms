@@ -3,6 +3,7 @@ import { Scalar } from '@scalar/hono-api-reference';
 import { createDb } from '@kenresoft/database';
 
 import { createAuth } from './lib/auth';
+import { authRateLimit } from './middleware/auth-rate-limit';
 import { corsMiddleware } from './middleware/cors';
 import { requireSession } from './middleware/require-session';
 import { securityHeaders } from './middleware/security-headers';
@@ -31,6 +32,7 @@ app.use('*', corsMiddleware);
 
 app.route('/api/v1/health', healthRoute);
 
+app.use('/api/v1/auth/*', authRateLimit);
 app.on(['GET', 'POST'], '/api/v1/auth/*', (c) => createAuth(c.env).handler(c.req.raw));
 
 // Mounted before the more general /api/v1/public/:contentType catchall so "forms"/"media" are
