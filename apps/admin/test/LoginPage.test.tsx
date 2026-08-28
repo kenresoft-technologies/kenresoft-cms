@@ -4,6 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { LoginPage } from '@/pages/LoginPage';
+import { ThemeProvider } from '@/lib/theme';
 
 const { useSessionMock, signInEmailMock, signUpEmailMock } = vi.hoisted(() => ({
   useSessionMock: vi.fn(),
@@ -21,12 +22,14 @@ vi.mock('@/lib/auth-client', () => ({
 
 function renderLoginPage() {
   return render(
-    <MemoryRouter initialEntries={['/login']}>
-      <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/" element={<div>Dashboard placeholder</div>} />
-      </Routes>
-    </MemoryRouter>,
+    <ThemeProvider>
+      <MemoryRouter initialEntries={['/login']}>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/" element={<div>Dashboard placeholder</div>} />
+        </Routes>
+      </MemoryRouter>
+    </ThemeProvider>,
   );
 }
 
@@ -98,8 +101,8 @@ describe('LoginPage', () => {
 
     renderLoginPage();
 
-    await userEvent.click(screen.getByRole('button', { name: "Don't have an account? Sign up" }));
-    expect(screen.getByText('Create an account')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Create an account' }));
+    expect(screen.getByText('Create your account')).toBeInTheDocument();
 
     await userEvent.type(screen.getByLabelText('Name'), 'Ada Lovelace');
     await userEvent.type(screen.getByLabelText('Email'), 'ada@pathvera.test');
@@ -118,8 +121,8 @@ describe('LoginPage', () => {
 
     renderLoginPage();
 
-    await userEvent.click(screen.getByRole('button', { name: "Don't have an account? Sign up" }));
-    await userEvent.click(screen.getByRole('button', { name: 'Already have an account? Sign in' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Create an account' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in instead' }));
 
     expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument();
     expect(screen.queryByLabelText('Name')).not.toBeInTheDocument();
