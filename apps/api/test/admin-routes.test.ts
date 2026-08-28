@@ -356,6 +356,109 @@ describe('admin routes (real D1)', () => {
     expect(response.status).toBe(404);
   });
 
+  it('updates and deletes a field definition, and renames a content type', async () => {
+    const cookie = await freshCookie();
+    const headers = { Cookie: cookie, 'Content-Type': 'application/json' };
+
+    const contentType = await (
+      await SELF.fetch('https://example.com/api/v1/admin/content-types', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ name: 'Blog Post', slug: 'blog-post' }),
+      })
+    ).json<{ id: string }>();
+
+    const field = await (
+      await SELF.fetch(`https://example.com/api/v1/admin/content-types/${contentType.id}/fields`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ name: 'title', label: 'Title', fieldType: 'text' }),
+      })
+    ).json<{ id: string }>();
+
+    const updateRes = await SELF.fetch(
+      `https://example.com/api/v1/admin/content-types/${contentType.id}/fields/${field.id}`,
+      { method: 'PATCH', headers, body: JSON.stringify({ label: 'Post title', required: true }) },
+    );
+    expect(updateRes.status).toBe(200);
+    expect(await updateRes.json()).toMatchObject({ label: 'Post title', required: true, name: 'title' });
+
+    const deleteRes = await SELF.fetch(
+      `https://example.com/api/v1/admin/content-types/${contentType.id}/fields/${field.id}`,
+      { method: 'DELETE', headers: { Cookie: cookie } },
+    );
+    expect(deleteRes.status).toBe(204);
+
+    const fieldsAfterDelete = await (
+      await SELF.fetch(`https://example.com/api/v1/admin/content-types/${contentType.id}/fields`, {
+        headers: { Cookie: cookie },
+      })
+    ).json<unknown[]>();
+    expect(fieldsAfterDelete).toHaveLength(0);
+
+    const renameRes = await SELF.fetch(`https://example.com/api/v1/admin/content-types/${contentType.id}`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify({ name: 'Article', slug: 'article' }),
+    });
+    expect(renameRes.status).toBe(200);
+    expect(await renameRes.json()).toMatchObject({ name: 'Article', slug: 'article' });
+  });
+
+  it('404s editing a field that belongs to a different content type', async () => {
+    const cookie = await freshCookie();
+    const headers = { Cookie: cookie, 'Content-Type': 'application/json' };
+
+    const blog = await (
+      await SELF.fetch('https://example.com/api/v1/admin/content-types', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ name: 'Blog Post', slug: 'blog-post' }),
+      })
+    ).json<{ id: string }>();
+    const service = await (
+      await SELF.fetch('https://example.com/api/v1/admin/content-types', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ name: 'Service', slug: 'service' }),
+      })
+    ).json<{ id: string }>();
+    const field = await (
+      await SELF.fetch(`https://example.com/api/v1/admin/content-types/${blog.id}/fields`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ name: 'title', label: 'Title', fieldType: 'text' }),
+      })
+    ).json<{ id: string }>();
+
+    const response = await SELF.fetch(
+      `https://example.com/api/v1/admin/content-types/${service.id}/fields/${field.id}`,
+      { method: 'PATCH', headers, body: JSON.stringify({ label: 'Nope' }) },
+    );
+    expect(response.status).toBe(404);
+  });
+
+  it('rejects renaming a content type from an editor', async () => {
+    const ownerCookie = await freshCookie();
+    const editorCookie = await freshCookie();
+    const ownerHeaders = { Cookie: ownerCookie, 'Content-Type': 'application/json' };
+
+    const contentType = await (
+      await SELF.fetch('https://example.com/api/v1/admin/content-types', {
+        method: 'POST',
+        headers: ownerHeaders,
+        body: JSON.stringify({ name: 'Blog Post', slug: 'blog-post' }),
+      })
+    ).json<{ id: string }>();
+
+    const response = await SELF.fetch(`https://example.com/api/v1/admin/content-types/${contentType.id}`, {
+      method: 'PATCH',
+      headers: { Cookie: editorCookie, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Hijacked' }),
+    });
+    expect(response.status).toBe(403);
+  });
+
   it('404s when creating an entry under a non-existent content type', async () => {
     const cookie = await freshCookie();
 

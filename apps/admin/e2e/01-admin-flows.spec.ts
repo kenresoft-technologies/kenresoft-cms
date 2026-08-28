@@ -46,6 +46,33 @@ test.describe('admin flows (owner)', () => {
     await page.getByRole('button', { name: 'Add field' }).click();
     await expect(page.getByText('Field added')).toBeVisible();
 
+    // A throwaway second field, added just to prove edit and delete both work end-to-end
+    // (docs/ARCHITECTURE.md — the field-editing gap this whole suite addition traces back to).
+    await page.getByRole('button', { name: 'Add field' }).click();
+    await page.getByLabel('Name', { exact: true }).fill('subtitle');
+    await page.getByLabel('Label').fill('Subtitle');
+    await page.getByRole('button', { name: 'Add field' }).click();
+
+    const subtitleRow = page.getByRole('row', { name: /subtitle/ });
+    await subtitleRow.getByRole('button', { name: 'Edit Subtitle' }).click();
+    await page.getByLabel('Label').fill('Byline');
+    await page.getByRole('button', { name: 'Save field' }).click();
+    await expect(page.getByText('Field updated')).toBeVisible();
+    await expect(page.getByRole('row', { name: /byline/i })).toBeVisible();
+
+    await page.getByRole('row', { name: /byline/i }).getByRole('button', { name: /^Delete/ }).click();
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Delete' }).click();
+    await expect(page.getByText('Field deleted')).toBeVisible();
+    await expect(page.getByRole('row', { name: /byline/i })).toHaveCount(0);
+
+    // Renaming the content type itself — the other half of the same gap (only fields were
+    // uneditable before; the content type's own name/slug had no PATCH route either).
+    await page.getByRole('button', { name: 'Edit', exact: true }).click();
+    await page.getByLabel('Name', { exact: true }).fill('E2E Blog Post (renamed)');
+    await page.getByRole('button', { name: 'Save changes' }).click();
+    await expect(page.getByText('Content type updated')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'E2E Blog Post (renamed)' })).toBeVisible();
+
     await page.getByRole('link', { name: 'View entries' }).click();
     await page.getByRole('link', { name: 'New entry' }).click();
 

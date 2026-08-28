@@ -17,5 +17,8 @@ export const createContentTypeSchema = z.object({
   description: z.string().max(2000).nullable().optional(),
 });
 
+export const updateContentTypeSchema = createContentTypeSchema.partial();
+
 export type ContentType = z.infer<typeof contentTypeSchema>;
 export type CreateContentTypeInput = z.infer<typeof createContentTypeSchema>;
+export type UpdateContentTypeInput = z.infer<typeof updateContentTypeSchema>;

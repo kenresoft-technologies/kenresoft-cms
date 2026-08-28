@@ -26,5 +26,10 @@ export const createFormFieldSchema = z.object({
   config: z.record(z.string(), z.unknown()).nullable().optional(),
 });
 
+// sortOrder excluded — no reorder endpoint exists for form fields (unlike content-type
+// fields), but a plain edit still shouldn't silently move a field's position.
+export const updateFormFieldSchema = createFormFieldSchema.omit({ sortOrder: true }).partial();
+
 export type FormField = z.infer<typeof formFieldSchema>;
 export type CreateFormFieldInput = z.infer<typeof createFormFieldSchema>;
+export type UpdateFormFieldInput = z.infer<typeof updateFormFieldSchema>;

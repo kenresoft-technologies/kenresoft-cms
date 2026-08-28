@@ -1,4 +1,5 @@
 import { asc, eq, fieldDefinitions } from '@kenresoft/database';
+import type { UpdateFieldDefinitionInput } from '@kenresoft/contracts';
 import type { Database, FieldDefinition, NewFieldDefinition } from '@kenresoft/database';
 
 export async function createFieldDefinition(
@@ -20,6 +21,23 @@ export function listFieldDefinitionsForContentType(
     where: eq(fieldDefinitions.contentTypeId, contentTypeId),
     orderBy: asc(fieldDefinitions.sortOrder),
   });
+}
+
+export function getFieldDefinitionById(db: Database, id: string): Promise<FieldDefinition | undefined> {
+  return db.query.fieldDefinitions.findFirst({ where: eq(fieldDefinitions.id, id) });
+}
+
+export async function updateFieldDefinition(
+  db: Database,
+  id: string,
+  patch: UpdateFieldDefinitionInput,
+): Promise<FieldDefinition | undefined> {
+  const [field] = await db.update(fieldDefinitions).set(patch).where(eq(fieldDefinitions.id, id)).returning();
+  return field;
+}
+
+export async function deleteFieldDefinition(db: Database, id: string): Promise<void> {
+  await db.delete(fieldDefinitions).where(eq(fieldDefinitions.id, id));
 }
 
 // Sets each field's sortOrder to its index in `fieldIds` (§6.1 — the entry editor renders

@@ -31,3 +31,16 @@ export function useCreateContentType() {
     },
   });
 }
+
+export function useUpdateContentType(contentTypeId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: { name?: string; slug?: string; description?: string | null }) =>
+      apiClient.patch<ContentType>(`/api/v1/admin/content-types/${contentTypeId}`, input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: contentTypesKey });
+      void queryClient.invalidateQueries({ queryKey: ['content-types', 'by-id', contentTypeId] });
+    },
+  });
+}

@@ -283,4 +283,58 @@ describe('forms routes (real D1)', () => {
     expect(statuses.filter((s) => s === 201)).toHaveLength(5);
     expect(statuses.filter((s) => s === 429)).toHaveLength(1);
   });
+
+  it('updates and deletes a field definition, and renames a form', async () => {
+    const cookie = await authedCookie('forms-field-edit@pathvera.test');
+    const headers = { Cookie: cookie, 'Content-Type': 'application/json' };
+    const form = await createContactForm(cookie);
+
+    const fields = await (
+      await SELF.fetch(`https://example.com/api/v1/admin/forms/${form.id}/fields`, {
+        headers: { Cookie: cookie },
+      })
+    ).json<{ id: string; name: string }[]>();
+    const messageField = fields.find((f) => f.name === 'message')!;
+
+    const updateRes = await SELF.fetch(
+      `https://example.com/api/v1/admin/forms/${form.id}/fields/${messageField.id}`,
+      { method: 'PATCH', headers, body: JSON.stringify({ required: true }) },
+    );
+    expect(updateRes.status).toBe(200);
+    expect(await updateRes.json()).toMatchObject({ name: 'message', required: true });
+
+    const deleteRes = await SELF.fetch(
+      `https://example.com/api/v1/admin/forms/${form.id}/fields/${messageField.id}`,
+      { method: 'DELETE', headers: { Cookie: cookie } },
+    );
+    expect(deleteRes.status).toBe(204);
+
+    const fieldsAfterDelete = await (
+      await SELF.fetch(`https://example.com/api/v1/admin/forms/${form.id}/fields`, {
+        headers: { Cookie: cookie },
+      })
+    ).json<{ name: string }[]>();
+    expect(fieldsAfterDelete.map((f) => f.name).sort()).toEqual(['email', 'name']);
+
+    const renameRes = await SELF.fetch(`https://example.com/api/v1/admin/forms/${form.id}`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify({ name: 'Contact Us' }),
+    });
+    expect(renameRes.status).toBe(200);
+    expect(await renameRes.json()).toMatchObject({ name: 'Contact Us', slug: 'contact' });
+  });
+
+  it('rejects renaming a form from an editor', async () => {
+    const ownerCookie = await authedCookie('forms-rename-owner@pathvera.test');
+    const editorCookie = await authedCookie('forms-rename-editor@pathvera.test');
+    const form = await createContactForm(ownerCookie);
+
+    const response = await SELF.fetch(`https://example.com/api/v1/admin/forms/${form.id}`, {
+      method: 'PATCH',
+      headers: { Cookie: editorCookie, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Hijacked' }),
+    });
+    expect(response.status).toBe(403);
+  });
 });

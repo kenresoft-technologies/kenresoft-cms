@@ -30,6 +30,10 @@ export const reorderFieldDefinitionsSchema = z.object({
   fieldIds: z.array(z.string().min(1)).min(1),
 });
 
+// sortOrder excluded — that's the reorder endpoint's job, not a plain field edit.
+export const updateFieldDefinitionSchema = createFieldDefinitionSchema.omit({ sortOrder: true }).partial();
+
 export type FieldDefinition = z.infer<typeof fieldDefinitionSchema>;
 export type CreateFieldDefinitionInput = z.infer<typeof createFieldDefinitionSchema>;
+export type UpdateFieldDefinitionInput = z.infer<typeof updateFieldDefinitionSchema>;
 export type ReorderFieldDefinitionsInput = z.infer<typeof reorderFieldDefinitionsSchema>;

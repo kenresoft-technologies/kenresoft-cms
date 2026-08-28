@@ -33,6 +33,43 @@ export function useCreateFieldDefinition(contentTypeId: string) {
   });
 }
 
+export function useUpdateFieldDefinition(contentTypeId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      fieldId,
+      ...input
+    }: {
+      fieldId: string;
+      name?: string;
+      label?: string;
+      fieldType?: FieldType;
+      required?: boolean;
+      config?: Record<string, unknown> | null;
+    }) =>
+      apiClient.patch<FieldDefinition>(
+        `/api/v1/admin/content-types/${contentTypeId}/fields/${fieldId}`,
+        input,
+      ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['field-definitions', contentTypeId] });
+    },
+  });
+}
+
+export function useDeleteFieldDefinition(contentTypeId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (fieldId: string) =>
+      apiClient.delete<void>(`/api/v1/admin/content-types/${contentTypeId}/fields/${fieldId}`),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['field-definitions', contentTypeId] });
+    },
+  });
+}
+
 export function useReorderFieldDefinitions(contentTypeId: string) {
   const queryClient = useQueryClient();
   const queryKey = ['field-definitions', contentTypeId];

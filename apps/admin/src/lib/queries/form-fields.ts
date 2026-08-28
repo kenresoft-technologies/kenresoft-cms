@@ -27,3 +27,35 @@ export function useCreateFormField(formId: string) {
     },
   });
 }
+
+export function useUpdateFormField(formId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      fieldId,
+      ...input
+    }: {
+      fieldId: string;
+      name?: string;
+      label?: string;
+      fieldType?: FormFieldType;
+      required?: boolean;
+      config?: Record<string, unknown> | null;
+    }) => apiClient.patch<FormField>(`/api/v1/admin/forms/${formId}/fields/${fieldId}`, input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['form-fields', formId] });
+    },
+  });
+}
+
+export function useDeleteFormField(formId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (fieldId: string) => apiClient.delete<void>(`/api/v1/admin/forms/${formId}/fields/${fieldId}`),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['form-fields', formId] });
+    },
+  });
+}

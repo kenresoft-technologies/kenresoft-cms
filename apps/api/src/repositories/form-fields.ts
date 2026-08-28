@@ -1,4 +1,5 @@
 import { asc, eq, formFields } from '@kenresoft/database';
+import type { UpdateFormFieldInput } from '@kenresoft/contracts';
 import type { Database, FormField, NewFormField } from '@kenresoft/database';
 
 export async function createFormField(
@@ -14,4 +15,21 @@ export function listFormFields(db: Database, formId: string): Promise<FormField[
     where: eq(formFields.formId, formId),
     orderBy: asc(formFields.sortOrder),
   });
+}
+
+export function getFormFieldById(db: Database, id: string): Promise<FormField | undefined> {
+  return db.query.formFields.findFirst({ where: eq(formFields.id, id) });
+}
+
+export async function updateFormField(
+  db: Database,
+  id: string,
+  patch: UpdateFormFieldInput,
+): Promise<FormField | undefined> {
+  const [field] = await db.update(formFields).set(patch).where(eq(formFields.id, id)).returning();
+  return field;
+}
+
+export async function deleteFormField(db: Database, id: string): Promise<void> {
+  await db.delete(formFields).where(eq(formFields.id, id));
 }

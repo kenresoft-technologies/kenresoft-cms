@@ -6,6 +6,8 @@ import {
   fieldDefinitionSchema,
   idParamSchema,
   reorderFieldDefinitionsSchema,
+  updateContentTypeSchema,
+  updateFieldDefinitionSchema,
 } from '@kenresoft/contracts';
 import type { ContentType, FieldDefinition, FieldType } from '@kenresoft/contracts';
 import { z } from 'zod';
@@ -17,11 +19,15 @@ import {
   createContentType,
   getContentTypeById,
   listContentTypes,
+  updateContentType,
 } from '../../repositories/content-types';
 import {
   createFieldDefinition,
+  deleteFieldDefinition,
+  getFieldDefinitionById,
   listFieldDefinitionsForContentType,
   reorderFieldDefinitions,
+  updateFieldDefinition,
 } from '../../repositories/field-definitions';
 import type { Bindings } from '../../lib/env';
 import type { AuthedVariables } from '../../middleware/require-session';
@@ -30,6 +36,7 @@ import type { ContentType as DbContentType, FieldDefinition as DbFieldDefinition
 export const contentTypesRoute = createOpenApiApp<{ Bindings: Bindings; Variables: AuthedVariables }>();
 
 const notFoundSchema = z.object({ error: z.string() });
+const fieldParamSchema = z.object({ id: z.string().min(1), fieldId: z.string().min(1) });
 
 function toContentType(row: DbContentType): ContentType {
   return {
@@ -135,6 +142,46 @@ contentTypesRoute.openapi(
   },
 );
 
+// Owner-gated, same as creation — renaming/re-slugging a content type is a structural change,
+// not an editorial one (§11). Changing the slug doesn't cascade-invalidate the public cache
+// for entries under the old slug; those simply expire on the existing 5-minute TTL (§12) —
+// not worth extra invalidation machinery for an action this infrequent.
+contentTypesRoute.openapi(
+  createRoute({
+    method: 'patch',
+    path: '/{id}',
+    tags: ['Content types'],
+    summary: 'Update a content type (owner only)',
+    middleware: requireRole('owner'),
+    request: {
+      params: idParamSchema,
+      body: { content: { 'application/json': { schema: updateContentTypeSchema } } },
+    },
+    responses: {
+      200: {
+        description: 'The updated content type.',
+        content: { 'application/json': { schema: contentTypeSchema } },
+      },
+      404: {
+        description: 'No content type with that id.',
+        content: { 'application/json': { schema: notFoundSchema } },
+      },
+    },
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const db = getDb(c);
+    const existing = await getContentTypeById(db, id);
+    if (!existing) {
+      return c.json({ error: 'Content type not found' }, 404);
+    }
+
+    const input = c.req.valid('json');
+    const updated = await updateContentType(db, id, input);
+    return c.json(toContentType(updated!), 200);
+  },
+);
+
 contentTypesRoute.openapi(
   createRoute({
     method: 'get',
@@ -203,6 +250,72 @@ contentTypesRoute.openapi(
       sortOrder: input.sortOrder ?? existingFields.length,
     });
     return c.json(toFieldDefinition(field), 201);
+  },
+);
+
+// No role gate — matches field creation just above (adding/editing a field is treated as an
+// editorial action on this content type's shape, not a structural one like creating the
+// content type itself).
+contentTypesRoute.openapi(
+  createRoute({
+    method: 'patch',
+    path: '/{id}/fields/{fieldId}',
+    tags: ['Content types'],
+    summary: 'Update a field definition',
+    request: {
+      params: fieldParamSchema,
+      body: { content: { 'application/json': { schema: updateFieldDefinitionSchema } } },
+    },
+    responses: {
+      200: {
+        description: 'The updated field definition.',
+        content: { 'application/json': { schema: fieldDefinitionSchema } },
+      },
+      404: {
+        description: 'No content type or field matching those ids.',
+        content: { 'application/json': { schema: notFoundSchema } },
+      },
+    },
+  }),
+  async (c) => {
+    const { id, fieldId } = c.req.valid('param');
+    const db = getDb(c);
+    const field = await getFieldDefinitionById(db, fieldId);
+    if (!field || field.contentTypeId !== id) {
+      return c.json({ error: 'Field not found' }, 404);
+    }
+
+    const input = c.req.valid('json');
+    const updated = await updateFieldDefinition(db, fieldId, input);
+    return c.json(toFieldDefinition(updated!), 200);
+  },
+);
+
+contentTypesRoute.openapi(
+  createRoute({
+    method: 'delete',
+    path: '/{id}/fields/{fieldId}',
+    tags: ['Content types'],
+    summary: 'Delete a field definition',
+    request: { params: fieldParamSchema },
+    responses: {
+      204: { description: 'The field was deleted.' },
+      404: {
+        description: 'No content type or field matching those ids.',
+        content: { 'application/json': { schema: notFoundSchema } },
+      },
+    },
+  }),
+  async (c) => {
+    const { id, fieldId } = c.req.valid('param');
+    const db = getDb(c);
+    const field = await getFieldDefinitionById(db, fieldId);
+    if (!field || field.contentTypeId !== id) {
+      return c.json({ error: 'Field not found' }, 404);
+    }
+
+    await deleteFieldDefinition(db, fieldId);
+    return c.body(null, 204);
   },
 );
 

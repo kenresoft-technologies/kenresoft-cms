@@ -15,5 +15,8 @@ export const createFormSchema = z.object({
   slug: slugSchema,
 });
 
+export const updateFormSchema = createFormSchema.partial();
+
 export type Form = z.infer<typeof formSchema>;
 export type CreateFormInput = z.infer<typeof createFormSchema>;
+export type UpdateFormInput = z.infer<typeof updateFormSchema>;

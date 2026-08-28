@@ -9,16 +9,18 @@ import {
 } from '@dnd-kit/core';
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical, ListPlus } from 'lucide-react';
+import { GripVertical, ListPlus, Pencil, Plus, Trash2 } from 'lucide-react';
 import { Link, useParams } from 'react-router';
 import { toast } from 'sonner';
 
 import { ApiError } from '@/lib/api-client';
-import { useContentType, useContentTypes } from '@/lib/queries/content-types';
+import { useContentType, useContentTypes, useUpdateContentType } from '@/lib/queries/content-types';
 import {
   useCreateFieldDefinition,
+  useDeleteFieldDefinition,
   useFieldDefinitions,
   useReorderFieldDefinitions,
+  useUpdateFieldDefinition,
 } from '@/lib/queries/field-definitions';
 import { FIELD_TYPES, type FieldDefinition, type FieldType } from '@/lib/types';
 import { EmptyState } from '@/components/empty-state';
@@ -27,6 +29,16 @@ import { OptionListEditor } from '@/components/option-list-editor';
 import { PageBreadcrumb } from '@/components/page-breadcrumb';
 import { PageHeader } from '@/components/page-header';
 import { TableSkeleton } from '@/components/table-skeleton';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -45,26 +57,68 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 
 const OPTION_LIST_TYPES: FieldType[] = ['select', 'multi_select'];
 
-function NewFieldDialog({ contentTypeId }: { contentTypeId: string }) {
+// Handles both "Add field" and "Edit field" — the same shape of form either way, just a POST
+// vs. a PATCH and different starting values. A single field prop (undefined = create mode)
+// avoids maintaining two near-identical dialogs. The form body is a separate component, keyed
+// by the field's id (or 'new'), so it remounts with fresh initial state each time the dialog
+// opens for a (possibly different) field — cleaner than an effect resetting state on open.
+function FieldDialog({
+  contentTypeId,
+  field,
+  trigger,
+}: {
+  contentTypeId: string;
+  field?: FieldDefinition;
+  trigger: React.ReactNode;
+}) {
   const [open, setOpen] = useState(false);
-  const [name, setName] = useState('');
-  const [label, setLabel] = useState('');
-  const [fieldType, setFieldType] = useState<FieldType>('text');
-  const [required, setRequired] = useState(false);
-  const [options, setOptions] = useState<string[]>([]);
-  const [targetContentTypeId, setTargetContentTypeId] = useState('');
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>{trigger}</DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{field ? 'Edit field' : 'Add field'}</DialogTitle>
+          <DialogDescription>Fields define what the entry editor renders (§6.1).</DialogDescription>
+        </DialogHeader>
+        {open ? (
+          <FieldForm
+            key={field?.id ?? 'new'}
+            contentTypeId={contentTypeId}
+            field={field}
+            onDone={() => setOpen(false)}
+          />
+        ) : null}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function FieldForm({
+  contentTypeId,
+  field,
+  onDone,
+}: {
+  contentTypeId: string;
+  field: FieldDefinition | undefined;
+  onDone: () => void;
+}) {
+  const isEditing = Boolean(field);
+  const [name, setName] = useState(field?.name ?? '');
+  const [label, setLabel] = useState(field?.label ?? '');
+  const [fieldType, setFieldType] = useState<FieldType>(field?.fieldType ?? 'text');
+  const [required, setRequired] = useState(field?.required ?? false);
+  const [options, setOptions] = useState<string[]>(
+    (field?.config?.options as string[] | undefined) ?? [],
+  );
+  const [targetContentTypeId, setTargetContentTypeId] = useState(
+    (field?.config?.targetContentTypeId as string | undefined) ?? '',
+  );
   const [error, setError] = useState<string | null>(null);
   const createField = useCreateFieldDefinition(contentTypeId);
+  const updateField = useUpdateFieldDefinition(contentTypeId);
   const { data: contentTypes } = useContentTypes();
-
-  function resetForm() {
-    setName('');
-    setLabel('');
-    setFieldType('text');
-    setRequired(false);
-    setOptions([]);
-    setTargetContentTypeId('');
-  }
+  const isPending = createField.isPending || updateField.isPending;
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -77,27 +131,23 @@ function NewFieldDialog({ contentTypeId }: { contentTypeId: string }) {
         : null;
 
     try {
-      await createField.mutateAsync({ name, label, fieldType, required, config });
-      toast.success('Field added');
-      resetForm();
-      setOpen(false);
+      if (isEditing && field) {
+        await updateField.mutateAsync({ fieldId: field.id, name, label, fieldType, required, config });
+        toast.success('Field updated');
+      } else {
+        await createField.mutateAsync({ name, label, fieldType, required, config });
+        toast.success('Field added');
+      }
+      onDone();
     } catch (err) {
-      const message = err instanceof ApiError ? err.message : 'Failed to create field';
+      const message = err instanceof ApiError ? err.message : `Failed to ${isEditing ? 'update' : 'create'} field`;
       setError(message);
       toast.error(message);
     }
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button>Add field</Button>
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Add field</DialogTitle>
-          <DialogDescription>Fields define what the entry editor renders (§6.1).</DialogDescription>
-        </DialogHeader>
+    <>
         <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
           <div className="flex flex-col gap-2">
             <Label htmlFor="field-name">Name</Label>
@@ -169,17 +219,135 @@ function NewFieldDialog({ contentTypeId }: { contentTypeId: string }) {
           </div>
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
           <DialogFooter>
-            <Button type="submit" disabled={createField.isPending}>
-              {createField.isPending ? 'Adding…' : 'Add field'}
+            <Button type="submit" disabled={isPending}>
+              {isPending ? (isEditing ? 'Saving…' : 'Adding…') : isEditing ? 'Save field' : 'Add field'}
             </Button>
           </DialogFooter>
         </form>
+    </>
+  );
+}
+
+function EditContentTypeDialog({
+  contentTypeId,
+  name,
+  slug,
+  description,
+}: {
+  contentTypeId: string;
+  name: string;
+  slug: string;
+  description: string | null;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline">
+          <Pencil />
+          Edit
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Edit content type</DialogTitle>
+          <DialogDescription>
+            Renaming or re-slugging doesn't move existing entries, but any public API caller or
+            frontend addressing this content type by its old slug will need updating.
+          </DialogDescription>
+        </DialogHeader>
+        {open ? (
+          <ContentTypeForm
+            contentTypeId={contentTypeId}
+            name={name}
+            slug={slug}
+            description={description}
+            onDone={() => setOpen(false)}
+          />
+        ) : null}
       </DialogContent>
     </Dialog>
   );
 }
 
-function SortableFieldRow({ field }: { field: FieldDefinition }) {
+// Conditionally rendered only while its dialog is open (see above), which is what gives it
+// fresh initial state from props each time it opens rather than a stale draft from before —
+// no reset-on-open effect needed.
+function ContentTypeForm({
+  contentTypeId,
+  name,
+  slug,
+  description,
+  onDone,
+}: {
+  contentTypeId: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  onDone: () => void;
+}) {
+  const [nameValue, setNameValue] = useState(name);
+  const [slugValue, setSlugValue] = useState(slug);
+  const [descriptionValue, setDescriptionValue] = useState(description ?? '');
+  const [error, setError] = useState<string | null>(null);
+  const updateContentType = useUpdateContentType(contentTypeId);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError(null);
+    try {
+      await updateContentType.mutateAsync({
+        name: nameValue,
+        slug: slugValue,
+        description: descriptionValue || null,
+      });
+      toast.success('Content type updated');
+      onDone();
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to update content type';
+      setError(message);
+      toast.error(message);
+    }
+  }
+
+  return (
+    <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
+      <div className="flex flex-col gap-2">
+        <Label htmlFor="content-type-edit-name">Name</Label>
+        <Input id="content-type-edit-name" required value={nameValue} onChange={(e) => setNameValue(e.target.value)} />
+      </div>
+      <div className="flex flex-col gap-2">
+        <Label htmlFor="content-type-edit-slug">Slug</Label>
+        <Input id="content-type-edit-slug" required value={slugValue} onChange={(e) => setSlugValue(e.target.value)} />
+      </div>
+      <div className="flex flex-col gap-2">
+        <Label htmlFor="content-type-edit-description">Description</Label>
+        <Input
+          id="content-type-edit-description"
+          value={descriptionValue}
+          onChange={(e) => setDescriptionValue(e.target.value)}
+        />
+      </div>
+      {error ? <p className="text-sm text-destructive">{error}</p> : null}
+      <DialogFooter>
+        <Button type="submit" disabled={updateContentType.isPending}>
+          {updateContentType.isPending ? 'Saving…' : 'Save changes'}
+        </Button>
+      </DialogFooter>
+    </form>
+  );
+}
+
+function SortableFieldRow({
+  field,
+  contentTypeId,
+  onRequestDelete,
+}: {
+  field: FieldDefinition;
+  contentTypeId: string;
+  onRequestDelete: (field: FieldDefinition) => void;
+}) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: field.id,
   });
@@ -207,6 +375,28 @@ function SortableFieldRow({ field }: { field: FieldDefinition }) {
         <FieldTypeBadge fieldType={field.fieldType} />
       </TableCell>
       <TableCell className="text-muted-foreground">{field.required ? 'Yes' : 'No'}</TableCell>
+      <TableCell className="w-20 text-right">
+        <div className="flex justify-end gap-1">
+          <FieldDialog
+            contentTypeId={contentTypeId}
+            field={field}
+            trigger={
+              <Button variant="ghost" size="icon-sm" aria-label={`Edit ${field.label}`}>
+                <Pencil />
+              </Button>
+            }
+          />
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={`Delete ${field.label}`}
+            className="text-muted-foreground hover:text-destructive"
+            onClick={() => onRequestDelete(field)}
+          >
+            <Trash2 />
+          </Button>
+        </div>
+      </TableCell>
     </TableRow>
   );
 }
@@ -216,6 +406,8 @@ export function ContentTypeDetailPage() {
   const { data: contentType } = useContentType(contentTypeId ?? '');
   const { data: fields, isPending, error } = useFieldDefinitions(contentTypeId ?? '');
   const reorderFields = useReorderFieldDefinitions(contentTypeId ?? '');
+  const deleteField = useDeleteFieldDefinition(contentTypeId ?? '');
+  const [pendingDelete, setPendingDelete] = useState<FieldDefinition | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
   function handleDragEnd(event: DragEndEvent) {
@@ -231,6 +423,18 @@ export function ContentTypeDetailPage() {
         onError: () => toast.error('Failed to reorder fields'),
       },
     );
+  }
+
+  async function handleConfirmDelete() {
+    if (!pendingDelete) return;
+    try {
+      await deleteField.mutateAsync(pendingDelete.id);
+      toast.success('Field deleted');
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Failed to delete field');
+    } finally {
+      setPendingDelete(null);
+    }
   }
 
   return (
@@ -255,7 +459,25 @@ export function ContentTypeDetailPage() {
             <Button variant="outline" asChild>
               <Link to={`/content-types/${contentTypeId}/entries`}>View entries</Link>
             </Button>
-            {contentTypeId ? <NewFieldDialog contentTypeId={contentTypeId} /> : null}
+            {contentType && contentTypeId ? (
+              <EditContentTypeDialog
+                contentTypeId={contentTypeId}
+                name={contentType.name}
+                slug={contentType.slug}
+                description={contentType.description}
+              />
+            ) : null}
+            {contentTypeId ? (
+              <FieldDialog
+                contentTypeId={contentTypeId}
+                trigger={
+                  <Button>
+                    <Plus />
+                    Add field
+                  </Button>
+                }
+              />
+            ) : null}
           </>
         }
       />
@@ -272,9 +494,10 @@ export function ContentTypeDetailPage() {
                 <TableHead>Label</TableHead>
                 <TableHead>Type</TableHead>
                 <TableHead>Required</TableHead>
+                <TableHead />
               </TableRow>
             </TableHeader>
-            <TableSkeleton columns={5} />
+            <TableSkeleton columns={6} />
           </Table>
         </div>
       ) : null}
@@ -287,7 +510,7 @@ export function ContentTypeDetailPage() {
         />
       ) : null}
 
-      {fields && fields.length > 0 ? (
+      {fields && fields.length > 0 && contentTypeId ? (
         <div className="rounded-xl border">
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
             <Table>
@@ -298,12 +521,18 @@ export function ContentTypeDetailPage() {
                   <TableHead>Label</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Required</TableHead>
+                  <TableHead />
                 </TableRow>
               </TableHeader>
               <SortableContext items={fields.map((field) => field.id)} strategy={verticalListSortingStrategy}>
                 <TableBody>
                   {fields.map((field) => (
-                    <SortableFieldRow key={field.id} field={field} />
+                    <SortableFieldRow
+                      key={field.id}
+                      field={field}
+                      contentTypeId={contentTypeId}
+                      onRequestDelete={setPendingDelete}
+                    />
                   ))}
                 </TableBody>
               </SortableContext>
@@ -311,6 +540,24 @@ export function ContentTypeDetailPage() {
           </DndContext>
         </div>
       ) : null}
+
+      <AlertDialog open={pendingDelete !== null} onOpenChange={(open) => !open && setPendingDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete "{pendingDelete?.label}"?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This removes the field from the content type. Existing entries keep whatever data was
+              stored under it, but the entry editor and preview will no longer show it.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" onClick={() => void handleConfirmDelete()}>
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -6,6 +6,8 @@ import {
   formSchema,
   formSubmissionSchema,
   formSubmissionWithFormSchema,
+  updateFormFieldSchema,
+  updateFormSchema,
   updateFormSubmissionStatusSchema,
 } from '@kenresoft/contracts';
 import type {
@@ -21,13 +23,19 @@ import { z } from 'zod';
 import { getDb } from '../../lib/db';
 import { createOpenApiApp } from '../../lib/openapi';
 import { requireRole } from '../../middleware/require-role';
-import { createFormField, listFormFields } from '../../repositories/form-fields';
+import {
+  createFormField,
+  deleteFormField,
+  getFormFieldById,
+  listFormFields,
+  updateFormField,
+} from '../../repositories/form-fields';
 import {
   getFormSubmissionById,
   listSubmissionsWithForm,
   updateFormSubmissionStatus,
 } from '../../repositories/form-submissions';
-import { createForm, getFormById, listForms } from '../../repositories/forms';
+import { createForm, getFormById, listForms, updateForm } from '../../repositories/forms';
 import type { Bindings } from '../../lib/env';
 import type { AuthedVariables } from '../../middleware/require-session';
 import type {
@@ -41,6 +49,7 @@ export const formsRoute = createOpenApiApp<{ Bindings: Bindings; Variables: Auth
 const notFoundSchema = z.object({ error: z.string() });
 const idParamSchema = z.object({ id: z.string().min(1) });
 const submissionParamsSchema = z.object({ id: z.string().min(1), submissionId: z.string().min(1) });
+const fieldParamSchema = z.object({ id: z.string().min(1), fieldId: z.string().min(1) });
 
 function toForm(row: DbForm): Form {
   return {
@@ -166,6 +175,43 @@ formsRoute.openapi(
   },
 );
 
+// Owner-gated, same as creation — renaming/re-slugging a form is a structural change (§11).
+formsRoute.openapi(
+  createRoute({
+    method: 'patch',
+    path: '/{id}',
+    tags: ['Forms'],
+    summary: 'Update a form (owner only)',
+    middleware: requireRole('owner'),
+    request: {
+      params: idParamSchema,
+      body: { content: { 'application/json': { schema: updateFormSchema } } },
+    },
+    responses: {
+      200: {
+        description: 'The updated form.',
+        content: { 'application/json': { schema: formSchema } },
+      },
+      404: {
+        description: 'No form with that id.',
+        content: { 'application/json': { schema: notFoundSchema } },
+      },
+    },
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const db = getDb(c);
+    const existing = await getFormById(db, id);
+    if (!existing) {
+      return c.json({ error: 'Form not found' }, 404);
+    }
+
+    const input = c.req.valid('json');
+    const updated = await updateForm(db, id, input);
+    return c.json(toForm(updated!), 200);
+  },
+);
+
 formsRoute.openapi(
   createRoute({
     method: 'get',
@@ -233,6 +279,70 @@ formsRoute.openapi(
       sortOrder: input.sortOrder ?? existingFields.length,
     });
     return c.json(toFormField(field), 201);
+  },
+);
+
+// No role gate — matches field creation just above.
+formsRoute.openapi(
+  createRoute({
+    method: 'patch',
+    path: '/{id}/fields/{fieldId}',
+    tags: ['Forms'],
+    summary: 'Update a field definition',
+    request: {
+      params: fieldParamSchema,
+      body: { content: { 'application/json': { schema: updateFormFieldSchema } } },
+    },
+    responses: {
+      200: {
+        description: 'The updated field definition.',
+        content: { 'application/json': { schema: formFieldSchema } },
+      },
+      404: {
+        description: 'No form or field matching those ids.',
+        content: { 'application/json': { schema: notFoundSchema } },
+      },
+    },
+  }),
+  async (c) => {
+    const { id, fieldId } = c.req.valid('param');
+    const db = getDb(c);
+    const field = await getFormFieldById(db, fieldId);
+    if (!field || field.formId !== id) {
+      return c.json({ error: 'Field not found' }, 404);
+    }
+
+    const input = c.req.valid('json');
+    const updated = await updateFormField(db, fieldId, input);
+    return c.json(toFormField(updated!), 200);
+  },
+);
+
+formsRoute.openapi(
+  createRoute({
+    method: 'delete',
+    path: '/{id}/fields/{fieldId}',
+    tags: ['Forms'],
+    summary: 'Delete a field definition',
+    request: { params: fieldParamSchema },
+    responses: {
+      204: { description: 'The field was deleted.' },
+      404: {
+        description: 'No form or field matching those ids.',
+        content: { 'application/json': { schema: notFoundSchema } },
+      },
+    },
+  }),
+  async (c) => {
+    const { id, fieldId } = c.req.valid('param');
+    const db = getDb(c);
+    const field = await getFormFieldById(db, fieldId);
+    if (!field || field.formId !== id) {
+      return c.json({ error: 'Field not found' }, 404);
+    }
+
+    await deleteFormField(db, fieldId);
+    return c.body(null, 204);
   },
 );
 

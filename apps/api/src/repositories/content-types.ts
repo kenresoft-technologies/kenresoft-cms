@@ -1,4 +1,5 @@
 import { contentTypes, eq } from '@kenresoft/database';
+import type { UpdateContentTypeInput } from '@kenresoft/contracts';
 import type { ContentType, Database, NewContentType } from '@kenresoft/database';
 
 export async function createContentType(
@@ -22,4 +23,13 @@ export function getContentTypeById(
   id: string,
 ): Promise<ContentType | undefined> {
   return db.query.contentTypes.findFirst({ where: eq(contentTypes.id, id) });
+}
+
+export async function updateContentType(
+  db: Database,
+  id: string,
+  patch: UpdateContentTypeInput,
+): Promise<ContentType | undefined> {
+  const [contentType] = await db.update(contentTypes).set(patch).where(eq(contentTypes.id, id)).returning();
+  return contentType;
 }
