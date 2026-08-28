@@ -23,7 +23,9 @@ import {
   useReorderFieldDefinitions,
   useUpdateFieldDefinition,
 } from '@/lib/queries/field-definitions';
+import { useDeveloperMode } from '@/lib/developer-mode';
 import { FIELD_TYPES, roleAtLeast, type FieldDefinition, type FieldType, type UserRole } from '@/lib/types';
+import { ContentTypeDeveloperPanel } from '@/components/developer-panel/content-type-developer-panel';
 import { EmptyState } from '@/components/empty-state';
 import { FieldTypeBadge, fieldTypeIcon } from '@/components/field-type-badge';
 import { OptionListEditor } from '@/components/option-list-editor';
@@ -415,6 +417,7 @@ export function ContentTypeDetailPage() {
   // Matches the API's own gate (apps/api/src/routes/admin/content-types.ts) — author and
   // viewer can't rename the content type or manage its fields, only admin/editor.
   const canManageFields = roleAtLeast((session?.user.role ?? 'viewer') as UserRole, 'editor');
+  const developerMode = useDeveloperMode();
   const { data: contentType } = useContentType(contentTypeId ?? '');
   const { data: fields, isPending, error } = useFieldDefinitions(contentTypeId ?? '');
   const reorderFields = useReorderFieldDefinitions(contentTypeId ?? '');
@@ -471,6 +474,9 @@ export function ContentTypeDetailPage() {
             <Button variant="outline" asChild>
               <Link to={`/content-types/${contentTypeId}/entries`}>View entries</Link>
             </Button>
+            {developerMode && contentType && fields ? (
+              <ContentTypeDeveloperPanel contentType={contentType} fields={fields} />
+            ) : null}
             {canManageFields && contentType && contentTypeId ? (
               <EditContentTypeDialog
                 contentTypeId={contentTypeId}

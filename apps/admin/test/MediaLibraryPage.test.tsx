@@ -68,9 +68,12 @@ describe('MediaLibraryPage', () => {
   });
 
   it('uploads a file through the dialog and refetches the list', async () => {
-    getMock
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([
+    let mediaListCalls = 0;
+    getMock.mockImplementation((path: string) => {
+      if (path === '/api/v1/admin/settings') return Promise.resolve(null);
+      mediaListCalls += 1;
+      if (mediaListCalls === 1) return Promise.resolve([]);
+      return Promise.resolve([
         {
           id: 'm-1',
           filename: 'photo.png',
@@ -81,6 +84,7 @@ describe('MediaLibraryPage', () => {
           altText: null,
         },
       ]);
+    });
     uploadMock.mockResolvedValue({ id: 'm-1' });
 
     renderPage();

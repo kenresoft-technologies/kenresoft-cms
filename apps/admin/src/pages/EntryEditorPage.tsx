@@ -2,12 +2,14 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useBlocker, useNavigate, useParams } from 'react-router';
 import { toast } from 'sonner';
 
+import { EntryDeveloperPanel } from '@/components/developer-panel/entry-developer-panel';
 import { EntryRevisionHistory } from '@/components/entry-revision-history';
 import { FieldInput } from '@/components/field-input';
 import { ApiError } from '@/lib/api-client';
 import { useContentType } from '@/lib/queries/content-types';
 import { useCreateEntry, useDeleteEntry, useEntry, useUpdateEntry } from '@/lib/queries/entries';
 import { useFieldDefinitions } from '@/lib/queries/field-definitions';
+import { useDeveloperMode } from '@/lib/developer-mode';
 import { ENTRY_STATUSES, type Entry, type EntryStatus, type FieldDefinition, type FieldType } from '@/lib/types';
 import {
   AlertDialog,
@@ -360,6 +362,7 @@ export function EntryEditorPage() {
   const { data: contentType } = useContentType(contentTypeId ?? '');
   const { data: fields } = useFieldDefinitions(contentTypeId ?? '');
   const { data: entry } = useEntry(isNew ? '' : (entryId ?? ''));
+  const developerMode = useDeveloperMode();
   const ready = Boolean(fields) && (isNew || Boolean(entry));
 
   return (
@@ -387,6 +390,11 @@ export function EntryEditorPage() {
             : isNew
               ? 'Creating a new entry.'
               : 'Editing an entry.'
+        }
+        actions={
+          developerMode && !isNew && contentType && entry ? (
+            <EntryDeveloperPanel contentType={contentType} entry={entry} />
+          ) : undefined
         }
       />
 

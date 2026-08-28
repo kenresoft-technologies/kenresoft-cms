@@ -4,7 +4,9 @@ import { toast } from 'sonner';
 import type { ColumnDef } from '@tanstack/react-table';
 
 import { ApiError } from '@/lib/api-client';
+import { useDeveloperMode } from '@/lib/developer-mode';
 import { useDeleteMedia, useMediaList, useUploadMedia, mediaFileUrl } from '@/lib/queries/media';
+import { MediaDeveloperPanel } from '@/components/developer-panel/media-developer-panel';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -165,7 +167,7 @@ function MediaThumbnail({ item, className }: { item: Media; className?: string }
   );
 }
 
-function MediaGrid({ items }: { items: Media[] }) {
+function MediaGrid({ items, developerMode }: { items: Media[]; developerMode: boolean }) {
   return (
     <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
       {items.map((item) => (
@@ -177,6 +179,14 @@ function MediaGrid({ items }: { items: Media[] }) {
                 devices, which have no hover state at all — subtly toned at rest, full
                 destructive-red only once hovered/focused. */}
             <div className="pointer-events-none absolute inset-0 bg-black/0 transition-colors group-hover:bg-black/20" />
+            {developerMode ? (
+              <div className="absolute top-2 left-2">
+                <MediaDeveloperPanel
+                  item={item}
+                  className="bg-background/80 text-foreground hover:bg-background"
+                />
+              </div>
+            ) : null}
             <div className="absolute top-2 right-2">
               <DeleteMediaAlert
                 item={item}
@@ -211,7 +221,7 @@ function MediaGrid({ items }: { items: Media[] }) {
   );
 }
 
-function MediaList({ items }: { items: Media[] }) {
+function MediaList({ items, developerMode }: { items: Media[]; developerMode: boolean }) {
   const deleteMedia = useDeleteMedia();
 
   const columns = useMemo<ColumnDef<Media>[]>(
@@ -260,18 +270,21 @@ function MediaList({ items }: { items: Media[] }) {
         header: '',
         enableSorting: false,
         cell: ({ row }) => (
-          <DeleteMediaAlert
-            item={row.original}
-            trigger={
-              <Button variant="ghost" size="icon-sm" aria-label={`Delete ${row.original.filename}`}>
-                <Trash2 />
-              </Button>
-            }
-          />
+          <div className="flex justify-end gap-1">
+            {developerMode ? <MediaDeveloperPanel item={row.original} /> : null}
+            <DeleteMediaAlert
+              item={row.original}
+              trigger={
+                <Button variant="ghost" size="icon-sm" aria-label={`Delete ${row.original.filename}`}>
+                  <Trash2 />
+                </Button>
+              }
+            />
+          </div>
         ),
       },
     ],
-    [],
+    [developerMode],
   );
 
   return (
@@ -301,6 +314,7 @@ function MediaList({ items }: { items: Media[] }) {
 }
 
 export function MediaLibraryPage() {
+  const developerMode = useDeveloperMode();
   const { data: mediaItems, isPending, error, refetch } = useMediaList();
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
@@ -395,12 +409,12 @@ export function MediaLibraryPage() {
 
           {viewMode === 'grid' ? (
             gridItems.length > 0 ? (
-              <MediaGrid items={gridItems} />
+              <MediaGrid items={gridItems} developerMode={developerMode} />
             ) : (
               <p className="py-8 text-center text-sm text-muted-foreground">No media matches your search.</p>
             )
           ) : (
-            <MediaList items={typeFilteredItems} />
+            <MediaList items={typeFilteredItems} developerMode={developerMode} />
           )}
         </div>
       ) : null}

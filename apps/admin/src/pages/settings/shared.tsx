@@ -9,9 +9,16 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 // packages/database/schema/settings.ts) even though each section only edits a couple of its
 // fields. This seeds the fields a section doesn't own from the last-fetched row so saving one
 // section never clobbers another's already-saved values.
+//
+// `name` falls back to a placeholder rather than '' when there's no row yet — upsertSettingsSchema
+// requires a non-empty name, and GeneralSection is the only section that guards for that
+// client-side. Without this fallback, saving any other section first (e.g. this Developer Mode
+// toggle, or CORS origin) on a brand-new deployment 400s with an opaque "Validation failed"
+// before General has ever been touched. The placeholder is a normal, renameable value — visiting
+// General afterward corrects it same as always.
 export function toSettingsInput(settings: Settings | null): SettingsInput {
   return {
-    name: settings?.name ?? '',
+    name: settings?.name ?? 'My deployment',
     contactEmail: settings?.contactEmail ?? null,
     socialLinks: settings?.socialLinks ?? null,
     corsOrigin: settings?.corsOrigin ?? null,

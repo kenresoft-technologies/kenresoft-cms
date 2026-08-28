@@ -5,10 +5,12 @@ import { toast } from 'sonner';
 
 import { ApiError } from '@/lib/api-client';
 import { authClient } from '@/lib/auth-client';
+import { useDeveloperMode } from '@/lib/developer-mode';
 import { useForm, useUpdateForm } from '@/lib/queries/forms';
 import { useCreateFormField, useDeleteFormField, useFormFields, useUpdateFormField } from '@/lib/queries/form-fields';
 import { FORM_FIELD_TYPES, roleAtLeast, type FormField, type FormFieldType, type UserRole } from '@/lib/types';
 import { EmptyState } from '@/components/empty-state';
+import { FormDeveloperPanel } from '@/components/developer-panel/form-developer-panel';
 import { FieldTypeBadge, fieldTypeIcon } from '@/components/field-type-badge';
 import { OptionListEditor } from '@/components/option-list-editor';
 import { PageBreadcrumb } from '@/components/page-breadcrumb';
@@ -253,6 +255,7 @@ export function FormDetailPage() {
   // Matches the API's own gate (apps/api/src/routes/admin/forms.ts) — author and viewer
   // can't rename the form or manage its fields, only admin/editor.
   const canManageFields = roleAtLeast((session?.user.role ?? 'viewer') as UserRole, 'editor');
+  const developerMode = useDeveloperMode();
   const { data: form } = useForm(formId ?? '');
   const { data: fields, isPending, error } = useFormFields(formId ?? '');
   const deleteField = useDeleteFormField(formId ?? '');
@@ -288,6 +291,7 @@ export function FormDetailPage() {
             <Button variant="outline" asChild>
               <Link to={`/forms/${formId}/submissions`}>View submissions</Link>
             </Button>
+            {developerMode && form && fields ? <FormDeveloperPanel form={form} fields={fields} /> : null}
             {canManageFields && form && formId ? (
               <EditFormDialog formId={formId} name={form.name} slug={form.slug} />
             ) : null}
