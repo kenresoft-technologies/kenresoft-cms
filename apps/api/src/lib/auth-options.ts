@@ -9,9 +9,10 @@ import type { BetterAuthOptions } from 'better-auth';
 // keeps schema and runtime verified-consistent. Re-check this pin before bumping either
 // package — see apps/api/package.json.
 
-// §10: "starts with a small role set — Owner and Editor." A plain custom field is enough for
-// that — the full `admin` plugin (impersonation, banning, org-level ac statements) is more
-// surface area than this phase needs.
+// A plain custom field is enough for the role model this CMS actually needs — the full `admin`
+// plugin (impersonation, banning, org-level ac statements) is more surface area than the
+// owner/admin/editor/author/viewer hierarchy requires, and its own role/ban concepts would
+// duplicate rather than replace what's built here (docs/ARCHITECTURE.md §10).
 export const authOptions = {
   // Kept under the versioned API prefix (§8) rather than better-auth's default /api/auth.
   basePath: '/api/v1/auth',
@@ -51,6 +52,29 @@ export const authOptions = {
         defaultValue: 'editor',
         // Never client-settable at signup — only a trusted admin action may grant a role
         // above 'editor'.
+        input: false,
+      },
+      // A disabled account is treated as unauthenticated (require-session.ts) even though its
+      // row and history stay intact — distinct from deletion, and from a role demotion, which
+      // doesn't affect whether someone can sign in at all.
+      disabled: {
+        type: 'boolean',
+        required: true,
+        defaultValue: false,
+        input: false,
+      },
+    },
+  },
+  session: {
+    additionalFields: {
+      // Set by POST /api/v1/admin/security/elevate after a fresh password check, scoped to
+      // this one session row (device) rather than the user globally — naturally expires,
+      // never client-settable. Gates ownership transfer and disabling an admin
+      // (require-elevated-session.ts): better-auth's own session freshness window is a ~24h
+      // activity-based thing, not "recently re-entered your password," so it isn't reused here.
+      elevatedUntil: {
+        type: 'date',
+        required: false,
         input: false,
       },
     },

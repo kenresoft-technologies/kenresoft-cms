@@ -120,13 +120,13 @@ formsRoute.openapi(
 );
 
 // Forms are a top-level structural resource, same as content types (§11) — creating one is
-// an owner-level action.
+// an admin-level action.
 formsRoute.openapi(
   createRoute({
     method: 'post',
     path: '/',
     tags: ['Forms'],
-    summary: 'Create a form (owner only)',
+    summary: 'Create a form (admin only)',
     middleware: requireRole('admin'),
     request: {
       body: { content: { 'application/json': { schema: createFormSchema } } },
@@ -175,13 +175,13 @@ formsRoute.openapi(
   },
 );
 
-// Owner-gated, same as creation — renaming/re-slugging a form is a structural change (§11).
+// Admin-gated, same as creation — renaming/re-slugging a form is a structural change (§11).
 formsRoute.openapi(
   createRoute({
     method: 'patch',
     path: '/{id}',
     tags: ['Forms'],
-    summary: 'Update a form (owner only)',
+    summary: 'Update a form (admin only)',
     middleware: requireRole('admin'),
     request: {
       params: idParamSchema,

@@ -1,11 +1,13 @@
-import { count, desc, eq, session, user } from '@kenresoft/database';
+import { and, count, desc, eq, inArray, ne, session, user } from '@kenresoft/database';
 import type { Database } from '@kenresoft/database';
+import type { UserRole } from '@kenresoft/contracts';
 
 export interface UserWithLastActive {
   id: string;
   name: string;
   email: string;
   role: string;
+  disabled: boolean;
   createdAt: Date;
   lastActiveAt: Date | null;
 }
@@ -32,6 +34,7 @@ export async function listUsersWithLastActive(db: Database): Promise<UserWithLas
     name: row.name,
     email: row.email,
     role: row.role,
+    disabled: row.disabled,
     createdAt: row.createdAt,
     lastActiveAt: lastActiveByUser.get(row.id) ?? null,
   }));
@@ -45,13 +48,26 @@ export function getUserByEmail(db: Database, email: string) {
   return db.query.user.findFirst({ where: eq(user.email, email) });
 }
 
-export async function countAdmins(db: Database): Promise<number> {
-  const [row] = await db.select({ count: count() }).from(user).where(eq(user.role, 'admin'));
+// "Guardian" = owner or admin — either can manage users, so either is enough to keep the
+// deployment manageable. Generalizes the old admin-only count: an owner already satisfies
+// every requireRole('admin') check via ROLE_RANK, so a deployment with one owner and zero
+// admins is not actually locked out, and demoting/removing its last admin should be allowed.
+// `excluding` lets a caller ask "if I removed this specific row, would anyone still be left?"
+// without a separate before/after count.
+export async function countGuardians(db: Database, options?: { excluding?: string }): Promise<number> {
+  const conditions = [inArray(user.role, ['owner', 'admin'])];
+  if (options?.excluding) conditions.push(ne(user.id, options.excluding));
+  const [row] = await db.select({ count: count() }).from(user).where(and(...conditions));
   return row?.count ?? 0;
 }
 
-export async function updateUserRole(db: Database, id: string, role: 'admin' | 'editor' | 'author' | 'viewer') {
+export async function updateUserRole(db: Database, id: string, role: UserRole) {
   const [row] = await db.update(user).set({ role }).where(eq(user.id, id)).returning();
+  return row!;
+}
+
+export async function updateUserDisabled(db: Database, id: string, disabled: boolean) {
+  const [row] = await db.update(user).set({ disabled }).where(eq(user.id, id)).returning();
   return row!;
 }
 

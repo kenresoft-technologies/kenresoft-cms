@@ -24,3 +24,17 @@ export function getSessionById(db: Database, id: string): Promise<Session | unde
 export async function deleteSession(db: Database, id: string): Promise<void> {
   await db.delete(session).where(eq(session.id, id));
 }
+
+// Called when disabling a user, as defense-in-depth alongside requireSession's own
+// result.user.disabled check — a device already holding a valid session cookie is cut off
+// immediately rather than waiting for that session to expire naturally.
+export async function deleteAllSessionsForUser(db: Database, userId: string): Promise<void> {
+  await db.delete(session).where(eq(session.userId, userId));
+}
+
+// better-auth has no public API for setting a custom session additionalField, so
+// POST /api/v1/admin/security/elevate writes elevatedUntil directly through this repository —
+// same layer every other session mutation in this file already goes through.
+export async function setSessionElevatedUntil(db: Database, id: string, elevatedUntil: Date): Promise<void> {
+  await db.update(session).set({ elevatedUntil }).where(eq(session.id, id));
+}

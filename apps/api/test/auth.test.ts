@@ -24,7 +24,7 @@ describe('better-auth wiring (real D1)', () => {
     expect(response.status).toBe(200);
 
     const user = await db.query.user.findFirst();
-    expect(user).toMatchObject({ email: 'first@pathvera.test', role: 'admin' });
+    expect(user).toMatchObject({ email: 'first@pathvera.test', role: 'owner' });
   });
 
   it('defaults subsequent signups to editor', async () => {

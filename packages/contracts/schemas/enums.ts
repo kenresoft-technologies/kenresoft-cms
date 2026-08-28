@@ -49,14 +49,38 @@ export const MEDIA_CONTENT_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'ima
 
 export type MediaContentType = (typeof MEDIA_CONTENT_TYPES)[number];
 
-// admin: everything, including structure (content types, forms), users, roles, settings,
-// cache. editor: everything editorial — any entry, form submission triage, media, content-type
+// owner: represents ownership of this specific installation — everything admin can do, plus
+// immune to every other role's user-management actions (an admin can never demote, delete, or
+// disable an owner; only the owner can transfer ownership). Not tied to Kenresoft or any
+// external account — purely a per-deployment role like every other one here. admin: everything,
+// including structure (content types, forms), users, roles, settings, cache — but never an
+// owner. editor: everything editorial — any entry, form submission triage, media, content-type
 // and form FIELDS (not the content type/form's own existence) — no structure/users/settings.
 // author: entries they created only (create freely, edit/delete only their own); can't manage
 // media, forms, or structure. viewer: read-only everywhere, no writes at all. The first signup
-// on a deployment becomes admin (src/lib/auth.ts's bootstrap hook); everyone after defaults to
+// on a deployment becomes owner (src/lib/auth.ts's bootstrap hook); everyone after defaults to
 // editor. Renamed from the original two-role ('owner'/'editor') model — packages/database's
-// 0011 migration rewrites every existing 'owner' row to 'admin'.
-export const USER_ROLES = ['admin', 'editor', 'author', 'viewer'] as const;
+// 0011 migration rewrote every existing 'owner' row to 'admin' during the admin/editor/author/
+// viewer expansion; a later migration reintroduces 'owner' as a real, distinct role above admin
+// (docs/ARCHITECTURE.md §10).
+export const USER_ROLES = ['owner', 'admin', 'editor', 'author', 'viewer'] as const;
 
 export type UserRole = (typeof USER_ROLES)[number];
+
+// Higher number = more privilege. Centralizes what used to be ~19 hand-copied exact-string
+// role comparisons across apps/api and apps/admin into one ranked comparison — requireRole()
+// (apps/api/src/middleware/require-role.ts) and apps/admin's roleAtLeast() both key off this,
+// so introducing 'owner' above 'admin' didn't require touching every one of those call sites:
+// any check already written as "admin or above" (every requireRole('admin', ...) site verified
+// to be a contiguous top slice, never a non-contiguous set) automatically admits owner too.
+export const ROLE_RANK: Record<UserRole, number> = {
+  viewer: 0,
+  author: 1,
+  editor: 2,
+  admin: 3,
+  owner: 4,
+};
+
+export function roleAtLeast(role: UserRole, minimum: UserRole): boolean {
+  return ROLE_RANK[role] >= ROLE_RANK[minimum];
+}

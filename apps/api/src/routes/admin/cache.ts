@@ -12,7 +12,7 @@ import type { AuthedVariables } from '../../middleware/require-session';
 
 export const cacheRoute = createOpenApiApp<{ Bindings: Bindings; Variables: AuthedVariables }>();
 
-// Owner-only, same tier as content-type/form creation. There's no way to enumerate what's
+// Admin-only, same tier as content-type/form creation. There's no way to enumerate what's
 // actually sitting in Cloudflare's edge Cache API (no list operation exists for it), so this
 // doesn't claim to — it re-derives every key the app could ever have written (one per
 // published entry, one per media file, the same key-generation functions every write path
@@ -23,7 +23,7 @@ cacheRoute.openapi(
     method: 'post',
     path: '/purge',
     tags: ['Cache'],
-    summary: 'Purge the public API edge cache (owner only)',
+    summary: 'Purge the public API edge cache (admin only)',
     middleware: requireRole('admin'),
     responses: {
       200: {

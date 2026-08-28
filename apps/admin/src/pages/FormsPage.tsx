@@ -8,7 +8,7 @@ import { API_URL, apiClient, ApiError } from '@/lib/api-client';
 import { authClient } from '@/lib/auth-client';
 import { useCreateForm, useForms } from '@/lib/queries/forms';
 import { useFormFields } from '@/lib/queries/form-fields';
-import type { Form, FormField, FormFieldType } from '@/lib/types';
+import { roleAtLeast, type Form, type FormField, type FormFieldType, type UserRole } from '@/lib/types';
 import { DataTable } from '@/components/data-table';
 import { EmptyState } from '@/components/empty-state';
 import { PageBreadcrumb } from '@/components/page-breadcrumb';
@@ -291,7 +291,7 @@ function NewFormDialog() {
 export function FormsPage() {
   const navigate = useNavigate();
   const { data: session } = authClient.useSession();
-  const isAdmin = session?.user.role === 'admin';
+  const isAdmin = roleAtLeast((session?.user.role ?? 'viewer') as UserRole, 'admin');
   const { data: forms, isPending, error, refetch } = useForms();
 
   return (

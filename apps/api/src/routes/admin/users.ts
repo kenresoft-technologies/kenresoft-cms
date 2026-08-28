@@ -5,24 +5,33 @@ import {
   createUserSchema,
   idParamSchema,
   sessionSchema,
+  updateUserDisabledSchema,
   updateUserRoleSchema,
 } from '@kenresoft/contracts';
 import type { AdminUser, Session, UserRole } from '@kenresoft/contracts';
 import { z } from 'zod';
 
+import { recordAudit } from '../../lib/audit';
 import { createAuth } from '../../lib/auth';
 import { getDb } from '../../lib/db';
 import { createOpenApiApp } from '../../lib/openapi';
+import { checkGuardianRemains, checkNotTargetingOwner } from '../../lib/user-guards';
+import { isSessionElevated } from '../../middleware/require-elevated-session';
 import { requireRole } from '../../middleware/require-role';
 import {
-  countAdmins,
   deleteUser,
   getUserByEmail,
   getUserById,
   listUsersWithLastActive,
+  updateUserDisabled,
   updateUserRole,
 } from '../../repositories/users';
-import { deleteSession, getSessionById, listSessionsForUser } from '../../repositories/sessions';
+import {
+  deleteAllSessionsForUser,
+  deleteSession,
+  getSessionById,
+  listSessionsForUser,
+} from '../../repositories/sessions';
 import type { Bindings } from '../../lib/env';
 import type { AuthedVariables } from '../../middleware/require-session';
 import type { Session as DbSession } from '../../repositories/sessions';
@@ -67,6 +76,7 @@ usersRoute.openapi(
       // column) — narrowed here to the contract's literal union, which the DB constraint
       // (bootstrap hook + this very route) already guarantees in practice.
       role: user.role as UserRole,
+      disabled: user.disabled,
       createdAt: user.createdAt.toISOString(),
       lastActiveAt: user.lastActiveAt?.toISOString() ?? null,
     }));
@@ -138,6 +148,7 @@ usersRoute.openapi(
       // better-auth types the "role" additionalField as plain string (§ same note above on
       // adminUserSchema) — always present in practice via the schema default.
       role: result.user.role as UserRole,
+      disabled: false,
       createdAt: new Date(result.user.createdAt).toISOString(),
       lastActiveAt: null,
     };
@@ -145,9 +156,12 @@ usersRoute.openapi(
   },
 );
 
-// Role changes are admin-only. Beyond that, reject any change that would leave the
-// deployment with zero admins — a strict superset of "can't demote yourself," since it also
-// covers an admin demoting the last other admin.
+// Role changes are admin-only. An owner is never a valid target here (ownership only moves
+// through Transfer ownership) — that's checked before anything else, so an admin trying to
+// "demote" an owner gets rejected outright rather than silently succeeding at nothing. Beyond
+// that, reject any change that would leave the deployment with zero guardians (owner + admin
+// combined) — a strict superset of "can't demote yourself," since it also covers an admin
+// demoting the last other admin.
 usersRoute.openapi(
   createRoute({
     method: 'patch',
@@ -169,7 +183,11 @@ usersRoute.openapi(
         content: { 'application/json': { schema: notFoundSchema } },
       },
       400: {
-        description: 'The change would leave the deployment with zero admins.',
+        description: 'The change would leave the deployment with no owner or admin.',
+        content: { 'application/json': { schema: notFoundSchema } },
+      },
+      403: {
+        description: 'The target is the owner — role changes must go through Transfer ownership.',
         content: { 'application/json': { schema: notFoundSchema } },
       },
     },
@@ -182,16 +200,34 @@ usersRoute.openapi(
       return c.json({ error: 'User not found' }, 404);
     }
 
+    const targetRole = target.role as UserRole;
+    const ownerCheck = checkNotTargetingOwner({ role: targetRole });
+    if (!ownerCheck.ok) {
+      return c.json({ error: ownerCheck.error }, ownerCheck.status);
+    }
+
     const { role } = c.req.valid('json');
 
-    if (target.role === 'admin' && role !== 'admin') {
-      const adminCount = await countAdmins(db);
-      if (adminCount <= 1) {
-        return c.json({ error: 'Cannot remove the last remaining admin' }, 400);
+    if (role === 'owner') {
+      return c.json({ error: 'Granting ownership must go through Transfer ownership' }, 403);
+    }
+
+    // targetRole can't be 'owner' here — checkNotTargetingOwner above already rejected that.
+    if (targetRole === 'admin' && role !== 'admin') {
+      const guardianCheck = await checkGuardianRemains(db, target.id);
+      if (!guardianCheck.ok) {
+        return c.json({ error: guardianCheck.error }, guardianCheck.status);
       }
     }
 
     const updated = await updateUserRole(db, target.id, role);
+    await recordAudit(db, {
+      actorUserId: c.get('user').id,
+      action: 'user.role_changed',
+      targetType: 'user',
+      targetId: target.id,
+      metadata: { previousRole: targetRole, newRole: role },
+    });
     // updateUserRole's plain update-returning row has no lastActiveAt (that's a computed
     // join in listUsersWithLastActive, not a column) — null is the honest value here, same
     // as the admin's onSuccess handler already ignores this field and refetches the list.
@@ -200,6 +236,7 @@ usersRoute.openapi(
       name: updated.name,
       email: updated.email,
       role: updated.role as UserRole,
+      disabled: updated.disabled,
       createdAt: updated.createdAt.toISOString(),
       lastActiveAt: null,
     };
@@ -207,9 +244,10 @@ usersRoute.openapi(
   },
 );
 
-// Admin-only. Blocks the same "would leave zero admins" case as the role-change route above,
-// plus removing your own account through this control specifically — self-removal is a
-// different, more deliberate action than this button, and not one this admin exposes yet.
+// Admin-only. An owner can never be deleted through this route (checkNotTargetingOwner).
+// Blocks the same "would leave zero guardians" case as the role-change route above, plus
+// removing your own account through this control specifically — self-removal is a different,
+// more deliberate action than this button, and not one this admin exposes yet.
 usersRoute.openapi(
   createRoute({
     method: 'delete',
@@ -225,7 +263,11 @@ usersRoute.openapi(
         content: { 'application/json': { schema: notFoundSchema } },
       },
       400: {
-        description: 'Deleting this user would leave the deployment with zero admins, or is your own account.',
+        description: 'Deleting this user would leave the deployment with no owner or admin, or is your own account.',
+        content: { 'application/json': { schema: notFoundSchema } },
+      },
+      403: {
+        description: 'The target is the owner.',
         content: { 'application/json': { schema: notFoundSchema } },
       },
     },
@@ -238,20 +280,116 @@ usersRoute.openapi(
       return c.json({ error: 'User not found' }, 404);
     }
 
+    const ownerCheck = checkNotTargetingOwner({ role: target.role as UserRole });
+    if (!ownerCheck.ok) {
+      return c.json({ error: ownerCheck.error }, ownerCheck.status);
+    }
+
     const actingUser = c.get('user');
     if (target.id === actingUser.id) {
       return c.json({ error: 'You cannot remove your own account here' }, 400);
     }
 
     if (target.role === 'admin') {
-      const adminCount = await countAdmins(db);
-      if (adminCount <= 1) {
-        return c.json({ error: 'Cannot remove the last remaining admin' }, 400);
+      const guardianCheck = await checkGuardianRemains(db, target.id);
+      if (!guardianCheck.ok) {
+        return c.json({ error: guardianCheck.error }, guardianCheck.status);
       }
     }
 
     await deleteUser(db, target.id);
+    await recordAudit(db, {
+      actorUserId: actingUser.id,
+      action: 'user.deleted',
+      targetType: 'user',
+      targetId: target.id,
+      metadata: { role: target.role },
+    });
     return c.body(null, 204);
+  },
+);
+
+// Admin-only. Owner can't be disabled through this route. Disabling an admin requires a fresh
+// re-auth (requireElevatedSession) — a compromised admin session shouldn't be enough on its own
+// to lock out another admin, and disabling revokes every one of that user's existing sessions
+// immediately rather than waiting for requireSession's own disabled check to catch them on
+// their next request.
+usersRoute.openapi(
+  createRoute({
+    method: 'patch',
+    path: '/{id}/disabled',
+    tags: ['Users'],
+    summary: "Enable or disable a user's account (admin only)",
+    middleware: requireRole('admin'),
+    request: {
+      params: idParamSchema,
+      body: { content: { 'application/json': { schema: updateUserDisabledSchema } } },
+    },
+    responses: {
+      200: {
+        description: 'The updated user.',
+        content: { 'application/json': { schema: adminUserSchema } },
+      },
+      404: {
+        description: 'No user with that id.',
+        content: { 'application/json': { schema: notFoundSchema } },
+      },
+      400: {
+        description: 'Disabling this user would leave the deployment with no owner or admin.',
+        content: { 'application/json': { schema: notFoundSchema } },
+      },
+      403: {
+        description: 'The target is the owner, or disabling an admin requires a fresh re-authentication.',
+        content: { 'application/json': { schema: notFoundSchema } },
+      },
+    },
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const db = getDb(c);
+    const target = await getUserById(db, id);
+    if (!target) {
+      return c.json({ error: 'User not found' }, 404);
+    }
+
+    const ownerCheck = checkNotTargetingOwner({ role: target.role as UserRole });
+    if (!ownerCheck.ok) {
+      return c.json({ error: ownerCheck.error }, ownerCheck.status);
+    }
+
+    const { disabled } = c.req.valid('json');
+
+    if (disabled) {
+      if (target.role === 'admin') {
+        if (!(await isSessionElevated(db, c.get('session').id))) {
+          return c.json({ error: 'Re-enter your password to disable an administrator' }, 403);
+        }
+
+        const guardianCheck = await checkGuardianRemains(db, target.id);
+        if (!guardianCheck.ok) {
+          return c.json({ error: guardianCheck.error }, guardianCheck.status);
+        }
+      }
+      await deleteAllSessionsForUser(db, target.id);
+    }
+
+    const updated = await updateUserDisabled(db, target.id, disabled);
+    await recordAudit(db, {
+      actorUserId: c.get('user').id,
+      action: disabled ? 'user.disabled' : 'user.enabled',
+      targetType: 'user',
+      targetId: target.id,
+    });
+    const response: AdminUser = {
+      id: updated.id,
+      name: updated.name,
+      email: updated.email,
+      role: updated.role as UserRole,
+      disabled: updated.disabled,
+      createdAt: updated.createdAt.toISOString(),
+      lastActiveAt: null,
+    };
+    return c.json(response, 200);
   },
 );
 

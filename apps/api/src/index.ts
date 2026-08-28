@@ -18,6 +18,7 @@ import { entriesRoute } from './routes/admin/entries';
 import { formsRoute } from './routes/admin/forms';
 import { globalVariablesRoute } from './routes/admin/global-variables';
 import { mediaRoute } from './routes/admin/media';
+import { securityRoute } from './routes/admin/security';
 import { settingsRoute } from './routes/admin/settings';
 import { submissionsRoute } from './routes/admin/submissions';
 import { usersRoute } from './routes/admin/users';
@@ -58,6 +59,7 @@ app.route('/api/v1/admin/global-variables', globalVariablesRoute);
 app.route('/api/v1/admin/submissions', submissionsRoute);
 app.route('/api/v1/admin/settings', settingsRoute);
 app.route('/api/v1/admin/users', usersRoute);
+app.route('/api/v1/admin/security', securityRoute);
 
 // Aggregates every route registered via .openapi() across the top-level app and its mounted
 // OpenAPIHono sub-apps — routes not yet migrated off plain Hono (§ commit sequence) simply

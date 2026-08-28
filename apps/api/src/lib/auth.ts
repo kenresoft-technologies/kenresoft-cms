@@ -21,13 +21,13 @@ export function createAuth(env: Bindings) {
     databaseHooks: {
       user: {
         create: {
-          // Bootstraps the very first signup as admin — the Add User admin flow (§10) covers
-          // everyone after, so without this an admin could only ever be created by hand-editing
-          // the database.
+          // Bootstraps the very first signup as owner — every other admin (via the Add User
+          // flow, §10) or owner (via ownership transfer) traces back to this one moment. Without
+          // it, an owner could only ever be created by hand-editing the database.
           before: async () => {
             const existing = await db.query.user.findFirst({ columns: { id: true } });
             if (!existing) {
-              return { data: { role: 'admin' } };
+              return { data: { role: 'owner' } };
             }
           },
         },

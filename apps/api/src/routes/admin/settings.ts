@@ -30,13 +30,13 @@ settingsRoute.openapi(
   },
 );
 
-// Site-wide configuration is an owner-level action, matching content-type/form creation.
+// Site-wide configuration is an admin-level action, matching content-type/form creation.
 settingsRoute.openapi(
   createRoute({
     method: 'put',
     path: '/',
     tags: ['Settings'],
-    summary: 'Update the deployment settings (owner only)',
+    summary: 'Update the deployment settings (admin only)',
     middleware: requireRole('admin'),
     request: {
       body: { content: { 'application/json': { schema: upsertSettingsSchema } } },

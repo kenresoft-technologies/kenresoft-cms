@@ -8,7 +8,7 @@ import { ApiError } from '@/lib/api-client';
 import { authClient } from '@/lib/auth-client';
 import { useContentTypes, useCreateContentType } from '@/lib/queries/content-types';
 import { useFieldDefinitions } from '@/lib/queries/field-definitions';
-import type { ContentType } from '@/lib/types';
+import { roleAtLeast, type ContentType, type UserRole } from '@/lib/types';
 import { DataTable } from '@/components/data-table';
 import { EmptyState } from '@/components/empty-state';
 import { PageBreadcrumb } from '@/components/page-breadcrumb';
@@ -160,7 +160,7 @@ function NewContentTypeDialog() {
 export function ContentTypesPage() {
   const navigate = useNavigate();
   const { data: session } = authClient.useSession();
-  const isAdmin = session?.user.role === 'admin';
+  const isAdmin = roleAtLeast((session?.user.role ?? 'viewer') as UserRole, 'admin');
   const { data: contentTypes, isPending, error, refetch } = useContentTypes();
 
   return (

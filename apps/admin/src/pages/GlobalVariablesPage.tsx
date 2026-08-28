@@ -11,7 +11,7 @@ import {
   useGlobalVariables,
   useUpdateGlobalVariable,
 } from '@/lib/queries/global-variables';
-import type { GlobalVariable } from '@/lib/types';
+import { roleAtLeast, type GlobalVariable, type UserRole } from '@/lib/types';
 import { DataTable } from '@/components/data-table';
 import { EmptyState } from '@/components/empty-state';
 import { PageBreadcrumb } from '@/components/page-breadcrumb';
@@ -162,10 +162,10 @@ function EditVariableForm({ variable, onDone }: { variable: GlobalVariable; onDo
 
 export function GlobalVariablesPage() {
   const { data: session } = authClient.useSession();
-  const isAdmin = session?.user.role === 'admin';
+  const isAdmin = roleAtLeast((session?.user.role ?? 'viewer') as UserRole, 'admin');
   // Matches the API's own gate (apps/api/src/routes/admin/global-variables.ts) — author and
   // viewer can't edit a value, only admin/editor.
-  const canEditValue = session?.user.role === 'admin' || session?.user.role === 'editor';
+  const canEditValue = roleAtLeast((session?.user.role ?? 'viewer') as UserRole, 'editor');
   const { data: variables, isPending, error, refetch } = useGlobalVariables();
   const deleteVariable = useDeleteGlobalVariable();
   const [pendingDelete, setPendingDelete] = useState<GlobalVariable | null>(null);

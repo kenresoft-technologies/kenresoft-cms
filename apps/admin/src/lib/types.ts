@@ -17,6 +17,8 @@ export {
   FORM_FIELD_TYPES,
   FORM_SUBMISSION_STATUSES,
   MEDIA_CONTENT_TYPES,
+  ROLE_RANK,
+  roleAtLeast,
   USER_ROLES,
 } from '@kenresoft/contracts/schemas/enums';
 

@@ -255,7 +255,7 @@ describe('admin routes (real D1)', () => {
     const ownerRes = await SELF.fetch('https://example.com/api/v1/auth/get-session', {
       headers: { Cookie: ownerCookie },
     });
-    expect((await ownerRes.json<{ user: { role: string } }>()).user.role).toBe('admin');
+    expect((await ownerRes.json<{ user: { role: string } }>()).user.role).toBe('owner');
 
     const editorSessionRes = await SELF.fetch('https://example.com/api/v1/auth/get-session', {
       headers: { Cookie: editorCookie },

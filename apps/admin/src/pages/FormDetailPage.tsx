@@ -7,7 +7,7 @@ import { ApiError } from '@/lib/api-client';
 import { authClient } from '@/lib/auth-client';
 import { useForm, useUpdateForm } from '@/lib/queries/forms';
 import { useCreateFormField, useDeleteFormField, useFormFields, useUpdateFormField } from '@/lib/queries/form-fields';
-import { FORM_FIELD_TYPES, type FormField, type FormFieldType } from '@/lib/types';
+import { FORM_FIELD_TYPES, roleAtLeast, type FormField, type FormFieldType, type UserRole } from '@/lib/types';
 import { EmptyState } from '@/components/empty-state';
 import { FieldTypeBadge, fieldTypeIcon } from '@/components/field-type-badge';
 import { OptionListEditor } from '@/components/option-list-editor';
@@ -252,7 +252,7 @@ export function FormDetailPage() {
   const { data: session } = authClient.useSession();
   // Matches the API's own gate (apps/api/src/routes/admin/forms.ts) — author and viewer
   // can't rename the form or manage its fields, only admin/editor.
-  const canManageFields = session?.user.role === 'admin' || session?.user.role === 'editor';
+  const canManageFields = roleAtLeast((session?.user.role ?? 'viewer') as UserRole, 'editor');
   const { data: form } = useForm(formId ?? '');
   const { data: fields, isPending, error } = useFormFields(formId ?? '');
   const deleteField = useDeleteFormField(formId ?? '');

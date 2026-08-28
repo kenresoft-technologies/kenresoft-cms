@@ -7,6 +7,47 @@ Status: Proposed / Ready for implementation
 
 ## Changelog
 
+**v0.10 (2026-08-28)** — Introduces a real **Owner** role above Admin (§10), representing
+ownership of this specific installation rather than any Kenresoft/external account — prompted
+by a request to make sure a normal Admin can never lock the actual owner of a deployment out of
+their own CMS. `USER_ROLES` gains `'owner'` (`packages/database/migrations/
+0013_promote_oldest_admin_to_owner.sql` promotes the oldest existing admin on upgrade; the
+`auth.ts` bootstrap hook grants it to the first-ever signup on a fresh install) and
+`packages/contracts/schemas/enums.ts` gains `ROLE_RANK`/`roleAtLeast()` — a five-level hierarchy
+(`owner > admin > editor > author > viewer`) that replaced ~19 hand-copied exact-role-string
+comparisons across `apps/api`/`apps/admin` with a single ranked check, so `owner` transparently
+satisfies every existing `requireRole('admin')` gate without touching those call sites. Two new
+invariants, enforced by `apps/api/src/lib/user-guards.ts` and applied to every user-management
+route (`PATCH .../role`, `DELETE .../users/:id`, the new `PATCH .../disabled`): an owner can
+never be demoted, deleted, or disabled through those routes by anyone (role/ownership changes
+*to or from* owner only happen via Transfer ownership below), and no change may leave the
+deployment with zero owners *and* zero admins combined (`countGuardians`, generalized from the
+old admin-only count — an owner alone is enough to keep a deployment manageable, so demoting the
+sole admin while an owner exists is now correctly allowed, where it was previously blocked as
+"last admin"). Disabling is new — previously delete-only — via a `user.disabled` field
+(better-auth `additionalFields`, checked in `requireSession` and enforced by revoking every
+session for that user immediately, not just waiting for their next request). Disabling an
+*admin* additionally requires a fresh password re-check: `POST /api/v1/admin/security/elevate`
+verifies the caller's password via better-auth's own `verify-password` endpoint and marks the
+current session row elevated for 5 minutes (`session.elevatedUntil`, also a new
+`additionalField` — deliberately not better-auth's own session-freshness concept, which is a
+~24h activity window, not "just re-entered your password"); `requireElevatedSession`
+(`apps/api/src/middleware/require-elevated-session.ts`) gates on it. **Ownership transfer**
+(`POST /api/v1/admin/security/ownership/transfer`) is owner-only and elevation-gated: a single
+atomic swap (caller becomes admin, target becomes owner) rather than a grant, so the invariant
+above is preserved by construction with no separate check needed — multiple simultaneous owners
+aren't supported yet, but `checkGuardianRemains`/`checkNotTargetingOwner` don't assume exactly
+one, so that's a future addition to the transfer endpoint, not a rework of the guards. A new
+`audit_log` table (`packages/database/schema/audit-log.ts`) records role changes, disabling, and
+ownership transfers (actor, target, action, non-secret metadata — `apps/api/src/lib/audit.ts` is
+the one place rows get written, so "never log a password/token" stays a single rule to hold
+rather than one per call site). The `apps/admin` Users page marks the owner with an immutable
+badge and hides destructive actions on that row; Settings → Users & Permissions gained the
+ownership-transfer control (owner-only, its own re-authentication dialog) and updated role-model
+copy. **Not yet built** (a deliberately separate follow-up): password recovery via email,
+recovery codes, and the emergency owner-recovery mechanisms for a fully locked-out deployment —
+this pass is the ownership/authorization model itself, which has no dependency on any of those.
+
 **v0.9 (2026-08-28)** — Expands authorization (§10) from the initial two-role Owner/Editor set
 to four fixed roles — **Admin**, **Editor**, **Author**, **Viewer** — prompted by real usage
 feedback that two roles couldn't express "can create content but shouldn't touch structure or
@@ -550,11 +591,20 @@ deployments — an extra identity-aware layer in front of the application, not a
 for it.
 
 Authorization is represented separately from authentication, as a fixed role stored on the
-`user` row (`role: 'admin' | 'editor' | 'author' | 'viewer'`, see the v0.9 changelog entry
-above for how this set grew from an initial two-role Owner/Editor split). The role model:
+`user` row (`role: 'owner' | 'admin' | 'editor' | 'author' | 'viewer'`, see the v0.9 and v0.10
+changelog entries above for how this set grew from an initial two-role Owner/Editor split, then
+gained a real Owner role distinct from Admin). Roles form a strict hierarchy — each satisfies
+every check the ones below it satisfy (`ROLE_RANK`/`roleAtLeast()` in
+`packages/contracts/schemas/enums.ts`), not five independent, unrelated sets of permissions:
 
-- **Admin** — everything: structure (content types, forms, their fields), users and roles,
-  settings, cache purge, plus everything Editor and Author can do.
+- **Owner** — everything Admin can do, plus is immune to every other role's user-management
+  actions: no Admin can demote, delete, or disable the Owner, and role/ownership changes to or
+  from Owner only ever happen through the dedicated ownership-transfer flow, never the general
+  role-change route. Represents ownership of *this specific installation* — not a Kenresoft or
+  any other external account (§11 restates why no such account exists). The first person to
+  sign up on a deployment becomes its Owner.
+- **Admin** — everything: structure (content types, forms, their fields), users and roles
+  (except touching the Owner), settings, cache purge, plus everything Editor and Author can do.
 - **Editor** — any entry (not just their own), form submission triage, media, and
   content-type/form field management. No structure creation/rename, no user or role
   management, no settings.
@@ -562,8 +612,17 @@ above for how this set grew from an initial two-role Owner/Editor split). The ro
   created; read access is unrestricted. No media, forms, or structure management.
 - **Viewer** — read-only across every admin route; no writes anywhere.
 
+Two invariants hold regardless of who's acting: the deployment can never end up with zero
+Owners *and* zero Admins at once (demoting, deleting, or disabling the last one is rejected),
+and the Owner can never be touched by anyone but themself. Disabling an Admin — as opposed to a
+lower role — additionally requires the acting Owner/Admin to re-verify their password in the
+last few minutes (`POST /api/v1/admin/security/elevate`), so a merely-open admin session isn't
+by itself enough to disable a peer.
+
 The data model remains extensible toward more granular, per-resource permissions if a fixed
-role set stops being enough.
+role set stops being enough, and toward multiple simultaneous Owners if that's ever needed —
+the guard logic already counts Owners generically rather than assuming exactly one; only the
+transfer endpoint's swap-not-grant semantics currently assume a single Owner.
 
 ---
 
@@ -601,6 +660,14 @@ Reusability is unaffected by dropping multi-tenancy: `packages/contracts`,
 `packages/database`, `apps/api` and `apps/admin` remain fully generic and must never contain
 Pathvera-specific business logic (§4.1) — the same codebase is what gets redeployed per
 client, not a shared runtime.
+
+This isolation is why Kenresoft holds no master or backdoor account into any deployment, and
+why the codebase must never grow one: each installation's D1 database, secrets
+(`BETTER_AUTH_SECRET` and any future recovery secret), and Owner account (§10) are entirely
+local to that one deployment. There is no shared identity layer, no cross-deployment lookup,
+and no code path that references a "Kenresoft account" at all — Client A's Owner has exactly
+zero access to Client B's installation, the same as any two unrelated Strapi/Directus
+installations would.
 
 ---
 

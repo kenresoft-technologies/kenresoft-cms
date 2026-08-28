@@ -23,7 +23,7 @@ import {
   useReorderFieldDefinitions,
   useUpdateFieldDefinition,
 } from '@/lib/queries/field-definitions';
-import { FIELD_TYPES, type FieldDefinition, type FieldType } from '@/lib/types';
+import { FIELD_TYPES, roleAtLeast, type FieldDefinition, type FieldType, type UserRole } from '@/lib/types';
 import { EmptyState } from '@/components/empty-state';
 import { FieldTypeBadge, fieldTypeIcon } from '@/components/field-type-badge';
 import { OptionListEditor } from '@/components/option-list-editor';
@@ -414,7 +414,7 @@ export function ContentTypeDetailPage() {
   const { data: session } = authClient.useSession();
   // Matches the API's own gate (apps/api/src/routes/admin/content-types.ts) — author and
   // viewer can't rename the content type or manage its fields, only admin/editor.
-  const canManageFields = session?.user.role === 'admin' || session?.user.role === 'editor';
+  const canManageFields = roleAtLeast((session?.user.role ?? 'viewer') as UserRole, 'editor');
   const { data: contentType } = useContentType(contentTypeId ?? '');
   const { data: fields, isPending, error } = useFieldDefinitions(contentTypeId ?? '');
   const reorderFields = useReorderFieldDefinitions(contentTypeId ?? '');

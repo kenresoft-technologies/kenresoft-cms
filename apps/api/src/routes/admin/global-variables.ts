@@ -57,14 +57,14 @@ globalVariablesRoute.openapi(
   },
 );
 
-// Owner-only — a new key is a structural addition (any Astro/frontend page templated against
+// Admin-only — a new key is a structural addition (any Astro/frontend page templated against
 // it needs to know it exists), same tier as creating a content type or form.
 globalVariablesRoute.openapi(
   createRoute({
     method: 'post',
     path: '/',
     tags: ['Global variables'],
-    summary: 'Create a global variable (owner only)',
+    summary: 'Create a global variable (admin only)',
     middleware: requireRole('admin'),
     request: {
       body: { content: { 'application/json': { schema: createGlobalVariableSchema } } },
@@ -143,7 +143,7 @@ globalVariablesRoute.openapi(
     method: 'delete',
     path: '/{id}',
     tags: ['Global variables'],
-    summary: 'Delete a global variable (owner only)',
+    summary: 'Delete a global variable (admin only)',
     middleware: requireRole('admin'),
     request: { params: idParamSchema },
     responses: {

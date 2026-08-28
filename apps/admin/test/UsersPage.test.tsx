@@ -6,10 +6,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { UsersPage } from '@/pages/UsersPage';
 
-const { getMock, patchMock, useSessionMock } = vi.hoisted(() => ({
+const { getMock, patchMock, useSessionMock, getSessionMock } = vi.hoisted(() => ({
   getMock: vi.fn(),
   patchMock: vi.fn(),
   useSessionMock: vi.fn(),
+  getSessionMock: vi.fn(),
 }));
 
 vi.mock('@/lib/api-client', async () => {
@@ -18,7 +19,7 @@ vi.mock('@/lib/api-client', async () => {
 });
 
 vi.mock('@/lib/auth-client', () => ({
-  authClient: { useSession: useSessionMock },
+  authClient: { useSession: useSessionMock, getSession: getSessionMock },
 }));
 
 const users = [
@@ -58,6 +59,7 @@ describe('UsersPage', () => {
     getMock.mockReset();
     patchMock.mockReset();
     useSessionMock.mockReset();
+    getSessionMock.mockReset();
   });
 
   it('lists users with their role, last active, and joined date', async () => {
@@ -114,6 +116,29 @@ describe('UsersPage', () => {
     await waitFor(() =>
       expect(patchMock).toHaveBeenCalledWith('/api/v1/admin/users/u-2/role', { role: 'admin' }),
     );
+  });
+
+  // Regression test: an admin demoting themselves via this same select updated the users
+  // list correctly but left every admin-gated UI affordance (this page's own Add User button,
+  // other pages' isAdmin/canManageFields checks) stuck showing admin-level access until a full
+  // reload — those all read authClient.useSession()'s client-cached session, which nothing in
+  // the role-change mutation used to refresh.
+  it("refreshes the cached session after a role change, so a self-demotion doesn't need a manual reload", async () => {
+    useSessionMock.mockReturnValue({ data: { user: { role: 'admin', email: 'admin@pathvera.test' } } });
+    getMock.mockResolvedValue(users);
+    patchMock.mockResolvedValue({ ...users[0], role: 'editor' });
+
+    renderPage();
+    await waitFor(() => expect(screen.getByText('Admin User')).toBeInTheDocument());
+
+    const adminRow = screen.getByRole('row', { name: /Admin User/ });
+    await userEvent.click(within(adminRow).getByRole('combobox'));
+    await userEvent.click(await screen.findByRole('option', { name: 'Editor' }));
+
+    await waitFor(() =>
+      expect(patchMock).toHaveBeenCalledWith('/api/v1/admin/users/u-1/role', { role: 'editor' }),
+    );
+    await waitFor(() => expect(getSessionMock).toHaveBeenCalled());
   });
 
   it('filters the list by role', async () => {

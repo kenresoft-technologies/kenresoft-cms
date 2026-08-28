@@ -72,7 +72,11 @@ describe('users routes (real D1)', () => {
     expect(response.status).toBe(404);
   });
 
-  it('rejects demoting the last remaining owner', async () => {
+  // The first-ever signup is the literal 'owner' role (src/lib/auth.ts's bootstrap hook) —
+  // role changes targeting an owner are rejected outright by checkNotTargetingOwner (403),
+  // before the "would this leave zero guardians" check ever runs. Ownership only ever moves
+  // through Transfer ownership (apps/api/src/routes/admin/security.ts), never this route.
+  it('rejects changing the owner\'s own role — even by themselves', async () => {
     const ownerCookie = await authedCookie('sole-owner@pathvera.test');
     const ownerId = await userId(ownerCookie);
 
@@ -81,13 +85,13 @@ describe('users routes (real D1)', () => {
       headers: { Cookie: ownerCookie, 'Content-Type': 'application/json' },
       body: JSON.stringify({ role: 'editor' }),
     });
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(403);
 
     const stillOwner = await SELF.fetch('https://example.com/api/v1/admin/users', {
       headers: { Cookie: ownerCookie },
     });
     const [user] = await stillOwner.json<{ role: string }[]>();
-    expect(user?.role).toBe('admin');
+    expect(user?.role).toBe('owner');
   });
 
   it('allows demoting an owner when a second owner remains', async () => {
@@ -155,7 +159,7 @@ describe('users routes (real D1)', () => {
     expect(response.status).toBe(400);
   });
 
-  it('deletes a user (owner only), rejects deleting yourself or the last owner', async () => {
+  it('deletes a user (owner only), rejects deleting yourself or the owner', async () => {
     const ownerCookie = await authedCookie('delete-owner@pathvera.test');
     const editorCookie = await authedCookie('delete-editor@pathvera.test');
     const editorId = await userId(editorCookie);
@@ -167,11 +171,14 @@ describe('users routes (real D1)', () => {
     });
     expect(editorAttempt.status).toBe(403);
 
+    // The owner is immune to deletion (checkNotTargetingOwner) — that check runs before the
+    // self-delete check even gets a chance to apply, so this is a 403, not the 400 a
+    // non-owner self-delete would normally get.
     const selfDelete = await SELF.fetch(`https://example.com/api/v1/admin/users/${ownerId}`, {
       method: 'DELETE',
       headers: { Cookie: ownerCookie },
     });
-    expect(selfDelete.status).toBe(400);
+    expect(selfDelete.status).toBe(403);
 
     const deleteRes = await SELF.fetch(`https://example.com/api/v1/admin/users/${editorId}`, {
       method: 'DELETE',

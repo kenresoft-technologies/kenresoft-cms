@@ -313,5 +313,28 @@ Per the roadmap in `docs/ARCHITECTURE.md` §20:
   week), role and activity-status filters, a client-side CSV export, and avatar initials — all
   derived from data already in the existing list response, no new aggregate endpoint. Extracted
   `StatCard` out of `DashboardPage` into a shared component now that Users needs the same piece.
+- **Owner role and account-security hardening, Phase 1** (not a roadmap phase — a sixth
+  cross-cutting pass, prompted by a request that a normal Admin should never be able to lock
+  the actual owner of a self-hosted deployment out of their own CMS) — done: a real **Owner**
+  role above Admin (`docs/ARCHITECTURE.md` §10 has the full model), with a `ROLE_RANK`/
+  `roleAtLeast()` hierarchy (`packages/contracts/schemas/enums.ts`) that replaced ~19 hand-copied
+  exact-role-string comparisons across `apps/api`/`apps/admin` — Owner transparently satisfies
+  every existing `requireRole('admin')` gate without touching those call sites. New invariants
+  in `apps/api/src/lib/user-guards.ts`, applied to every user-management route: the Owner can
+  never be demoted/deleted/disabled by anyone else, and no change may leave the deployment with
+  zero Owners and zero Admins combined. Account disabling is new (previously delete-only) via a
+  `user.disabled` field, enforced in `requireSession` and backed by revoking that user's
+  sessions immediately. Disabling an Admin, and transferring ownership
+  (`POST /api/v1/admin/security/ownership/transfer`, Owner-only, an atomic role swap), both
+  require a fresh password re-check first (`POST /api/v1/admin/security/elevate`, a 5-minute
+  per-session elevation — deliberately not better-auth's own ~24h session-freshness concept). A
+  new `audit_log` table records role changes, disabling, and ownership transfers through one
+  shared `apps/api/src/lib/audit.ts` helper, so "never log a secret" is one rule to hold rather
+  than one per call site. `apps/admin`'s Users page marks the Owner with an immutable badge and
+  hides destructive actions on that row; Settings → Users & Permissions gained the
+  ownership-transfer control. Deliberately **not yet built** (a separate follow-up): password
+  recovery via email, recovery codes, and emergency owner-recovery for a fully locked-out
+  deployment — this pass is the authorization model itself, which doesn't depend on any of
+  those.
 
 CI is green on `develop`.

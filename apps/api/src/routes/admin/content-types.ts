@@ -84,13 +84,15 @@ contentTypesRoute.openapi(
 );
 
 // Content types are the top-level structural resource now that Projects are gone (§11) —
-// creating one is an owner-level action, same as project creation was before.
+// creating one is an admin-level action, same as project creation was before. ("Admin," not
+// "Owner" specifically — Owner is a distinct role above Admin (§10) that also satisfies this
+// gate, not the only role that can.)
 contentTypesRoute.openapi(
   createRoute({
     method: 'post',
     path: '/',
     tags: ['Content types'],
-    summary: 'Create a content type (owner only)',
+    summary: 'Create a content type (admin only)',
     middleware: requireRole('admin'),
     request: {
       body: { content: { 'application/json': { schema: createContentTypeSchema } } },
@@ -142,7 +144,7 @@ contentTypesRoute.openapi(
   },
 );
 
-// Owner-gated, same as creation — renaming/re-slugging a content type is a structural change,
+// Admin-gated, same as creation — renaming/re-slugging a content type is a structural change,
 // not an editorial one (§11). Changing the slug doesn't cascade-invalidate the public cache
 // for entries under the old slug; those simply expire on the existing 5-minute TTL (§12) —
 // not worth extra invalidation machinery for an action this infrequent.
@@ -151,7 +153,7 @@ contentTypesRoute.openapi(
     method: 'patch',
     path: '/{id}',
     tags: ['Content types'],
-    summary: 'Update a content type (owner only)',
+    summary: 'Update a content type (admin only)',
     middleware: requireRole('admin'),
     request: {
       params: idParamSchema,

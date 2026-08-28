@@ -1,5 +1,17 @@
 import { useMemo, useState, type FormEvent } from 'react';
-import { Check, Copy, Download, LogOut, Monitor, Plus, ShieldCheck, Trash2, UserCheck, Users as UsersIcon } from 'lucide-react';
+import {
+  Ban,
+  Check,
+  Copy,
+  Download,
+  LogOut,
+  Monitor,
+  Plus,
+  ShieldCheck,
+  Trash2,
+  UserCheck,
+  Users as UsersIcon,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import type { ColumnDef } from '@tanstack/react-table';
 
@@ -9,12 +21,14 @@ import {
   useCreateUser,
   useDeleteUser,
   useRevokeSession,
+  useUpdateUserDisabled,
   useUpdateUserRole,
   useUserSessions,
   useUsers,
 } from '@/lib/queries/users';
-import type { AdminUser, Session, UserRole } from '@/lib/types';
+import { roleAtLeast, USER_ROLES, type AdminUser, type Session, type UserRole } from '@/lib/types';
 import { DataTable } from '@/components/data-table';
+import { ElevateDialog } from '@/components/elevate-dialog';
 import { EmptyState } from '@/components/empty-state';
 import { PageBreadcrumb } from '@/components/page-breadcrumb';
 import { PageHeader } from '@/components/page-header';
@@ -63,6 +77,14 @@ function activeThisWeek(user: AdminUser): boolean {
   return user.lastActiveAt !== null && Date.now() - new Date(user.lastActiveAt).getTime() <= ACTIVE_WITHIN_MS;
 }
 
+// The CSS `capitalize` class only changes rendering, not the actual text content — screen
+// readers and accessible-name-based queries (including this page's own tests) still see the
+// raw lowercase role string. Capitalizing the string itself keeps "Editor"/"Admin" as the real
+// accessible name, matching what was previously hardcoded per-option.
+function capitalizeRole(role: string): string {
+  return role.charAt(0).toUpperCase() + role.slice(1);
+}
+
 function exportUsersToCsv(users: AdminUser[]) {
   const header = ['Name', 'Email', 'Role', 'Last active', 'Joined'];
   const rows = users.map((user) => [
@@ -84,8 +106,25 @@ function exportUsersToCsv(users: AdminUser[]) {
   URL.revokeObjectURL(url);
 }
 
+// Role changes below owner are ordinary Admin work; ownership itself is deliberately not one of
+// the choices here — granting it goes through the dedicated Transfer ownership flow (Settings →
+// Users & Permissions), which requires re-authentication and can only be initiated by the
+// current owner. The API rejects a role: 'owner' PATCH here regardless, but not offering it as
+// an option avoids a confusing "why did that fail" for anyone who tries.
+const ASSIGNABLE_ROLES = USER_ROLES.filter((role) => role !== 'owner');
+
 function RoleCell({ user, canEdit }: { user: AdminUser; canEdit: boolean }) {
   const updateRole = useUpdateUserRole();
+
+  // The owner's role is never editable through this control, by anyone — matches the API's own
+  // immunity guard (apps/api/src/lib/user-guards.ts).
+  if (user.role === 'owner') {
+    return (
+      <Badge variant="outline" className="gap-1 border-primary/30 bg-primary/10 capitalize text-primary">
+        Owner
+      </Badge>
+    );
+  }
 
   if (!canEdit) {
     return (
@@ -114,10 +153,11 @@ function RoleCell({ user, canEdit }: { user: AdminUser; canEdit: boolean }) {
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value="admin">Admin</SelectItem>
-        <SelectItem value="editor">Editor</SelectItem>
-        <SelectItem value="author">Author</SelectItem>
-        <SelectItem value="viewer">Viewer</SelectItem>
+        {ASSIGNABLE_ROLES.map((role) => (
+          <SelectItem key={role} value={role}>
+            {capitalizeRole(role)}
+          </SelectItem>
+        ))}
       </SelectContent>
     </Select>
   );
@@ -335,9 +375,78 @@ function SessionsDialog({ user }: { user: AdminUser }) {
   );
 }
 
+// Disabling an admin is security-sensitive enough to require a fresh password re-check
+// (apps/api/src/routes/admin/users.ts's PATCH /:id/disabled, admin-target branch only) — this
+// mirrors that server-side rule in the UI rather than letting the request round-trip fail with
+// a generic 403. Re-enabling is restorative, not destructive, so it skips both the confirm step
+// and elevation.
+function DisableUserControl({ user }: { user: AdminUser }) {
+  const updateDisabled = useUpdateUserDisabled();
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [elevateOpen, setElevateOpen] = useState(false);
+
+  async function performToggle(disabled: boolean) {
+    try {
+      await updateDisabled.mutateAsync({ id: user.id, disabled });
+      toast.success(disabled ? 'User disabled' : 'User enabled');
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Failed to update user');
+    }
+  }
+
+  function handleConfirmDisable() {
+    setConfirmOpen(false);
+    if (user.role === 'admin') {
+      setElevateOpen(true);
+    } else {
+      void performToggle(true);
+    }
+  }
+
+  return (
+    <>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        aria-label={user.disabled ? `Enable ${user.name}` : `Disable ${user.name}`}
+        className={user.disabled ? 'text-muted-foreground' : 'text-muted-foreground hover:text-destructive'}
+        onClick={() => (user.disabled ? void performToggle(false) : setConfirmOpen(true))}
+      >
+        <Ban />
+      </Button>
+
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Disable {user.name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {user.role === 'admin'
+                ? 'You are about to disable an administrator. This could affect access to this CMS.'
+                : 'They immediately lose access and every current session is signed out. You can re-enable them later.'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" onClick={handleConfirmDisable}>
+              Disable
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <ElevateDialog
+        open={elevateOpen}
+        onOpenChange={setElevateOpen}
+        onElevated={() => void performToggle(true)}
+        description="Disabling an administrator is a security-sensitive action — re-enter your password to continue."
+      />
+    </>
+  );
+}
+
 export function UsersPage() {
   const { data: session } = authClient.useSession();
-  const isAdmin = session?.user.role === 'admin';
+  const isAdmin = roleAtLeast((session?.user.role ?? 'viewer') as UserRole, 'admin');
   const { data: users, isPending, error, refetch } = useUsers();
   const deleteUser = useDeleteUser();
   const [pendingDelete, setPendingDelete] = useState<AdminUser | null>(null);
@@ -350,7 +459,9 @@ export function UsersPage() {
     return {
       total: list.length,
       active: list.filter((user) => user.lastActiveAt !== null).length,
-      admins: list.filter((user) => user.role === 'admin').length,
+      // Owner + admin — either can manage users, so this is really "how many people can
+      // administer this deployment," not literally a count of the 'admin' role alone.
+      admins: list.filter((user) => user.role === 'admin' || user.role === 'owner').length,
       activeThisWeek: list.filter(activeThisWeek).length,
     };
   }, [users]);
@@ -400,7 +511,14 @@ export function UsersPage() {
         id: 'status',
         header: 'Status',
         enableSorting: false,
-        cell: ({ row }) => <StatusBadge status={row.original.lastActiveAt !== null ? 'active' : 'never-active'} />,
+        cell: ({ row }) =>
+          row.original.disabled ? (
+            <Badge variant="outline" className="gap-1 border-destructive/30 bg-destructive/10 text-destructive">
+              Disabled
+            </Badge>
+          ) : (
+            <StatusBadge status={row.original.lastActiveAt !== null ? 'active' : 'never-active'} />
+          ),
       },
       {
         accessorKey: 'lastActiveAt',
@@ -429,17 +547,23 @@ export function UsersPage() {
               cell: ({ row }: { row: { original: AdminUser } }) => (
                 <div className="flex justify-end gap-1">
                   <SessionsDialog user={row.original} />
-                  {row.original.id === session?.user.id ? null : (
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={`Remove ${row.original.name}`}
-                      className="text-muted-foreground hover:text-destructive"
-                      onClick={() => setPendingDelete(row.original)}
-                    >
-                      <Trash2 />
-                    </Button>
-                  )}
+                  {/* The owner has no destructive actions here at all — matches the API's own
+                      immunity guard, which rejects role/disable/delete against an owner
+                      regardless of who's asking. */}
+                  {row.original.role !== 'owner' && row.original.id !== session?.user.id ? (
+                    <>
+                      <DisableUserControl user={row.original} />
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={`Remove ${row.original.name}`}
+                        className="text-muted-foreground hover:text-destructive"
+                        onClick={() => setPendingDelete(row.original)}
+                      >
+                        <Trash2 />
+                      </Button>
+                    </>
+                  ) : null}
                 </div>
               ),
             } satisfies ColumnDef<AdminUser>,
@@ -515,10 +639,11 @@ export function UsersPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All roles</SelectItem>
-                  <SelectItem value="admin">Admin</SelectItem>
-                  <SelectItem value="editor">Editor</SelectItem>
-                  <SelectItem value="author">Author</SelectItem>
-                  <SelectItem value="viewer">Viewer</SelectItem>
+                  {USER_ROLES.map((role) => (
+                    <SelectItem key={role} value={role}>
+                      {capitalizeRole(role)}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
               <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as StatusFilter)}>

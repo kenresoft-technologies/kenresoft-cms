@@ -2,6 +2,7 @@ import { useState } from 'react';
 
 import { authClient } from '@/lib/auth-client';
 import { useSettings } from '@/lib/queries/settings';
+import { roleAtLeast, type UserRole } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { PageBreadcrumb } from '@/components/page-breadcrumb';
 import { PageHeader } from '@/components/page-header';
@@ -12,7 +13,7 @@ import { SETTINGS_SECTIONS, type SettingsSectionId } from './settings/sections';
 
 export function SettingsPage() {
   const { data: session } = authClient.useSession();
-  const isAdmin = session?.user.role === 'admin';
+  const isAdmin = roleAtLeast((session?.user.role ?? 'viewer') as UserRole, 'admin');
   const { data: settings, isPending } = useSettings();
   const [activeSectionId, setActiveSectionId] = useState<SettingsSectionId>('general');
 
