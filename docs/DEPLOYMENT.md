@@ -74,7 +74,7 @@ pnpm --filter @kenresoft/database migrate:remote
 pnpm --filter @kenresoft/api deploy
 ```
 
-The first request to your deployed Worker's sign-up page becomes the admin account
+The first request to your deployed Worker's sign-up page becomes the owner account
 (`docs/ARCHITECTURE.md` §10) — there's no separate seeding step.
 
 ## 7. The marketing site (optional)
@@ -97,6 +97,60 @@ it locally against your deployed API (see the root `README.md`'s "Live deploymen
 Deploying it to Cloudflare Pages as a static SPA works the same way as the marketing site above
 (`pnpm --filter @kenresoft/admin build`, then `wrangler pages deploy dist`), but isn't wired
 into `deploy.yml` yet.
+
+## Password recovery & owner recovery
+
+None of this is required to run a deployment — password reset and recovery codes degrade
+gracefully with no configuration at all (`docs/ARCHITECTURE.md` §10.1), and the two
+owner-recovery mechanisms below are entirely opt-in.
+
+**Password-reset email** — set `EMAIL_PROVIDER` in `wrangler.toml`'s `[vars]` to enable actually
+sending the email (it's unset by default, which logs instead of sending — real accounts can
+still request a reset, they just don't receive anything):
+
+- **Cloudflare** (`EMAIL_PROVIDER = "cloudflare"`): add a `[[send_email]]` binding to
+  `wrangler.toml`:
+  ```toml
+  [[send_email]]
+  name = "EMAIL"
+  ```
+  then run `wrangler email sending enable` and follow its prompts to verify the domain you'll
+  send from (`EMAIL_FROM`, also set in `[vars]`). No per-recipient verification is needed —
+  only the sending domain.
+- **Resend** (`EMAIL_PROVIDER = "resend"`): verify a sending domain in the
+  [Resend dashboard](https://resend.com), set `EMAIL_FROM` to an address on it, and:
+  ```bash
+  wrangler secret put RESEND_API_KEY
+  ```
+
+Either way, also set `ADMIN_URL` to your deployed `apps/admin` origin — it's what the
+reset-password link in the email points to. Local dev doesn't need this (it falls back to the
+first `CORS_ORIGINS` entry, your local Vite server).
+
+**Break-glass owner recovery** — disabled (404) until you explicitly opt in:
+
+```bash
+wrangler secret put OWNER_RECOVERY_SECRET   # a long random string; treat it like a master key
+```
+
+Once set, `POST /api/v1/system/recover-owner` with `{ secret, email, newPassword }` resets the
+named owner's password. Keep this secret somewhere separate from your normal credentials (a
+password manager, not a `.env` file that ends up in a screenshot) — anyone who has it can reset
+the owner's password on this specific deployment. Leave it unset if you'd rather rely solely on
+the CLI tool below, which needs no standing secret at all.
+
+**CLI owner recovery** — for when you have real access to the deployment's Cloudflare account
+(via `wrangler login` or an API token) but the owner can't sign in at all:
+
+```bash
+cd apps/api
+pnpm recover-owner:remote           # or recover-owner:local for local dev
+```
+
+It looks up the owner account via `wrangler d1 execute`, prompts for a new password
+interactively (never as a CLI argument, so it never lands in shell history), and signs that
+account out everywhere. Pass `--email someone@example.com` if a deployment ever has more than
+one owner.
 
 ## Automated deploys via GitHub Actions (optional)
 

@@ -336,5 +336,29 @@ Per the roadmap in `docs/ARCHITECTURE.md` §20:
   recovery via email, recovery codes, and emergency owner-recovery for a fully locked-out
   deployment — this pass is the authorization model itself, which doesn't depend on any of
   those.
+- **Developer panel** (not a roadmap phase — an opt-in tooling addition) — done: a "Developer"
+  action on Content Types, Entries, Forms, and Media showing that resource's endpoint(s), a
+  fields/response reference, and ready-to-copy Astro/TypeScript/JavaScript/React/Next.js/cURL
+  snippets for consuming it from an external frontend. Off by default and gated behind a
+  discoverable "Developer experience" toggle in Settings → API
+  (`Settings.featureFlags.developerMode`, no new schema) plus role (author and above via
+  `roleAtLeast`, never viewer — `apps/admin/src/lib/developer-mode.ts`).
+- **Account recovery** (closing the gap Owner role/account-security hardening deliberately
+  deferred above) — done: password reset via email
+  (`POST /api/v1/public/password-reset/{request,confirm}`, a bespoke pair of routes reusing
+  better-auth's own `verification` table but hashing the token at rest, since better-auth's own
+  reset routes store it in plaintext), a pluggable email layer
+  (`apps/api/src/lib/email/{cloudflare,resend,noop}.ts`, selected via `EMAIL_PROVIDER`, `noop`
+  by default so `pnpm dev` needs no email setup), owner-generated recovery codes (ten
+  single-use, hashed, shown once, elevation-gated to generate/revoke — for "forgot my password
+  *and* lost my email"), and two independent owner-recovery mechanisms for a fully locked-out
+  deployment: `apps/api/scripts/recover-owner.mjs` (an operator-run CLI shelling out to
+  `wrangler d1 execute`, never accepting the new password as a CLI argument) and a break-glass
+  `POST /api/v1/system/recover-owner` gated by an `OWNER_RECOVERY_SECRET` Worker secret that's
+  absent by default — the route 404s outright, indistinguishable from not existing, until an
+  operator deliberately sets it. All of it, plus password-reset confirm and recovery-code
+  redemption, shares one conservative rate limiter (`RECOVERY_RATE_LIMITER`, 3/60s per IP).
+  Kenresoft itself holds no credential or back door into any deployment through any of this —
+  see `docs/ARCHITECTURE.md` §10.1/§11 and `docs/DEPLOYMENT.md`'s setup section.
 
 CI is green on `develop`.

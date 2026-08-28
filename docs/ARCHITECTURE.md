@@ -7,6 +7,46 @@ Status: Proposed / Ready for implementation
 
 ## Changelog
 
+**v0.11 (2026-08-28)** — Adds the account-recovery mechanisms v0.10 deliberately deferred:
+password reset via email, recovery codes, and two independent owner-recovery paths for a fully
+locked-out deployment — all designed so Kenresoft itself never holds any credential, secret, or
+back door into a deployment (§11 restates why). **Password reset** is a bespoke pair of routes
+(`POST /api/v1/public/password-reset/{request,confirm}`) reusing better-auth's own
+`verification` table rather than its built-in reset flow, which stores the raw token in
+plaintext (confirmed against the installed better-auth dist) — this stores only a SHA-256 hash,
+one live token per user, 1-hour expiry, single-use, and `request` always returns the same
+generic message regardless of whether the email matched an account, so the flow can't be used to
+enumerate who has an account here. Confirming resets the account's credential (hashed with
+better-auth's own `better-auth/crypto` scrypt implementation, matching what sign-in verifies
+against) and signs out every existing session for that user. **Email** is a small provider
+abstraction (`apps/api/src/lib/email/`) selected per-deployment via `EMAIL_PROVIDER` — Cloudflare
+Email Service (`SendEmail` binding) or Resend (a plain REST call, no SDK dependency) — with a
+`noop` sender as the default, which logs instead of sending so a fresh clone or `pnpm dev` needs
+zero email setup to keep working. **Recovery codes** (`packages/database/schema/
+recovery-codes.ts`) are an owner-generated, self-service fallback for "forgot my password *and*
+lost my email" — ten single-use, hashed-at-rest codes, shown in the `apps/admin` UI exactly once
+at generation and never again, redeemable without authentication via
+`POST /api/v1/public/recovery/redeem` (email + code + new password, generic error on any
+mismatch). Generating a fresh batch always fully replaces the previous one, which doubles as
+"revoke"; a separate revoke-only action clears the set without minting new codes. Both
+generating and revoking are Owner-only and require the same elevation (`requireElevatedSession`)
+ownership transfer already uses — a valid code can reset the account's password with no email
+access at all, so it's exactly as sensitive as changing the password directly. **Owner
+recovery** covers the case where the Owner has neither their password nor email access: (a)
+`apps/api/scripts/recover-owner.mjs`, an operator-run CLI that shells out to `wrangler d1
+execute` (never a database driver of its own) and hashes a new password with `better-auth/
+crypto` directly — deliberately never accepts the new password as a CLI argument (shell-history/
+`ps`-visible), always prompting for it; and (b) a break-glass HTTP endpoint
+(`POST /api/v1/system/recover-owner`) gated by an `OWNER_RECOVERY_SECRET` Worker secret that is
+**absent by default everywhere** — the route 404s outright, indistinguishable from a route that
+doesn't exist, unless an operator explicitly opts in with `wrangler secret put
+OWNER_RECOVERY_SECRET`. Both owner-recovery paths, plus password-reset and recovery-code
+redemption, share one conservative rate limiter (`RECOVERY_RATE_LIMITER`, 3/60s per IP) — tighter
+than every other limiter in this API, since a successful hit against any of them changes a
+password. Every credential mutation from this pass is audited through the existing
+`apps/api/src/lib/audit.ts` helper (`password.reset`, `recovery-codes.generated`,
+`recovery-codes.revoked`, `owner.recovered`).
+
 **v0.10 (2026-08-28)** — Introduces a real **Owner** role above Admin (§10), representing
 ownership of this specific installation rather than any Kenresoft/external account — prompted
 by a request to make sure a normal Admin can never lock the actual owner of a deployment out of
@@ -623,6 +663,36 @@ The data model remains extensible toward more granular, per-resource permissions
 role set stops being enough, and toward multiple simultaneous Owners if that's ever needed —
 the guard logic already counts Owners generically rather than assuming exactly one; only the
 transfer endpoint's swap-not-grant semantics currently assume a single Owner.
+
+### 10.1 Account recovery
+
+Three independent, self-service-first layers, from least to most privileged access required
+(see the v0.11 changelog entry above for full implementation detail):
+
+1. **Password reset** — `POST /api/v1/public/password-reset/{request,confirm}`, unauthenticated,
+   email-based. `request` always responds with the same generic message whether or not the
+   email matches an account. The reset token is a random 48-character string; only its SHA-256
+   hash is ever stored (in better-auth's own `verification` table, under a bespoke identifier
+   scheme — not better-auth's own reset routes, which store the token in plaintext), expires in
+   1 hour, and is single-use. Requires the deployment to have an email provider configured
+   (`EMAIL_PROVIDER` — see docs/DEPLOYMENT.md for setup); if unset, requests still succeed but no email is
+   actually sent (`apps/api/src/lib/email/noop.ts` logs instead).
+2. **Recovery codes** — `POST /api/v1/public/recovery/redeem`, unauthenticated, no email
+   required. Ten single-use hashed codes the Owner generates for themselves ahead of time
+   (Settings → Users & Permissions, elevation-gated) and stores somewhere safe — shown once,
+   never re-displayed, never stored in plaintext. Exists specifically for "forgot my password
+   *and* lost my email" — the one gap password reset alone can't cover.
+3. **Owner recovery** — for the Owner having neither their password nor a recovery code. Two
+   independent mechanisms, both operating directly on the database rather than through the
+   normal auth routes: `apps/api/scripts/recover-owner.mjs` (an operator-run CLI against a real
+   `wrangler` session — preferred whenever this kind of deployment access exists, since it needs
+   no standing secret at all), and `POST /api/v1/system/recover-owner` (a break-glass HTTP
+   endpoint, gated by an `OWNER_RECOVERY_SECRET` Worker secret that's absent by default — the
+   route 404s, indistinguishable from not existing, until an operator deliberately enables it).
+
+Every one of these shares a single conservative rate limiter (`RECOVERY_RATE_LIMITER`, 3/60s per
+IP) — the tightest in this API, since success at any of them changes a password — and every
+successful credential change is recorded in `audit_log` regardless of which path performed it.
 
 ---
 
