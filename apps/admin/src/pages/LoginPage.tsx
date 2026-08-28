@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { AlertCircle, Eye, EyeOff, Layers, Loader2 } from 'lucide-react';
-import { Navigate } from 'react-router';
+import { Link, Navigate } from 'react-router';
 
 import { authClient } from '@/lib/auth-client';
 import { ThemeToggle } from '@/components/theme-toggle';
@@ -176,9 +176,16 @@ export function LoginPage() {
             </div>
 
             <div className="flex flex-col gap-2">
-              <Label htmlFor="password" className="text-sm">
-                Password
-              </Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="password" className="text-sm">
+                  Password
+                </Label>
+                {mode === 'sign-in' ? (
+                  <Link to="/forgot-password" className="text-sm text-muted-foreground hover:text-foreground">
+                    Forgot password?
+                  </Link>
+                ) : null}
+              </div>
               <div className="relative">
                 <Input
                   id="password"

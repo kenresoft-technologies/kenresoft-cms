@@ -111,3 +111,36 @@ export function useTransferOwnership() {
     },
   });
 }
+
+const recoveryCodesKey = ['security', 'recovery-codes'] as const;
+
+// How many of the caller's own recovery codes haven't been redeemed yet — never the codes
+// themselves, which are only ever returned once, from useGenerateRecoveryCodes below.
+export function useRecoveryCodesStatus() {
+  return useQuery({
+    queryKey: recoveryCodesKey,
+    queryFn: () => apiClient.get<{ remaining: number }>('/api/v1/admin/security/recovery-codes'),
+  });
+}
+
+export function useGenerateRecoveryCodes() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => apiClient.post<{ codes: string[] }>('/api/v1/admin/security/recovery-codes/generate', {}),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: recoveryCodesKey });
+    },
+  });
+}
+
+export function useRevokeRecoveryCodes() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => apiClient.delete<{ revoked: boolean }>('/api/v1/admin/security/recovery-codes'),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: recoveryCodesKey });
+    },
+  });
+}

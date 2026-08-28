@@ -11,10 +11,13 @@ import { EntryEditorPage } from '@/pages/EntryEditorPage';
 import { FormDetailPage } from '@/pages/FormDetailPage';
 import { FormsPage } from '@/pages/FormsPage';
 import { FormSubmissionsPage } from '@/pages/FormSubmissionsPage';
+import { ForgotPasswordPage } from '@/pages/ForgotPasswordPage';
 import { GlobalVariablesPage } from '@/pages/GlobalVariablesPage';
 import { LoginPage } from '@/pages/LoginPage';
 import { MediaLibraryPage } from '@/pages/MediaLibraryPage';
 import { ProfilePage } from '@/pages/ProfilePage';
+import { RecoverWithCodePage } from '@/pages/RecoverWithCodePage';
+import { ResetPasswordPage } from '@/pages/ResetPasswordPage';
 import { SettingsPage } from '@/pages/SettingsPage';
 import { UsersPage } from '@/pages/UsersPage';
 
@@ -22,6 +25,18 @@ export const router = createBrowserRouter([
   {
     path: '/login',
     element: <LoginPage />,
+  },
+  {
+    path: '/forgot-password',
+    element: <ForgotPasswordPage />,
+  },
+  {
+    path: '/reset-password',
+    element: <ResetPasswordPage />,
+  },
+  {
+    path: '/recover-with-code',
+    element: <RecoverWithCodePage />,
   },
   {
     path: '/',

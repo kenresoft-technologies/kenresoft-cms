@@ -1,11 +1,17 @@
 import { useState } from 'react';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, Check, Copy } from 'lucide-react';
 import { Link } from 'react-router';
 import { toast } from 'sonner';
 
 import { ApiError } from '@/lib/api-client';
 import { authClient } from '@/lib/auth-client';
-import { useTransferOwnership, useUsers } from '@/lib/queries/users';
+import {
+  useGenerateRecoveryCodes,
+  useRecoveryCodesStatus,
+  useRevokeRecoveryCodes,
+  useTransferOwnership,
+  useUsers,
+} from '@/lib/queries/users';
 import { ElevateDialog } from '@/components/elevate-dialog';
 import {
   AlertDialog,
@@ -19,6 +25,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 // Owner-only — an admin never sees this control at all, matching the API's own gate
@@ -109,6 +116,151 @@ function TransferOwnershipControl() {
   );
 }
 
+// Owner-only, self-only — these always act on the caller's own account (there's no "generate
+// codes for someone else"). Regenerating fully replaces the set (server-side), which doubles
+// as revoke; the separate revoke button below is for "I think these leaked" without wanting a
+// fresh batch yet. Both are elevation-gated, same tier as ownership transfer: a valid code can
+// reset this account's password with no email access at all, so minting or clearing a batch is
+// exactly as sensitive as changing the password directly.
+function RecoveryCodesControl() {
+  const { data: status } = useRecoveryCodesStatus();
+  const generateCodes = useGenerateRecoveryCodes();
+  const revokeCodes = useRevokeRecoveryCodes();
+  const [revokeConfirmOpen, setRevokeConfirmOpen] = useState(false);
+  const [elevateAction, setElevateAction] = useState<'generate' | 'revoke' | null>(null);
+  const [newCodes, setNewCodes] = useState<string[] | null>(null);
+  const [saved, setSaved] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  async function performGenerate() {
+    try {
+      const result = await generateCodes.mutateAsync();
+      setNewCodes(result.codes);
+      setSaved(false);
+      setCopied(false);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Failed to generate recovery codes');
+    }
+  }
+
+  async function performRevoke() {
+    try {
+      await revokeCodes.mutateAsync();
+      toast.success('Recovery codes revoked');
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Failed to revoke recovery codes');
+    }
+  }
+
+  async function copyAll() {
+    if (!newCodes) return;
+    await navigator.clipboard.writeText(newCodes.join('\n'));
+    setCopied(true);
+  }
+
+  return (
+    <div className="flex flex-col gap-3 rounded-lg border p-4">
+      <div>
+        <p className="text-sm font-medium">Recovery codes</p>
+        <p className="text-sm text-muted-foreground">
+          One-time codes that reset your password without needing email access — for when you're locked out and
+          can't receive a reset link.{' '}
+          {status ? (
+            <span className="font-medium text-foreground">
+              {status.remaining} unused code{status.remaining === 1 ? '' : 's'} remaining.
+            </span>
+          ) : null}
+        </p>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={generateCodes.isPending}
+          onClick={() => setElevateAction('generate')}
+        >
+          {status?.remaining ? 'Regenerate codes' : 'Generate codes'}
+        </Button>
+        {status?.remaining ? (
+          <Button variant="ghost" size="sm" className="text-destructive" onClick={() => setRevokeConfirmOpen(true)}>
+            Revoke all codes
+          </Button>
+        ) : null}
+      </div>
+
+      <AlertDialog open={revokeConfirmOpen} onOpenChange={setRevokeConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Revoke all recovery codes?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Every existing code stops working immediately. You won't have this fallback until you generate a new
+              set.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                setRevokeConfirmOpen(false);
+                setElevateAction('revoke');
+              }}
+            >
+              Continue
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <ElevateDialog
+        open={elevateAction !== null}
+        onOpenChange={(open) => {
+          if (!open) setElevateAction(null);
+        }}
+        onElevated={() => {
+          if (elevateAction === 'generate') void performGenerate();
+          if (elevateAction === 'revoke') void performRevoke();
+          setElevateAction(null);
+        }}
+        description="Minting or clearing recovery codes is a security-sensitive action — re-enter your password to continue."
+      />
+
+      <Dialog open={newCodes !== null} onOpenChange={() => {}}>
+        <DialogContent showCloseButton={false} onEscapeKeyDown={(e) => e.preventDefault()} onInteractOutside={(e) => e.preventDefault()}>
+          <DialogHeader>
+            <DialogTitle>Save your recovery codes</DialogTitle>
+            <DialogDescription>
+              Each code works once. Store them somewhere safe — this is the only time they'll ever be shown.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-2 rounded-lg border bg-muted/40 p-4 font-mono text-sm">
+            {newCodes?.map((code) => <div key={code}>{code}</div>)}
+          </div>
+          <Button variant="outline" size="sm" className="gap-2 self-start" onClick={() => void copyAll()}>
+            {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
+            {copied ? 'Copied' : 'Copy all'}
+          </Button>
+          <DialogFooter className="flex-col items-stretch gap-2 sm:flex-col">
+            <label className="flex items-center gap-2 text-sm text-muted-foreground">
+              <input type="checkbox" checked={saved} onChange={(e) => setSaved(e.target.checked)} />
+              I've saved these codes somewhere safe
+            </label>
+            <Button
+              disabled={!saved}
+              onClick={() => {
+                setNewCodes(null);
+                toast.success('Recovery codes generated');
+              }}
+            >
+              Done
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
 // User/role management already has its own full page (Users, admin-gated role changes) —
 // this section is a pointer to it plus an accurate description of the role model, not a
 // duplicate of that page's logic.
@@ -156,6 +308,7 @@ export function UsersPermissionsSection() {
           </Button>
         </div>
 
+        {isOwner ? <RecoveryCodesControl /> : null}
         {isOwner ? <TransferOwnershipControl /> : null}
       </CardContent>
     </Card>
