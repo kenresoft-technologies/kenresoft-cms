@@ -64,9 +64,9 @@ pnpm build
 can also be run independently — `pnpm --filter @kenresoft/api dev` /
 `pnpm --filter @kenresoft/admin dev` — which is useful when you only need one of them running.
 
-The first account created through the admin's sign-up flow becomes the deployment's owner;
-everyone who signs up after that defaults to editor (see the Phase 3 entry in `CLAUDE.md`'s
-Status section).
+The first account created through the admin's sign-up flow becomes the deployment's admin;
+everyone who signs up after that defaults to editor (see `docs/ARCHITECTURE.md` §10 for the
+full role model).
 
 To also try the Astro integration once the CMS is running: `cd examples/astro-site && cp
 .env.example .env && pnpm dev` — see [`docs/ASTRO.md`](docs/ASTRO.md).

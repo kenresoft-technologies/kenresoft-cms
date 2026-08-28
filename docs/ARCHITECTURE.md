@@ -7,6 +7,32 @@ Status: Proposed / Ready for implementation
 
 ## Changelog
 
+**v0.9 (2026-08-28)** — Expands authorization (§10) from the initial two-role Owner/Editor set
+to four fixed roles — **Admin**, **Editor**, **Author**, **Viewer** — prompted by real usage
+feedback that two roles couldn't express "can create content but shouldn't touch structure or
+other people's work" or "read-only access for stakeholders." `Owner` is renamed to `Admin`
+(same privileges: everything, including structure, users, roles, settings, and cache) via a
+data-only Drizzle migration (`packages/database/migrations/0011_rename_owner_role_to_admin.sql`)
+rather than a schema change, since the `role` column was already a plain string. `Editor` keeps
+its existing scope (any entry, form submission triage, media, and now content-type/form field
+management too — previously ungated). Two new roles: **Author** can create entries freely but
+may only edit or delete entries they themselves created (`canWriteEntry()` in
+`apps/api/src/routes/admin/entries.ts` checks `entry.createdBy` against the acting user, 403 on
+mismatch; read access stays unrestricted — only writes are ownership-scoped) — no access to
+media, forms, or structure. **Viewer** is read-only everywhere: a global
+`blockViewerMutations` middleware (`apps/api/src/middleware/block-viewer-mutations.ts`) rejects
+every non-GET/HEAD request under `/api/v1/admin/*` for that role in one place, rather than
+threading a viewer check through each route individually. Session monitoring (the D1 `session`
+table was already populated by better-auth but never surfaced) is now exposed to admins:
+`GET /api/v1/admin/users/:id/sessions` and `DELETE .../sessions/:sessionId`
+(`apps/api/src/repositories/sessions.ts`) — revocation is a plain row delete, not better-auth's
+heavier admin plugin, deliberately avoided per an existing code comment. The `apps/admin` Users
+page got a corresponding rebuild: stat cards (total/active/administrators/active-this-week,
+all derived from data already in the list response — no new aggregate endpoint), role and
+activity-status filters, a per-row sessions dialog with revoke, and a client-side CSV export —
+prompted directly by a side-by-side comparison against Pathvera's current SonicJS deployment,
+which this CMS is built to eventually replace (see the Changelog's v0.1 framing).
+
 **v0.8 (2026-08-27)** — Closes the public-media gap the v0.7 Astro work surfaced but didn't
 fix: a new unauthenticated `GET /api/v1/public/media/:id/file` (§14), mounted before the
 generic `/api/v1/public/:contentType` catch-all (same ordering reason `/public/forms` already
@@ -523,9 +549,21 @@ Cloudflare Access can additionally protect the admin origin for self-hosted/inte
 deployments — an extra identity-aware layer in front of the application, not a replacement
 for it.
 
-Authorization is represented separately from authentication. The initial implementation
-starts with a small role set — Owner and Editor — while the data model remains extensible
-toward more granular, per-resource permissions.
+Authorization is represented separately from authentication, as a fixed role stored on the
+`user` row (`role: 'admin' | 'editor' | 'author' | 'viewer'`, see the v0.9 changelog entry
+above for how this set grew from an initial two-role Owner/Editor split). The role model:
+
+- **Admin** — everything: structure (content types, forms, their fields), users and roles,
+  settings, cache purge, plus everything Editor and Author can do.
+- **Editor** — any entry (not just their own), form submission triage, media, and
+  content-type/form field management. No structure creation/rename, no user or role
+  management, no settings.
+- **Author** — can create entries freely, but may only edit or delete entries they themselves
+  created; read access is unrestricted. No media, forms, or structure management.
+- **Viewer** — read-only across every admin route; no writes anywhere.
+
+The data model remains extensible toward more granular, per-resource permissions if a fixed
+role set stops being enough.
 
 ---
 

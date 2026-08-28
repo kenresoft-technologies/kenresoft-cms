@@ -74,7 +74,7 @@ pnpm --filter @kenresoft/database migrate:remote
 pnpm --filter @kenresoft/api deploy
 ```
 
-The first request to your deployed Worker's sign-up page becomes the owner account
+The first request to your deployed Worker's sign-up page becomes the admin account
 (`docs/ARCHITECTURE.md` §10) — there's no separate seeding step.
 
 ## 7. The marketing site (optional)
