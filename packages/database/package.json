@@ -9,6 +9,7 @@
     "generate": "drizzle-kit generate",
     "migrate:local": "wrangler d1 migrations apply kenresoft-cms-db --local --config ../../apps/api/wrangler.toml",
     "migrate:remote": "wrangler d1 migrations apply kenresoft-cms-db --remote --config ../../apps/api/wrangler.toml",
+    "migrate:e2e": "wrangler d1 migrations apply kenresoft-cms-db --local --config ../../apps/api/wrangler.toml --persist-to ../../apps/api/.wrangler/e2e-state",
     "typecheck": "tsc --noEmit",
     "lint": "eslint ."
   },

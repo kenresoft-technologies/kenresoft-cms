@@ -28,10 +28,19 @@ export const authOptions = {
       // still *set* by a cross-site response, but never *sent back* on the next cross-site
       // request, so the very next session check silently fails — the sign-in POST succeeds
       // (a real account gets created/authenticated server-side) while the browser never
-      // becomes visibly signed in. `None` requires `Secure` (HTTPS), which every real
-      // deployment already uses; local dev keeps working since browsers treat `localhost` as
-      // secure even over plain HTTP.
+      // becomes visibly signed in. `None` requires `Secure` — not just "every real deployment
+      // already uses HTTPS", but a hard requirement of the SameSite=None cookie spec itself: a
+      // browser drops the cookie outright if Secure isn't literally present in the header,
+      // regardless of the connection's actual scheme. better-auth only sets Secure
+      // automatically when it infers HTTPS from BETTER_AUTH_URL/the request, which is false
+      // for local dev's plain-http Worker — silently breaking sign-in there (caught by the
+      // apps/admin Playwright E2E suite: the sign-up API call succeeded and returned a
+      // Set-Cookie header, but Chromium never sent it back on the next request, because that
+      // header had SameSite=None with no Secure). Forcing secure:true unconditionally is safe
+      // specifically because Chromium and other major browsers already treat `localhost` as a
+      // secure context and accept a Secure cookie set over plain HTTP there.
       sameSite: 'none',
+      secure: true,
     },
   },
   user: {
