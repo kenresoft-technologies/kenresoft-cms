@@ -10,6 +10,7 @@ import { securityHeaders } from './middleware/security-headers';
 import { invalidatePublicEntryCache } from './lib/public-cache';
 import { getContentTypeById } from './repositories/content-types';
 import { publishDueEntries } from './repositories/entries';
+import { cacheRoute } from './routes/admin/cache';
 import { contentTypesRoute } from './routes/admin/content-types';
 import { dashboardRoute } from './routes/admin/dashboard';
 import { entriesRoute } from './routes/admin/entries';
@@ -43,6 +44,7 @@ app.route('/api/v1/public', publicContentRoute);
 
 app.use('/api/v1/admin/*', requireSession);
 app.route('/api/v1/admin/dashboard', dashboardRoute);
+app.route('/api/v1/admin/cache', cacheRoute);
 app.route('/api/v1/admin/content-types', contentTypesRoute);
 app.route('/api/v1/admin/entries', entriesRoute);
 app.route('/api/v1/admin/media', mediaRoute);

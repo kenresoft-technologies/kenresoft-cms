@@ -1,11 +1,25 @@
 import type { LucideIcon } from 'lucide-react';
-import { Bell, Database, HardDrive, Palette, Plug, Settings2, Share2, Shield, SlidersHorizontal, UserCog, Webhook } from 'lucide-react';
+import {
+  Bell,
+  Database,
+  HardDrive,
+  Palette,
+  Plug,
+  Settings2,
+  Share2,
+  Shield,
+  SlidersHorizontal,
+  Trash2,
+  UserCog,
+  Webhook,
+} from 'lucide-react';
 import type { ReactNode } from 'react';
 
 import type { Settings } from '@/lib/types';
 import { AdvancedSection } from './AdvancedSection';
 import { ApiSection } from './ApiSection';
 import { AppearanceSection } from './AppearanceSection';
+import { CacheSection } from './CacheSection';
 import { ComingSoonSection } from './ComingSoonSection';
 import { GeneralSection } from './GeneralSection';
 import { SocialSection } from './SocialSection';
@@ -20,6 +34,7 @@ export type SettingsSectionId =
   | 'storage'
   | 'database'
   | 'api'
+  | 'cache'
   | 'users'
   | 'webhooks'
   | 'advanced';
@@ -120,6 +135,13 @@ export const SETTINGS_SECTIONS: SettingsSectionMeta[] = [
     icon: Plug,
     available: true,
     render: ({ settings, readOnly }) => <ApiSection settings={settings} readOnly={readOnly} />,
+  },
+  {
+    id: 'cache',
+    label: 'Cache',
+    icon: Trash2,
+    available: true,
+    render: ({ readOnly }) => <CacheSection readOnly={readOnly} />,
   },
   {
     id: 'users',

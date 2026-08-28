@@ -1,3 +1,4 @@
+export * from '../schemas/cache';
 export * from '../schemas/common';
 export * from '../schemas/content-types';
 export * from '../schemas/dashboard';

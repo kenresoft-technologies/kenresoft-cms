@@ -1,7 +1,9 @@
 import { useMemo } from 'react';
 import {
   ArrowRight,
+  BookOpen,
   ClipboardList,
+  Code2,
   FileText,
   Image as ImageIcon,
   LayoutList,
@@ -13,6 +15,7 @@ import {
 import { Link } from 'react-router';
 import { Cell, Pie, PieChart } from 'recharts';
 
+import { API_URL } from '@/lib/api-client';
 import { formatBytes } from '@/lib/format';
 import { useDashboardStats } from '@/lib/queries/dashboard';
 import { useForms } from '@/lib/queries/forms';
@@ -162,7 +165,26 @@ export function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Dashboard" description="Welcome back — here's what's happening across your content." />
+      <PageHeader
+        title="Dashboard"
+        description="Welcome back — here's what's happening across your content."
+        actions={
+          <>
+            <Button variant="outline" asChild>
+              <a href={`${API_URL}/api/v1/docs`} target="_blank" rel="noreferrer">
+                <BookOpen />
+                API reference
+              </a>
+            </Button>
+            <Button variant="outline" asChild>
+              <a href={`${API_URL}/api/v1/openapi.json`} target="_blank" rel="noreferrer">
+                <Code2 />
+                OpenAPI JSON
+              </a>
+            </Button>
+          </>
+        }
+      />
 
       {isPending ? (
         <div className="grid gap-4 sm:grid-cols-3">
