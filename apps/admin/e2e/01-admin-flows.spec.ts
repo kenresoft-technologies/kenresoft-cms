@@ -184,4 +184,22 @@ test.describe('admin flows (owner)', () => {
     await expect(page.getByText('Variable deleted')).toBeVisible();
     await expect(page.getByRole('row', { name: /phone_number/ })).toHaveCount(0);
   });
+
+  test('creates a form from the Examples template with its fields pre-added', async ({ page }) => {
+    await page.goto('/login');
+    await page.getByLabel('Email').fill(ownerEmail);
+    await page.getByLabel('Password', { exact: true }).fill('correct horse battery staple');
+    await page.getByRole('button', { name: 'Sign in' }).click();
+    await page.waitForURL('/');
+
+    await page.goto('/forms');
+    await page.getByRole('button', { name: 'Examples' }).click();
+    await page.getByRole('button', { name: 'Use template' }).first().click();
+    await expect(page.getByText('Contact form created')).toBeVisible();
+
+    await page.waitForURL(/\/forms\/[^/]+$/);
+    await expect(page.getByRole('row', { name: /name/ })).toBeVisible();
+    await expect(page.getByRole('row', { name: /email/ })).toBeVisible();
+    await expect(page.getByRole('row', { name: /message/ })).toBeVisible();
+  });
 });
