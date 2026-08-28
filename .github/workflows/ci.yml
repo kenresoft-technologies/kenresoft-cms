@@ -33,3 +33,70 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+  deploy-api:
+    name: Deploy API worker
+    needs: build-and-test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # D1 migrations are additive and idempotent (wrangler only applies ones not yet recorded
+      # in the remote d1_migrations table) — safe to run on every deploy, not just when a
+      # migration file actually changed.
+      - name: Apply D1 migrations
+        run: pnpm --filter @kenresoft/database migrate:remote
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Deploy Worker
+        run: pnpm --filter @kenresoft/api deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+  deploy-marketing-site:
+    name: Deploy marketing site
+    needs: build-and-test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # PUBLIC_KENRESOFT_CMS_URL is baked into the build by Vite (Astro's PUBLIC_ prefix is
+      # always statically inlined, even under SSR) — not a secret, just this deployment's own
+      # public API URL, same value as apps/api/wrangler.toml's BETTER_AUTH_URL.
+      - name: Build marketing site
+        run: pnpm --filter kenresoft-cms-example-astro build
+        env:
+          PUBLIC_KENRESOFT_CMS_URL: https://kenresoft-cms-api.kenresoft.workers.dev
+
+      - name: Deploy to Cloudflare Pages
+        run: pnpm --filter kenresoft-cms-example-astro exec wrangler pages deploy dist --project-name kenresoft-cms --branch main
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
