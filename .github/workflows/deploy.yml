@@ -1,0 +1,96 @@
+name: Deploy
+
+# Deployment is optional, installation-specific functionality — NOT part of the standard CI
+# pipeline (see ci.yml). Kenresoft CMS is a single-site-per-deployment, self-hosted codebase
+# (docs/ARCHITECTURE.md §11): every deployer forks this repo, provisions their OWN Cloudflare
+# account's resources, and deploys to THEIR OWN account. This workflow must never assume it's
+# deploying to Kenresoft's account — it deploys to whatever account the running repository's
+# own secrets/variables point at, and does nothing at all until a deployer explicitly
+# configures and enables it. See docs/DEPLOYMENT.md for the full setup guide.
+#
+# A GitHub Actions pipeline is one option, not a requirement — `wrangler deploy` /
+# `wrangler pages deploy` from any machine or CI provider works identically; nothing about the
+# CMS itself depends on this workflow existing or running.
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy-api:
+    name: Deploy API worker
+    # Off by default in every fork/clone, including this repository, until a deployer
+    # explicitly opts in by setting the "DEPLOY_ENABLED" repository (or environment) variable
+    # to "true" — see docs/DEPLOYMENT.md. Without this gate, a push to `main` in ANY fork would
+    # attempt to deploy using whatever secrets happen to be configured (or fail loudly with
+    # none), which is the wrong default for an open-source template.
+    if: vars.DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # D1 migrations are additive and idempotent (wrangler only applies ones not yet recorded
+      # in the remote d1_migrations table) — safe to run on every deploy. Runs against
+      # whichever database apps/api/wrangler.toml's [[d1_databases]] points at — the
+      # deployment owner's own D1, configured when they forked the repo (§11), never a
+      # database chosen by this workflow.
+      - name: Apply D1 migrations
+        run: pnpm --filter @kenresoft/database migrate:remote
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Deploy Worker
+        run: pnpm --filter @kenresoft/api deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+  deploy-marketing-site:
+    name: Deploy marketing site (examples/astro-site)
+    if: vars.DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # PUBLIC_KENRESOFT_CMS_URL is baked into the build by Vite (Astro's PUBLIC_ prefix is
+      # always statically inlined, even under SSR) — the deployment owner's own public API
+      # URL, set as a repository/environment variable, never hard-coded here.
+      - name: Build marketing site
+        run: pnpm --filter kenresoft-cms-example-astro build
+        env:
+          PUBLIC_KENRESOFT_CMS_URL: ${{ vars.PUBLIC_KENRESOFT_CMS_URL }}
+
+      - name: Deploy to Cloudflare Pages
+        run: pnpm --filter kenresoft-cms-example-astro exec wrangler pages deploy dist --project-name "$CLOUDFLARE_PAGES_PROJECT" --branch main
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_PAGES_PROJECT: ${{ vars.CLOUDFLARE_PAGES_PROJECT }}
