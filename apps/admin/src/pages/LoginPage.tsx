@@ -60,6 +60,20 @@ export function LoginPage() {
 
       if (authError) {
         setError(authError.message ?? (mode === 'sign-in' ? 'Sign in failed' : 'Sign up failed'));
+        return;
+      }
+
+      // A 200 here doesn't guarantee the browser actually kept the session cookie: when the
+      // admin and API are on different sites (e.g. this app's own dev:live mode, pointed at a
+      // deployed API from localhost), that cookie is a cross-site "third party" cookie, which
+      // browsers increasingly block by default — silently, with no error the server can ever
+      // see. Confirming the session actually landed turns that into a message instead of a
+      // login screen that just sits there with no explanation.
+      const { data: sessionData } = await authClient.getSession();
+      if (!sessionData) {
+        setError(
+          "Signed in, but your browser blocked the session cookie. This happens when the admin and API are served from different sites and your browser blocks third-party/cross-site cookies — check your browser's cookie settings for this site, or use a same-site deployment.",
+        );
       }
     } catch {
       setError('Could not reach the server. Check your connection and try again.');

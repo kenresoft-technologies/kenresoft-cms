@@ -6,10 +6,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { LoginPage } from '@/pages/LoginPage';
 import { ThemeProvider } from '@/lib/theme';
 
-const { useSessionMock, signInEmailMock, signUpEmailMock } = vi.hoisted(() => ({
+const { useSessionMock, signInEmailMock, signUpEmailMock, getSessionMock } = vi.hoisted(() => ({
   useSessionMock: vi.fn(),
   signInEmailMock: vi.fn(),
   signUpEmailMock: vi.fn(),
+  getSessionMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth-client', () => ({
@@ -17,6 +18,7 @@ vi.mock('@/lib/auth-client', () => ({
     useSession: useSessionMock,
     signIn: { email: signInEmailMock },
     signUp: { email: signUpEmailMock },
+    getSession: getSessionMock,
   },
 }));
 
@@ -38,6 +40,8 @@ describe('LoginPage', () => {
     useSessionMock.mockReset();
     signInEmailMock.mockReset();
     signUpEmailMock.mockReset();
+    getSessionMock.mockReset();
+    getSessionMock.mockResolvedValue({ data: { user: { email: 'user@pathvera.test' } } });
   });
 
   it('redirects to / when a session already exists', () => {
@@ -91,6 +95,28 @@ describe('LoginPage', () => {
 
     await waitFor(() =>
       expect(screen.getByText('Could not reach the server. Check your connection and try again.')).toBeInTheDocument(),
+    );
+    expect(screen.getByRole('button', { name: 'Sign in' })).not.toBeDisabled();
+  });
+
+  it('tells the user their browser blocked the session cookie instead of failing silently', async () => {
+    // Regression guard for the real bug this covers: a cross-site deployment (admin and API on
+    // different sites — this happened with the admin's own dev:live mode pointed at a deployed
+    // API) makes the session cookie third-party, which some browsers block by default. The
+    // sign-in call itself still resolves with no error, so without this check the user was left
+    // staring at an unchanged login screen with zero feedback.
+    useSessionMock.mockReturnValue({ data: null, isPending: false });
+    signInEmailMock.mockResolvedValue({ error: null });
+    getSessionMock.mockResolvedValue({ data: null });
+
+    renderLoginPage();
+
+    await userEvent.type(screen.getByLabelText('Email'), 'user@pathvera.test');
+    await userEvent.type(screen.getByLabelText('Password'), 'correct horse battery staple');
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+
+    await waitFor(() =>
+      expect(screen.getByText(/your browser blocked the session cookie/i)).toBeInTheDocument(),
     );
     expect(screen.getByRole('button', { name: 'Sign in' })).not.toBeDisabled();
   });
