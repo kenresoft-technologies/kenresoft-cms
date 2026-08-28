@@ -1,10 +1,13 @@
 import { defineConfig } from 'astro/config';
+import cloudflare from '@astrojs/cloudflare';
 
-// Static output: every page below fetches from the Kenresoft CMS public API at build time
-// (docs/ARCHITECTURE.md §20.1's "Astro renders the post" step of the first vertical slice),
-// the same JAMstack pattern most headless-CMS + Astro integrations use. Rebuild the site to
-// pick up new/edited published entries — there's no ISR/on-demand revalidation here, since
-// the public API already has its own edge cache (docs/ARCHITECTURE.md §12).
+// SSR on Cloudflare Pages Functions: every page fetches from the Kenresoft CMS public API at
+// request time, not build time. New/edited published entries show up immediately — no rebuild
+// needed. This replaced an earlier static-output design specifically because static output's
+// getStaticPaths() froze the blog's route list at build time, so a brand-new post 404'd on the
+// live site until the next manual rebuild. The public API still has its own edge cache
+// (docs/ARCHITECTURE.md §12), so per-request fetches here aren't hitting D1 directly.
 export default defineConfig({
-  output: 'static',
+  output: 'server',
+  adapter: cloudflare(),
 });

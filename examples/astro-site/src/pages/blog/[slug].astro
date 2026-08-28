@@ -1,21 +1,18 @@
 ---
 import { createKenresoftClient } from '@kenresoft/astro';
-import type { Entry } from '@kenresoft/astro';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 
 const cms = createKenresoftClient({ url: import.meta.env.PUBLIC_KENRESOFT_CMS_URL });
 
-export async function getStaticPaths() {
-  const cms = createKenresoftClient({ url: import.meta.env.PUBLIC_KENRESOFT_CMS_URL });
-  const entries = await cms.entries.list({ contentType: 'blog-post' });
-  return entries.map((entry) => ({ params: { slug: entry.slug }, props: { entry } }));
+// Fetched per-request, not via getStaticPaths — see astro.config.mjs's comment on why this
+// site moved to SSR. A missing/unpublished slug 404s exactly like the public API itself does.
+const { slug } = Astro.params;
+const entry = slug ? await cms.entries.get({ contentType: 'blog-post', slug }) : null;
+
+if (!entry) {
+  return new Response(null, { status: 404, statusText: 'Not Found' });
 }
 
-interface Props {
-  entry: Entry;
-}
-
-const { entry } = Astro.props as Props;
 const title = String(entry.data.title ?? entry.slug);
 const featuredImageUrl =
   typeof entry.data.featuredImage === 'string' ? cms.media.url({ id: entry.data.featuredImage }) : null;
