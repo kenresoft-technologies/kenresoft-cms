@@ -1,5 +1,11 @@
 import { createRoute } from '@hono/zod-openapi';
-import { adminUserSchema, elevateSchema, transferOwnershipSchema } from '@kenresoft/contracts';
+import {
+  adminUserSchema,
+  elevateSchema,
+  recoveryCodesGeneratedSchema,
+  recoveryCodesStatusSchema,
+  transferOwnershipSchema,
+} from '@kenresoft/contracts';
 import type { AdminUser, UserRole } from '@kenresoft/contracts';
 import { z } from 'zod';
 
@@ -9,6 +15,7 @@ import { getDb } from '../../lib/db';
 import { createOpenApiApp } from '../../lib/openapi';
 import { requireElevatedSession } from '../../middleware/require-elevated-session';
 import { requireRole } from '../../middleware/require-role';
+import { countUnusedRecoveryCodes, replaceRecoveryCodes } from '../../repositories/recovery-codes';
 import { getUserById, updateUserRole } from '../../repositories/users';
 import { setSessionElevatedUntil } from '../../repositories/sessions';
 import type { Bindings } from '../../lib/env';
@@ -130,5 +137,81 @@ securityRoute.openapi(
       lastActiveAt: null,
     };
     return c.json(response, 200);
+  },
+);
+
+// How many of the current owner's recovery codes (docs/ARCHITECTURE.md's recovery section)
+// haven't been redeemed yet — lets the Settings UI show "8 codes remaining" without ever
+// re-displaying a code. Owner-only, but no elevation requirement: this only reveals a count,
+// not the codes themselves.
+securityRoute.openapi(
+  createRoute({
+    method: 'get',
+    path: '/recovery-codes',
+    tags: ['Security'],
+    summary: "Get the number of the caller's unused recovery codes (owner only)",
+    middleware: requireRole('owner'),
+    responses: {
+      200: {
+        description: 'How many recovery codes remain unused.',
+        content: { 'application/json': { schema: recoveryCodesStatusSchema } },
+      },
+    },
+  }),
+  async (c) => {
+    const db = getDb(c);
+    const remaining = await countUnusedRecoveryCodes(db, c.get('user').id);
+    return c.json({ remaining }, 200);
+  },
+);
+
+// Regenerating always fully replaces the set (apps/api/src/repositories/recovery-codes.ts) —
+// every previous code stops working, which doubles as "revoke." Elevation-gated like
+// ownership transfer: these codes can reset the owner's password without email access, so
+// minting a fresh batch is exactly as sensitive as changing the password directly.
+securityRoute.openapi(
+  createRoute({
+    method: 'post',
+    path: '/recovery-codes/generate',
+    tags: ['Security'],
+    summary: "Generate a fresh set of the caller's recovery codes, invalidating any existing ones (owner only)",
+    middleware: [requireRole('owner'), requireElevatedSession],
+    responses: {
+      200: {
+        description: 'The new codes, in plaintext — shown exactly once and never stored as such.',
+        content: { 'application/json': { schema: recoveryCodesGeneratedSchema } },
+      },
+    },
+  }),
+  async (c) => {
+    const db = getDb(c);
+    const actingUser = c.get('user');
+    const codes = await replaceRecoveryCodes(db, actingUser.id);
+    await recordAudit(db, { actorUserId: actingUser.id, action: 'recovery-codes.generated', targetType: 'user', targetId: actingUser.id });
+    return c.json({ codes }, 200);
+  },
+);
+
+// Revoke without regenerating — for "I think these leaked" without wanting new ones yet.
+securityRoute.openapi(
+  createRoute({
+    method: 'delete',
+    path: '/recovery-codes',
+    tags: ['Security'],
+    summary: "Revoke all of the caller's recovery codes without replacing them (owner only)",
+    middleware: [requireRole('owner'), requireElevatedSession],
+    responses: {
+      200: {
+        description: 'All recovery codes revoked.',
+        content: { 'application/json': { schema: z.object({ revoked: z.boolean() }) } },
+      },
+    },
+  }),
+  async (c) => {
+    const db = getDb(c);
+    const actingUser = c.get('user');
+    await replaceRecoveryCodes(db, actingUser.id, 0);
+    await recordAudit(db, { actorUserId: actingUser.id, action: 'recovery-codes.revoked', targetType: 'user', targetId: actingUser.id });
+    return c.json({ revoked: true }, 200);
   },
 );

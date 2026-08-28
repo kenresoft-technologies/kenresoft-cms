@@ -7,6 +7,8 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "auth:generate": "pnpm dlx @better-auth/cli@1.4.21 generate --config ./auth-cli.config.ts --output ../../packages/database/schema/auth.ts -y",
+    "recover-owner:local": "node scripts/recover-owner.mjs --local",
+    "recover-owner:remote": "node scripts/recover-owner.mjs --remote",
     "build": "tsc --noEmit",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",

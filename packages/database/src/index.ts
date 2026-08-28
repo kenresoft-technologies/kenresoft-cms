@@ -9,7 +9,7 @@ export * from '../schema';
 // of drizzle-orm elsewhere in the workspace (peer-dependency-driven instance splitting), and
 // TypeScript treats the private/protected internals of Column/SQL as nominally distinct
 // across those copies even at an identical version.
-export { eq, and, or, asc, desc, lte, sql, count, sum, inArray, ne } from 'drizzle-orm';
+export { eq, and, or, asc, desc, lte, gt, sql, count, sum, inArray, ne, like } from 'drizzle-orm';
 
 export function createDb(d1: D1Database) {
   return drizzle(d1, { schema });

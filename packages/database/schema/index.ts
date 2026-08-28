@@ -9,5 +9,6 @@ export * from './form-fields';
 export * from './form-submissions';
 export * from './global-variables';
 export * from './audit-log';
+export * from './recovery-codes';
 export * from './relations';
 export * from './auth';

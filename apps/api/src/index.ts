@@ -27,6 +27,9 @@ import { publicContentRoute } from './routes/public/content';
 import { publicFormsRoute } from './routes/public/forms';
 import { publicGlobalVariablesRoute } from './routes/public/global-variables';
 import { publicMediaRoute } from './routes/public/media';
+import { publicPasswordResetRoute } from './routes/public/password-reset';
+import { publicRecoveryRoute } from './routes/public/recovery';
+import { systemRoute } from './routes/system/recover-owner';
 import type { Bindings } from './lib/env';
 import type { AuthedVariables } from './middleware/require-session';
 
@@ -45,7 +48,14 @@ app.on(['GET', 'POST'], '/api/v1/auth/*', (c) => createAuth(c.env).handler(c.req
 app.route('/api/v1/public/forms', publicFormsRoute);
 app.route('/api/v1/public/media', publicMediaRoute);
 app.route('/api/v1/public/global-variables', publicGlobalVariablesRoute);
+app.route('/api/v1/public/password-reset', publicPasswordResetRoute);
+app.route('/api/v1/public/recovery', publicRecoveryRoute);
 app.route('/api/v1/public', publicContentRoute);
+
+// Not under /admin (unauthenticated by design) or /public (not a normal content route) —
+// see routes/system/recover-owner.ts for why this 404s outright on any deployment that
+// hasn't explicitly opted in.
+app.route('/api/v1/system', systemRoute);
 
 app.use('/api/v1/admin/*', requireSession);
 app.use('/api/v1/admin/*', blockViewerMutations);

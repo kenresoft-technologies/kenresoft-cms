@@ -36,6 +36,15 @@ name = "AUTH_RATE_LIMITER"
 namespace_id = "1002"
 simple = { limit = 10, period = 60 }
 
+[[ratelimits]]
+# Password-reset request/confirm, recovery-code redemption, and the break-glass owner-recovery
+# endpoint (docs/ARCHITECTURE.md's recovery section) — all either send email or attempt a
+# credential-like guess, so all share one conservative per-IP limit. Tighter than the others
+# since a successful hit here changes someone's password.
+name = "RECOVERY_RATE_LIMITER"
+namespace_id = "1003"
+simple = { limit = 3, period = 60 }
+
 [triggers]
 # Scheduled publishing (§13) — checks for draft entries whose publishAt has elapsed.
 crons = ["*/5 * * * *"]
@@ -64,3 +73,18 @@ CORS_ORIGINS = "http://localhost:5173,http://localhost:5174,http://localhost:517
 BETTER_AUTH_URL = "https://kenresoft-cms-api.kenresoft.workers.dev"
 # BETTER_AUTH_SECRET is a real secret, not a var — set it in apps/api/.dev.vars for local dev
 # (see .dev.vars.example) and via `wrangler secret put BETTER_AUTH_SECRET` for deployed envs.
+
+# Password-recovery email (docs/ARCHITECTURE.md's recovery section) — all optional. Unset
+# EMAIL_PROVIDER (the default) uses a noop sender that logs instead of sending, so this Worker
+# runs with zero email setup. Set these to actually deliver password-reset emails:
+#   EMAIL_PROVIDER = "cloudflare"   # or "resend"
+#   EMAIL_FROM = "noreply@yourdomain.example"
+#   ADMIN_URL = "https://your-admin.example"        # where the reset-password link points
+# "cloudflare" also needs a [[send_email]] binding here plus `wrangler email sending enable`
+# for EMAIL_FROM's domain; "resend" needs RESEND_API_KEY as a secret
+# (`wrangler secret put RESEND_API_KEY`) and a domain verified in the Resend dashboard.
+
+# The break-glass owner-recovery endpoint (POST /api/v1/system/recover-owner) is disabled
+# (404) unless this secret is set — deliberately absent here and with no default anywhere in
+# the code. An operator who wants it enables it explicitly:
+#   wrangler secret put OWNER_RECOVERY_SECRET

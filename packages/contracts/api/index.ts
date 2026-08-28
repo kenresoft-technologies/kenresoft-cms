@@ -12,5 +12,6 @@ export * from '../schemas/global-variables';
 export * from '../schemas/form-submissions';
 export * from '../schemas/forms';
 export * from '../schemas/media';
+export * from '../schemas/password-recovery';
 export * from '../schemas/settings';
 export * from '../schemas/users';

@@ -16,6 +16,15 @@ export default defineWorkersConfig(async () => {
               // .dev.vars (absent in CI and on a fresh clone). This value is test-only and
               // never used outside the vitest-pool-workers runtime.
               BETTER_AUTH_SECRET: 'test-only-secret-not-used-outside-vitest-pool-workers',
+              // Set here (unlike production, where it's absent by default) so
+              // owner-recovery-endpoint.test.ts can exercise the "configured" path via a real
+              // SELF.fetch — mutating cloudflare:test's `env.OWNER_RECOVERY_SECRET` at runtime
+              // doesn't propagate to the Worker a SELF.fetch actually dispatches to (confirmed
+              // empirically: plain string vars are baked in at Miniflare startup, unlike D1/R2
+              // bindings, which are live references). The "unset → 404" case is instead tested
+              // directly against the route with a bare Bindings object with no property at all
+              // (test/owner-recovery-endpoint.test.ts's "not configured" describe block).
+              OWNER_RECOVERY_SECRET: 'test-only-owner-recovery-secret-not-used-outside-vitest-pool-workers',
             },
             // Overrides wrangler.toml's real 10/60s AUTH_RATE_LIMITER — several test files
             // sign up 10+ users each (admin-routes.test.ts, forms-routes.test.ts) inside a
@@ -25,6 +34,12 @@ export default defineWorkersConfig(async () => {
             // — forms-routes.test.ts has a dedicated test asserting its 429 behavior.
             ratelimits: {
               AUTH_RATE_LIMITER: { simple: { limit: 1000, period: 60 } },
+              // Same reasoning as AUTH_RATE_LIMITER above — password-reset.test.ts and
+              // recovery-codes.test.ts each make several real requests against this binding
+              // per test file; recoveryRateLimit's own 429 behavior is unit-tested directly
+              // against a mocked limiter instead (test/recovery-rate-limit.test.ts), the same
+              // pattern auth-rate-limit.test.ts already uses.
+              RECOVERY_RATE_LIMITER: { simple: { limit: 1000, period: 60 } },
             },
             // nodejs_compat + a compatibility_date past 2025-09-21 breaks
             // @cloudflare/vitest-pool-workers (cloudflare/workers-sdk#11028). wrangler.toml
