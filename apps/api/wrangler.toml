@@ -44,7 +44,14 @@ API_VERSION = "v1"
 # frequent occurrence with several dev servers running at once), so a handful of adjacent ports
 # are allow-listed rather than just one. Add the admin's real deployed origin here once it has
 # one, and drop these once dev:live typically lands on a stable port.
-CORS_ORIGINS = "http://localhost:5173,http://localhost:5174,http://localhost:5175,http://localhost:5176,http://localhost:5177"
+#
+# The 192.168.0.159 entries are a personal convenience, not a general solution: `dev:live`
+# runs with --host, so it's reachable from other devices on the same LAN (a phone, for
+# instance) via the host machine's LAN IP — but that's a different browser origin than
+# "localhost", so it needs its own allow-list entries. This IP is DHCP-assigned and will go
+# stale whenever it changes; update it (or drop it if no longer needed) rather than leaving a
+# dead entry here.
+CORS_ORIGINS = "http://localhost:5173,http://localhost:5174,http://localhost:5175,http://localhost:5176,http://localhost:5177,http://192.168.0.159:5173,http://192.168.0.159:5174,http://192.168.0.159:5175,http://192.168.0.159:5176,http://192.168.0.159:5177"
 BETTER_AUTH_URL = "https://kenresoft-cms-api.kenresoft.workers.dev"
 # BETTER_AUTH_SECRET is a real secret, not a var — set it in apps/api/.dev.vars for local dev
 # (see .dev.vars.example) and via `wrangler secret put BETTER_AUTH_SECRET` for deployed envs.
