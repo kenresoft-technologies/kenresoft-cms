@@ -48,3 +48,10 @@ export async function invalidatePublicMediaCache(id: string): Promise<void> {
   const cache = caches.default;
   await cache.delete(publicCacheKey(`/api/v1/public/media/${id}/file`));
 }
+
+// Global variables are a single list response (no per-key sub-resource), so there's exactly
+// one cache key to invalidate on any create/update/delete.
+export async function invalidatePublicGlobalVariablesCache(): Promise<void> {
+  const cache = caches.default;
+  await cache.delete(publicCacheKey('/api/v1/public/global-variables'));
+}

@@ -11,6 +11,7 @@ import {
   Settings,
   User,
   Users,
+  Variable,
 } from 'lucide-react';
 import { Link, Navigate, NavLink, Outlet, useLocation } from 'react-router';
 
@@ -48,6 +49,7 @@ const overviewItems = [{ to: '/', label: 'Dashboard', end: true, icon: LayoutDas
 const contentItems = [
   { to: '/content-types', label: 'Content types', end: false, icon: LayoutList },
   { to: '/entries', label: 'Entries', end: false, icon: FileText },
+  { to: '/global-variables', label: 'Global variables', end: false, icon: Variable },
 ];
 
 const engagementItems = [

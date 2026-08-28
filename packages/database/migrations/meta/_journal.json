@@ -71,6 +71,13 @@
       "when": 1787823001312,
       "tag": "0009_black_psylocke",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1787910543423,
+      "tag": "0010_warm_spiral",
+      "breakpoints": true
     }
   ]
 }

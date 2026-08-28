@@ -15,6 +15,7 @@ import { contentTypesRoute } from './routes/admin/content-types';
 import { dashboardRoute } from './routes/admin/dashboard';
 import { entriesRoute } from './routes/admin/entries';
 import { formsRoute } from './routes/admin/forms';
+import { globalVariablesRoute } from './routes/admin/global-variables';
 import { mediaRoute } from './routes/admin/media';
 import { settingsRoute } from './routes/admin/settings';
 import { submissionsRoute } from './routes/admin/submissions';
@@ -22,6 +23,7 @@ import { usersRoute } from './routes/admin/users';
 import { healthRoute } from './routes/health';
 import { publicContentRoute } from './routes/public/content';
 import { publicFormsRoute } from './routes/public/forms';
+import { publicGlobalVariablesRoute } from './routes/public/global-variables';
 import { publicMediaRoute } from './routes/public/media';
 import type { Bindings } from './lib/env';
 import type { AuthedVariables } from './middleware/require-session';
@@ -36,10 +38,11 @@ app.route('/api/v1/health', healthRoute);
 app.use('/api/v1/auth/*', authRateLimit);
 app.on(['GET', 'POST'], '/api/v1/auth/*', (c) => createAuth(c.env).handler(c.req.raw));
 
-// Mounted before the more general /api/v1/public/:contentType catchall so "forms"/"media" are
-// never ambiguous with a content-type slug.
+// Mounted before the more general /api/v1/public/:contentType catchall so "forms"/"media"/
+// "global-variables" are never ambiguous with a content-type slug.
 app.route('/api/v1/public/forms', publicFormsRoute);
 app.route('/api/v1/public/media', publicMediaRoute);
+app.route('/api/v1/public/global-variables', publicGlobalVariablesRoute);
 app.route('/api/v1/public', publicContentRoute);
 
 app.use('/api/v1/admin/*', requireSession);
@@ -49,6 +52,7 @@ app.route('/api/v1/admin/content-types', contentTypesRoute);
 app.route('/api/v1/admin/entries', entriesRoute);
 app.route('/api/v1/admin/media', mediaRoute);
 app.route('/api/v1/admin/forms', formsRoute);
+app.route('/api/v1/admin/global-variables', globalVariablesRoute);
 app.route('/api/v1/admin/submissions', submissionsRoute);
 app.route('/api/v1/admin/settings', settingsRoute);
 app.route('/api/v1/admin/users', usersRoute);

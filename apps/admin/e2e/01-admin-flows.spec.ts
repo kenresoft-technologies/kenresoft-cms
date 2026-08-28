@@ -151,4 +151,37 @@ test.describe('admin flows (owner)', () => {
     await expect(page.getByText('User removed')).toBeVisible();
     await expect(page.getByRole('row', { name: /E2E Invitee/ })).toHaveCount(0);
   });
+
+  test('creates a global variable, edits its value, sees it on the public API, then deletes it', async ({
+    page,
+    request,
+  }) => {
+    await page.goto('/login');
+    await page.getByLabel('Email').fill(ownerEmail);
+    await page.getByLabel('Password', { exact: true }).fill('correct horse battery staple');
+    await page.getByRole('button', { name: 'Sign in' }).click();
+    await page.waitForURL('/');
+
+    await page.goto('/global-variables');
+    await page.getByRole('button', { name: 'New variable' }).click();
+    await page.getByLabel('Key').fill('phone_number');
+    await page.getByLabel('Value').fill('555-0100');
+    await page.getByRole('button', { name: 'Create variable' }).click();
+    await expect(page.getByText('Variable created')).toBeVisible();
+
+    const publicRes = await request.get(`${API_URL}/api/v1/public/global-variables`);
+    expect(await publicRes.json()).toMatchObject({ phone_number: '555-0100' });
+
+    const row = page.getByRole('row', { name: /phone_number/ });
+    await row.getByRole('button', { name: 'Edit phone_number' }).click();
+    await page.getByLabel('Value').fill('555-0199');
+    await page.getByRole('button', { name: 'Save value' }).click();
+    await expect(page.getByText('Variable updated')).toBeVisible();
+    await expect(row.getByText('555-0199')).toBeVisible();
+
+    await row.getByRole('button', { name: 'Delete phone_number' }).click();
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Delete' }).click();
+    await expect(page.getByText('Variable deleted')).toBeVisible();
+    await expect(page.getByRole('row', { name: /phone_number/ })).toHaveCount(0);
+  });
 });

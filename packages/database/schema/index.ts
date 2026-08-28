@@ -7,5 +7,6 @@ export * from './media';
 export * from './forms';
 export * from './form-fields';
 export * from './form-submissions';
+export * from './global-variables';
 export * from './relations';
 export * from './auth';

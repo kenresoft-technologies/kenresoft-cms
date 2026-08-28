@@ -38,6 +38,7 @@ export type {
   FormSubmission,
   FormSubmissionStatus,
   FormSubmissionWithForm,
+  GlobalVariable,
   Media,
   MediaContentType,
   Settings,

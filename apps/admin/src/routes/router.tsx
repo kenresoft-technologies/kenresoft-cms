@@ -11,6 +11,7 @@ import { EntryEditorPage } from '@/pages/EntryEditorPage';
 import { FormDetailPage } from '@/pages/FormDetailPage';
 import { FormsPage } from '@/pages/FormsPage';
 import { FormSubmissionsPage } from '@/pages/FormSubmissionsPage';
+import { GlobalVariablesPage } from '@/pages/GlobalVariablesPage';
 import { LoginPage } from '@/pages/LoginPage';
 import { MediaLibraryPage } from '@/pages/MediaLibraryPage';
 import { ProfilePage } from '@/pages/ProfilePage';
@@ -29,6 +30,7 @@ export const router = createBrowserRouter([
       { index: true, element: <DashboardPage /> },
       { path: 'entries', element: <AllEntriesPage /> },
       { path: 'content-types', element: <ContentTypesPage /> },
+      { path: 'global-variables', element: <GlobalVariablesPage /> },
       { path: 'media', element: <MediaLibraryPage /> },
       { path: 'forms', element: <FormsPage /> },
       { path: 'forms/:formId', element: <FormDetailPage /> },
