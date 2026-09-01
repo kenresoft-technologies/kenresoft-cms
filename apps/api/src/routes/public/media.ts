@@ -1,4 +1,6 @@
-import { z } from '@hono/zod-openapi';
+import { createRoute, z } from '@hono/zod-openapi';
+import { publicMediaSchema } from '@kenresoft/contracts';
+import type { PublicMedia } from '@kenresoft/contracts';
 
 import { getDb } from '../../lib/db';
 import { createOpenApiApp } from '../../lib/openapi';
@@ -27,6 +29,47 @@ publicMediaRoute.get('*', async (c, next) => {
     c.executionCtx.waitUntil(cache.put(cacheKey, c.res.clone()));
   }
 });
+
+// The subset of Media metadata that's safe to expose publicly (docs on publicMediaSchema) —
+// closes a real gap for external consumers of the file route below: without this, there's no
+// way to set an <img alt> or reserve layout space while the image loads (@kenresoft/astro and
+// examples/astro-site currently fall back to the entry's title as alt text for exactly this
+// reason — docs/ASTRO.md's Known limitations). Same no-auth trust model as the file route: once
+// uploaded, a file (and now its renderable metadata) is addressable by anyone who has its id.
+publicMediaRoute.openapi(
+  createRoute({
+    method: 'get',
+    path: '/{id}',
+    tags: ['Public media'],
+    summary: 'Get a media file\'s public metadata (public, unauthenticated)',
+    request: { params: idParamSchema },
+    responses: {
+      200: {
+        description: 'Alt text, content type, and dimensions for rendering this file.',
+        content: { 'application/json': { schema: publicMediaSchema } },
+      },
+      404: {
+        description: 'No media with that id.',
+        content: { 'application/json': { schema: notFoundSchema } },
+      },
+    },
+  }),
+  async (c) => {
+    const db = getDb(c);
+    const row = await getMediaById(db, c.req.valid('param').id);
+    if (!row) {
+      return c.json({ error: 'Media not found' }, 404);
+    }
+
+    const response: PublicMedia = {
+      altText: row.altText,
+      contentType: row.contentType,
+      width: row.width,
+      height: row.height,
+    };
+    return c.json(response, 200);
+  },
+);
 
 // Streams the raw image bytes — not a JSON response, so this stays a plain route (with a
 // docs-only registerPath below), matching the admin equivalent

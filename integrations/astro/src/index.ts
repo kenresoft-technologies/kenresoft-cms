@@ -1,10 +1,10 @@
-import type { Entry, FormSubmission } from '@kenresoft/contracts';
+import type { Entry, FormSubmission, PublicMedia } from '@kenresoft/contracts';
 
 // Type-only imports — erased at compile time, so this package never actually depends on zod
 // (or anything else @kenresoft/contracts pulls in) at runtime. They exist purely so this
 // client's return types stay in sync with the API's real response shapes instead of a
 // hand-maintained copy — see the "Types" note in docs/ASTRO.md.
-export type { Entry, FormSubmission };
+export type { Entry, FormSubmission, PublicMedia };
 
 export interface KenresoftClientConfig {
   /** Base URL of a Kenresoft CMS deployment, e.g. "http://localhost:8787" in local dev. */
@@ -89,6 +89,12 @@ export interface KenresoftClient {
      * bad id 404s when the browser requests it, same as a broken image link anywhere else.
      */
     url(options: MediaUrlOptions): string;
+    /**
+     * Alt text, content type, and pixel dimensions for a media item — everything an `<img>`
+     * needs beyond the src from `url()` above (a real `alt`, and `width`/`height` to reserve
+     * layout space before the file loads). Returns null if no media exists with that id.
+     */
+    get(options: MediaUrlOptions): Promise<PublicMedia | null>;
   };
   forms: {
     /**
@@ -134,6 +140,9 @@ export function createKenresoftClient(config: KenresoftClientConfig): KenresoftC
     media: {
       url({ id }) {
         return `${baseUrl}/api/v1/public/media/${id}/file`;
+      },
+      get({ id }) {
+        return request<PublicMedia>(`/api/v1/public/media/${id}`);
       },
     },
     forms: {

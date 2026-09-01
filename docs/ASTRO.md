@@ -55,11 +55,16 @@ work, not a rename of this package (see Future work).
   (`apps/api/src/routes/public/media.ts`), unauthenticated like the entry routes, edge-cached
   for a year via the same Cache API pattern as entries (`lib/public-cache.ts`) since media is
   immutable once uploaded — no edit endpoint, only create/delete — and invalidated on delete.
+- `media.get({ id })` — `{ altText, contentType, width, height }` for a Media item, or `null`
+  if it doesn't exist. Backed by `GET /api/v1/public/media/:id` (added after Public media
+  serving shipped, closing the gap noted below in Known limitations' history) — everything an
+  `<img>` needs beyond the src from `media.url()` above: a real `alt` and dimensions to reserve
+  layout space before the file loads, instead of falling back to the entry's title.
 - `forms.submit({ formSlug, data })` — submits a public form. Rate limited server-side
   (5/60s per client IP) and validated against that form's own field definitions — there's no
   client-side equivalent of those definitions to validate against here (no public
   form-metadata endpoint either), so a validation failure only surfaces after a real request.
-- A `KenresoftApiError` thrown for any other non-2xx response from `entries.*`/`media.url`'s
+- A `KenresoftApiError` thrown for any other non-2xx response from `entries.*`/`media.*`'s
   underlying fetch, carrying the HTTP status; for `forms.submit`, thrown for *any* non-2xx
   response (400/404/429 are all meaningful outcomes here, not something to paper over), with
   `issues` populated for a 400 (the field-level validation errors).
@@ -136,31 +141,31 @@ non-`PUBLIC_`-prefixed name so Astro keeps it out of the client bundle.
 
 ## Static vs SSR
 
-`examples/astro-site` uses static output (`astro.config.mjs`: `output: 'static'`). Every page
-fetches from the CMS **at build time**:
+`examples/astro-site` uses server rendering (`astro.config.mjs`: `output: 'server'`, the
+`@astrojs/cloudflare` adapter). Every page fetches from the CMS **at request time**:
 
 ```
-CMS content (published entries)
-        ↓
-   astro build
-        ↓
- Generated static HTML
+   Request
+      ↓
+ astro-site (SSR)
+      ↓
+CMS public API (its own edge cache — docs/ARCHITECTURE.md §12)
 ```
 
-This means **content changes require a new `astro build`** to appear in the built site — there
-is no incremental/on-demand revalidation yet. `astro dev`, by contrast, re-runs each page's
-CMS fetch on every request, so changes appear immediately without a rebuild while iterating
-locally; this was verified directly (publish a new entry → visible in `astro dev` immediately;
-rebuild the static site → visible in `dist/`; the *previous* `dist/` build, taken before the
-publish, correctly does **not** contain it).
+This means a published edit is visible on the very next request — no rebuild step. This
+replaced an earlier static-output design (Astro's `getStaticPaths()`) specifically because
+static output froze the blog's route list at build time: a brand-new post 404'd on the live
+site until the next manual `astro build`, and an edit to an existing post's content likewise
+didn't show until a rebuild. `blog/[slug].astro` fetches its entry per-request and 404s itself
+when the slug doesn't resolve, rather than pre-generating a fixed list of paths.
 
-Static output was chosen for this first milestone because it's the simplest reliable strategy
-and matches `docs/ARCHITECTURE.md` §20.1's "Astro renders the post" framing of the first
-vertical slice. SSR is not implemented, but nothing here forecloses it: `@kenresoft/astro`'s
-client has no build-time-only assumptions (it's just `fetch`, callable from an Astro
-`getStaticPaths()` or equally from an Astro SSR endpoint/on-demand page), so switching
-`examples/astro-site` to `output: 'server'` later — or adding webhook-triggered rebuilds — is a
-config change in that example, not a redesign of the CMS API or the client.
+Static output was the right choice for Phase 1's first vertical slice (the simplest reliable
+strategy, matching `docs/ARCHITECTURE.md` §20.1's "Astro renders the post" framing) but stopped
+being the right default once "does a new post actually appear" became something worth verifying
+end-to-end. `@kenresoft/astro`'s client has no build-time-only assumptions either way — it's
+just `fetch`, equally callable from a static `getStaticPaths()` page or an SSR one — so this was
+a config change in this example plus dropping `getStaticPaths()` from one page, not a redesign
+of the CMS API or the client.
 
 ## Cloudflare compatibility (future)
 
@@ -191,7 +196,6 @@ next phase, not a small extension of this one.
   definitions publicly is a real product decision (it reveals internal content-modeling
   structure to anyone), not something to add unilaterally — flagged here as a decision point
   for whoever owns that call, not committed to either way.
-- **Static output means content edits need a rebuild.** See Static vs SSR above.
 - A rare, non-deterministic `astro build` exit-code flake was observed once during Phase 1
   verification on this Windows/Node 24 environment (`Assertion failed:
   !(handle->flags & UV_HANDLE_CLOSING)` from libuv, thrown *after* all pages had already
@@ -205,17 +209,8 @@ next phase, not a small extension of this one.
 Not implemented, deliberately (see `docs/ARCHITECTURE.md` §20's phase boundaries and this
 doc's Cloudflare compatibility section) — listed as open decisions, not commitments:
 
-- **Public media metadata** (alt text, width/height) — only the file bytes are public today
-  (`media.url()` above). `examples/astro-site` falls back to the entry's title as an `<img
-  alt>` since Media's real `altText` (set on upload in the admin) isn't reachable publicly.
-  A small `GET /api/v1/public/media/:id` returning just `{ altText, contentType, width,
-  height }` would close this — deliberately not built alongside the file route itself, since
-  it's a separate, smaller decision about how much Media metadata should be public.
 - **Public content-type metadata** — see Known limitations above; a decision point, not a gap
   being tracked toward a default "yes."
-- **SSR/webhook-triggered revalidation** for `examples/astro-site`, so content edits don't
-  require a manual rebuild — static output was Phase 1's deliberate choice (see Static vs SSR
-  above), not a placeholder for a foregone SSR migration.
 - A framework-generic SDK (`@kenresoft/sdk` or similar) that `@kenresoft/astro` could become a
   thin wrapper around, for Next.js/Vue/Flutter/etc. consumers — today those frameworks call the
   public API directly, which is a fully supported, first-class path (`docs/ARCHITECTURE.md`

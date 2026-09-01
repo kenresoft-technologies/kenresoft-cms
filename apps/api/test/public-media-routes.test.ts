@@ -58,6 +58,25 @@ describe('public media route (real D1 + R2)', () => {
     expect(response.status).toBe(404);
   });
 
+  it('serves public metadata (alt text, content type, dimensions) with no session required', async () => {
+    const cookie = await authedCookie('public-media-metadata-1@pathvera.test');
+    const uploaded = await uploadMedia(cookie);
+
+    const response = await SELF.fetch(`https://example.com/api/v1/public/media/${uploaded.id}`);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      altText: null,
+      contentType: 'image/png',
+      width: 64,
+      height: 32,
+    });
+  });
+
+  it('404s the metadata route for a media id that does not exist', async () => {
+    const response = await SELF.fetch('https://example.com/api/v1/public/media/does-not-exist');
+    expect(response.status).toBe(404);
+  });
+
   it('serves a cached response on a repeat GET, even after the underlying object is removed', async () => {
     const cookie = await authedCookie('public-media-2@pathvera.test');
     const uploaded = await uploadMedia(cookie);

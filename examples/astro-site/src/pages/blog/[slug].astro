@@ -14,8 +14,12 @@ if (!entry) {
 }
 
 const title = String(entry.data.title ?? entry.slug);
-const featuredImageUrl =
-  typeof entry.data.featuredImage === 'string' ? cms.media.url({ id: entry.data.featuredImage }) : null;
+const featuredImageId = typeof entry.data.featuredImage === 'string' ? entry.data.featuredImage : null;
+const featuredImageUrl = featuredImageId ? cms.media.url({ id: featuredImageId }) : null;
+// Real alt text/dimensions from the public media-metadata endpoint (closes the gap noted in
+// docs/ASTRO.md's Known limitations) — falls back to the post title only when the media item
+// has no altText set, same as before this endpoint existed.
+const featuredImageMeta = featuredImageId ? await cms.media.get({ id: featuredImageId }) : null;
 // The rich-text field (Tiptap, docs/ARCHITECTURE.md §25) is stored and returned as HTML.
 // set:html is safe here because this content only reaches the public API once an
 // authenticated editor/owner has explicitly published it — the same trust boundary as any
@@ -36,7 +40,15 @@ const publishedDate = new Date(entry.createdAt).toLocaleDateString(undefined, {
     <a class="back-link" href="/blog">← Back to blog</a>
     <h1>{title}</h1>
     <p class="post-meta">Published {publishedDate}</p>
-    {featuredImageUrl ? <img class="post-image" src={featuredImageUrl} alt={title} /> : null}
+    {featuredImageUrl ? (
+      <img
+        class="post-image"
+        src={featuredImageUrl}
+        alt={featuredImageMeta?.altText ?? title}
+        width={featuredImageMeta?.width ?? undefined}
+        height={featuredImageMeta?.height ?? undefined}
+      />
+    ) : null}
     {typeof body === 'string' ? <div class="post-body" set:html={body} /> : null}
   </article>
 </BaseLayout>

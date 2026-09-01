@@ -21,4 +21,18 @@ export const mediaSchema = z.object({
 // for the one plain-string field the route does validate with Zod.
 export const altTextSchema = z.string().max(500).optional();
 
+// The subset of Media that's safe to expose from the public API (GET /api/v1/public/media/:id)
+// alongside the already-public file bytes (.../media/:id/file) — no key (the internal R2
+// object path), filename, or timestamps, since those describe internal storage rather than
+// how to render the file. altText/width/height close a real gap for public consumers (e.g.
+// @kenresoft/astro): the file route alone gives no way to set an <img alt> or avoid layout
+// shift while the image loads.
+export const publicMediaSchema = z.object({
+  altText: z.string().nullable(),
+  contentType: z.enum(MEDIA_CONTENT_TYPES),
+  width: z.number().int().nullable(),
+  height: z.number().int().nullable(),
+});
+
 export type Media = z.infer<typeof mediaSchema>;
+export type PublicMedia = z.infer<typeof publicMediaSchema>;

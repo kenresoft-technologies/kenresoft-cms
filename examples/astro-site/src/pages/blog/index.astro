@@ -8,6 +8,17 @@ const cms = createKenresoftClient({ url: import.meta.env.PUBLIC_KENRESOFT_CMS_UR
 // the admin (Content types → New). Change this if your deployment uses a different slug, or
 // if you're demonstrating a different content type entirely.
 const entries = await cms.entries.list({ contentType: 'blog-post' });
+
+// Real alt text via the public media-metadata endpoint (closes the gap noted in docs/ASTRO.md's
+// Known limitations, previously worked around by falling back to the entry's title for every
+// image). Fetched once per unique featuredImage id rather than per entry, since several posts
+// could share the same image.
+const featuredImageIds = [...new Set(entries.map((entry) => entry.data.featuredImage).filter((id) => typeof id === 'string'))];
+const featuredImageAltById = new Map(
+  await Promise.all(
+    featuredImageIds.map(async (id) => [id, (await cms.media.get({ id }))?.altText ?? null] as const),
+  ),
+);
 ---
 
 <BaseLayout title="Blog — Kenresoft CMS" description="Updates and posts published through Kenresoft CMS.">
@@ -30,12 +41,10 @@ const entries = await cms.entries.list({ contentType: 'blog-post' });
           return (
             <a class="post-row" href={`/blog/${entry.slug}`}>
               {typeof entry.data.featuredImage === 'string' ? (
-                // Media's own altText (set on upload in the admin) isn't exposed by the
-                // public API — only the file bytes are (§14/docs/ASTRO.md). Falling back to
-                // the entry's title is an imperfect but honest stand-in; a real deployment
-                // wanting real per-image alt text would need a small public media-metadata
-                // endpoint, which is future work, not built here.
-                <img src={cms.media.url({ id: entry.data.featuredImage })} alt={title} />
+                <img
+                  src={cms.media.url({ id: entry.data.featuredImage })}
+                  alt={featuredImageAltById.get(entry.data.featuredImage) ?? title}
+                />
               ) : null}
               <div class="post-row-body">
                 <h2>{title}</h2>
