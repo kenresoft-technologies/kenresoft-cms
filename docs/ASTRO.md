@@ -182,11 +182,11 @@ CLIENT CLOUDFLARE ACCOUNT
 ```
 
 The CMS and an Astro site consuming it are separate deployable applications, each with their
-own Cloudflare deployment. **This phase does not implement or test that** — `apps/api`'s
-`wrangler.toml` still has placeholder D1/KV resource IDs (see the `TODO(Phase 1)` comment at
-its top), meaning no real Cloudflare resources have been provisioned for the CMS itself yet,
-let alone a production Astro deployment alongside it. Getting there is genuinely a distinct
-next phase, not a small extension of this one.
+own Cloudflare deployment. A real CMS deployment now exists (`apps/api`'s `wrangler.toml` has
+real D1/R2 resource ids, and `docs/DEPLOYMENT.md`'s backup drill and the security-hardening
+pass both ran against it), but a production Astro deployment alongside it — `apps/admin` has no
+deployed home yet either — is still not provisioned or tested. Getting there is genuinely a
+distinct next phase, not a small extension of this one.
 
 ## Known limitations
 

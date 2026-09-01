@@ -812,9 +812,9 @@ of time (an announcement, a dated blog post) without keeping a session open unti
   /api/v1/public/media/:id/file` (public, unauthenticated, edge-cached for a year since media
   is immutable — create/delete only, no edit endpoint). Media has no draft/published concept,
   so the public route has no status to hide: once uploaded, any id is servable, the same trust
-  model as any CDN-backed asset URL. Alt text/dimensions are not exposed publicly — only the
-  file bytes — a public metadata endpoint is a separate, not-yet-made decision (§15/docs/
-  ASTRO.md's Known limitations).
+  model as any CDN-backed asset URL. Alt text/dimensions are also public, via `GET
+  /api/v1/public/media/:id` → `{ altText, contentType, width, height }` — everything an `<img>`
+  needs beyond the file bytes above (docs/ASTRO.md's `media.get()`).
 
 ---
 
