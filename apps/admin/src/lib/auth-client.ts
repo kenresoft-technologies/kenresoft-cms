@@ -16,6 +16,7 @@ export const authClient = createAuthClient({
     inferAdditionalFields({
       user: {
         role: { type: 'string', input: false },
+        developerToolsAccess: { type: 'boolean', input: false },
       },
     }),
   ],

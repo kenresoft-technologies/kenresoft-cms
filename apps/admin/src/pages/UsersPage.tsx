@@ -21,6 +21,7 @@ import {
   useCreateUser,
   useDeleteUser,
   useRevokeSession,
+  useUpdateUserDeveloperToolsAccess,
   useUpdateUserDisabled,
   useUpdateUserRole,
   useUserSessions,
@@ -60,6 +61,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import { Table, TableHeader, TableHead, TableRow } from '@/components/ui/table';
 
 const ACTIVE_WITHIN_MS = 7 * 24 * 60 * 60 * 1000;
@@ -160,6 +162,40 @@ function RoleCell({ user, canEdit }: { user: AdminUser; canEdit: boolean }) {
         ))}
       </SelectContent>
     </Select>
+  );
+}
+
+// Owner/admin always have Developer panel access once the deployment-wide flag is on
+// (apps/admin/src/lib/developer-mode.ts) — this control only matters for editor/author, who
+// need it granted per person rather than automatically. Viewer never qualifies regardless, so
+// it isn't shown there either.
+function DeveloperToolsCell({ user, canEdit }: { user: AdminUser; canEdit: boolean }) {
+  const updateAccess = useUpdateUserDeveloperToolsAccess();
+
+  if (user.role !== 'editor' && user.role !== 'author') {
+    return <span className="text-muted-foreground">{user.role === 'viewer' ? '—' : 'Always'}</span>;
+  }
+
+  if (!canEdit) {
+    return <span className="text-muted-foreground">{user.developerToolsAccess ? 'Granted' : '—'}</span>;
+  }
+
+  return (
+    <Switch
+      checked={user.developerToolsAccess}
+      disabled={updateAccess.isPending}
+      aria-label={`Developer tools access for ${user.name}`}
+      onCheckedChange={(checked) => {
+        updateAccess.mutate(
+          { id: user.id, developerToolsAccess: checked },
+          {
+            onError: (err) => {
+              toast.error(err instanceof ApiError ? err.message : 'Failed to update developer tools access');
+            },
+          },
+        );
+      }}
+    />
   );
 }
 
@@ -521,6 +557,12 @@ export function UsersPage() {
           ),
       },
       {
+        id: 'developerTools',
+        header: 'Dev tools',
+        enableSorting: false,
+        cell: ({ row }) => <DeveloperToolsCell user={row.original} canEdit={isAdmin} />,
+      },
+      {
         accessorKey: 'lastActiveAt',
         header: 'Last active',
         sortingFn: (rowA, rowB) =>
@@ -611,12 +653,13 @@ export function UsersPage() {
                 <TableHead>Email</TableHead>
                 <TableHead>Role</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>Dev tools</TableHead>
                 <TableHead>Last active</TableHead>
                 <TableHead>Joined</TableHead>
                 {isAdmin ? <TableHead /> : null}
               </TableRow>
             </TableHeader>
-            <TableSkeleton columns={isAdmin ? 7 : 6} />
+            <TableSkeleton columns={isAdmin ? 8 : 7} />
           </Table>
         </div>
       ) : null}

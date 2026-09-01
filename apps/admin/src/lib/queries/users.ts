@@ -88,6 +88,22 @@ export function useUpdateUserDisabled() {
   });
 }
 
+export function useUpdateUserDeveloperToolsAccess() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, developerToolsAccess }: { id: string; developerToolsAccess: boolean }) =>
+      apiClient.patch<AdminUser>(`/api/v1/admin/users/${id}/developer-tools-access`, { developerToolsAccess }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: usersKey });
+      // Mirrors useUpdateUserRole's onSuccess — the acting user may have just granted/revoked
+      // their own access (an admin toggling their own row), and developer-mode.ts reads
+      // session.user.developerToolsAccess from the client-cached session, not this query.
+      void authClient.getSession();
+    },
+  });
+}
+
 // A password re-check, not tied to any one action — the caller elevates, then attempts
 // whatever elevation-gated action prompted it (disabling an admin, transferring ownership).
 export function useElevate() {

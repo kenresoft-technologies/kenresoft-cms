@@ -7,14 +7,20 @@ import { roleAtLeast, type UserRole } from '@/lib/types';
 // (apps/admin/src/pages/settings/ApiSection.tsx), stored in the existing Settings.featureFlags
 // JSON column, not a new schema/migration.
 //
-// Viewer is deliberately excluded even when the flag is on: it's the read-only,
-// non-technical-stakeholder role in this CMS's role model, and this threshold is the one place
-// that decides who sees developer tooling — raising it later is a one-line change here rather
-// than a change to every panel's trigger. Everyone at or above Author (Author, Editor, Admin,
-// Owner) qualifies — a rank check rather than a hardcoded list so a future role slotted above
-// Author qualifies automatically.
-const DEVELOPER_MODE_MINIMUM_ROLE: UserRole = 'author';
-export const DEVELOPER_MODE_ROLES: UserRole[] = ['owner', 'admin', 'editor', 'author'];
+// Who actually sees the panel once that flag is on is a separate question from the flag
+// itself, split two ways:
+//   - Owner/admin always qualify — they're the ones who can turn the deployment-wide flag on
+//     in the first place, so gating them too would add friction without adding safety.
+//   - Editor/author need an explicit per-user grant (`user.developerToolsAccess`, toggled from
+//     the Users page — apps/api/src/routes/admin/users.ts's PATCH .../developer-tools-access)
+//     rather than qualifying automatically from role. This replaced an earlier "everyone at or
+//     above Author automatically gets it" rule: with only a deployment-wide toggle, every
+//     author on a team saw developer tooling as soon as one admin turned it on for anyone,
+//     even the ones who never touch the public API — the opposite of "technical people get
+//     technical tooling, ordinary content managers don't."
+// Viewer is excluded unconditionally regardless of this column — it's the read-only,
+// non-technical-stakeholder role in this CMS's role model.
+const DEVELOPER_MODE_ALWAYS_ROLE: UserRole = 'admin';
 
 export function useDeveloperMode(): boolean {
   const { data: settings } = useSettings();
@@ -22,6 +28,7 @@ export function useDeveloperMode(): boolean {
 
   const enabled = settings?.featureFlags?.developerMode ?? false;
   const role = session?.user.role as UserRole | undefined;
+  if (!enabled || role === undefined || role === 'viewer') return false;
 
-  return enabled && role !== undefined && roleAtLeast(role, DEVELOPER_MODE_MINIMUM_ROLE);
+  return roleAtLeast(role, DEVELOPER_MODE_ALWAYS_ROLE) || (session?.user.developerToolsAccess ?? false);
 }
