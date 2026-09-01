@@ -46,6 +46,14 @@ async function transfer(cookie: string, targetUserId: string) {
   });
 }
 
+async function setDisabled(actorCookie: string, targetId: string, disabled: boolean) {
+  return SELF.fetch(`https://example.com/api/v1/admin/users/${targetId}/disabled`, {
+    method: 'PATCH',
+    headers: { Cookie: actorCookie, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ disabled }),
+  });
+}
+
 async function roleOf(cookie: string, id: string): Promise<string | undefined> {
   const users = await (
     await SELF.fetch('https://example.com/api/v1/admin/users', { headers: { Cookie: cookie } })
@@ -101,6 +109,21 @@ describe('ownership transfer (real D1)', () => {
 
     const response = await transfer(ownerCookie, ownerId);
     expect(response.status).toBe(400);
+  });
+
+  it('rejects transferring ownership to a disabled account', async () => {
+    const ownerCookie = await authedCookie('ot-owner-disabled@pathvera.test');
+    const targetCookie = await authedCookie('ot-target-disabled@pathvera.test');
+    const targetId = await userId(targetCookie);
+    expect((await setDisabled(ownerCookie, targetId, true)).status).toBe(200);
+
+    expect((await elevate(ownerCookie)).status).toBe(200);
+    const response = await transfer(ownerCookie, targetId);
+    expect(response.status).toBe(400);
+
+    // Neither role changed — a rejected transfer must not partially apply.
+    expect(await roleOf(ownerCookie, await userId(ownerCookie))).toBe('owner');
+    expect(await roleOf(ownerCookie, targetId)).toBe('editor');
   });
 
   it('404s transferring to a nonexistent user', async () => {

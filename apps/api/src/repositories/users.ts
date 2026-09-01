@@ -61,8 +61,17 @@ export async function countGuardians(db: Database, options?: { excluding?: strin
   return row?.count ?? 0;
 }
 
+// The un-awaited query builder, exported separately so ownership transfer
+// (apps/api/src/routes/admin/security.ts) can pass both role updates to db.batch() as one
+// atomic D1 batch — two independent awaited statements would leave a real window where the
+// first succeeds and the second fails (network blip, the target row changing concurrently),
+// landing the deployment with zero owners despite this being described as a swap.
+export function updateUserRoleQuery(db: Database, id: string, role: UserRole) {
+  return db.update(user).set({ role }).where(eq(user.id, id)).returning();
+}
+
 export async function updateUserRole(db: Database, id: string, role: UserRole) {
-  const [row] = await db.update(user).set({ role }).where(eq(user.id, id)).returning();
+  const [row] = await updateUserRoleQuery(db, id, role);
   return row!;
 }
 

@@ -16,7 +16,7 @@ import { createOpenApiApp } from '../../lib/openapi';
 import { requireElevatedSession } from '../../middleware/require-elevated-session';
 import { requireRole } from '../../middleware/require-role';
 import { countUnusedRecoveryCodes, replaceRecoveryCodes } from '../../repositories/recovery-codes';
-import { getUserById, updateUserRole } from '../../repositories/users';
+import { getUserById, updateUserRoleQuery } from '../../repositories/users';
 import { setSessionElevatedUntil } from '../../repositories/sessions';
 import type { Bindings } from '../../lib/env';
 import type { AuthedVariables } from '../../middleware/require-session';
@@ -98,7 +98,7 @@ securityRoute.openapi(
         content: { 'application/json': { schema: errorSchema } },
       },
       400: {
-        description: 'Cannot transfer ownership to yourself.',
+        description: 'Cannot transfer ownership to yourself or to a disabled account.',
         content: { 'application/json': { schema: errorSchema } },
       },
     },
@@ -116,9 +116,18 @@ securityRoute.openapi(
     if (!target) {
       return c.json({ error: 'User not found' }, 404);
     }
+    if (target.disabled) {
+      return c.json({ error: 'Cannot transfer ownership to a disabled account' }, 400);
+    }
 
-    await updateUserRole(db, actingUser.id, 'admin');
-    const newOwner = await updateUserRole(db, target.id, 'owner');
+    // A single D1 batch, not two independently-awaited statements — D1 runs a batch as one
+    // atomic unit (all statements succeed or none do), so there's never a window where the
+    // acting user has already been demoted but the target hasn't yet become owner (or vice
+    // versa) if the second statement were to fail on its own.
+    const [, [newOwner]] = await db.batch([
+      updateUserRoleQuery(db, actingUser.id, 'admin'),
+      updateUserRoleQuery(db, target.id, 'owner'),
+    ]);
     await recordAudit(db, {
       actorUserId: actingUser.id,
       action: 'ownership.transferred',
