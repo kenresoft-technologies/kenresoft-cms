@@ -506,3 +506,24 @@ pre-existing deployment history — not a fresh "-production"-suffixed one. The 
 `scripts/setup.mjs` uses to patch in newly-created ids was verified against a scratch copy of
 the real file (correct insertion, `[env.production]` left untouched) but, like the button, has
 not been run for real against a live, unprovisioned account.
+
+**Deploy tooling, follow-up: the button actually clicked, and failed as flagged** — the
+unverified button risk above turned out real on the first real attempt: Cloudflare reported "No
+Wrangler configuration detected," since its button only looks for a config at the repository
+root, never inside a subdirectory (confirmed, not guessed, once this happened). Fixed by moving
+`wrangler.toml` (and `.dev.vars`/`.dev.vars.example`, which wrangler requires alongside it) from
+`apps/api/` to the repo root, with `main = "apps/api/src/index.ts"` and `migrations_dir` updated
+to match — every path in the file is relative to its own location, confirmed empirically via
+`--dry-run` and a real `wrangler dev` smoke test rather than assumed. Every consumer of the old
+path is updated: `apps/api`'s `dev`/`deploy`/`deploy:production` scripts (explicit
+`--config ../../wrangler.toml`, though wrangler's own upward directory search would have found
+it regardless — confirmed empirically, kept explicit for clarity), `packages/database`'s four
+`migrate:*` scripts, `recover-owner.mjs`/`backup-media.mjs`'s `CONFIG_PATH` (the actual
+`../wrangler.toml` → `../../../wrangler.toml` distance was gotten wrong once mid-fix and caught
+by testing the resolved path against the real filesystem rather than trusting the arithmetic by
+eye), `scripts/setup.mjs`'s `WRANGLER_TOML_PATH`, and `apps/admin/playwright.config.ts`'s e2e
+`wrangler dev` invocation. `apps/api/wrangler.test.toml` (the vitest-pool-workers-only config)
+needed no change — nothing about it was path-sensitive to where the real config lives. A full
+button click-through hasn't been re-attempted since this fix; everything else was re-verified
+the same way as the original pass (dry-runs against the real account, a real `wrangler dev`,
+the e2e migration script, and the full test suite).
