@@ -13,7 +13,11 @@
 //
 // Usage:
 //   node scripts/recover-owner.mjs --local            # against the local dev D1
-//   node scripts/recover-owner.mjs --remote            # against the real deployed D1
+//   node scripts/recover-owner.mjs --remote            # against your real deployed D1
+//   node scripts/recover-owner.mjs --remote --env production   # only if your real D1 lives
+//                                                                # under a named environment
+//                                                                # (Kenresoft's own repo state
+//                                                                # does — most forks' don't)
 //   node scripts/recover-owner.mjs --remote --email owner@example.com   # if there's more than one owner
 //
 // (Or via the package.json scripts: `pnpm recover-owner:local` / `pnpm recover-owner:remote`.)
@@ -41,12 +45,18 @@ const WRANGLER_BIN = join(dirname(require.resolve('wrangler/package.json')), 'bi
 const CHAR_CODE = { LF: 10, CR: 13, BACKSPACE: 8, DEL: 127, CTRL_C: 3, CTRL_D: 4 };
 
 function parseArgs(argv) {
-  const args = { local: false, remote: false, email: undefined };
+  const args = { local: false, remote: false, email: undefined, env: undefined };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === '--local') args.local = true;
     else if (arg === '--remote') args.remote = true;
     else if (arg === '--email') args.email = argv[++i];
+    // Most deployments keep their real D1/R2 in wrangler.toml's top level (the default this
+    // flag needs no value for) — Kenresoft's own repo state is the one exception, since its
+    // real, live resources are pinned under a named [env.production] instead (wrangler.toml's
+    // own comment explains why). Pass --env production for that; anyone with an equivalent
+    // named-environment split of their own passes whatever they called it.
+    else if (arg === '--env') args.env = argv[++i];
     else {
       console.error(`Unknown argument: ${arg}`);
       process.exit(1);
@@ -66,15 +76,15 @@ function runWrangler(args) {
   });
 }
 
-function runD1Query(target, sql) {
-  const output = runWrangler(['d1', 'execute', DB_NAME, target, '--json', '--command', sql, '--config', CONFIG_PATH]);
+function runD1Query(targetArgs, sql) {
+  const output = runWrangler(['d1', 'execute', DB_NAME, ...targetArgs, '--json', '--command', sql, '--config', CONFIG_PATH]);
   const parsed = JSON.parse(output);
   const statementResult = Array.isArray(parsed) ? parsed[0] : parsed;
   return statementResult?.results ?? [];
 }
 
-function runD1Statement(target, sql) {
-  runWrangler(['d1', 'execute', DB_NAME, target, '--command', sql, '--config', CONFIG_PATH]);
+function runD1Statement(targetArgs, sql) {
+  runWrangler(['d1', 'execute', DB_NAME, ...targetArgs, '--command', sql, '--config', CONFIG_PATH]);
 }
 
 // Masked, raw-mode single-character reads for a real terminal.
@@ -145,10 +155,11 @@ async function main() {
     process.exit(1);
   }
   const target = args.local ? '--local' : '--remote';
+  const targetArgs = args.env ? [target, '--env', args.env] : [target];
 
   const emailClause = args.email ? ` AND u.email = '${escapeSqlString(args.email)}'` : '';
   const owners = runD1Query(
-    target,
+    targetArgs,
     `SELECT a.id as accountId, u.id as userId, u.email as email FROM account a JOIN user u ON u.id = a.user_id WHERE a.provider_id = 'credential' AND u.role = 'owner'${emailClause};`,
   );
 
@@ -177,7 +188,7 @@ async function main() {
 
   const passwordHash = await hashPassword(password);
   runD1Statement(
-    target,
+    targetArgs,
     `UPDATE account SET password = '${escapeSqlString(passwordHash)}' WHERE id = '${escapeSqlString(owner.accountId)}'; ` +
       `DELETE FROM session WHERE user_id = '${escapeSqlString(owner.userId)}';`,
   );

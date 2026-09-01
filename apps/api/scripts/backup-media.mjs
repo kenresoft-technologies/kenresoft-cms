@@ -18,6 +18,9 @@
 //   node scripts/backup-media.mjs backup --remote --out ./media-backup
 //   node scripts/backup-media.mjs restore --local --from ./media-backup
 //   node scripts/backup-media.mjs restore --remote --from ./media-backup
+//   node scripts/backup-media.mjs backup --remote --env production --out ./media-backup
+//     (only if your real D1/R2 live under a named environment — Kenresoft's own repo state
+//     does, via [env.production]; most forks' don't need this flag at all)
 //
 // (Or via the package.json scripts: `pnpm backup-media -- --remote --out ./media-backup`.)
 
@@ -29,7 +32,13 @@ import { dirname, join, resolve } from 'node:path';
 const require = createRequire(import.meta.url);
 
 const DB_NAME = 'kenresoft-cms-db';
-// Must match wrangler.toml's [[r2_buckets]] bucket_name.
+// Must match your bucket's actual name. Safe by default if you used the explicit
+// `wrangler r2 bucket create kenresoft-cms-media --update-config` from docs/DEPLOYMENT.md's
+// step 3 — but a bucket left to wrangler's automatic provisioning (bucket_name omitted
+// entirely from wrangler.toml) gets an auto-generated, worker-name-prefixed name instead, not
+// this literal string. Check apps/api/wrangler.toml's [[r2_buckets]] (or
+// [env.<name>.r2_buckets] if you keep your real deployment under a named environment, like
+// Kenresoft's own [env.production] does) and update this constant to match if it differs.
 const BUCKET_NAME = 'kenresoft-cms-media';
 const CONFIG_PATH = new URL('../wrangler.toml', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
 const WRANGLER_BIN = join(dirname(require.resolve('wrangler/package.json')), 'bin', 'wrangler.js');
@@ -41,8 +50,8 @@ function runWrangler(args) {
   });
 }
 
-function runD1Query(target, sql) {
-  const output = runWrangler(['d1', 'execute', DB_NAME, target, '--json', '--command', sql, '--config', CONFIG_PATH]);
+function runD1Query(targetArgs, sql) {
+  const output = runWrangler(['d1', 'execute', DB_NAME, ...targetArgs, '--json', '--command', sql, '--config', CONFIG_PATH]);
   const parsed = JSON.parse(output);
   const statementResult = Array.isArray(parsed) ? parsed[0] : parsed;
   return statementResult?.results ?? [];
@@ -55,12 +64,18 @@ function parseArgs(argv) {
     process.exit(1);
   }
 
-  const args = { mode, local: false, remote: false, dir: undefined };
+  const args = { mode, local: false, remote: false, dir: undefined, env: undefined };
   for (let i = 0; i < rest.length; i++) {
     const arg = rest[i];
     if (arg === '--local') args.local = true;
     else if (arg === '--remote') args.remote = true;
     else if (arg === '--out' || arg === '--from') args.dir = rest[++i];
+    // Most deployments keep their real D1/R2 in wrangler.toml's top level (the default this
+    // flag needs no value for) — Kenresoft's own repo state is the one exception, since its
+    // real, live resources are pinned under a named [env.production] instead (wrangler.toml's
+    // own comment explains why). Pass --env production for that; anyone with an equivalent
+    // named-environment split of their own passes whatever they called it.
+    else if (arg === '--env') args.env = rest[++i];
     else {
       console.error(`Unknown argument: ${arg}`);
       process.exit(1);
@@ -77,9 +92,9 @@ function parseArgs(argv) {
   return args;
 }
 
-function backup(target, dir) {
+function backup(target, targetArgs, dir) {
   const rows = runD1Query(
-    target,
+    targetArgs,
     'SELECT key, filename, content_type as contentType, size, width, height, alt_text as altText, ' +
       'created_at as createdAt, updated_at as updatedAt FROM media ORDER BY created_at;',
   );
@@ -92,14 +107,14 @@ function backup(target, dir) {
   rows.forEach((row, i) => {
     const destPath = join(objectsDir, row.key);
     mkdirSync(dirname(destPath), { recursive: true });
-    runWrangler(['r2', 'object', 'get', `${BUCKET_NAME}/${row.key}`, '--file', destPath, target, '--config', CONFIG_PATH]);
+    runWrangler(['r2', 'object', 'get', `${BUCKET_NAME}/${row.key}`, '--file', destPath, ...targetArgs, '--config', CONFIG_PATH]);
     console.log(`  [${i + 1}/${rows.length}] ${row.key}`);
   });
 
   console.log(`Done. manifest.json + ${rows.length} object(s) written to ${resolve(dir)}.`);
 }
 
-function restore(target, dir) {
+function restore(target, targetArgs, dir) {
   const manifestPath = join(dir, 'manifest.json');
   if (!existsSync(manifestPath)) {
     console.error(`No manifest.json found in ${resolve(dir)} — is this a backup produced by this script's "backup" mode?`);
@@ -118,7 +133,7 @@ function restore(target, dir) {
       'r2', 'object', 'put', `${BUCKET_NAME}/${row.key}`,
       '--file', srcPath,
       '--content-type', row.contentType,
-      target, '--config', CONFIG_PATH,
+      ...targetArgs, '--config', CONFIG_PATH,
     ]);
     console.log(`  [${i + 1}/${rows.length}] ${row.key}`);
   });
@@ -129,8 +144,9 @@ function restore(target, dir) {
 function main() {
   const args = parseArgs(process.argv.slice(2));
   const target = args.local ? '--local' : '--remote';
-  if (args.mode === 'backup') backup(target, args.dir);
-  else restore(target, args.dir);
+  const targetArgs = args.env ? [target, '--env', args.env] : [target];
+  if (args.mode === 'backup') backup(target, targetArgs, args.dir);
+  else restore(target, targetArgs, args.dir);
 }
 
 main();
