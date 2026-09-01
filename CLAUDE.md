@@ -432,3 +432,37 @@ state, mirroring the E2E harness — never the developer's own running `pnpm dev
 created a content type with a `rich_text` field, typed and formatted real content through every
 toolbar button including a link, confirmed the generated HTML and the Preview tab's rendering
 were both correct, with zero console errors.
+
+**Rich-text editor expansion** (immediate follow-up — direct user feedback that the first pass
+above was more basic than expected for a "real CMS" editor) — done: images (inserted from the
+existing Media Library, reusing the same picker pattern as the `media`-type field), tables
+(`@tiptap/extension-table`'s `TableKit`, resizable, with add-row/add-column/delete-table
+controls that appear while the cursor is inside one), code blocks with real syntax highlighting
+(`@tiptap/extension-code-block-lowlight` + `lowlight`'s common language set, themed via
+`.hljs-*` CSS rules mapped to the app's own color tokens rather than an imported highlight.js
+theme), text alignment, a highlight mark, interactive task lists, a word/character count
+(`@tiptap/extension-character-count`), and a fullscreen toggle. Markdown got two distinct
+pieces, deliberately kept separate: typing shortcuts (`# `, `**bold**`, `- `, `` ``` ``, ...)
+were already free via StarterKit's own input rules, and a new Write/Preview/Markdown mode
+switcher lets someone view or hand-edit the field as Markdown. That Markdown view is a
+converted *display* of the same HTML, not a storage-format change — deliberately not wired
+through `tiptap-markdown` (which would have made Markdown the editor's real parsing format,
+risking every already-saved HTML entry) but through two independent, standalone converters
+(`turndown`+`turndown-plugin-gfm` for HTML→Markdown, `marked` for Markdown→HTML) in the new
+`apps/admin/src/lib/rich-text-markdown.ts`, so the field's actual storage contract never
+changes. Two DOM-shape mismatches needed hand-written fixups to survive that round-trip
+correctly: Tiptap's task items nest their checkbox inside a `<label>` next to a separate
+content `<div>`, which neither turndown-plugin-gfm's task-list rule nor marked's GFM output
+recognizes by default, so both directions get reshaped to and from the flat shape those
+libraries expect. Tables and text-alignment don't have a lossless Markdown representation — a
+table survives the round trip as an embedded raw-HTML block (valid GFM, and confirmed to parse
+back into a real interactive table), while text-alignment is simply not representable in
+Markdown and is lost if that path is used, an accepted, inherent limitation of the format itself
+rather than a bug. Fixed one real bug found during verification: fullscreen mode initially had
+no opaque background and an incomplete flex/height chain, letting the underlying page show
+through and cutting content off — needed `bg-popover`, `min-h-0` on the flex chain (flexbox's
+default `min-height: auto` otherwise defeats `flex-1`), and a `z-40` (not `z-50`, so Radix
+dialogs/popovers opened from inside fullscreen still stack above it). Verified live end-to-end
+again the same way as the first pass: task list checkbox state, table row/column edits, code
+syntax highlighting, and a full Write → Markdown (edit) → Write round trip all confirmed
+correct, zero console errors.
