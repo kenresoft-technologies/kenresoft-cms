@@ -181,3 +181,63 @@
 .ProseMirror code {
   @apply rounded bg-muted px-1 py-0.5 text-[0.85em];
 }
+.ProseMirror img {
+  @apply my-2 max-w-full rounded-md;
+}
+.ProseMirror mark {
+  @apply rounded-xs bg-accent-brand/25 px-0.5 text-foreground;
+}
+.ProseMirror table {
+  @apply my-2 w-full table-fixed border-collapse overflow-hidden;
+}
+.ProseMirror th,
+.ProseMirror td {
+  @apply relative border border-border px-2 py-1 text-left align-top;
+}
+.ProseMirror th {
+  @apply bg-muted font-semibold;
+}
+.ProseMirror ul[data-type='taskList'] {
+  @apply list-none pl-1;
+}
+.ProseMirror ul[data-type='taskList'] li {
+  @apply flex items-start gap-2;
+}
+.ProseMirror ul[data-type='taskList'] li > label {
+  @apply mt-1 select-none;
+}
+.ProseMirror ul[data-type='taskList'] li > div {
+  @apply flex-1;
+}
+.ProseMirror pre {
+  @apply my-2 overflow-x-auto rounded-lg bg-muted p-3 text-[0.85em];
+}
+.ProseMirror pre code {
+  @apply bg-transparent p-0;
+}
+/* highlight.js token colors, mapped to the app's own theme tokens rather than an imported
+   highlight.js theme, so code blocks stay consistent with the rest of the CMS in both themes. */
+.ProseMirror .hljs-comment,
+.ProseMirror .hljs-quote {
+  @apply text-muted-foreground italic;
+}
+.ProseMirror .hljs-keyword,
+.ProseMirror .hljs-selector-tag,
+.ProseMirror .hljs-literal {
+  @apply text-primary;
+}
+.ProseMirror .hljs-string,
+.ProseMirror .hljs-attr,
+.ProseMirror .hljs-template-tag {
+  @apply text-success;
+}
+.ProseMirror .hljs-number,
+.ProseMirror .hljs-built_in,
+.ProseMirror .hljs-type {
+  @apply text-destructive;
+}
+.ProseMirror .hljs-title,
+.ProseMirror .hljs-name,
+.ProseMirror .hljs-section {
+  @apply font-semibold;
+}
