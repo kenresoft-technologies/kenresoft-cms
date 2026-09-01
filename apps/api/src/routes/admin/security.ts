@@ -124,10 +124,14 @@ securityRoute.openapi(
     // atomic unit (all statements succeed or none do), so there's never a window where the
     // acting user has already been demoted but the target hasn't yet become owner (or vice
     // versa) if the second statement were to fail on its own.
-    const [, [newOwner]] = await db.batch([
+    const [, [newOwnerRow]] = await db.batch([
       updateUserRoleQuery(db, actingUser.id, 'admin'),
       updateUserRoleQuery(db, target.id, 'owner'),
     ]);
+    // update...where(id).returning() always yields exactly one row for an id that existed a
+    // moment ago (getUserById already confirmed target exists) — same non-null assertion
+    // updateUserRole() itself uses for the identical shape.
+    const newOwner = newOwnerRow!;
     await recordAudit(db, {
       actorUserId: actingUser.id,
       action: 'ownership.transferred',
