@@ -140,3 +140,44 @@
     @apply font-sans;
     }
 }
+
+/* Styling for Tiptap's generated content (components/rich-text-editor.tsx) — element rules
+   scoped to .ProseMirror rather than pulling in @tailwindcss/typography for one editor. */
+.ProseMirror {
+  outline: none;
+}
+.ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  color: var(--muted-foreground);
+  pointer-events: none;
+}
+.ProseMirror h2 {
+  @apply mt-3 mb-1.5 text-lg font-semibold first:mt-0;
+}
+.ProseMirror h3 {
+  @apply mt-3 mb-1.5 text-base font-semibold first:mt-0;
+}
+.ProseMirror p {
+  @apply my-2 first:mt-0 last:mb-0;
+}
+.ProseMirror ul,
+.ProseMirror ol {
+  @apply my-2 pl-6;
+}
+.ProseMirror ul {
+  @apply list-disc;
+}
+.ProseMirror ol {
+  @apply list-decimal;
+}
+.ProseMirror blockquote {
+  @apply my-2 border-l-2 border-border pl-3 text-muted-foreground;
+}
+.ProseMirror a {
+  @apply text-primary underline underline-offset-2;
+}
+.ProseMirror code {
+  @apply rounded bg-muted px-1 py-0.5 text-[0.85em];
+}

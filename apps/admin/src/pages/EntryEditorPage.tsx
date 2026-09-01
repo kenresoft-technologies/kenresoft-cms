@@ -223,9 +223,20 @@ function EntryForm({ contentTypeId, entryId, fields, entry }: EntryFormProps) {
                 {fields.map((field) => (
                   <div key={field.id} className="flex items-start justify-between gap-4 border-b py-2 last:border-0">
                     <span className="shrink-0 text-sm font-medium text-muted-foreground">{field.label}</span>
-                    <span className="max-w-[70%] text-right text-sm break-words">
-                      {formatPreviewValue(data[field.name])}
-                    </span>
+                    {field.fieldType === 'rich_text' && typeof data[field.name] === 'string' && data[field.name] ? (
+                      // Same trust boundary as examples/astro-site's set:html use of this same
+                      // field: only an authenticated editor/owner can reach this value, and it
+                      // was produced by Tiptap's schema-constrained editor (rich-text-editor.tsx),
+                      // never arbitrary visitor input.
+                      <div
+                        className="ProseMirror max-w-[70%] text-left text-sm break-words"
+                        dangerouslySetInnerHTML={{ __html: data[field.name] as string }}
+                      />
+                    ) : (
+                      <span className="max-w-[70%] text-right text-sm break-words">
+                        {formatPreviewValue(data[field.name])}
+                      </span>
+                    )}
                   </div>
                 ))}
               </TabsContent>

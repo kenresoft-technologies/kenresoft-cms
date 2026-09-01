@@ -6,6 +6,7 @@ import { useEntries } from '@/lib/queries/entries';
 import { mediaFileUrl, useMediaList } from '@/lib/queries/media';
 import { cn } from '@/lib/utils';
 import type { FieldDefinition } from '@/lib/types';
+import { RichTextEditor } from '@/components/rich-text-editor';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
@@ -50,10 +51,19 @@ function TextAreaField({ field, value, onChange }: FieldInputProps) {
       <Textarea
         id={id}
         required={field.required}
-        rows={field.fieldType === 'rich_text' ? 8 : 4}
+        rows={4}
         value={typeof value === 'string' ? value : ''}
         onChange={(event) => onChange(event.target.value)}
       />
+    </div>
+  );
+}
+
+function RichTextField({ field, value, onChange }: FieldInputProps) {
+  return (
+    <div className="flex flex-col gap-2">
+      <Label>{field.label}</Label>
+      <RichTextEditor value={typeof value === 'string' ? value : ''} onChange={onChange} />
     </div>
   );
 }
@@ -290,7 +300,10 @@ export function FieldInput({ field, value, onChange }: FieldInputProps) {
   if (field.fieldType === 'boolean') {
     return <BooleanField field={field} value={value} onChange={onChange} />;
   }
-  if (field.fieldType === 'textarea' || field.fieldType === 'rich_text') {
+  if (field.fieldType === 'rich_text') {
+    return <RichTextField field={field} value={value} onChange={onChange} />;
+  }
+  if (field.fieldType === 'textarea') {
     return <TextAreaField field={field} value={value} onChange={onChange} />;
   }
   if (field.fieldType === 'select') {
