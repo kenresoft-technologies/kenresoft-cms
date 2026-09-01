@@ -14,6 +14,10 @@
     "test": "pnpm -r test",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
-    "clean": "pnpm -r clean"
+    "clean": "pnpm -r clean",
+    "setup": "node scripts/setup.mjs"
+  },
+  "devDependencies": {
+    "wrangler": "^4.42.4"
   }
 }

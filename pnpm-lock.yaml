@@ -6,7 +6,11 @@ settings:
 
 importers:
 
-  .: {}
+  .:
+    devDependencies:
+      wrangler:
+        specifier: ^4.42.4
+        version: 4.126.0(@cloudflare/workers-types@5.20260826.1)
 
   apps/admin:
     dependencies:
@@ -176,6 +180,9 @@ importers:
       vitest:
         specifier: ^4.1.11
         version: 4.1.11(@types/node@24.13.3)(jsdom@25.0.1)(vite@8.2.2(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.12)(yaml@2.9.0))
+      wrangler:
+        specifier: ^4.42.4
+        version: 4.126.0(@cloudflare/workers-types@5.20260826.1)
 
   apps/api:
     dependencies:
