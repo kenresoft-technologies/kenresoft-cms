@@ -366,3 +366,24 @@ quirk in better-auth/better-call surfaced by a wrong-password test in the Owner-
 `api: fix a CI-breaking unhandled rejection...` (2026-09-01) fixed it, and a follow-up commit
 made ownership transfer a single atomic `db.batch()` (it was two independently-awaited writes
 despite its own comments claiming atomicity) and rejected transferring to a disabled account.
+
+**Open-source packaging pass** (2026-09-01, prompted by an external review of the repo ahead of
+a wider release) — done: Developer Mode gating replaced its role-floor rule ("everyone at or
+above Author automatically gets it") with a real **Developer Tools permission** — owner/admin
+still always qualify once the deployment-wide flag is on, but editor/author now need an
+explicit per-user grant (`user.developerToolsAccess`, migration `0015_quiet_gamora.sql`;
+toggled from a new switch on the Users page, backed by an admin-gated
+`PATCH /api/v1/admin/users/:id/developer-tools-access`) rather than every author on a team
+seeing developer tooling the moment one admin turns the flag on for anyone. `wrangler.toml`'s
+committed `CORS_ORIGINS` dropped a contributor's personal LAN IP (`192.168.0.159`) that had been
+checked in for local mobile testing — that kind of override now belongs in the gitignored
+`apps/api/.dev.vars` (documented in `.dev.vars.example`), never in the deployed/production
+config a fork inherits. The break-glass `OWNER_RECOVERY_SECRET` path gained explicit "this is a
+standing master key, not a convenience" warnings in both `wrangler.toml` and
+`docs/DEPLOYMENT.md`, plus a recommendation to `wrangler secret delete` it once it's no longer
+needed. And a new unauthenticated `GET /api/v1/system/status` (deployment-wide, so it carries
+none of the account-enumeration risk the password-reset routes guard against) backs an honest
+"email delivery isn't configured" notice on `ForgotPasswordPage` — replacing the generic
+"check your email" message when `EMAIL_PROVIDER` is unset — and a matching read-only status
+line in Settings → API, so an owner setting up a fresh deployment isn't left assuming
+password-reset email works when it silently doesn't.
