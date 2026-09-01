@@ -62,6 +62,43 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
+  deploy-admin:
+    name: Deploy admin app (apps/admin)
+    if: vars.DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    environment: production
+    # Not a hard dependency of deploy-api's actual output (VITE_API_URL below is a fixed,
+    # already-known repository variable, not derived from this run) — added so a failed API
+    # deploy blocks this job rather than shipping an admin build pointed at a broken API.
+    needs: deploy-api
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # VITE_API_URL is baked into the build by Vite (build-time only, never runtime-configurable)
+      # — the deployment owner's own deployed API URL, set once as a repository/environment
+      # variable after the API's first deploy establishes its URL. See docs/DEPLOYMENT.md.
+      - name: Build admin app
+        run: pnpm --filter @kenresoft/admin build
+        env:
+          VITE_API_URL: ${{ vars.VITE_API_URL }}
+
+      - name: Deploy to Cloudflare Pages
+        run: pnpm --filter @kenresoft/admin exec wrangler pages deploy dist --project-name "$CLOUDFLARE_ADMIN_PAGES_PROJECT" --branch main
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_ADMIN_PAGES_PROJECT: ${{ vars.CLOUDFLARE_ADMIN_PAGES_PROJECT }}
+
   deploy-marketing-site:
     name: Deploy marketing site (examples/astro-site)
     if: vars.DEPLOY_ENABLED == 'true'

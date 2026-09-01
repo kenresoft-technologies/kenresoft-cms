@@ -8,6 +8,7 @@
     "dev:live": "vite --mode live",
     "build": "vite build",
     "preview": "vite preview",
+    "deploy": "wrangler pages deploy dist",
     "test": "vitest run",
     "e2e": "node e2e/setup.mjs && playwright test",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json",
@@ -70,6 +71,7 @@
     "tailwindcss": "^4.3.3",
     "typescript": "^5.9.3",
     "vite": "^8.2.2",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.11",
+    "wrangler": "^4.42.4"
   }
 }
