@@ -50,13 +50,56 @@ describe('sniffImage', () => {
     expect(sniffImage(bytes)).toEqual({ contentType: 'image/jpeg', width: 200, height: 100 });
   });
 
-  it('recognizes WebP by its RIFF/WEBP container signature, with no dimensions', () => {
+  it('recognizes WebP by its RIFF/WEBP container signature, with no dimensions when truncated', () => {
     const bytes = new Uint8Array([
       0x52, 0x49, 0x46, 0x46, // RIFF
       0x00, 0x00, 0x00, 0x00, // chunk size
       0x57, 0x45, 0x42, 0x50, // WEBP
     ]);
     expect(sniffImage(bytes)).toEqual({ contentType: 'image/webp', width: null, height: null });
+  });
+
+  it('parses dimensions from a lossy (VP8 ) WebP bitstream', () => {
+    const bytes = new Uint8Array([
+      0x52, 0x49, 0x46, 0x46, // RIFF
+      0x00, 0x00, 0x00, 0x00, // chunk size
+      0x57, 0x45, 0x42, 0x50, // WEBP
+      0x56, 0x50, 0x38, 0x20, // "VP8 "
+      0x00, 0x00, 0x00, 0x00, // sub-chunk size
+      0x00, 0x00, 0x00, // frame tag
+      0x9d, 0x01, 0x2a, // sync code
+      0xc8, 0x00, // width = 200
+      0x96, 0x00, // height = 150
+    ]);
+    expect(sniffImage(bytes)).toEqual({ contentType: 'image/webp', width: 200, height: 150 });
+  });
+
+  it('parses dimensions from a lossless (VP8L) WebP bitstream', () => {
+    const bytes = new Uint8Array([
+      0x52, 0x49, 0x46, 0x46, // RIFF
+      0x00, 0x00, 0x00, 0x00, // chunk size
+      0x57, 0x45, 0x42, 0x50, // WEBP
+      0x56, 0x50, 0x38, 0x4c, // "VP8L"
+      0x00, 0x00, 0x00, 0x00, // sub-chunk size
+      0x2f, // signature
+      0x63, 0x40, 0x0c, 0x00, // packed width-1=99, height-1=49 -> width=100, height=50
+    ]);
+    expect(sniffImage(bytes)).toEqual({ contentType: 'image/webp', width: 100, height: 50 });
+  });
+
+  it('parses dimensions from an extended (VP8X) WebP container', () => {
+    const bytes = new Uint8Array([
+      0x52, 0x49, 0x46, 0x46, // RIFF
+      0x00, 0x00, 0x00, 0x00, // chunk size
+      0x57, 0x45, 0x42, 0x50, // WEBP
+      0x56, 0x50, 0x38, 0x58, // "VP8X"
+      0x00, 0x00, 0x00, 0x00, // sub-chunk size
+      0x10, // flags
+      0x00, 0x00, 0x00, // reserved
+      0xff, 0x03, 0x00, // canvas-width-1 = 1023 -> width = 1024
+      0xff, 0x02, 0x00, // canvas-height-1 = 767 -> height = 768
+    ]);
+    expect(sniffImage(bytes)).toEqual({ contentType: 'image/webp', width: 1024, height: 768 });
   });
 
   it('rejects bytes that match no supported image signature', () => {

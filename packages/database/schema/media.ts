@@ -15,7 +15,8 @@ export const media = sqliteTable('media', {
   filename: text('filename').notNull(),
   contentType: text('content_type').notNull().$type<MediaContentType>(),
   size: integer('size').notNull(),
-  // Null for formats dimension-parsing doesn't cover yet (currently: WebP).
+  // Null only if the file's dimensions couldn't be parsed from its bytes at all (every
+  // supported format — PNG/GIF/JPEG/WebP — has parsing; apps/api/src/lib/image-metadata.ts).
   width: integer('width'),
   height: integer('height'),
   altText: text('alt_text'),
