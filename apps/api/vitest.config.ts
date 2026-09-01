@@ -14,7 +14,11 @@ export default defineWorkersConfig(async () => {
       setupFiles: ['./test/apply-migrations.ts'],
       poolOptions: {
         workers: {
-          wrangler: { configPath: './wrangler.toml' },
+          // wrangler.test.toml, not wrangler.toml — see that file's own top comment. The real
+          // config's top-level D1/R2 bindings deliberately omit their id/name for reusability
+          // (automatic provisioning on a real deploy), which this offline test pool can't work
+          // with at all — it needs concrete placeholder values to key its local Miniflare state.
+          wrangler: { configPath: './wrangler.test.toml' },
           miniflare: {
             bindings: {
               TEST_MIGRATIONS: migrations,

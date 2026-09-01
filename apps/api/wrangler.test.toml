@@ -1,0 +1,50 @@
+# Config for the @cloudflare/vitest-pool-workers test pool ONLY (apps/api/vitest.config.ts) —
+# never used for a real `wrangler deploy`, never read by `wrangler dev`. It exists because
+# wrangler.toml's top-level [[d1_databases]]/[[r2_buckets]] deliberately omit database_id/
+# bucket_name so a real deploy (fresh clone, the deploy button, `pnpm run setup`) triggers
+# wrangler's automatic resource provisioning — but the local Miniflare simulation this test pool
+# runs entirely offline needs *some* concrete id/name up front to key its local state by, real
+# Cloudflare account or not. Splitting this into its own file (rather than an [env.test] block
+# inside wrangler.toml) avoids wrangler's environments not inheriting array bindings from the
+# top level, which would otherwise force a third near-complete duplicate of every binding section
+# — see wrangler.toml's own [env.production] comment for that constraint.
+#
+# The database_id/bucket_name below are arbitrary placeholders, not real Cloudflare resources —
+# Miniflare never contacts Cloudflare with them, it only uses them as local state directory keys.
+name = "kenresoft-cms-api"
+main = "src/index.ts"
+compatibility_date = "2026-08-01"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "kenresoft-cms-db"
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "../../packages/database/migrations"
+
+[[r2_buckets]]
+binding = "MEDIA_BUCKET"
+bucket_name = "kenresoft-cms-media-test"
+
+[[ratelimits]]
+name = "FORM_SUBMISSION_RATE_LIMITER"
+namespace_id = "1001"
+simple = { limit = 5, period = 60 }
+
+[[ratelimits]]
+name = "AUTH_RATE_LIMITER"
+namespace_id = "1002"
+simple = { limit = 10, period = 60 }
+
+[[ratelimits]]
+name = "RECOVERY_RATE_LIMITER"
+namespace_id = "1003"
+simple = { limit = 3, period = 60 }
+
+[triggers]
+crons = ["*/5 * * * *"]
+
+[vars]
+API_VERSION = "v1"
+CORS_ORIGINS = "http://localhost:5173,http://localhost:5174,http://localhost:5175,http://localhost:5176,http://localhost:5177"
+BETTER_AUTH_URL = "http://localhost:8787"
