@@ -361,4 +361,8 @@ Per the roadmap in `docs/ARCHITECTURE.md` §20:
   Kenresoft itself holds no credential or back door into any deployment through any of this —
   see `docs/ARCHITECTURE.md` §10.1/§11 and `docs/DEPLOYMENT.md`'s setup section.
 
-CI is green on `develop`.
+CI is green on `develop` — was red for three pushes (2026-08-28) from an unhandled-rejection
+quirk in better-auth/better-call surfaced by a wrong-password test in the Owner-role pass;
+`api: fix a CI-breaking unhandled rejection...` (2026-09-01) fixed it, and a follow-up commit
+made ownership transfer a single atomic `db.batch()` (it was two independently-awaited writes
+despite its own comments claiming atomicity) and rejected transferring to a disabled account.
