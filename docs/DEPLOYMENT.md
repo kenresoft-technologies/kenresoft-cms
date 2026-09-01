@@ -221,8 +221,26 @@ somewhere you control (it's a normal `wrangler` CLI call, nothing D1-specific ab
 it).
 
 **R2** (media file bytes — D1 only stores each file's metadata and its R2 key, never the
-binary, `docs/ARCHITECTURE.md` §9/§14): there's no equivalent single-command bucket export.
-R2 is S3-API-compatible, so an S3-aware sync tool (e.g. `rclone`) pointed at your bucket's S3
-endpoint (from the Cloudflare dashboard → R2 → your bucket → Settings) is the practical way to
-mirror it somewhere else. This is a real, currently-open gap for this project — there's no
-scripted or scheduled R2 backup shipped here yet, just the mechanism to build one on.
+binary, `docs/ARCHITECTURE.md` §9/§14): there's no single-command bucket export in R2/wrangler,
+so `apps/api/scripts/backup-media.mjs` walks the `media` table (the one source of truth for
+which R2 keys exist) and downloads/uploads each object individually via `wrangler r2 object
+get`/`put` — the same "shell out to wrangler, no driver of its own" approach
+`recover-owner.mjs` uses for D1:
+
+```bash
+cd apps/api
+pnpm backup-media -- --remote --out ./media-backup     # or --local for local dev
+pnpm restore-media -- --remote --from ./media-backup
+```
+
+A backup is a plain directory: `manifest.json` (every media row's metadata) plus an `objects/`
+tree mirroring each file's own R2 key. Restoring only repopulates R2 — run it alongside
+restoring the corresponding D1 backup above, since D1's `media` table is what makes those R2
+keys discoverable by the app at all; restoring one without the other leaves either orphaned
+files with no metadata pointing at them, or metadata pointing at files that don't exist.
+Verified end-to-end against a real local deployment (backup, then restore the same objects back
+over themselves, then confirmed the bytes were unchanged) the same way the D1 drill above was.
+
+If you'd rather mirror the whole bucket continuously instead of running point-in-time backups,
+R2 is also S3-API-compatible, so an S3-aware sync tool (e.g. `rclone`) pointed at your bucket's
+S3 endpoint (Cloudflare dashboard → R2 → your bucket → Settings) works too.

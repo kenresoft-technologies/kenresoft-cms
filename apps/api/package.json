@@ -9,6 +9,8 @@
     "auth:generate": "pnpm dlx @better-auth/cli@1.4.21 generate --config ./auth-cli.config.ts --output ../../packages/database/schema/auth.ts -y",
     "recover-owner:local": "node scripts/recover-owner.mjs --local",
     "recover-owner:remote": "node scripts/recover-owner.mjs --remote",
+    "backup-media": "node scripts/backup-media.mjs backup",
+    "restore-media": "node scripts/backup-media.mjs restore",
     "build": "tsc --noEmit",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
