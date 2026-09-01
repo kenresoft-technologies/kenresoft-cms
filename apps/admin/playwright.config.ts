@@ -26,7 +26,10 @@ export default defineConfig({
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: [
     {
-      command: `pnpm exec wrangler dev --port ${API_PORT} --persist-to .wrangler/e2e-state --var CORS_ORIGINS:http://localhost:${ADMIN_PORT} --var BETTER_AUTH_URL:http://localhost:${API_PORT}`,
+      // --config ../../wrangler.toml: wrangler.toml lives at the repo root (README.md's "Deploy
+      // to Cloudflare" button only detects a config there), not apps/api/ — explicit rather
+      // than relying on wrangler's own upward directory search finding it from this cwd.
+      command: `pnpm exec wrangler dev --port ${API_PORT} --config ../../wrangler.toml --persist-to .wrangler/e2e-state --var CORS_ORIGINS:http://localhost:${ADMIN_PORT} --var BETTER_AUTH_URL:http://localhost:${API_PORT}`,
       cwd: path.resolve(import.meta.dirname, '../api'),
       url: `http://localhost:${API_PORT}/api/v1/health`,
       reuseExistingServer: false,

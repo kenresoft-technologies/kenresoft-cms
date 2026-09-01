@@ -1,7 +1,17 @@
 # Kenresoft CMS — API Worker
+#
+# Lives at the repo root, not inside apps/api/, even though that's the Worker's own directory —
+# the "Deploy to Cloudflare" button (README.md) only detects a wrangler config at the repository
+# root; a monorepo subdirectory URL does a sparse checkout of just that folder instead, which
+# would break apps/api's workspace:* dependencies on @kenresoft/database/@kenresoft/contracts
+# (confirmed the hard way — the button reported "No Wrangler configuration detected" when this
+# file lived at apps/api/wrangler.toml with no subdirectory in the button URL). Every path below
+# is relative to this file's own location (the repo root), not to whatever cwd a command runs
+# from — apps/api/package.json's dev/deploy scripts pass --config ../../wrangler.toml explicitly
+# so they keep working unchanged from their own directory.
 
 name = "kenresoft-cms-api"
-main = "src/index.ts"
+main = "apps/api/src/index.ts"
 compatibility_date = "2026-08-01"
 # better-auth needs node:async_hooks (AsyncLocalStorage) at runtime.
 compatibility_flags = ["nodejs_compat"]
@@ -9,7 +19,7 @@ compatibility_flags = ["nodejs_compat"]
 [[d1_databases]]
 binding = "DB"
 database_name = "kenresoft-cms-db"
-migrations_dir = "../../packages/database/migrations"
+migrations_dir = "packages/database/migrations"
 # database_id deliberately omitted here (only here — [env.production] below has the real one).
 # A plain `wrangler deploy` against this top-level block — a fresh clone, `pnpm run setup`, or
 # the "Deploy to Cloudflare" button — triggers wrangler's own automatic provisioning
@@ -66,7 +76,7 @@ crons = ["*/5 * * * *"]
 [vars]
 API_VERSION = "v1"
 # Comma-separated allow-list per docs/ARCHITECTURE.md §9 — never "*". This is the generic,
-# reusable default for a fresh deployment — apps/api/.dev.vars overrides it back to localhost for
+# reusable default for a fresh deployment — .dev.vars overrides it back to localhost for
 # local dev either way (see .dev.vars.example) since .dev.vars overrides plain vars too, not just
 # secrets. Kenresoft's own real, currently-deployed origins live under [env.production] below,
 # not here — unlike before this file was split for reusability, this is NOT Kenresoft's real value.
@@ -79,7 +89,7 @@ API_VERSION = "v1"
 #
 # Testing from another device on your LAN (`dev:live` runs with --host, so a phone can reach it
 # via the host machine's LAN IP) needs its own allow-list entry, since that's a different
-# browser origin than "localhost" — add it in apps/api/.dev.vars (see .dev.vars.example), not
+# browser origin than "localhost" — add it in .dev.vars (see .dev.vars.example), not
 # here. This file is committed to the repo, so it must stay free of any one contributor's
 # personal, DHCP-assigned local network address.
 CORS_ORIGINS = "http://localhost:5173,http://localhost:5174,http://localhost:5175,http://localhost:5176,http://localhost:5177"
@@ -91,7 +101,7 @@ CORS_ORIGINS = "http://localhost:5173,http://localhost:5174,http://localhost:517
 # apps/api/src/lib/auth-options.ts already forces Secure cookies unconditionally rather than
 # inferring HTTPS from this value, so a first deploy never silently breaks cookie auth over it.
 BETTER_AUTH_URL = "https://REPLACE_AFTER_FIRST_DEPLOY.workers.dev"
-# BETTER_AUTH_SECRET is a real secret, not a var — set it in apps/api/.dev.vars for local dev
+# BETTER_AUTH_SECRET is a real secret, not a var — set it in .dev.vars for local dev
 # (see .dev.vars.example) and via `wrangler secret put BETTER_AUTH_SECRET` for deployed envs.
 
 # Password-recovery email (docs/ARCHITECTURE.md's recovery section) — all optional. Unset
@@ -138,7 +148,7 @@ name = "kenresoft-cms-api"
 binding = "DB"
 database_name = "kenresoft-cms-db"
 database_id = "29f46754-9256-4c0f-a2fc-90df8365d9aa"
-migrations_dir = "../../packages/database/migrations"
+migrations_dir = "packages/database/migrations"
 
 [[env.production.r2_buckets]]
 binding = "MEDIA_BUCKET"

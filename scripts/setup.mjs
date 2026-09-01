@@ -26,7 +26,9 @@ import { runWrangler, runWranglerInherit } from './lib/wrangler-cli.mjs';
 const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const API_DIR = join(REPO_ROOT, 'apps', 'api');
 const ADMIN_DIR = join(REPO_ROOT, 'apps', 'admin');
-const WRANGLER_TOML_PATH = join(API_DIR, 'wrangler.toml');
+// wrangler.toml lives at the repo root, not apps/api/ (see that file's own top comment) — the
+// "Deploy to Cloudflare" button only detects a config there.
+const WRANGLER_TOML_PATH = join(REPO_ROOT, 'wrangler.toml');
 
 const rl = createInterface({ input: process.stdin, output: process.stdout });
 async function ask(question, defaultValue) {
@@ -80,7 +82,7 @@ function replaceLine(toml, linePrefix, newLine) {
 async function ensureD1() {
   const toml = readToml();
   const block = findTopLevelBlock(toml, '[[d1_databases]]');
-  if (!block) throw new Error('Could not find [[d1_databases]] in apps/api/wrangler.toml.');
+  if (!block) throw new Error('Could not find [[d1_databases]] in wrangler.toml.');
   if (/\bdatabase_id\s*=/.test(block.text)) {
     console.log('✓ D1 database already configured (database_id present) — skipping.');
     return;
@@ -104,7 +106,7 @@ async function ensureD1() {
 async function ensureR2() {
   const toml = readToml();
   const block = findTopLevelBlock(toml, '[[r2_buckets]]');
-  if (!block) throw new Error('Could not find [[r2_buckets]] in apps/api/wrangler.toml.');
+  if (!block) throw new Error('Could not find [[r2_buckets]] in wrangler.toml.');
   if (/\bbucket_name\s*=/.test(block.text)) {
     console.log('✓ R2 bucket already configured (bucket_name present) — skipping.');
     return;
@@ -120,7 +122,7 @@ async function ensureR2() {
 async function ensureAuthSecret() {
   const useGenerated = await confirm('Generate BETTER_AUTH_SECRET automatically?', true);
   const secret = useGenerated ? randomBytes(32).toString('base64url') : await ask('Paste your own BETTER_AUTH_SECRET value');
-  runWrangler(['secret', 'put', 'BETTER_AUTH_SECRET'], { cwd: API_DIR, input: secret });
+  runWrangler(['secret', 'put', 'BETTER_AUTH_SECRET', '--config', WRANGLER_TOML_PATH], { cwd: API_DIR, input: secret });
   console.log('✓ BETTER_AUTH_SECRET set.');
 }
 
@@ -144,18 +146,18 @@ async function maybeSetUpEmail() {
 
   if (choice === 'resend') {
     const apiKey = await ask('Paste your Resend API key');
-    runWrangler(['secret', 'put', 'RESEND_API_KEY'], { cwd: API_DIR, input: apiKey });
+    runWrangler(['secret', 'put', 'RESEND_API_KEY', '--config', WRANGLER_TOML_PATH], { cwd: API_DIR, input: apiKey });
     console.log('✓ Resend configured.');
   } else {
     console.log('Cloudflare Email selected — you still need to add a [[send_email]] binding to');
-    console.log('apps/api/wrangler.toml and run `wrangler email sending enable` yourself (needs');
+    console.log('wrangler.toml and run `wrangler email sending enable` yourself (needs');
     console.log('interactive domain verification this script can\'t automate). See docs/DEPLOYMENT.md.');
   }
 }
 
 function deployApi() {
   console.log('Deploying the API Worker...');
-  const output = runWrangler(['deploy'], { cwd: API_DIR });
+  const output = runWrangler(['deploy', '--config', WRANGLER_TOML_PATH], { cwd: API_DIR });
   process.stdout.write(output);
   const match = output.match(/https:\/\/[a-z0-9.-]+\.workers\.dev/);
   if (!match) {

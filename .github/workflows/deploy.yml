@@ -47,7 +47,7 @@ jobs:
 
       # D1 migrations are additive and idempotent (wrangler only applies ones not yet recorded
       # in the remote d1_migrations table) — safe to run on every deploy. Runs against
-      # whichever database apps/api/wrangler.toml's [[d1_databases]] points at — the
+      # whichever database wrangler.toml's [[d1_databases]] points at — the
       # deployment owner's own D1, configured when they forked the repo (§11), never a
       # database chosen by this workflow.
       - name: Apply D1 migrations

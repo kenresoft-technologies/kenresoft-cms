@@ -28,6 +28,8 @@ For the authoritative, continuously-updated account of what's done and what isn'
 ## Monorepo layout
 
 ```
+wrangler.toml   The API Worker's config — lives at the repo root, not apps/api/, so the
+                "Deploy to Cloudflare" button (which only looks there) can find it
 apps/
   api/      @kenresoft/api    — Cloudflare Worker (Hono + D1 + R2)
   admin/    @kenresoft/admin  — React + Vite admin dashboard
@@ -51,7 +53,7 @@ tests/      Empty, reserved scaffolding — real full-stack E2E lives in apps/ad
 pnpm install
 
 # One-time local setup: secrets and the API URL the admin app talks to.
-cp apps/api/.dev.vars.example apps/api/.dev.vars   # then fill in BETTER_AUTH_SECRET
+cp .dev.vars.example .dev.vars   # then fill in BETTER_AUTH_SECRET
 cp apps/admin/.env.example apps/admin/.env
 
 # One-time (and after pulling new migrations): apply the schema to your local D1 database.
@@ -75,7 +77,7 @@ To also try the Astro integration once the CMS is running: `cd examples/astro-si
 ## Live deployment
 
 Kenresoft's own instance is deployed to `https://kenresoft-cms-api.kenresoft.workers.dev`
-(`apps/api`'s `wrangler.toml`). This is a reusable, self-hosted CMS, not a hosted service —
+(the repo root's `wrangler.toml`). This is a reusable, self-hosted CMS, not a hosted service —
 deploying your own instance to your own Cloudflare account is a first-class path, with three
 ways to do it (a one-click button, a guided CLI setup script, or the full manual walkthrough),
 documented in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md#three-ways-to-deploy):

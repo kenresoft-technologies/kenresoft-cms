@@ -36,11 +36,13 @@ const DB_NAME = 'kenresoft-cms-db';
 // `wrangler r2 bucket create kenresoft-cms-media --update-config` from docs/DEPLOYMENT.md's
 // step 3 — but a bucket left to wrangler's automatic provisioning (bucket_name omitted
 // entirely from wrangler.toml) gets an auto-generated, worker-name-prefixed name instead, not
-// this literal string. Check apps/api/wrangler.toml's [[r2_buckets]] (or
+// this literal string. Check the repo root's wrangler.toml's [[r2_buckets]] (or
 // [env.<name>.r2_buckets] if you keep your real deployment under a named environment, like
 // Kenresoft's own [env.production] does) and update this constant to match if it differs.
 const BUCKET_NAME = 'kenresoft-cms-media';
-const CONFIG_PATH = new URL('../wrangler.toml', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
+// wrangler.toml lives at the repo root, not apps/api/ (see that file's own top comment) —
+// apps/api/scripts/ -> apps/api/ -> apps/ -> repo root needs three "../" (verified empirically).
+const CONFIG_PATH = new URL('../../../wrangler.toml', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
 const WRANGLER_BIN = join(dirname(require.resolve('wrangler/package.json')), 'bin', 'wrangler.js');
 
 function runWrangler(args) {

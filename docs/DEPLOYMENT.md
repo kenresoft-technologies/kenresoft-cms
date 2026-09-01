@@ -13,13 +13,15 @@ the API Worker) provisioned automatically the first time you deploy — see belo
 - **One-click** — the button below clones this repo into your own GitHub account and deploys
   the API Worker through Cloudflare's own guided setup.
   [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/kenresoft-technologies/kenresoft-cms)
-  This is a pnpm workspace monorepo — `apps/api` depends on sibling packages
-  (`@kenresoft/database`, `@kenresoft/contracts`), so the button needs to clone the **full**
-  repository (not a subdirectory) for those to resolve, then be pointed at `apps/api` as the
-  Worker's root when its setup page asks. Whether that step works smoothly for this repo's
-  shape hasn't been proven by an end-to-end test run yet — if it doesn't, `pnpm run setup`
-  below does the same job locally, guaranteed to work since it's the same `wrangler` this whole
-  doc already relies on.
+  `wrangler.toml` deliberately lives at the **repository root**, not inside `apps/api/` where
+  the Worker's own source code is — the button only detects a config there, and a subdirectory
+  URL would do a sparse checkout that breaks `apps/api`'s `workspace:*` dependencies on
+  `@kenresoft/database`/`@kenresoft/contracts` (this failed exactly this way, with Cloudflare
+  reporting "No Wrangler configuration detected", before the config moved to the root — see
+  `wrangler.toml`'s own top comment). A full end-to-end button click-through hasn't been
+  re-confirmed since that fix; if you hit anything else unexpected, `pnpm run setup` below does
+  the same job locally, guaranteed to work since it's the same `wrangler` this whole doc relies
+  on.
 - **Guided CLI** — clone the repo, then:
   ```bash
   pnpm install
@@ -51,7 +53,7 @@ pnpm install
 
 ## 3. Provision your own Cloudflare resources
 
-`apps/api/wrangler.toml`'s `[[d1_databases]]`/`[[r2_buckets]]` bindings deliberately omit their
+`wrangler.toml`'s `[[d1_databases]]`/`[[r2_buckets]]` bindings deliberately omit their
 `database_id`/`bucket_name` — this triggers wrangler's own
 [automatic provisioning](https://developers.cloudflare.com/workers/wrangler/configuration/):
 the first plain `wrangler deploy` you run (step 6) creates a fresh D1 database and R2 bucket on
@@ -70,7 +72,7 @@ leave them as-is regardless.
 
 ## 4. CORS_ORIGINS and BETTER_AUTH_URL
 
-Two `[vars]` in `apps/api/wrangler.toml` you'll want to revisit once you have real URLs:
+Two `[vars]` in `wrangler.toml` you'll want to revisit once you have real URLs:
 
 - `CORS_ORIGINS`: append your deployed admin app's real origin once you've deployed it (step 8)
   — the committed default is just the local Vite dev server's ports.
@@ -134,7 +136,7 @@ wrangler pages deploy dist --project-name your-cms-admin --branch main
 ```
 
 Then close the loop: add the resulting `https://your-cms-admin.pages.dev` origin to
-`apps/api/wrangler.toml`'s `CORS_ORIGINS` (step 4) and redeploy the API once more — without
+`wrangler.toml`'s `CORS_ORIGINS` (step 4) and redeploy the API once more — without
 this, sign-in from the deployed admin app fails, since the API rejects cross-origin cookie auth
 from an origin it doesn't recognize (`docs/ARCHITECTURE.md` §9). `pnpm run setup` automates this
 entire sequence, including the final redeploy, if you opt into it when prompted.

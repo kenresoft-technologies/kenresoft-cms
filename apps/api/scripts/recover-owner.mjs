@@ -31,7 +31,10 @@ import { hashPassword } from 'better-auth/crypto';
 const require = createRequire(import.meta.url);
 
 const DB_NAME = 'kenresoft-cms-db';
-const CONFIG_PATH = new URL('../wrangler.toml', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
+// wrangler.toml lives at the repo root, not apps/api/ (see that file's own top comment) —
+// verified empirically (new URL()'s relative resolution isn't as simple as counting
+// directories by eye): apps/api/scripts/ -> apps/api/ -> apps/ -> repo root needs three "../".
+const CONFIG_PATH = new URL('../../../wrangler.toml', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
 // Invoked as a plain Node script rather than through pnpm/npx — those resolve to a .CMD shell
 // wrapper on Windows, which execFileSync can't run without shell:true, and shelling out with a
 // SQL string containing quotes is worth avoiding even when the input is operator-controlled.
