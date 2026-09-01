@@ -387,3 +387,26 @@ none of the account-enumeration risk the password-reset routes guard against) ba
 "check your email" message when `EMAIL_PROVIDER` is unset — and a matching read-only status
 line in Settings → API, so an owner setting up a fresh deployment isn't left assuming
 password-reset email works when it silently doesn't.
+
+**Open-items pass** (2026-09-01, working through the backlog of previously-flagged open items
+in this file) — done: **WebP dimension parsing** (`apps/api/src/lib/image-metadata.ts`), the
+one gap left in Phase 5's media-metadata note above — all three WebP bitstream sub-formats
+(VP8/VP8L/VP8X) now parse real width/height instead of storing null, verified with new unit
+tests for each format. **R2 media backup/restore** (`apps/api/scripts/backup-media.mjs`,
+`pnpm backup-media` / `restore-media`), closing the open gap noted under the CI/CD pipeline
+entry above — walks the `media` table's R2 keys and shells out to `wrangler r2 object get`/
+`put` per object (the same approach `recover-owner.mjs` uses for D1), verified end-to-end
+against real local dev state (backup, then restore the same objects back over themselves,
+confirmed byte-identical). **Public media metadata** (`GET /api/v1/public/media/:id` →
+`{ altText, contentType, width, height }`, `@kenresoft/astro`'s new `media.get()`) closes the
+smaller of the two Astro gaps noted under Public media serving above; `examples/astro-site`
+now renders real alt text (falling back to the entry's title only when a file has none set)
+and `width`/`height` attributes instead of always faking alt text from the title. The other,
+larger Astro gap — a public **content-type-metadata** endpoint — was deliberately left alone
+after asking: it's flagged in `docs/ASTRO.md` as a genuine product decision (exposing internal
+content-modeling structure publicly), not something to resolve unilaterally. Also fixed along
+the way: `docs/ASTRO.md`'s Static vs SSR section and two Known-limitations/Future-work bullets
+still described the pre-SSR-migration static-output behavior — a real gap between docs and
+`astro.config.mjs` (`output: 'server'` since the Astro SSR migration entry above), now
+corrected. The reported stuck first-login flow remains open pending more repro detail from
+whoever originally saw it (exact URL/environment/steps) — still nothing to act on without that.
