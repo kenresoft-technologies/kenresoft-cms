@@ -139,6 +139,22 @@ password manager, not a `.env` file that ends up in a screenshot) — anyone who
 the owner's password on this specific deployment. Leave it unset if you'd rather rely solely on
 the CLI tool below, which needs no standing secret at all.
 
+**Treat this as an extremely sensitive, ideally-temporary capability, not a permanent
+convenience.** Unlike a compromised admin session or even a compromised admin password, this
+secret bypasses the account entirely — no MFA, no re-authentication, no session to revoke — so
+possessing it is equivalent to holding a permanent master key to this deployment for as long as
+it stays set. Prefer setting it only when you actually anticipate needing it (or the moment
+you're locked out and have Cloudflare account access to run `wrangler secret put`), and unset it
+again once you've used it:
+
+```bash
+wrangler secret delete OWNER_RECOVERY_SECRET
+```
+
+If you do keep it set on an ongoing basis, rotate it periodically the same way you would any
+other standing credential, and audit `audit_log` (`owner.recovered` entries) if you ever suspect
+it leaked.
+
 **CLI owner recovery** — for when you have real access to the deployment's Cloudflare account
 (via `wrangler login` or an API token) but the owner can't sign in at all:
 

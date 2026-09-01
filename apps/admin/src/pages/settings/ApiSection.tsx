@@ -3,9 +3,10 @@ import { ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { API_URL, ApiError } from '@/lib/api-client';
-import { DEVELOPER_MODE_ROLES } from '@/lib/developer-mode';
+import { useSystemStatus } from '@/lib/queries/password-recovery';
 import { useUpdateSettings } from '@/lib/queries/settings';
 import type { Settings } from '@/lib/types';
+import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -71,7 +72,8 @@ function DeveloperExperienceSection({ settings, readOnly }: SectionProps) {
             content-focused CMS.
           </p>
           <p className="text-xs text-muted-foreground">
-            Visible to {DEVELOPER_MODE_ROLES.join(', ')} when on — never to Viewer.
+            Owner and Admin always see it once this is on. For Editor and Author, grant it per
+            person from the Users page — never to Viewer.
           </p>
         </div>
         <Switch
@@ -83,6 +85,39 @@ function DeveloperExperienceSection({ settings, readOnly }: SectionProps) {
       </div>
 
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
+    </SettingsSection>
+  );
+}
+
+// Read-only status, not a control — EMAIL_PROVIDER is a Worker var/secret set at deploy time
+// (docs/DEPLOYMENT.md's recovery section), not something the admin UI can change. Surfacing it
+// here closes the gap where an owner enables password reset in their head but never actually
+// sets EMAIL_PROVIDER, then gets a support request wondering why reset emails never arrive.
+function EmailDeliverySection() {
+  const { data: status } = useSystemStatus();
+
+  return (
+    <SettingsSection
+      title="Email delivery"
+      description="Whether this deployment can actually send password-reset emails."
+    >
+      <div className="flex items-center justify-between gap-4">
+        <p className="max-w-md text-sm text-muted-foreground">
+          {status?.emailConfigured
+            ? 'A real email provider is configured — password-reset requests deliver normally.'
+            : "No EMAIL_PROVIDER is set for this deployment. Password-reset requests still succeed, but no email is actually sent — set EMAIL_PROVIDER in wrangler.toml (see docs/DEPLOYMENT.md) to enable delivery."}
+        </p>
+        <Badge
+          variant="outline"
+          className={
+            status?.emailConfigured
+              ? 'shrink-0 border-success/30 bg-success/10 text-success'
+              : 'shrink-0 border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400'
+          }
+        >
+          {status?.emailConfigured ? 'Configured' : 'Not configured'}
+        </Badge>
+      </div>
     </SettingsSection>
   );
 }
@@ -124,6 +159,8 @@ export function ApiSection({ settings, readOnly }: SectionProps) {
   return (
     <div className="flex flex-col gap-6">
       <DeveloperExperienceSection settings={settings} readOnly={readOnly} />
+
+      <EmailDeliverySection />
 
       <SettingsSection
         title="API access"

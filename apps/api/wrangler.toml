@@ -63,13 +63,12 @@ API_VERSION = "v1"
 # are allow-listed rather than just one. Add the admin's real deployed origin here once it has
 # one, and drop these once dev:live typically lands on a stable port.
 #
-# The 192.168.0.159 entries are a personal convenience, not a general solution: `dev:live`
-# runs with --host, so it's reachable from other devices on the same LAN (a phone, for
-# instance) via the host machine's LAN IP — but that's a different browser origin than
-# "localhost", so it needs its own allow-list entries. This IP is DHCP-assigned and will go
-# stale whenever it changes; update it (or drop it if no longer needed) rather than leaving a
-# dead entry here.
-CORS_ORIGINS = "http://localhost:5173,http://localhost:5174,http://localhost:5175,http://localhost:5176,http://localhost:5177,http://192.168.0.159:5173,http://192.168.0.159:5174,http://192.168.0.159:5175,http://192.168.0.159:5176,http://192.168.0.159:5177"
+# Testing from another device on your LAN (`dev:live` runs with --host, so a phone can reach it
+# via the host machine's LAN IP) needs its own allow-list entry, since that's a different
+# browser origin than "localhost" — add it in apps/api/.dev.vars (see .dev.vars.example), not
+# here. This file is the deployed/production value and is committed to the repo, so it must
+# stay free of any one contributor's personal, DHCP-assigned local network address.
+CORS_ORIGINS = "http://localhost:5173,http://localhost:5174,http://localhost:5175,http://localhost:5176,http://localhost:5177"
 BETTER_AUTH_URL = "https://kenresoft-cms-api.kenresoft.workers.dev"
 # BETTER_AUTH_SECRET is a real secret, not a var — set it in apps/api/.dev.vars for local dev
 # (see .dev.vars.example) and via `wrangler secret put BETTER_AUTH_SECRET` for deployed envs.
@@ -88,3 +87,7 @@ BETTER_AUTH_URL = "https://kenresoft-cms-api.kenresoft.workers.dev"
 # (404) unless this secret is set — deliberately absent here and with no default anywhere in
 # the code. An operator who wants it enables it explicitly:
 #   wrangler secret put OWNER_RECOVERY_SECRET
+# EXTREMELY SENSITIVE while set: it bypasses the account entirely (no MFA, no session to
+# revoke) and is equivalent to a permanent master key for this deployment. docs/DEPLOYMENT.md's
+# recovery section has the full guidance — prefer setting it only when actually needed, then
+# `wrangler secret delete OWNER_RECOVERY_SECRET` once you're done.

@@ -19,6 +19,32 @@ const requestSchema = z.object({
 });
 const errorSchema = z.object({ error: z.string() });
 const successSchema = z.object({ message: z.string() });
+const statusSchema = z.object({ emailConfigured: z.boolean() });
+
+// Unauthenticated by design — this is deployment-wide, not per-account, so it carries none of
+// the account-enumeration risk that keeps /public/password-reset/request's response generic
+// regardless of input. Lets ForgotPasswordPage/RecoverWithCodePage tell someone up front that
+// password-reset email can't actually be delivered on this deployment (EMAIL_PROVIDER unset),
+// rather than them clicking "Send reset link" and waiting on an email that was never going to
+// arrive. docs/DEPLOYMENT.md's recovery section has the setup steps for enabling real delivery.
+systemRoute.openapi(
+  createRoute({
+    method: 'get',
+    path: '/status',
+    tags: ['System'],
+    summary: 'Deployment-wide feature availability (currently just email delivery)',
+    responses: {
+      200: {
+        description: 'Whether this deployment has a real email provider configured.',
+        content: { 'application/json': { schema: statusSchema } },
+      },
+    },
+  }),
+  (c) => {
+    const emailConfigured = c.env.EMAIL_PROVIDER === 'cloudflare' || c.env.EMAIL_PROVIDER === 'resend';
+    return c.json({ emailConfigured }, 200);
+  },
+);
 
 // The break-glass path for "every admin/owner account is locked out and no one has server
 // access to run the CLI recovery script" (docs/ARCHITECTURE.md's recovery section) — the other

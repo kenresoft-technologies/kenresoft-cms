@@ -6,3 +6,11 @@ BETTER_AUTH_SECRET=replace-with-a-32-plus-character-random-value
 # keep local dev pointed at localhost instead of the real deployment.
 CORS_ORIGINS=http://localhost:5173,http://localhost:5174,http://localhost:5175,http://localhost:5176,http://localhost:5177
 BETTER_AUTH_URL=http://localhost:8787
+
+# Testing from another device on your LAN (a phone, for instance)? `pnpm dev:live` in apps/admin
+# runs Vite with --host, making it reachable via this machine's LAN IP — but that's a different
+# browser origin than "localhost", so it needs its own CORS_ORIGINS entry. Append it to the
+# comma-separated line above rather than replacing it, e.g.:
+#   CORS_ORIGINS=http://localhost:5173,...,http://192.168.1.42:5173
+# This is a personal, machine-specific override — .dev.vars is gitignored, so it never lands in
+# the committed wrangler.toml. Your LAN IP is DHCP-assigned and will go stale if it changes.

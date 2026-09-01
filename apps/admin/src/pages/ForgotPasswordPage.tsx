@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { AlertCircle, ArrowLeft, KeyRound, Layers, Loader2, MailCheck } from 'lucide-react';
 import { Link } from 'react-router';
 
-import { useRequestPasswordReset } from '@/lib/queries/password-recovery';
+import { useRequestPasswordReset, useSystemStatus } from '@/lib/queries/password-recovery';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -28,6 +28,8 @@ export function ForgotPasswordPage() {
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
   const requestReset = useRequestPasswordReset();
+  const { data: systemStatus } = useSystemStatus();
+  const emailNotConfigured = systemStatus?.emailConfigured === false;
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -59,10 +61,18 @@ export function ForgotPasswordPage() {
                 <MailCheck className="size-5" />
               </div>
               <h2 className="text-2xl font-semibold tracking-tight">Check your email</h2>
-              <p className="text-base text-muted-foreground">
-                If an account exists for <span className="font-medium text-foreground">{email}</span>, we've sent a
-                link to reset your password. It expires in 1 hour.
-              </p>
+              {emailNotConfigured ? (
+                <p className="text-base text-muted-foreground">
+                  This deployment doesn't have email delivery configured yet, so no reset link was actually
+                  sent to <span className="font-medium text-foreground">{email}</span>. Ask whoever manages this
+                  CMS to reset your password directly, or use a recovery code if you have one.
+                </p>
+              ) : (
+                <p className="text-base text-muted-foreground">
+                  If an account exists for <span className="font-medium text-foreground">{email}</span>, we've sent a
+                  link to reset your password. It expires in 1 hour.
+                </p>
+              )}
             </div>
             <Button asChild variant="outline" className={`${FIELD_CLASS} gap-2 text-base`}>
               <Link to="/login">
@@ -79,6 +89,16 @@ export function ForgotPasswordPage() {
                 Enter your email and we'll send you a link to reset it.
               </p>
             </div>
+
+            {emailNotConfigured ? (
+              <div className="flex items-start gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-400">
+                <AlertCircle className="mt-0.5 size-4 shrink-0" />
+                <span>
+                  Email delivery isn't configured for this deployment — a reset link won't actually be sent.
+                  Ask whoever manages this CMS to reset your password directly, or use a recovery code below.
+                </span>
+              </div>
+            ) : null}
 
             <form className="flex flex-col gap-5" onSubmit={handleSubmit}>
               <div className="flex flex-col gap-2">
