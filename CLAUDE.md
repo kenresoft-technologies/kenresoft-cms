@@ -410,3 +410,25 @@ still described the pre-SSR-migration static-output behavior — a real gap betw
 `astro.config.mjs` (`output: 'server'` since the Astro SSR migration entry above), now
 corrected. The reported stuck first-login flow remains open pending more repro detail from
 whoever originally saw it (exact URL/environment/steps) — still nothing to act on without that.
+
+**Tiptap rich-text editor** (closing a real gap a follow-up audit found: `docs/ARCHITECTURE.md`
+and this file both documented Tiptap as the `rich_text` field's editor, §25's "LOCKED" stack
+table included, but it had never actually been wired in — `rich_text` fields rendered as the
+same plain `<textarea>` as the generic `textarea` type, and `tiptap` wasn't a dependency
+anywhere) — done: a new `apps/admin/src/components/rich-text-editor.tsx` wraps
+`@tiptap/react`/`@tiptap/starter-kit`/`@tiptap/extension-link`/`@tiptap/extension-placeholder`
+with a small toolbar (bold/italic/strikethrough/H2/H3/bullet+numbered list/blockquote/link/undo/
+redo), content still stored and returned as an HTML string — no change to that existing contract,
+which `examples/astro-site`'s blog page and other consumers already assumed. `FieldInput` now
+routes `rich_text` to it instead of sharing `textarea`'s plain input, and the Entry Editor's
+Preview tab renders that HTML for real (`dangerouslySetInnerHTML`, same trust boundary as
+`set:html` in the Astro example — reachable only once an authenticated editor/owner has written
+it) instead of dumping raw tags as text. The Link mark is constrained to http(s)/mailto both via
+its own `protocols` option and a second, explicit check before ever calling `setLink()`, closing
+off a `javascript:`-URI vector through this one field. Styled via plain CSS rules scoped to
+Tiptap's own `.ProseMirror` class in `index.css` rather than pulling in `@tailwindcss/typography`
+for one editor. Verified live end-to-end against an isolated dev instance (dedicated ports/D1
+state, mirroring the E2E harness — never the developer's own running `pnpm dev`): signed up,
+created a content type with a `rich_text` field, typed and formatted real content through every
+toolbar button including a link, confirmed the generated HTML and the Preview tab's rendering
+were both correct, with zero console errors.
