@@ -466,3 +466,43 @@ dialogs/popovers opened from inside fullscreen still stack above it). Verified l
 again the same way as the first pass: task list checkbox state, table row/column edits, code
 syntax highlighting, and a full Write → Markdown (edit) → Write round trip all confirmed
 correct, zero console errors.
+
+**Deploy tooling: a one-click button, a guided CLI, and updated manual docs** (matching what
+Payload/SonicJS/FlareCMS-style projects offer, prompted directly by a user request) — done, with
+one important correction made mid-implementation and one honestly-flagged gap. `apps/api/
+wrangler.toml` is now split: the top-level `[[d1_databases]]`/`[[r2_buckets]]` deliberately omit
+`database_id`/`bucket_name` so a plain `wrangler deploy` — a fresh clone, the new "Deploy to
+Cloudflare" button (`README.md`), or the new `pnpm run setup` (`scripts/setup.mjs` +
+`scripts/lib/wrangler-cli.mjs`) — triggers wrangler's own automatic resource provisioning
+non-interactively; `[env.production]` separately pins Kenresoft's own real, already-live
+database/bucket/`BETTER_AUTH_URL`, with `name = "kenresoft-cms-api"` set explicitly (confirmed
+against Cloudflare's own current docs: omitting it there deploys to a *different* Worker named
+"kenresoft-cms-api-production" instead of the real one). A new `apps/api/wrangler.test.toml`
+(concrete placeholder ids) exists solely because `@cloudflare/vitest-pool-workers`' local
+Miniflare simulation can't work with the top-level config's now-intentionally-missing ids —
+caught by the test suite immediately failing after the split, not by inspection.
+
+The correction: `deploy.yml`'s own top comment already documented it as "opt-in per fork, not
+wired to Kenresoft's own account" — initially missed this and pointed the shared `apps/api`
+`deploy`/`packages/database` `migrate:remote` scripts at `--env production`, which would have
+broken them for every other fork. Reverted those two to stay generic; Kenresoft-specific
+deploys use new, separately-named `deploy:production`/`migrate:production` scripts instead.
+`recover-owner.mjs`/`backup-media.mjs` got the same correction — `--env` is now an optional
+passthrough flag (only Kenresoft needs `--remote --env production`; most forks' real resources
+live in the generic top-level config and need no flag at all) rather than hardcoded.
+`apps/admin` also gained a deploy path for the first time (a `deploy` script, a new
+`deploy-admin` CI job) — Cloudflare Pages, following `examples/astro-site`'s existing pattern.
+
+Honestly flagged, not silently assumed: whether Cloudflare's button setup page actually handles
+this monorepo correctly (clone the full repo, then isolate `apps/api` as the Worker root) has
+not been proven by a real click-through — documented in `docs/DEPLOYMENT.md` as
+experimental/unverified rather than a confident claim, with `pnpm run setup` positioned as the
+guaranteed-to-work fallback. Verification for everything else was `--dry-run` only (this session
+has real, authenticated write access to Kenresoft's own Cloudflare account, confirmed via
+`wrangler whoami` — deliberately never used for an actual deploy or real resource creation): a
+`wrangler deploy --dry-run --env production` resolves to the exact real Worker/D1/R2/vars, and a
+read-only `wrangler deployments list --env production` confirms it's the same Worker with real,
+pre-existing deployment history — not a fresh "-production"-suffixed one. The TOML-editing logic
+`scripts/setup.mjs` uses to patch in newly-created ids was verified against a scratch copy of
+the real file (correct insertion, `[env.production]` left untouched) but, like the button, has
+not been run for real against a live, unprovisioned account.
