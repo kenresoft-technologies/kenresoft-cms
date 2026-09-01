@@ -63,6 +63,16 @@ export const authOptions = {
         defaultValue: false,
         input: false,
       },
+      // Per-user Developer panel grant (docs in packages/database/schema/auth.ts) — surfaced
+      // on session.user like role/disabled so apps/admin/src/lib/developer-mode.ts can read it
+      // without a separate fetch. Never client-settable; toggled only via the admin-gated
+      // PATCH /api/v1/admin/users/:id/developer-tools-access route.
+      developerToolsAccess: {
+        type: 'boolean',
+        required: true,
+        defaultValue: false,
+        input: false,
+      },
     },
   },
   session: {

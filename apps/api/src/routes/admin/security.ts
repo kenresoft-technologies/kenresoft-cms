@@ -146,6 +146,7 @@ securityRoute.openapi(
       email: newOwner.email,
       role: newOwner.role as UserRole,
       disabled: newOwner.disabled,
+      developerToolsAccess: newOwner.developerToolsAccess,
       createdAt: newOwner.createdAt.toISOString(),
       lastActiveAt: null,
     };

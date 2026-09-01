@@ -18,6 +18,13 @@ export const user = sqliteTable("user", {
     .notNull(),
   role: text("role").default("editor").notNull(),
   disabled: integer("disabled", { mode: "boolean" }).default(false).notNull(),
+  // Whether this user can see the Developer panel (apps/admin/src/lib/developer-mode.ts) when
+  // the deployment-wide Developer Mode flag is also on. Owner/admin always qualify regardless
+  // of this column (they're the ones who can turn the flag on in the first place); for
+  // editor/author it's an explicit per-user grant rather than automatic from role, so an admin
+  // can hand developer tooling to the one technical author on a team without exposing it to
+  // every author by default.
+  developerToolsAccess: integer("developer_tools_access", { mode: "boolean" }).default(false).notNull(),
 });
 
 export const session = sqliteTable(

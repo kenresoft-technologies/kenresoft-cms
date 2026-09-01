@@ -8,6 +8,9 @@ export const adminUserSchema = z.object({
   email: z.string(),
   role: z.enum(USER_ROLES),
   disabled: z.boolean(),
+  // Per-user Developer panel grant, independent of role for editor/author (owner/admin always
+  // qualify regardless of this value — see apps/admin/src/lib/developer-mode.ts).
+  developerToolsAccess: z.boolean(),
   createdAt: z.string(),
   lastActiveAt: z.string().nullable(),
 });
@@ -18,6 +21,10 @@ export const updateUserRoleSchema = z.object({
 
 export const updateUserDisabledSchema = z.object({
   disabled: z.boolean(),
+});
+
+export const updateUserDeveloperToolsAccessSchema = z.object({
+  developerToolsAccess: z.boolean(),
 });
 
 export const elevateSchema = z.object({
@@ -57,6 +64,7 @@ export const sessionSchema = z.object({
 export type AdminUser = z.infer<typeof adminUserSchema>;
 export type UpdateUserRoleInput = z.infer<typeof updateUserRoleSchema>;
 export type UpdateUserDisabledInput = z.infer<typeof updateUserDisabledSchema>;
+export type UpdateUserDeveloperToolsAccessInput = z.infer<typeof updateUserDeveloperToolsAccessSchema>;
 export type ElevateInput = z.infer<typeof elevateSchema>;
 export type TransferOwnershipInput = z.infer<typeof transferOwnershipSchema>;
 export type CreateUserInput = z.infer<typeof createUserSchema>;

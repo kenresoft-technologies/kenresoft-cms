@@ -1,0 +1,1 @@
+ALTER TABLE `user` ADD `developer_tools_access` integer DEFAULT false NOT NULL;

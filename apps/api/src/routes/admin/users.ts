@@ -5,6 +5,7 @@ import {
   createUserSchema,
   idParamSchema,
   sessionSchema,
+  updateUserDeveloperToolsAccessSchema,
   updateUserDisabledSchema,
   updateUserRoleSchema,
 } from '@kenresoft/contracts';
@@ -23,6 +24,7 @@ import {
   getUserByEmail,
   getUserById,
   listUsersWithLastActive,
+  updateUserDeveloperToolsAccess,
   updateUserDisabled,
   updateUserRole,
 } from '../../repositories/users';
@@ -77,6 +79,7 @@ usersRoute.openapi(
       // (bootstrap hook + this very route) already guarantees in practice.
       role: user.role as UserRole,
       disabled: user.disabled,
+      developerToolsAccess: user.developerToolsAccess,
       createdAt: user.createdAt.toISOString(),
       lastActiveAt: user.lastActiveAt?.toISOString() ?? null,
     }));
@@ -149,6 +152,7 @@ usersRoute.openapi(
       // adminUserSchema) — always present in practice via the schema default.
       role: result.user.role as UserRole,
       disabled: false,
+      developerToolsAccess: false,
       createdAt: new Date(result.user.createdAt).toISOString(),
       lastActiveAt: null,
     };
@@ -237,6 +241,7 @@ usersRoute.openapi(
       email: updated.email,
       role: updated.role as UserRole,
       disabled: updated.disabled,
+      developerToolsAccess: updated.developerToolsAccess,
       createdAt: updated.createdAt.toISOString(),
       lastActiveAt: null,
     };
@@ -386,6 +391,66 @@ usersRoute.openapi(
       email: updated.email,
       role: updated.role as UserRole,
       disabled: updated.disabled,
+      developerToolsAccess: updated.developerToolsAccess,
+      createdAt: updated.createdAt.toISOString(),
+      lastActiveAt: null,
+    };
+    return c.json(response, 200);
+  },
+);
+
+// Admin-only, but deliberately not elevation-gated like disabling an admin — granting this only
+// exposes public-API-consumption reference material (endpoints, field shapes, copyable client
+// snippets), not database secrets, so it doesn't carry the same blast radius as a role or
+// disabled change. Owner/admin already see the Developer panel unconditionally whenever the
+// deployment-wide flag is on (apps/admin/src/lib/developer-mode.ts) regardless of this column —
+// this route exists so an admin can extend that same visibility to a specific editor or author
+// without raising their role.
+usersRoute.openapi(
+  createRoute({
+    method: 'patch',
+    path: '/{id}/developer-tools-access',
+    tags: ['Users'],
+    summary: "Grant or revoke a user's per-user Developer panel access (admin only)",
+    middleware: requireRole('admin'),
+    request: {
+      params: idParamSchema,
+      body: { content: { 'application/json': { schema: updateUserDeveloperToolsAccessSchema } } },
+    },
+    responses: {
+      200: {
+        description: 'The updated user.',
+        content: { 'application/json': { schema: adminUserSchema } },
+      },
+      404: {
+        description: 'No user with that id.',
+        content: { 'application/json': { schema: notFoundSchema } },
+      },
+    },
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const db = getDb(c);
+    const target = await getUserById(db, id);
+    if (!target) {
+      return c.json({ error: 'User not found' }, 404);
+    }
+
+    const { developerToolsAccess } = c.req.valid('json');
+    const updated = await updateUserDeveloperToolsAccess(db, target.id, developerToolsAccess);
+    await recordAudit(db, {
+      actorUserId: c.get('user').id,
+      action: developerToolsAccess ? 'user.developer_tools_granted' : 'user.developer_tools_revoked',
+      targetType: 'user',
+      targetId: target.id,
+    });
+    const response: AdminUser = {
+      id: updated.id,
+      name: updated.name,
+      email: updated.email,
+      role: updated.role as UserRole,
+      disabled: updated.disabled,
+      developerToolsAccess: updated.developerToolsAccess,
       createdAt: updated.createdAt.toISOString(),
       lastActiveAt: null,
     };

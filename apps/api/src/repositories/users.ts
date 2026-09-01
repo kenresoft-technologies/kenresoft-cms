@@ -8,6 +8,7 @@ export interface UserWithLastActive {
   email: string;
   role: string;
   disabled: boolean;
+  developerToolsAccess: boolean;
   createdAt: Date;
   lastActiveAt: Date | null;
 }
@@ -35,6 +36,7 @@ export async function listUsersWithLastActive(db: Database): Promise<UserWithLas
     email: row.email,
     role: row.role,
     disabled: row.disabled,
+    developerToolsAccess: row.developerToolsAccess,
     createdAt: row.createdAt,
     lastActiveAt: lastActiveByUser.get(row.id) ?? null,
   }));
@@ -77,6 +79,11 @@ export async function updateUserRole(db: Database, id: string, role: UserRole) {
 
 export async function updateUserDisabled(db: Database, id: string, disabled: boolean) {
   const [row] = await db.update(user).set({ disabled }).where(eq(user.id, id)).returning();
+  return row!;
+}
+
+export async function updateUserDeveloperToolsAccess(db: Database, id: string, developerToolsAccess: boolean) {
+  const [row] = await db.update(user).set({ developerToolsAccess }).where(eq(user.id, id)).returning();
   return row!;
 }
 
