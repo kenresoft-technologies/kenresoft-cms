@@ -41,7 +41,8 @@ integrations/
 docs/       Architecture and reference documentation, including docs/ASTRO.md
 examples/
   astro-site/ Reference Astro site built on @kenresoft/astro — see its own README
-tests/      Reserved for cross-package integration/E2E tests — not yet populated
+tests/      Empty, reserved scaffolding — real full-stack E2E lives in apps/admin/e2e instead
+            (Playwright, drives apps/admin + apps/api together against a dedicated port/D1 state)
 ```
 
 ## Getting started

@@ -1,5 +1,11 @@
 import { defineWorkersConfig, readD1Migrations } from '@cloudflare/vitest-pool-workers/config';
 
+// package.json pins vitest to ^3.2.4 here, deliberately behind apps/admin's ^4.x — not an
+// oversight to "fix" by bumping it. @cloudflare/vitest-pool-workers@0.9.14's peerDependencies
+// cap vitest/@vitest/runner/@vitest/snapshot at the 3.2.x line; a bump here would break every
+// test in this package until the pool package itself ships v4 support. Re-check this pin
+// whenever @cloudflare/vitest-pool-workers is upgraded.
+
 export default defineWorkersConfig(async () => {
   const migrations = await readD1Migrations('../../packages/database/migrations');
 
