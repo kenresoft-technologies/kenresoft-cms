@@ -5,12 +5,33 @@ provisioning your **own** Cloudflare account's resources and pointing your own f
 (`docs/ARCHITECTURE.md` §11, "Single Site Per Instance"). Nothing in this repository, including
 its GitHub Actions workflows, deploys to Kenresoft's own Cloudflare account on your behalf —
 every value that would need to be, is either configured per-deployment in files you edit after
-forking, or supplied via secrets/variables that belong to your own GitHub repository.
+forking, or supplied via secrets/variables that belong to your own GitHub repository, or (for
+the API Worker) provisioned automatically the first time you deploy — see below.
 
-You do **not** need GitHub Actions to deploy. Everything below works identically run by hand
-from your own machine with `wrangler`. The GitHub Actions workflow (`.github/workflows/
-deploy.yml`) is one convenience on top of that, entirely optional, and does nothing at all
-until you explicitly enable it (see "Automated deploys via GitHub Actions" below).
+## Three ways to deploy
+
+- **One-click** — the button below clones this repo into your own GitHub account and deploys
+  the API Worker through Cloudflare's own guided setup.
+  [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/kenresoft-technologies/kenresoft-cms)
+  This is a pnpm workspace monorepo — `apps/api` depends on sibling packages
+  (`@kenresoft/database`, `@kenresoft/contracts`), so the button needs to clone the **full**
+  repository (not a subdirectory) for those to resolve, then be pointed at `apps/api` as the
+  Worker's root when its setup page asks. Whether that step works smoothly for this repo's
+  shape hasn't been proven by an end-to-end test run yet — if it doesn't, `pnpm run setup`
+  below does the same job locally, guaranteed to work since it's the same `wrangler` this whole
+  doc already relies on.
+- **Guided CLI** — clone the repo, then:
+  ```bash
+  pnpm install
+  pnpm run setup
+  ```
+  Runs `scripts/setup.mjs`: checks you're logged in to `wrangler`, creates a D1 database and R2
+  bucket if you don't already have them configured, applies migrations, sets
+  `BETTER_AUTH_SECRET`, deploys, fixes up `BETTER_AUTH_URL` once the real deployed URL is known,
+  and optionally deploys `apps/admin` to Cloudflare Pages too. Recommended for anyone not
+  deploying through CI.
+- **Manual** — the full walkthrough below. Read this if you want to understand (or script)
+  every step yourself, or the guided paths above don't fit your setup.
 
 ## 1. Prerequisites
 
@@ -30,31 +51,35 @@ pnpm install
 
 ## 3. Provision your own Cloudflare resources
 
+`apps/api/wrangler.toml`'s `[[d1_databases]]`/`[[r2_buckets]]` bindings deliberately omit their
+`database_id`/`bucket_name` — this triggers wrangler's own
+[automatic provisioning](https://developers.cloudflare.com/workers/wrangler/configuration/):
+the first plain `wrangler deploy` you run (step 6) creates a fresh D1 database and R2 bucket on
+*your* account and writes their real ids back into `wrangler.toml` for you, non-interactively.
+**You can skip straight to step 5** unless you want more control than that — a specific
+`--location` hint, or resource names that don't match this repo's defaults:
+
 ```bash
-wrangler d1 create your-cms-db
-wrangler r2 bucket create your-cms-media
+wrangler d1 create kenresoft-cms-db --binding DB --update-config
+wrangler r2 bucket create kenresoft-cms-media --binding MEDIA_BUCKET --update-config
 ```
 
-Each command prints an id — you need them in the next step. The rate-limiting bindings in
-`apps/api/wrangler.toml` (`[[ratelimits]]`) use arbitrary, account-unique `namespace_id` values
-(`"1001"`, `"1002"`) — these are not provisioned resources, so you can leave them as-is.
+Either way, the rate-limiting bindings (`[[ratelimits]]`) use arbitrary, account-unique
+`namespace_id` values (`"1001"`, `"1002"`, `"1003"`) — these are not provisioned resources, so
+leave them as-is regardless.
 
-## 4. Point your fork at your own resources
+## 4. CORS_ORIGINS and BETTER_AUTH_URL
 
-Edit `apps/api/wrangler.toml`:
+Two `[vars]` in `apps/api/wrangler.toml` you'll want to revisit once you have real URLs:
 
-- `[[d1_databases]]` → `database_name` and `database_id`: the values `wrangler d1 create`
-  just printed.
-- `[[r2_buckets]]` → `bucket_name`: the bucket you just created.
-- `[vars]` → `CORS_ORIGINS`: your own admin app's real origin(s). The committed value is
-  Kenresoft's own dev-convenience list (localhost ports and a personal LAN IP) — replace it,
-  don't append to it.
-- `[vars]` → `BETTER_AUTH_URL`: your Worker's URL once deployed
-  (`https://<name>.<your-subdomain>.workers.dev`, or a custom domain).
-
-Also update `packages/database/package.json`'s `migrate:local`/`migrate:remote` scripts if you
-chose a database name other than the example above — they reference the D1 database by name,
-matching whatever you set in `wrangler.toml`.
+- `CORS_ORIGINS`: append your deployed admin app's real origin once you've deployed it (step 8)
+  — the committed default is just the local Vite dev server's ports.
+- `BETTER_AUTH_URL`: **can't be set correctly before your first deploy** — a Worker has no
+  `*.workers.dev` URL until it exists. The committed placeholder
+  (`https://REPLACE_AFTER_FIRST_DEPLOY.workers.dev`) is safe to deploy with as-is (it only
+  affects redirect/callback URL construction, not cookie security — see the file's own comment)
+  — deploy once (step 6), copy the real URL wrangler prints, paste it in here, then deploy again.
+  `pnpm run setup` automates exactly this.
 
 ## 5. Set secrets
 
@@ -67,12 +92,17 @@ Local dev also needs `.dev.vars` (copy `.dev.vars.example`) — it overrides bot
 secrets during `wrangler dev`, so your local `BETTER_AUTH_SECRET` can differ from the deployed
 one.
 
-## 6. Run migrations and deploy
+## 6. Deploy, then run migrations
 
 ```bash
-pnpm --filter @kenresoft/database migrate:remote
 pnpm --filter @kenresoft/api deploy
+pnpm --filter @kenresoft/database migrate:remote
 ```
+
+Deploy first: if you skipped the explicit `wrangler d1 create` in step 3, this is what
+auto-provisions your D1 database — migrations need it to already exist, so this order matters
+(reversing it fails with "database not found" the very first time, since nothing's created it
+yet). Once the database exists at all, either order is fine on every deploy after this one.
 
 The first request to your deployed Worker's sign-up page becomes the owner account
 (`docs/ARCHITECTURE.md` §10) — there's no separate seeding step.
@@ -92,11 +122,22 @@ wrangler pages deploy dist --project-name your-cms-site --branch main
 
 ## 8. The admin app
 
-`apps/admin` has no first-class deploy target yet — the documented workaround today is running
-it locally against your deployed API (see the root `README.md`'s "Live deployment" section).
-Deploying it to Cloudflare Pages as a static SPA works the same way as the marketing site above
-(`pnpm --filter @kenresoft/admin build`, then `wrangler pages deploy dist`), but isn't wired
-into `deploy.yml` yet.
+Deploy `apps/admin` to Cloudflare Pages the same way as the marketing site above, **after**
+step 6 — `VITE_API_URL` is baked into the build by Vite (build-time only, never
+runtime-configurable), so it needs your API's real deployed URL to already exist:
+
+```bash
+wrangler pages project create your-cms-admin
+cd apps/admin
+VITE_API_URL=https://your-worker-url pnpm build
+wrangler pages deploy dist --project-name your-cms-admin --branch main
+```
+
+Then close the loop: add the resulting `https://your-cms-admin.pages.dev` origin to
+`apps/api/wrangler.toml`'s `CORS_ORIGINS` (step 4) and redeploy the API once more — without
+this, sign-in from the deployed admin app fails, since the API rejects cross-origin cookie auth
+from an origin it doesn't recognize (`docs/ARCHITECTURE.md` §9). `pnpm run setup` automates this
+entire sequence, including the final redeploy, if you opt into it when prompted.
 
 ## Password recovery & owner recovery
 
@@ -166,13 +207,16 @@ pnpm recover-owner:remote           # or recover-owner:local for local dev
 It looks up the owner account via `wrangler d1 execute`, prompts for a new password
 interactively (never as a CLI argument, so it never lands in shell history), and signs that
 account out everywhere. Pass `--email someone@example.com` if a deployment ever has more than
-one owner.
+one owner, or `--env <name>` if your real D1 database lives under a named environment rather
+than `wrangler.toml`'s top level (only relevant if you've set up a split like step 3's optional
+explicit provisioning plus your own equivalent of `[env.production]` — most deployments don't
+need this flag).
 
 ## Automated deploys via GitHub Actions (optional)
 
-`.github/workflows/deploy.yml` can deploy the API worker and marketing site on every push to
-`main`, but is inert by default — every job is gated on a repository variable, so forking this
-repo never risks an accidental deploy attempt against secrets you haven't set.
+`.github/workflows/deploy.yml` can deploy the API Worker, the admin app, and the marketing site
+on every push to `main`, but is inert by default — every job is gated on a repository variable,
+so forking this repo never risks an accidental deploy attempt against secrets you haven't set.
 
 To enable it, in your fork's **Settings → Secrets and variables → Actions**:
 
@@ -188,11 +232,13 @@ To enable it, in your fork's **Settings → Secrets and variables → Actions**:
 | Variable | Value |
 | --- | --- |
 | `DEPLOY_ENABLED` | `true` — the on/off switch every job checks. Leave unset (or anything else) to keep the workflow a no-op. |
+| `VITE_API_URL` | Your deployed API's public URL, baked into the admin app build. |
+| `CLOUDFLARE_ADMIN_PAGES_PROJECT` | The admin app's Pages project name from step 8. |
 | `PUBLIC_KENRESOFT_CMS_URL` | Your deployed API's public URL, baked into the marketing site build. |
-| `CLOUDFLARE_PAGES_PROJECT` | The Pages project name from step 7. |
+| `CLOUDFLARE_PAGES_PROJECT` | The marketing site's Pages project name from step 7. |
 
 Using a GitHub [Environment](https://docs.github.com/en/actions/deployment/targeting-different-environments/using-environments-for-deployment)
-named `production` (both deploy jobs already declare `environment: production`) lets you add
+named `production` (every deploy job already declares `environment: production`) lets you add
 required reviewers or a wait timer on top of the `DEPLOY_ENABLED` gate — recommended once this
 is deploying somewhere real. The workflow also sets `concurrency: deploy-production` so two
 deploys can never race each other.
@@ -232,6 +278,12 @@ cd apps/api
 pnpm backup-media -- --remote --out ./media-backup     # or --local for local dev
 pnpm restore-media -- --remote --from ./media-backup
 ```
+
+Pass `--env <name>` too if your real R2 bucket lives under a named environment rather than
+`wrangler.toml`'s top level (same caveat as CLI owner recovery above). Also check the script's
+own `BUCKET_NAME` constant matches your actual bucket — it's only reliably
+`"kenresoft-cms-media"` if you used step 3's explicit `wrangler r2 bucket create`, not if you
+left the bucket name to automatic provisioning (which generates its own name).
 
 A backup is a plain directory: `manifest.json` (every media row's metadata) plus an `objects/`
 tree mirroring each file's own R2 key. Restoring only repopulates R2 — run it alongside

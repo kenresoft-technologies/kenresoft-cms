@@ -76,11 +76,14 @@ To also try the Astro integration once the CMS is running: `cd examples/astro-si
 
 Kenresoft's own instance is deployed to `https://kenresoft-cms-api.kenresoft.workers.dev`
 (`apps/api`'s `wrangler.toml`). This is a reusable, self-hosted CMS, not a hosted service —
-deploying your own instance to your own Cloudflare account is a first-class path, documented
-in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
+deploying your own instance to your own Cloudflare account is a first-class path, with three
+ways to do it (a one-click button, a guided CLI setup script, or the full manual walkthrough),
+documented in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md#three-ways-to-deploy):
 
-`apps/admin` has no deployed home yet — to manage Kenresoft's live deployment's content, run
-the admin app locally against it instead of the local API:
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/kenresoft-technologies/kenresoft-cms)
+
+Kenresoft's own `apps/admin` has no deployed home yet — to manage Kenresoft's live deployment's
+content, run the admin app locally against it instead of the local API:
 
 ```bash
 cd apps/admin
