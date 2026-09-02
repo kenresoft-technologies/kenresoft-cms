@@ -138,19 +138,6 @@ async function ensureAuthSecret() {
   return secret;
 }
 
-// Re-applies the already-generated secret one more time, as the very last thing this script
-// does — found necessary the hard way: this step originally ran once, early (before the
-// Worker's first-ever code deploy, when `secret put` creates a bare placeholder Worker just to
-// hold it), and a real deployment still came up throwing better-auth's "you are using the
-// default secret" error at every request despite `wrangler secret list` showing the secret as
-// configured. A plain, standalone `wrangler secret put` issued *after* every deploy in this
-// script had already finished fixed it immediately, with no redeploy — so re-asserting it here,
-// last, costs nothing and closes off whatever edge/propagation gap that ordering hit.
-function reassertAuthSecret(secret) {
-  console.log('Confirming BETTER_AUTH_SECRET is set on the fully-deployed Worker...');
-  runWrangler(['secret', 'put', 'BETTER_AUTH_SECRET', '--config', WRANGLER_TOML_PATH], { cwd: API_DIR, input: secret });
-}
-
 async function maybeSetUpEmail() {
   const choice = (await ask('Set up password-reset email now? [skip/cloudflare/resend]', 'skip')).toLowerCase();
   if (choice === 'skip' || !choice) {
@@ -180,6 +167,22 @@ async function maybeSetUpEmail() {
   }
 }
 
+// Idempotent: re-running `pnpm run setup` against an already-deployed admin Worker must not
+// keep appending the same origin to CORS_ORIGINS every time — parses the existing comma-separated
+// list and only writes back (and reports a change) if `origin` isn't already one of its entries.
+function addCorsOrigin(origin) {
+  const toml = readToml();
+  const match = toml.match(/CORS_ORIGINS = "([^"]*)"/);
+  if (!match) throw new Error('Could not find CORS_ORIGINS in wrangler.toml.');
+
+  const existing = match[1].split(',').map((entry) => entry.trim()).filter(Boolean);
+  if (existing.includes(origin)) return false;
+
+  const updatedList = [...existing, origin].join(',');
+  writeToml(toml.replace(/CORS_ORIGINS = "([^"]*)"/, `CORS_ORIGINS = "${updatedList}"`));
+  return true;
+}
+
 function deployApi() {
   console.log('Deploying the API Worker...');
   const output = runWrangler(['deploy', '--config', WRANGLER_TOML_PATH], { cwd: API_DIR });
@@ -206,7 +209,7 @@ async function main() {
     { cwd: API_DIR },
   );
 
-  const authSecret = await ensureAuthSecret();
+  await ensureAuthSecret();
   await maybeSetUpEmail();
 
   const firstUrl = deployApi();
@@ -242,13 +245,12 @@ async function main() {
   const adminUrl = adminMatch[0];
 
   console.log(`\nAdmin deployed: ${adminUrl}`);
-  console.log('Adding it to the API\'s CORS_ORIGINS and redeploying once more...');
-  const toml = readToml();
-  const updated = toml.replace(/CORS_ORIGINS = "([^"]*)"/, (_m, origins) => `CORS_ORIGINS = "${origins},${adminUrl}"`);
-  writeToml(updated);
-  deployApi();
-
-  reassertAuthSecret(authSecret);
+  if (addCorsOrigin(adminUrl)) {
+    console.log('Added the admin origin to CORS_ORIGINS — redeploying once more...');
+    deployApi();
+  } else {
+    console.log('✓ Admin origin already present in CORS_ORIGINS — skipping (running setup again is safe).');
+  }
 
   console.log('\n✓ CMS installed — sign up at the admin URL below (the first account becomes owner):');
   console.log(`  API:   ${finalUrl}`);

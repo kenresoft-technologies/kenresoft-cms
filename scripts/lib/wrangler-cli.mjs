@@ -20,7 +20,16 @@ export const WRANGLER_BIN = join(dirname(require.resolve('wrangler/package.json'
 export function runWrangler(args, options = {}) {
   return execFileSync(process.execPath, [WRANGLER_BIN, ...args], {
     encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'inherit'],
+    // stdio[0] must be 'pipe', not 'ignore', whenever `options.input` is set (e.g. `secret put`
+    // piping a value in) — confirmed empirically, the hard way: execFileSync does NOT let
+    // `input` override an explicitly-'ignore'd stdio[0] the way its docs read. With 'ignore'
+    // there, `input` is silently delivered as an empty string instead of erroring, which is
+    // exactly how ensureAuthSecret()/reassertAuthSecret() ended up setting BETTER_AUTH_SECRET to
+    // "" on a real deployment — wrangler happily reports success, `secret list` shows it
+    // configured, and better-auth still throws "you are using the default secret" at request
+    // time, because an empty string is falsy. 'pipe' is safe unconditionally: without `input`,
+    // an unwritten pipe behaves the same as 'ignore' for a command that never reads stdin.
+    stdio: ['pipe', 'pipe', 'inherit'],
     ...options,
   });
 }

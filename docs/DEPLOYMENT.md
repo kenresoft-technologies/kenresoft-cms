@@ -11,30 +11,39 @@ the API Worker) provisioned automatically the first time you deploy — see belo
 ## Three ways to deploy
 
 - **One-click** — the button below clones this repo into your own GitHub account and deploys
-  the API Worker through Cloudflare's own guided setup.
+  the API Worker (only — see "Two Workers, one install" below) through Cloudflare's own guided
+  setup. **Verified with a real click-through**, not just reasoned about: it correctly deploys
+  the API Worker end to end.
   [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/kenresoft-technologies/kenresoft-cms)
   `wrangler.toml` deliberately lives at the **repository root**, not inside `apps/api/` where
   the Worker's own source code is — the button only detects a config there, and a subdirectory
-  URL would do a sparse checkout that breaks `apps/api`'s `workspace:*` dependencies on
+  URL makes Cloudflare treat that subdirectory as the *entire* contents of the new repo it
+  creates, which would break `apps/api`'s `workspace:*` dependencies on
   `@kenresoft/database`/`@kenresoft/contracts` (this failed exactly this way, with Cloudflare
   reporting "No Wrangler configuration detected", before the config moved to the root — see
-  `wrangler.toml`'s own top comment). A full end-to-end button click-through hasn't been
-  re-confirmed since that fix; if you hit anything else unexpected, `pnpm run setup` below does
-  the same job locally, guaranteed to work since it's the same `wrangler` this whole doc relies
-  on.
+  `wrangler.toml`'s own top comment, and [`apps/api/README.md`](../apps/api/README.md) for the
+  full explanation). There is no equivalent button for the Admin Worker — see
+  [`apps/admin/README.md`](../apps/admin/README.md) for exactly why, confirmed empirically, not
+  assumed.
 - **Guided CLI** — clone the repo, then:
   ```bash
   pnpm install
   pnpm run setup
   ```
-  Runs `scripts/setup.mjs`: checks you're logged in to `wrangler`, creates a D1 database and R2
-  bucket if you don't already have them configured, applies migrations, sets
-  `BETTER_AUTH_SECRET`, deploys the API Worker, fixes up `BETTER_AUTH_URL` once the real deployed
-  URL is known, then builds and deploys `apps/admin` as its own Worker too (see "Two Workers, one
-  install" below) and wires its origin into `CORS_ORIGINS` for you. One command, both apps live.
-  Recommended for anyone not deploying through CI.
+  Runs `scripts/setup.mjs` — every step below is an explicit action the script performs, not
+  implicit "magic" (only wrangler's own D1/R2 auto-provisioning, used internally by a couple of
+  these steps, is genuinely automatic on Cloudflare's side): checks you're logged in to
+  `wrangler`, creates a D1 database and R2 bucket if you don't already have them configured,
+  applies migrations, sets `BETTER_AUTH_SECRET`, deploys the API Worker, fixes up
+  `BETTER_AUTH_URL` once the real deployed URL is known, then builds and deploys `apps/admin` as
+  its own Worker too (see "Two Workers, one install" below) and wires its origin into
+  `CORS_ORIGINS` for you — idempotently: running `pnpm run setup` again never appends a
+  duplicate origin, re-provisions an existing D1/R2, or otherwise redoes work that's already
+  done. One command, both apps live. Recommended for anyone not deploying through CI.
 - **Manual** — the full walkthrough below. Read this if you want to understand (or script)
-  every step yourself, or the guided paths above don't fit your setup.
+  every step yourself, or the guided paths above don't fit your setup. Component-level detail
+  (prerequisites, config, deploying just one piece) lives in each app's own README:
+  [`apps/api/README.md`](../apps/api/README.md), [`apps/admin/README.md`](../apps/admin/README.md).
 
 ## Two Workers, one install
 
@@ -175,21 +184,17 @@ VITE_API_URL=https://your-worker-url pnpm build
 wrangler deploy
 ```
 
-The first deploy also auto-provisions the Worker itself (its name comes from
-`apps/admin/wrangler.toml`, no separate project-creation step needed, unlike Pages). Then close
-the loop: add the resulting `https://your-cms-admin.<subdomain>.workers.dev` origin to the
+`pnpm build` also generates `dist/_headers` (Content-Security-Policy and other security headers,
+scoped to the `VITE_API_URL` you just built with) — see
+[`apps/admin/README.md`](../apps/admin/README.md#9-workers-static-assets-configuration) for the
+full detail and how it was verified. The first deploy also auto-provisions the Worker itself (its
+name comes from `apps/admin/wrangler.toml`, no separate project-creation step needed, unlike
+Pages). Then close the loop: add the resulting `https://your-cms-admin.<subdomain>.workers.dev`
+origin to the
 **root** `wrangler.toml`'s `CORS_ORIGINS` (step 4) and redeploy the API once more — without
 this, sign-in from the deployed admin app fails, since the API rejects cross-origin cookie auth
 from an origin it doesn't recognize (`docs/ARCHITECTURE.md` §9). `pnpm run setup` automates this
 entire sequence end to end, including the final redeploy.
-
-Once that last redeploy is done, **run `wrangler secret put BETTER_AUTH_SECRET` (step 5) one more
-time**, pasting in the same value, before you sign up. This isn't optional busywork: setting it
-before the API's very first deploy (step 5 happens before step 6 above) can leave a real
-deployment throwing better-auth's "you are using the default secret" error on every request even
-though `wrangler secret list` shows it configured — confirmed on a real deployment, fixed
-immediately by re-running `secret put` with nothing else changed, no redeploy needed.
-`pnpm run setup` does this re-assertion for you automatically as its last step.
 
 ## Password recovery & owner recovery
 
