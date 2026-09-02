@@ -135,6 +135,20 @@ async function ensureAuthSecret() {
   const secret = useGenerated ? randomBytes(32).toString('base64url') : await ask('Paste your own BETTER_AUTH_SECRET value');
   runWrangler(['secret', 'put', 'BETTER_AUTH_SECRET', '--config', WRANGLER_TOML_PATH], { cwd: API_DIR, input: secret });
   console.log('✓ BETTER_AUTH_SECRET set.');
+  return secret;
+}
+
+// Re-applies the already-generated secret one more time, as the very last thing this script
+// does — found necessary the hard way: this step originally ran once, early (before the
+// Worker's first-ever code deploy, when `secret put` creates a bare placeholder Worker just to
+// hold it), and a real deployment still came up throwing better-auth's "you are using the
+// default secret" error at every request despite `wrangler secret list` showing the secret as
+// configured. A plain, standalone `wrangler secret put` issued *after* every deploy in this
+// script had already finished fixed it immediately, with no redeploy — so re-asserting it here,
+// last, costs nothing and closes off whatever edge/propagation gap that ordering hit.
+function reassertAuthSecret(secret) {
+  console.log('Confirming BETTER_AUTH_SECRET is set on the fully-deployed Worker...');
+  runWrangler(['secret', 'put', 'BETTER_AUTH_SECRET', '--config', WRANGLER_TOML_PATH], { cwd: API_DIR, input: secret });
 }
 
 async function maybeSetUpEmail() {
@@ -192,7 +206,7 @@ async function main() {
     { cwd: API_DIR },
   );
 
-  await ensureAuthSecret();
+  const authSecret = await ensureAuthSecret();
   await maybeSetUpEmail();
 
   const firstUrl = deployApi();
@@ -233,6 +247,8 @@ async function main() {
   const updated = toml.replace(/CORS_ORIGINS = "([^"]*)"/, (_m, origins) => `CORS_ORIGINS = "${origins},${adminUrl}"`);
   writeToml(updated);
   deployApi();
+
+  reassertAuthSecret(authSecret);
 
   console.log('\n✓ CMS installed — sign up at the admin URL below (the first account becomes owner):');
   console.log(`  API:   ${finalUrl}`);

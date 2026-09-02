@@ -588,3 +588,35 @@ and after the fix. The GitHub Actions path was deliberately *not* triggered for 
 would mean setting real Cloudflare secrets and `DEPLOY_ENABLED=true` on the actual repo, a
 settings change requiring its own explicit sign-off — verified instead by confirming its exact
 underlying commands are the same ones just proven to work manually.
+
+**Real production reset + a real onboarding bug found and fixed** (2026-09-02) — done: at the
+user's request, deleted Kenresoft's actual live Worker/D1/R2 for real (backed up first via
+`wrangler d1 export`/`backup-media.mjs`, though the deployment held no real data — it was always
+a test), removed `wrangler.toml`'s now-stale `[env.production]` block to match a genuine fresh
+fork's shape, then redeployed from scratch via `pnpm run setup` to evaluate the onboarding
+experience as a real first-time developer would see it. That redeploy surfaced a real bug: the
+freshly-deployed API Worker threw better-auth's `"you are using the default secret"` error on
+every request (confirmed via `wrangler tail`), even though `wrangler secret list` showed
+`BETTER_AUTH_SECRET` as configured. Root cause, per the version history
+(`wrangler versions list`): `ensureAuthSecret()` runs before the Worker's first-ever code
+deploy, when `wrangler secret put` creates a bare placeholder Worker just to hold the secret —
+and the real application code deployed afterward didn't correctly carry that secret forward. A
+plain, standalone `wrangler secret put` issued *after* every deploy had already finished fixed
+the live site immediately, with no redeploy needed — confirming where the gap was. Fixed by
+adding `reassertAuthSecret()`, re-applying the same already-generated secret one more time as the
+truly last step in `scripts/setup.mjs`, after the final CORS-wiring redeploy. Attempts to
+deterministically reproduce the original failure against throwaway D1/R2/Worker resources (a
+clean single secret-set-then-deploy, and a set-then-three-deploys sequence matching the script's
+real shape) both came back healthy immediately — meaning this is most likely a Cloudflare-side
+propagation edge case rather than a fully deterministic ordering bug, plausibly triggered by the
+unusually rapid run of repeated secret-set calls this session's own testing produced (see below)
+rather than something a normal single clean run would hit — but the fix is unconditionally safe
+and costs one extra `wrangler secret put` call regardless, so it stays in as defensive insurance.
+Separately, verifying `pnpm run setup` non-interactively (piping answers via
+`printf ... | pnpm run setup`) hit a genuine Node `readline/promises` quirk, confirmed in
+isolation with a two-question test script: once a piped, non-TTY input stream reaches EOF, a
+*second* sequential `rl.question()` call never resolves, even if its answer was already fully
+buffered before EOF — Node silently exits on an empty event loop rather than erroring. Worked
+around for testing purposes only (keeping the child's stdin pipe open between writes instead of
+closing it in one shot) — this doesn't affect a real interactive terminal user at all, since a
+real TTY never sends EOF from normal typing.
