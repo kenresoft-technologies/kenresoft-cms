@@ -20,25 +20,24 @@ compatibility_flags = ["nodejs_compat"]
 binding = "DB"
 database_name = "kenresoft-cms-db"
 migrations_dir = "packages/database/migrations"
-# database_id deliberately omitted here (only here — [env.production] below has the real one).
-# A plain `wrangler deploy` against this top-level block — a fresh clone, `pnpm run setup`, or
-# the "Deploy to Cloudflare" button — triggers wrangler's own automatic provisioning
-# (developers.cloudflare.com/workers/wrangler/configuration, "Automatic provisioning"): it
-# creates a brand-new D1 database on whichever account is deploying and writes the resulting id
-# back into this file, non-interactively. No manual `wrangler d1 create` + copy-paste needed.
-# Kenresoft's own real database is pinned by id under [env.production], so
-# `wrangler deploy --env production` never touches this path and never risks creating a second,
-# empty database next to the real one.
+# database_id deliberately omitted here. A plain `wrangler deploy` against this top-level block
+# — a fresh clone, `pnpm run setup`, or the "Deploy to Cloudflare" button — triggers wrangler's
+# own automatic provisioning (developers.cloudflare.com/workers/wrangler/configuration,
+# "Automatic provisioning"): it creates a brand-new D1 database on whichever account is
+# deploying and writes the resulting id back into this file, non-interactively. No manual
+# `wrangler d1 create` + copy-paste needed. If you later split off a named environment of your
+# own (e.g. `[env.production]`, pinned to a real database_id) the way Kenresoft's own deployment
+# used to, that block doesn't inherit this one — see the ratelimits/vars sections below for why.
 
 [[r2_buckets]]
 binding = "MEDIA_BUCKET"
 # bucket_name deliberately omitted (same reasoning as database_id above) — R2 has no separate id
 # field, so omitting the name itself is what triggers auto-provisioning here. The resulting
-# bucket gets an auto-generated, worker-name-prefixed name, not the literal "kenresoft-cms-media"
-# — that name is Kenresoft's own, pinned under [env.production]. If you want that exact,
-# predictable name instead (e.g. for apps/api/scripts/backup-media.mjs, which assumes it by
-# default), use the explicit `wrangler r2 bucket create kenresoft-cms-media --update-config`
-# from docs/DEPLOYMENT.md's step 3 instead of relying on auto-provisioning here.
+# bucket gets an auto-generated, worker-name-prefixed name, not the literal "kenresoft-cms-media".
+# If you want that exact, predictable name instead (e.g. for apps/api/scripts/backup-media.mjs,
+# which assumes it by default), use the explicit
+# `wrangler r2 bucket create kenresoft-cms-media --update-config` from docs/DEPLOYMENT.md's
+# step 3 instead of relying on auto-provisioning here.
 
 # No KV namespace here — Workers KV as a secondary caching tier is documented
 # (docs/ARCHITECTURE.md §12) but not implemented; nothing in src/ reads or writes it yet, so
@@ -78,14 +77,13 @@ API_VERSION = "v1"
 # Comma-separated allow-list per docs/ARCHITECTURE.md §9 — never "*". This is the generic,
 # reusable default for a fresh deployment — .dev.vars overrides it back to localhost for
 # local dev either way (see .dev.vars.example) since .dev.vars overrides plain vars too, not just
-# secrets. Kenresoft's own real, currently-deployed origins live under [env.production] below,
-# not here — unlike before this file was split for reusability, this is NOT Kenresoft's real value.
+# secrets.
 #
 # CORS only matters for browser-originated requests — apps/admin is the only one today (the
 # Astro integration fetches server-side, no Origin header involved). Add your admin app's real
-# deployed origin here (or under your own [env.*] block) once you've deployed it —
-# docs/DEPLOYMENT.md's admin section covers this, including the deploy-once-then-add-origin
-# ordering it requires.
+# deployed origin here (or under your own [env.*] block, if you introduce one) once you've
+# deployed it — docs/DEPLOYMENT.md's admin section covers this, including the
+# deploy-once-then-add-origin ordering it requires.
 #
 # Testing from another device on your LAN (`dev:live` runs with --host, so a phone can reach it
 # via the host machine's LAN IP) needs its own allow-list entry, since that's a different
@@ -122,57 +120,3 @@ BETTER_AUTH_URL = "https://REPLACE_AFTER_FIRST_DEPLOY.workers.dev"
 # revoke) and is equivalent to a permanent master key for this deployment. docs/DEPLOYMENT.md's
 # recovery section has the full guidance — prefer setting it only when actually needed, then
 # `wrangler secret delete OWNER_RECOVERY_SECRET` once you're done.
-
-# ============================================================================================
-# Kenresoft's own real, live deployment — everything above this line is the generic, reusable
-# default a fresh clone/the deploy button/`pnpm run setup` provisions fresh resources against.
-# Named environments in wrangler do NOT inherit [vars]/[triggers]/[[ratelimits]]/
-# [[d1_databases]]/[[r2_buckets]] from the top level (confirmed against
-# developers.cloudflare.com/workers/wrangler/environments/) — each is fully re-declared below.
-# Update BOTH places when changing a binding/cron/rate limit; this block existing at all is the
-# tradeoff for keeping the default config above genuinely reusable rather than Kenresoft-specific.
-#
-# `name` MUST stay set to the real Worker's name here. Without it, wrangler deploys to a
-# DIFFERENT Worker called "kenresoft-cms-api-production" instead of the real, already-live
-# "kenresoft-cms-api" (confirmed against the same environments doc above).
-#
-# Secrets are also per-environment, not inherited — BETTER_AUTH_SECRET (and
-# OWNER_RECOVERY_SECRET/RESEND_API_KEY, if ever set) must be applied again with
-# `wrangler secret put <NAME> --env production` before the first deploy against this block, or
-# the live Worker briefly runs with that secret unset.
-# ============================================================================================
-[env.production]
-name = "kenresoft-cms-api"
-
-[[env.production.d1_databases]]
-binding = "DB"
-database_name = "kenresoft-cms-db"
-database_id = "29f46754-9256-4c0f-a2fc-90df8365d9aa"
-migrations_dir = "packages/database/migrations"
-
-[[env.production.r2_buckets]]
-binding = "MEDIA_BUCKET"
-bucket_name = "kenresoft-cms-media"
-
-[[env.production.ratelimits]]
-name = "FORM_SUBMISSION_RATE_LIMITER"
-namespace_id = "1001"
-simple = { limit = 5, period = 60 }
-
-[[env.production.ratelimits]]
-name = "AUTH_RATE_LIMITER"
-namespace_id = "1002"
-simple = { limit = 10, period = 60 }
-
-[[env.production.ratelimits]]
-name = "RECOVERY_RATE_LIMITER"
-namespace_id = "1003"
-simple = { limit = 3, period = 60 }
-
-[env.production.triggers]
-crons = ["*/5 * * * *"]
-
-[env.production.vars]
-API_VERSION = "v1"
-CORS_ORIGINS = "http://localhost:5173,http://localhost:5174,http://localhost:5175,http://localhost:5176,http://localhost:5177"
-BETTER_AUTH_URL = "https://kenresoft-cms-api.kenresoft.workers.dev"
