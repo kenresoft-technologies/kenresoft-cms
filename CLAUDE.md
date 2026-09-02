@@ -620,3 +620,68 @@ buffered before EOF — Node silently exits on an empty event loop rather than e
 around for testing purposes only (keeping the child's stdin pipe open between writes instead of
 closing it in one shot) — this doesn't affect a real interactive terminal user at all, since a
 real TTY never sends EOF from normal typing.
+
+**Correction to the above: the real root cause of the "default secret" bug was found, and it
+was not deploy ordering or Cloudflare-side propagation** (2026-09-02, same day, a later pass) —
+a fresh `pnpm run setup` run against a genuinely clean account hit the exact same
+`"you are using the default secret"` error again, *after* `reassertAuthSecret()` had already run
+as the documented last step — proving that fix never actually worked and the ordering theory
+above was wrong. The real cause: `scripts/lib/wrangler-cli.mjs`'s `runWrangler()` hard-codes
+`stdio: ['ignore', 'pipe', 'inherit']`, and every caller that also passes `execFileSync`'s
+`input` option (setting `BETTER_AUTH_SECRET`/`RESEND_API_KEY` — anywhere a value needs to reach
+wrangler over stdin) silently has that value replaced with an **empty string**. Confirmed in
+total isolation with a throwaway script piping a known string through `execFileSync` with this
+exact `stdio`/`input` combination: `'ignore'` at `stdio[0]` wins over `input` in this Node
+version, contrary to how Node's own docs read — wrangler still reports success and
+`secret list` still shows the secret as "configured" (it has a name, just an empty value), and
+better-auth correctly treats an empty string as falsy and falls back to its own insecure
+default. This explains why the original diagnosis looked plausible: every fix attempt that
+"worked" (the original live-site fix, and every throwaway-resource repro attempt) was a
+`wrangler secret put` piped by hand directly in a real shell — a completely different code path
+that was never affected by this bug at all — while every attempt that went through
+`scripts/setup.mjs`'s own `runWrangler()` kept failing. Fixed at the actual source: `stdio[0]`
+changed to `'pipe'`, which behaves identically to `'ignore'` for the calls that never pass
+`input` and finally lets `input` reach wrangler for the ones that do. `reassertAuthSecret()` was
+removed — with the real bug fixed, it's dead weight, and verified as such: a from-scratch
+throwaway D1/R2/Worker, secret set exactly once via the fixed `runWrangler()`, deployed once,
+`get-session` returned `200` on the very first try. The real, live `kenresoft-cms-api`/
+`kenresoft-cms-admin` deployment was broken by this same bug (from the *previous* pass's
+`reassertAuthSecret()` call, which used the same broken code path) and is now fixed the same
+way, then re-verified end to end: sign-up, session-cookie persistence across a refresh, an
+authenticated API request, a real content-type CRUD operation, a real media upload, sign-out,
+sign-in — 16/16 checks against the real deployed URLs, zero CSP violations, zero console errors,
+zero failed API requests.
+
+**Component READMEs, CORS idempotency, and Admin Worker security headers** (2026-09-02) — done.
+`apps/api/README.md` and `apps/admin/README.md` are new (the root `README.md` was rewritten
+around them, `pnpm run setup` promoted to the clearly-primary path, an "Advanced: Individual
+Components" section linking out); `integrations/astro/README.md` was expanded in place. Verified,
+not assumed, which of the two apps a standalone "Deploy to Cloudflare" button can actually cover:
+the API's button (full-repo URL, already real-click-through-verified) keeps working; a
+subdirectory-scoped button for `apps/admin` was confirmed impossible by actually reproducing what
+Cloudflare's own docs say a subdirectory URL does (isolate that directory as the *entire* new
+repo) — copying `apps/admin` alone into a scratch directory and running `pnpm install` fails
+immediately, `ERR_PNPM_WORKSPACE_PKG_NOT_FOUND`, since it has a real (not type-only) runtime
+dependency on the sibling `@kenresoft/contracts` workspace package. `apps/admin/README.md`
+documents this plainly instead of claiming a button that doesn't work; fixing it for real would
+mean publishing `@kenresoft/contracts` to npm or vendoring it, neither attempted (out of scope).
+`scripts/setup.mjs`'s CORS-origin wiring is now idempotent (`addCorsOrigin()`, verified with a
+scratch-file test: three consecutive calls with the same origin add it exactly once and report
+`false`/no-op on the second and third) — previously it unconditionally appended on every run.
+The Admin Worker (assets-only, no application code) now generates `dist/_headers`
+(`apps/admin/scripts/generate-headers.mjs`, wired into its `build` script) with a
+Content-Security-Policy and the same security-header set as the API middleware, scoped correctly
+since Workers Static Assets don't inherit Worker-generated headers at all. The CSP itself was
+tuned empirically, not guessed: served as `Content-Security-Policy-Report-Only` against a real
+local build, driven through sign-up, the user-menu dropdown, the command palette, a content-type
+dialog, and the media-upload dialog — found and fixed one real gap (Radix UI/cmdk apply computed
+inline `style` attributes at runtime, needing `'unsafe-inline'` for `style-src` specifically,
+nothing else), then re-verified in enforce mode with zero violations, then confirmed live via
+`curl -I` against a real (throwaway) deployment that every header actually reaches the browser.
+Full validation pass: typecheck and lint clean across the workspace (lint surfaced one real gap
+of its own — `apps/admin`'s ESLint config had no Node globals for `scripts/`/`e2e/`, fixed with a
+scoped override plus adding `globals` as a direct devDependency); all 26 `apps/api` test files
+and all 23 `apps/admin` test files pass (individually/in small batches for the API suite — the
+full single-process run hit the same pre-existing Windows/workerd local-module-fallback
+resource-exhaustion flakiness documented earlier in this file, not a code issue, confirmed by the
+same files passing cleanly once resource pressure eased).

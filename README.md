@@ -1,29 +1,66 @@
 # Kenresoft CMS
 
-A reusable, Cloudflare-native, API-first content management platform. First production
-implementation: the Pathvera Group website.
+A reusable, Cloudflare-native, API-first content management platform. Content lives in
+Cloudflare D1, media lives in Cloudflare R2, the API runs on Cloudflare Workers (Hono), and the
+admin dashboard talks to that API over plain HTTPS — never to the database directly.
 
-Content lives in Cloudflare D1, media lives in Cloudflare R2, the API runs on Cloudflare
-Workers (Hono), and the admin application talks only to the API — never to the database
-directly.
+Self-hosted, not a hosted service: deploying it means provisioning resources in **your own**
+Cloudflare account. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full architecture
+and technical specification (the source of truth for design decisions).
 
-See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full architecture and technical
-specification (source of truth for design decisions).
+## Recommended: Complete CMS Installation
 
-## Status
+```bash
+git clone https://github.com/kenresoft-technologies/kenresoft-cms.git your-site-name
+cd your-site-name
+pnpm install
+pnpm run setup
+```
 
-Phases 1–7 of the roadmap are done: Worker/Hono/D1/Drizzle foundation, the content-type/field/
-entry domain model, admin auth with role-based authorization, draft/publish with scheduled
-publishing and revisions, the R2 media library, the public + admin REST API (OpenAPI, edge
-caching), and forms with spam/rate-limited public submissions. Three cross-cutting UI passes
-on top of that took `apps/admin` from functional CRUD screens to a full admin experience —
-dashboard, command palette, drag-to-reorder fields, a redesigned Settings area, unified Entries
-and Submissions views, dark mode, and more. Phase 8's local Astro integration is also done —
-see [`docs/ASTRO.md`](docs/ASTRO.md) — with production deployment still outstanding.
+One command, provisions and deploys the whole system into your own Cloudflare account:
 
-For the authoritative, continuously-updated account of what's done and what isn't, see the
-**Status** section of [`CLAUDE.md`](CLAUDE.md). For the target end state, see
-[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §20 (Implementation Roadmap).
+- **API Worker** (`apps/api`) and **Admin Worker** (`apps/admin`) — deployed
+- **D1** database and **R2** bucket — created if you don't already have them
+- **Database migrations** — applied
+- **Better Auth** — a real session secret generated and set
+- **CORS** — the Admin Worker's real origin wired into the API's allow-list automatically
+
+This is the path for anyone who wants the complete Kenresoft CMS running with the least effort.
+Full details, plus a guided-CLI-vs-manual-vs-CI comparison: [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
+
+Once it finishes, it prints both Worker URLs — open the admin one and sign up. The first account
+created becomes the deployment's **owner** (`docs/ARCHITECTURE.md` §10 has the full role model).
+
+## Local development
+
+```bash
+pnpm install
+cp .dev.vars.example .dev.vars           # fill in BETTER_AUTH_SECRET
+cp apps/admin/.env.example apps/admin/.env
+pnpm --filter @kenresoft/database migrate:local
+pnpm dev
+```
+
+`pnpm dev` starts every app in parallel — API on `http://localhost:8787` (`wrangler dev`), admin
+on `http://localhost:5173` (Vite). Each also runs independently:
+`pnpm --filter @kenresoft/api dev` / `pnpm --filter @kenresoft/admin dev`.
+
+## Advanced: Individual Components
+
+The complete installation above is two independent Cloudflare Workers under the hood, deployed
+and versioned separately on purpose (see
+[`docs/DEPLOYMENT.md`'s "Two Workers, one install"](docs/DEPLOYMENT.md#two-workers-one-install)).
+If you only need one piece — or want to understand exactly what `pnpm run setup` does before
+running it — each has its own README with prerequisites, configuration, and a deploy path:
+
+- **[API Worker](apps/api/README.md)** — Hono + D1 + R2 + Better Auth + REST API. Has a real,
+  working one-click "Deploy to Cloudflare" button.
+- **[Admin Worker](apps/admin/README.md)** — the React/Vite CMS dashboard, deployed as Workers
+  Static Assets. No working standalone deploy button today — that README explains exactly why
+  and what to do instead.
+- **[Astro Integration](integrations/astro/README.md)** — a typed client for reading CMS content
+  from an Astro (or any JS/TS) site. Not a deployable Worker — a library your own site depends
+  on. See also [`examples/astro-site`](examples/astro-site) for a full reference site.
 
 ## Monorepo layout
 
@@ -31,78 +68,36 @@ For the authoritative, continuously-updated account of what's done and what isn'
 wrangler.toml   The API Worker's config — lives at the repo root, not apps/api/, so the
                 "Deploy to Cloudflare" button (which only looks there) can find it
 apps/
-  api/      @kenresoft/api    — Cloudflare Worker (Hono + D1 + R2)
-  admin/    @kenresoft/admin  — React + Vite admin dashboard, deployed as its own Worker
-                                (apps/admin/wrangler.toml — static assets, not Cloudflare Pages)
+  api/      @kenresoft/api    — API Worker (Hono + D1 + R2 + Better Auth)
+  admin/    @kenresoft/admin  — Admin Worker (React + Vite, Workers Static Assets)
 packages/
   database/   @kenresoft/database   — Drizzle schema, migrations, seed data
   contracts/  @kenresoft/contracts  — Shared Zod schemas + API contract, used by api/admin/SDK
   types/      @kenresoft/types      — Shared TypeScript types
   config/     @kenresoft/config     — Shared ESLint/TS/Prettier base config
 integrations/
-  astro/      @kenresoft/astro      — Typed client for consuming the public API from Astro
+  astro/      @kenresoft/astro      — Astro Integration: typed client for the public API
 docs/       Architecture and reference documentation, including docs/ASTRO.md
 examples/
-  astro-site/ Reference Astro site built on @kenresoft/astro — see its own README
+  astro-site/ Reference Astro site built on the Astro Integration — see its own README
 tests/      Empty, reserved scaffolding — real full-stack E2E lives in apps/admin/e2e instead
-            (Playwright, drives apps/admin + apps/api together against a dedicated port/D1 state)
+            (Playwright, drives the Admin Worker + API Worker together against a dedicated
+            port/D1 state)
 ```
 
-## Getting started
+## Status
 
-```bash
-pnpm install
+Phases 1–7 of the roadmap are done: Worker/Hono/D1/Drizzle foundation, the content-type/field/
+entry domain model, admin auth with role-based authorization, draft/publish with scheduled
+publishing and revisions, the R2 media library, the public + admin REST API (OpenAPI, edge
+caching), and forms with spam/rate-limited public submissions. Several cross-cutting UI passes
+on top of that took the Admin Worker from functional CRUD screens to a full admin experience —
+dashboard, command palette, drag-to-reorder fields, a redesigned Settings area, dark mode, and
+more. The Astro Integration is done and production-deployable (`docs/ASTRO.md`).
 
-# One-time local setup: secrets and the API URL the admin app talks to.
-cp .dev.vars.example .dev.vars   # then fill in BETTER_AUTH_SECRET
-cp apps/admin/.env.example apps/admin/.env
-
-# One-time (and after pulling new migrations): apply the schema to your local D1 database.
-pnpm --filter @kenresoft/database migrate:local
-
-pnpm build
-```
-
-`pnpm dev` at the repo root starts every app's dev server in parallel (API on
-`http://localhost:8787` via `wrangler dev`, admin on `http://localhost:5173` via Vite). Each
-can also be run independently — `pnpm --filter @kenresoft/api dev` /
-`pnpm --filter @kenresoft/admin dev` — which is useful when you only need one of them running.
-
-The first account created through the admin's sign-up flow becomes the deployment's admin;
-everyone who signs up after that defaults to editor (see `docs/ARCHITECTURE.md` §10 for the
-full role model).
-
-To also try the Astro integration once the CMS is running: `cd examples/astro-site && cp
-.env.example .env && pnpm dev` — see [`docs/ASTRO.md`](docs/ASTRO.md).
-
-## Deploying your own instance
-
-This is a reusable, self-hosted CMS, not a hosted service — there's no shared instance to sign
-up on. Deploying it means provisioning **your own** Cloudflare account's resources and pointing
-your own fork at them. Three ways to do it, fully documented in
-[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md#three-ways-to-deploy):
-
-- **One-click** — clones the repo into your own GitHub account and deploys the API Worker
-  through Cloudflare's own guided setup.
-  [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/kenresoft-technologies/kenresoft-cms)
-- **Guided CLI** — `pnpm install && pnpm run setup` provisions D1/R2, deploys the API Worker,
-  then builds and deploys `apps/admin` as its own Worker too — the recommended path if you're
-  not deploying through CI.
-- **Manual** — the full step-by-step walkthrough, for anyone who wants to understand or script
-  every step themselves.
-
-A full installation is **two Cloudflare Workers** — the API Worker, and `apps/admin` deployed as
-its own Worker (static assets, not Cloudflare Pages — Cloudflare's own docs now steer new
-static-hosting projects that way). They stay independently deployable on purpose; see
-[`docs/DEPLOYMENT.md`'s "Two Workers, one install"](docs/DEPLOYMENT.md#two-workers-one-install)
-for why, and note that the one-click button above only ever covers the API (a hard Cloudflare
-platform limit, not something this repo can work around) — the guided CLI or manual walkthrough
-get you both.
-
-Once you have a real deployment, `apps/admin` also has a `dev:live` mode
-(`cp .env.live.example .env.live && pnpm dev:live`) for running the admin app locally against
-that remote API instead of a local one — a separate Vite mode from the normal `pnpm dev`, so it
-doesn't disturb your usual local-API workflow; both can even run at once, on different ports.
+For the authoritative, continuously-updated account of what's done and what isn't, see the
+**Status** section of [`CLAUDE.md`](CLAUDE.md). For the target end state, see
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §20 (Implementation Roadmap).
 
 ## Package manager
 

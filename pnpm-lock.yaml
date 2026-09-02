@@ -162,6 +162,9 @@ importers:
       eslint:
         specifier: ^10.9.1
         version: 10.9.1(jiti@2.7.0)
+      globals:
+        specifier: ^17.11.0
+        version: 17.11.0
       jsdom:
         specifier: ^25.0.1
         version: 25.0.1
