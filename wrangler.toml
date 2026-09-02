@@ -19,7 +19,6 @@ compatibility_flags = ["nodejs_compat"]
 [[d1_databases]]
 binding = "DB"
 database_name = "kenresoft-cms-db"
-database_id = "62d3d8f2-ca3a-4f26-a5a5-f548414462fd"
 migrations_dir = "packages/database/migrations"
 # database_id deliberately omitted here. A plain `wrangler deploy` against this top-level block
 # — a fresh clone, `pnpm run setup`, or the "Deploy to Cloudflare" button — triggers wrangler's
@@ -32,7 +31,6 @@ migrations_dir = "packages/database/migrations"
 
 [[r2_buckets]]
 binding = "MEDIA_BUCKET"
-bucket_name = "kenresoft-cms-media"
 # bucket_name deliberately omitted (same reasoning as database_id above) — R2 has no separate id
 # field, so omitting the name itself is what triggers auto-provisioning here. The resulting
 # bucket gets an auto-generated, worker-name-prefixed name, not the literal "kenresoft-cms-media".
@@ -92,7 +90,7 @@ API_VERSION = "v1"
 # browser origin than "localhost" — add it in .dev.vars (see .dev.vars.example), not
 # here. This file is committed to the repo, so it must stay free of any one contributor's
 # personal, DHCP-assigned local network address.
-CORS_ORIGINS = "http://localhost:5173,http://localhost:5174,http://localhost:5175,http://localhost:5176,http://localhost:5177,https://kenresoft-cms-admin.kenresoft.workers.dev"
+CORS_ORIGINS = "http://localhost:5173,http://localhost:5174,http://localhost:5175,http://localhost:5176,http://localhost:5177"
 # Can't be correct before a first deploy — a Worker has no *.workers.dev URL until it's deployed
 # at least once. `pnpm run setup` handles this automatically: deploy once, read the real URL
 # wrangler prints, write it here, redeploy. Manual/CI deployers: docs/DEPLOYMENT.md's deploy
@@ -100,7 +98,7 @@ CORS_ORIGINS = "http://localhost:5173,http://localhost:5174,http://localhost:517
 # safe — better-auth only uses it for redirect/callback URL construction, and
 # apps/api/src/lib/auth-options.ts already forces Secure cookies unconditionally rather than
 # inferring HTTPS from this value, so a first deploy never silently breaks cookie auth over it.
-BETTER_AUTH_URL = "https://kenresoft-cms-api.kenresoft.workers.dev"
+BETTER_AUTH_URL = "https://REPLACE_AFTER_FIRST_DEPLOY.workers.dev"
 # BETTER_AUTH_SECRET is a real secret, not a var — set it in .dev.vars for local dev
 # (see .dev.vars.example) and via `wrangler secret put BETTER_AUTH_SECRET` for deployed envs.
 

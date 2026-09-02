@@ -75,35 +75,34 @@ full role model).
 To also try the Astro integration once the CMS is running: `cd examples/astro-site && cp
 .env.example .env && pnpm dev` — see [`docs/ASTRO.md`](docs/ASTRO.md).
 
-## Live deployment
+## Deploying your own instance
 
-Kenresoft's own instance is deployed to `https://kenresoft-cms-api.kenresoft.workers.dev`
-(the repo root's `wrangler.toml`). This is a reusable, self-hosted CMS, not a hosted service —
-deploying your own instance to your own Cloudflare account is a first-class path, with three
-ways to do it (a one-click button, a guided CLI setup script, or the full manual walkthrough),
-documented in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md#three-ways-to-deploy):
+This is a reusable, self-hosted CMS, not a hosted service — there's no shared instance to sign
+up on. Deploying it means provisioning **your own** Cloudflare account's resources and pointing
+your own fork at them. Three ways to do it, fully documented in
+[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md#three-ways-to-deploy):
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/kenresoft-technologies/kenresoft-cms)
+- **One-click** — clones the repo into your own GitHub account and deploys the API Worker
+  through Cloudflare's own guided setup.
+  [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/kenresoft-technologies/kenresoft-cms)
+- **Guided CLI** — `pnpm install && pnpm run setup` provisions D1/R2, deploys the API Worker,
+  then builds and deploys `apps/admin` as its own Worker too — the recommended path if you're
+  not deploying through CI.
+- **Manual** — the full step-by-step walkthrough, for anyone who wants to understand or script
+  every step themselves.
 
-A full installation is **two Cloudflare Workers** — this API Worker, and `apps/admin` deployed
-as its own Worker (static assets, not Cloudflare Pages — Cloudflare's own docs now steer new
+A full installation is **two Cloudflare Workers** — the API Worker, and `apps/admin` deployed as
+its own Worker (static assets, not Cloudflare Pages — Cloudflare's own docs now steer new
 static-hosting projects that way). They stay independently deployable on purpose; see
 [`docs/DEPLOYMENT.md`'s "Two Workers, one install"](docs/DEPLOYMENT.md#two-workers-one-install)
-for why, and note that the button above only covers the API — `pnpm run setup` or the manual
-walkthrough get you both.
+for why, and note that the one-click button above only ever covers the API (a hard Cloudflare
+platform limit, not something this repo can work around) — the guided CLI or manual walkthrough
+get you both.
 
-Kenresoft's own `apps/admin` has no deployed home yet — to manage Kenresoft's live deployment's
-content, run the admin app locally against it instead of the local API:
-
-```bash
-cd apps/admin
-cp .env.live.example .env.live
-pnpm dev:live
-```
-
-This is a separate Vite mode (`--mode live`, its own `.env.live`) from the normal `pnpm dev`,
-so it doesn't disturb your usual local-API workflow — both can even run at once, on different
-ports.
+Once you have a real deployment, `apps/admin` also has a `dev:live` mode
+(`cp .env.live.example .env.live && pnpm dev:live`) for running the admin app locally against
+that remote API instead of a local one — a separate Vite mode from the normal `pnpm dev`, so it
+doesn't disturb your usual local-API workflow; both can even run at once, on different ports.
 
 ## Package manager
 
