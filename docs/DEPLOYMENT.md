@@ -93,9 +93,18 @@ the first plain `wrangler deploy` you run (step 6) creates a fresh D1 database a
 `--location` hint, or resource names that don't match this repo's defaults:
 
 ```bash
-wrangler d1 create kenresoft-cms-db --binding DB --update-config
-wrangler r2 bucket create kenresoft-cms-media --binding MEDIA_BUCKET --update-config
+wrangler d1 create kenresoft-cms-db --binding DB
+wrangler r2 bucket create kenresoft-cms-media --binding MEDIA_BUCKET
 ```
+
+Both commands print a `[[d1_databases]]`/`[[r2_buckets]]` snippet with the real `database_id`/
+`bucket_name` — copy those two values into the matching block in `wrangler.toml` yourself.
+**Don't add `--update-config`**: it sounds like it should do that copy for you (and does, for a
+`wrangler.jsonc`/`.json` config), but confirmed empirically against this repo's `wrangler.toml`
+it silently does nothing to the file — no error, just the same manual-instructions snippet
+either way. If you skip pasting the id in by hand after using this explicit path, your next
+`wrangler deploy` sees `database_id` still missing and auto-provisions a *second* database (which
+then fails outright for D1, since the name you already used is now taken).
 
 Either way, the rate-limiting bindings (`[[ratelimits]]`) use arbitrary, account-unique
 `namespace_id` values (`"1001"`, `"1002"`, `"1003"`) — these are not provisioned resources, so
@@ -173,6 +182,14 @@ the loop: add the resulting `https://your-cms-admin.<subdomain>.workers.dev` ori
 this, sign-in from the deployed admin app fails, since the API rejects cross-origin cookie auth
 from an origin it doesn't recognize (`docs/ARCHITECTURE.md` §9). `pnpm run setup` automates this
 entire sequence end to end, including the final redeploy.
+
+Once that last redeploy is done, **run `wrangler secret put BETTER_AUTH_SECRET` (step 5) one more
+time**, pasting in the same value, before you sign up. This isn't optional busywork: setting it
+before the API's very first deploy (step 5 happens before step 6 above) can leave a real
+deployment throwing better-auth's "you are using the default secret" error on every request even
+though `wrangler secret list` shows it configured — confirmed on a real deployment, fixed
+immediately by re-running `secret put` with nothing else changed, no redeploy needed.
+`pnpm run setup` does this re-assertion for you automatically as its last step.
 
 ## Password recovery & owner recovery
 
