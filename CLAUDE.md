@@ -527,3 +527,64 @@ needed no change — nothing about it was path-sensitive to where the real confi
 button click-through hasn't been re-attempted since this fix; everything else was re-verified
 the same way as the original pass (dry-runs against the real account, a real `wrangler dev`,
 the e2e migration script, and the full test suite).
+
+**Admin moved off Cloudflare Pages onto its own Worker** (2026-09-02, prompted by a direct
+comparison of the installation experience against Payload/SonicJS-style CMSs) — done, after a
+docs-verified investigation of three architectures (split hosting as it stood, merging the admin
+SPA into the API's own Worker as static assets, and keeping two separate Workers unified only at
+the install-script level) and, within the two-Worker option, three URL topologies (two
+`*.workers.dev` origins, two Workers behind one custom domain via path-based Routes, and a
+merged single origin). Two confirmed facts drove the decision: Cloudflare's own docs now steer
+new static hosting toward Workers Static Assets over Pages (a migration banner on Pages' own
+docs; Workers Sites already deprecated the same direction), and the "Deploy to Cloudflare" button
+is hard-limited to exactly one Worker per click regardless of which architecture is chosen — so
+button-driven single-click parity with Payload/SonicJS was never actually on the table without
+merging the two apps' runtimes together, which was explicitly ruled out to avoid coupling
+`apps/admin`'s deploy/rollback lifecycle to the API's. Landed: `apps/admin/wrangler.toml`, a
+static-assets-only Worker config with no bindings and no Worker script at all (`not_found_handling
+= "single-page-application"` alone gives React Router's client routes their `index.html`
+fallback) — confirmed with a real `wrangler deploy --dry-run` against it. `apps/admin`'s own
+`deploy` script now runs plain `wrangler deploy` instead of `wrangler pages deploy dist`;
+`scripts/setup.mjs`'s admin deploy step, previously an opt-in prompt defaulting to *no*, is now
+unconditional — one `pnpm run setup` run provisions and deploys both Workers, wiring the admin
+Worker's real origin into the API's `CORS_ORIGINS` exactly as the old Pages branch did.
+`.github/workflows/deploy.yml`'s `deploy-admin` job deploys the Worker the same way, dropping the
+now-unneeded `CLOUDFLARE_ADMIN_PAGES_PROJECT` variable. Deliberately **unchanged**: the admin app
+talks to the API exactly as before, over its own public HTTPS URL via `VITE_API_URL` + `fetch()`
+(`apps/admin/src/lib/api-client.ts`/`auth-client.ts`) — Cloudflare Service Bindings were
+investigated and ruled out for this specific link, since they're a server-side Worker-to-Worker
+mechanism invisible to browser JavaScript, and the admin app has no server-side code of its own
+to hold one; and the API's cross-origin cookie config (`sameSite: 'none', secure: true` in
+`apps/api/src/lib/auth-options.ts`) needed no change, since it already handles genuinely
+cross-site auth (it predates this pass, added for the "run admin locally against a remote API"
+case, and verified by the existing Playwright E2E suite). `docs/DEPLOYMENT.md` gained a "Two
+Workers, one install" section explaining the split and documenting custom-domain path-based
+Routes as a later, opt-in upgrade to a single origin — deliberately not built into the default
+installer, since it needs an already-Cloudflare-managed zone the default `*.workers.dev` flow
+doesn't require, and the same-hostname multi-Worker Route pattern, while well-evidenced (official
+route-specificity rules plus independent community confirmation), doesn't have one first-party
+Cloudflare example to point to. `examples/astro-site`'s own Pages deployment is untouched — out
+of scope, a separate reference integration, not part of the CMS's own two Workers.
+
+**C1 verified with a real end-to-end deploy** (2026-09-02) — done: deployed both Workers for
+real, to distinctly-named, throwaway resources in Kenresoft's own Cloudflare account
+(`*-e2etest` suffixed D1/R2/Workers, never `[env.production]`), then drove the actual deployed
+admin URL with a real headless-Chromium Playwright script — sign-up, cross-origin session cookie
+(confirmed via `context.cookies()`: `SameSite=None`, `Secure`, scoped to the API's own origin),
+refresh persistence, authenticated navigation, sign-out/sign-in, a real content-type creation
+(D1 write), and a real media upload (R2 write) — all passing, zero CORS errors, zero failed API
+requests. Every resource was deleted afterward and confirmed gone via `wrangler d1 list`/
+`wrangler r2 bucket list`. Found and fixed one real, currently-shipping bug this surfaced:
+`scripts/setup.mjs`'s `ensureD1()` called `wrangler d1 create --json`, which the wrangler version
+this repo actually resolves to (4.126.0) rejects outright ("Unknown argument: json") — breaking
+`pnpm run setup` at the very first provisioning step for every fresh install. `--update-config`
+looked like the obvious fix (let wrangler own the TOML edit instead of this script's own regex
+surgery) but, confirmed empirically against a real database twice (once with a mismatched
+`--binding`, once with it corrected to match), it silently no-ops against a `wrangler.toml` even
+when everything lines up — consistent with the wrangler skill's own "newer features are
+JSON-only" guidance. Fixed by parsing `database_id = "..."` out of the
+command's plain-text output instead, verified against real `wrangler d1 create` output before
+and after the fix. The GitHub Actions path was deliberately *not* triggered for real — that
+would mean setting real Cloudflare secrets and `DEPLOY_ENABLED=true` on the actual repo, a
+settings change requiring its own explicit sign-off — verified instead by confirming its exact
+underlying commands are the same ones just proven to work manually.

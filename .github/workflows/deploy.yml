@@ -92,12 +92,15 @@ jobs:
         env:
           VITE_API_URL: ${{ vars.VITE_API_URL }}
 
-      - name: Deploy to Cloudflare Pages
-        run: pnpm --filter @kenresoft/admin exec wrangler pages deploy dist --project-name "$CLOUDFLARE_ADMIN_PAGES_PROJECT" --branch main
+      # Deploys apps/admin/wrangler.toml as its own Worker (static assets, not Cloudflare Pages
+      # — see that file's own comment) — a separate deployable from deploy-api's Worker above,
+      # still reached over its normal public HTTPS URL by the admin app's existing
+      # VITE_API_URL + fetch() integration, nothing merged.
+      - name: Deploy admin Worker
+        run: pnpm --filter @kenresoft/admin deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          CLOUDFLARE_ADMIN_PAGES_PROJECT: ${{ vars.CLOUDFLARE_ADMIN_PAGES_PROJECT }}
 
   deploy-marketing-site:
     name: Deploy marketing site (examples/astro-site)

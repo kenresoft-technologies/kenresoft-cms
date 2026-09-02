@@ -29,11 +29,42 @@ the API Worker) provisioned automatically the first time you deploy — see belo
   ```
   Runs `scripts/setup.mjs`: checks you're logged in to `wrangler`, creates a D1 database and R2
   bucket if you don't already have them configured, applies migrations, sets
-  `BETTER_AUTH_SECRET`, deploys, fixes up `BETTER_AUTH_URL` once the real deployed URL is known,
-  and optionally deploys `apps/admin` to Cloudflare Pages too. Recommended for anyone not
-  deploying through CI.
+  `BETTER_AUTH_SECRET`, deploys the API Worker, fixes up `BETTER_AUTH_URL` once the real deployed
+  URL is known, then builds and deploys `apps/admin` as its own Worker too (see "Two Workers, one
+  install" below) and wires its origin into `CORS_ORIGINS` for you. One command, both apps live.
+  Recommended for anyone not deploying through CI.
 - **Manual** — the full walkthrough below. Read this if you want to understand (or script)
   every step yourself, or the guided paths above don't fit your setup.
+
+## Two Workers, one install
+
+A full Kenresoft CMS installation is **two independent Cloudflare Workers**, not one:
+
+- `apps/api` — the Hono API, D1, R2, auth, everything in `docs/ARCHITECTURE.md`. Config at the
+  repository root (`wrangler.toml`; see that file's own comment for why it isn't inside
+  `apps/api/`).
+- `apps/admin` — the React/Vite dashboard, deployed as Workers **static assets**
+  (`apps/admin/wrangler.toml`), not Cloudflare Pages. Cloudflare's own docs now steer new
+  static-hosting projects toward Workers Static Assets instead (Pages carries a migration
+  banner in Cloudflare's docs; the older Workers Sites mechanism is deprecated in favor of it),
+  so this keeps both halves of the CMS on the same, currently-recommended primitive.
+
+They stay two separate deploys/URLs/version histories on purpose — `apps/admin` only ever talks
+to the API the way it always has, over its own public HTTPS URL via `VITE_API_URL` and `fetch()`
+(`apps/admin/src/lib/api-client.ts`, `auth-client.ts`), the same as when you run it locally
+against a remote API. Nothing about that integration changes; only *where* the admin app itself
+runs does. The tradeoff this buys you: deploying or rolling back the admin app can never touch
+the API's own deployment, and vice versa.
+
+Because they're two different origins by default, the API's CORS allow-list (`CORS_ORIGINS`)
+and its cookies (`sameSite: 'none', secure: true` — see `apps/api/src/lib/auth-options.ts`'s own
+comment) already handle cross-origin sign-in; both guided paths above (button+CLI-finish, or
+`pnpm run setup` alone) wire the admin's real deployed origin into `CORS_ORIGINS` for you. If you
+own a custom domain, you can additionally put both Workers behind one hostname with a
+[Route](https://developers.cloudflare.com/workers/configuration/routing/routes/) per path
+(`/api/*` to the API Worker, everything else to the admin Worker) for a single-origin experience
+with no CORS at all — this is a deliberate later upgrade, not part of the default install, since
+it needs a Cloudflare-managed zone the default `*.workers.dev` setup doesn't require.
 
 ## 1. Prerequisites
 
@@ -124,22 +155,24 @@ wrangler pages deploy dist --project-name your-cms-site --branch main
 
 ## 8. The admin app
 
-Deploy `apps/admin` to Cloudflare Pages the same way as the marketing site above, **after**
-step 6 — `VITE_API_URL` is baked into the build by Vite (build-time only, never
-runtime-configurable), so it needs your API's real deployed URL to already exist:
+`apps/admin` deploys as its **own Worker** (`apps/admin/wrangler.toml` — static assets, not
+Cloudflare Pages; see "Two Workers, one install" above), **after** step 6 — `VITE_API_URL` is
+baked into the build by Vite (build-time only, never runtime-configurable), so it needs your
+API's real deployed URL to already exist:
 
 ```bash
-wrangler pages project create your-cms-admin
 cd apps/admin
 VITE_API_URL=https://your-worker-url pnpm build
-wrangler pages deploy dist --project-name your-cms-admin --branch main
+wrangler deploy
 ```
 
-Then close the loop: add the resulting `https://your-cms-admin.pages.dev` origin to
-`wrangler.toml`'s `CORS_ORIGINS` (step 4) and redeploy the API once more — without
+The first deploy also auto-provisions the Worker itself (its name comes from
+`apps/admin/wrangler.toml`, no separate project-creation step needed, unlike Pages). Then close
+the loop: add the resulting `https://your-cms-admin.<subdomain>.workers.dev` origin to the
+**root** `wrangler.toml`'s `CORS_ORIGINS` (step 4) and redeploy the API once more — without
 this, sign-in from the deployed admin app fails, since the API rejects cross-origin cookie auth
 from an origin it doesn't recognize (`docs/ARCHITECTURE.md` §9). `pnpm run setup` automates this
-entire sequence, including the final redeploy, if you opt into it when prompted.
+entire sequence end to end, including the final redeploy.
 
 ## Password recovery & owner recovery
 
@@ -235,7 +268,6 @@ To enable it, in your fork's **Settings → Secrets and variables → Actions**:
 | --- | --- |
 | `DEPLOY_ENABLED` | `true` — the on/off switch every job checks. Leave unset (or anything else) to keep the workflow a no-op. |
 | `VITE_API_URL` | Your deployed API's public URL, baked into the admin app build. |
-| `CLOUDFLARE_ADMIN_PAGES_PROJECT` | The admin app's Pages project name from step 8. |
 | `PUBLIC_KENRESOFT_CMS_URL` | Your deployed API's public URL, baked into the marketing site build. |
 | `CLOUDFLARE_PAGES_PROJECT` | The marketing site's Pages project name from step 7. |
 

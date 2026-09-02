@@ -32,7 +32,8 @@ wrangler.toml   The API Worker's config — lives at the repo root, not apps/api
                 "Deploy to Cloudflare" button (which only looks there) can find it
 apps/
   api/      @kenresoft/api    — Cloudflare Worker (Hono + D1 + R2)
-  admin/    @kenresoft/admin  — React + Vite admin dashboard
+  admin/    @kenresoft/admin  — React + Vite admin dashboard, deployed as its own Worker
+                                (apps/admin/wrangler.toml — static assets, not Cloudflare Pages)
 packages/
   database/   @kenresoft/database   — Drizzle schema, migrations, seed data
   contracts/  @kenresoft/contracts  — Shared Zod schemas + API contract, used by api/admin/SDK
@@ -83,6 +84,13 @@ ways to do it (a one-click button, a guided CLI setup script, or the full manual
 documented in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md#three-ways-to-deploy):
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/kenresoft-technologies/kenresoft-cms)
+
+A full installation is **two Cloudflare Workers** — this API Worker, and `apps/admin` deployed
+as its own Worker (static assets, not Cloudflare Pages — Cloudflare's own docs now steer new
+static-hosting projects that way). They stay independently deployable on purpose; see
+[`docs/DEPLOYMENT.md`'s "Two Workers, one install"](docs/DEPLOYMENT.md#two-workers-one-install)
+for why, and note that the button above only covers the API — `pnpm run setup` or the manual
+walkthrough get you both.
 
 Kenresoft's own `apps/admin` has no deployed home yet — to manage Kenresoft's live deployment's
 content, run the admin app locally against it instead of the local API:
