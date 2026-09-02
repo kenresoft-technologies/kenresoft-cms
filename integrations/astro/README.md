@@ -1,4 +1,4 @@
-# @kenresoft/astro — Astro Integration
+# @kenresoft-cms/astro — Astro Integration
 
 A typed client for consuming a Kenresoft CMS deployment's **public API** from Astro (or any other
 JS/TS frontend). This is not a CMS component, not a Cloudflare Worker, and not independently
@@ -26,7 +26,7 @@ without this package at all.
 Inside this monorepo (e.g. from `examples/astro-site`), it's a normal workspace dependency:
 
 ```json
-{ "dependencies": { "@kenresoft/astro": "workspace:*" } }
+{ "dependencies": { "@kenresoft-cms/astro": "workspace:*" } }
 ```
 
 Outside this monorepo — using this integration in your **own**, separately-hosted Astro project
@@ -43,7 +43,7 @@ package itself takes it as a plain constructor argument — see "Usage" below.
 ## Usage
 
 ```ts
-import { createKenresoftClient, KenresoftApiError } from '@kenresoft/astro';
+import { createKenresoftClient, KenresoftApiError } from '@kenresoft-cms/astro';
 
 const cms = createKenresoftClient({ url: 'http://localhost:8787' });
 ```
@@ -98,7 +98,7 @@ pnpm dev
 ```
 
 Requires a running CMS API to fetch from — either `wrangler dev` locally
-(`pnpm --filter @kenresoft/api dev` from the repo root) or a real deployed API Worker.
+(`pnpm --filter @kenresoft-cms/api dev` from the repo root) or a real deployed API Worker.
 
 ## Relationship with the CMS API
 

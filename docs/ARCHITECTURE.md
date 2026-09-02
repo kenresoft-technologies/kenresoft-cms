@@ -120,7 +120,7 @@ generic `/api/v1/public/:contentType` catch-all (same ordering reason `/public/f
 needed — "media" would otherwise parse as a content-type slug). Edge-cached via the Cache API
 for a year (media is immutable — no edit endpoint) and explicitly invalidated when the admin
 DELETE route runs, mirroring the entry-cache invalidation discipline already in place. Added
-`media.url({ id })` to `@kenresoft/astro` (pure URL construction, no fetch) and wired
+`media.url({ id })` to `@kenresoft-cms/astro` (pure URL construction, no fetch) and wired
 `examples/astro-site` to render a featured image when a `media`-type field is present —
 falling back to the entry's title for `<img alt>` since Media's real `altText` still isn't
 exposed publicly (a separate, smaller, deliberately-undecided question — see `docs/ASTRO.md`).
@@ -132,11 +132,11 @@ unilaterally.
 **v0.7 (2026-08-27)** — Phase 8's local Astro integration (§15/§20), scoped strictly to local
 development per the phase boundary — no production deployment attempted or claimed.
 
-- **`@kenresoft/astro`** (new `integrations/astro/` workspace package) — a typed client
+- **`@kenresoft-cms/astro`** (new `integrations/astro/` workspace package) — a typed client
   (`createKenresoftClient`) wrapping the public API's two entry routes
   (`entries.list`/`entries.get`). Deliberately thin: no `contentTypes.list()`, since the public
   API has no content-type-metadata endpoint to back one (only the admin API does). Types come
-  from `@kenresoft/contracts`' `Entry` via a type-only import, so they're erased at compile
+  from `@kenresoft-cms/contracts`' `Entry` via a type-only import, so they're erased at compile
   time and never pull zod into a consumer's runtime bundle — same discipline as the zod-bundle
   lesson recorded in the v0.6 entry below, applied to a new package.
 - **`examples/astro-site`** rebuilt on top of that client (previously a hand-rolled `fetch`
@@ -147,7 +147,7 @@ development per the phase boundary — no production deployment attempted or cla
 - **Repository structure change**: `pnpm-workspace.yaml` now includes `integrations/*` and
   `examples/*` (previously only `apps/*`/`packages/*`). `examples/astro-site` had briefly been
   kept deliberately outside the workspace (needing `pnpm install --ignore-workspace`) to mimic
-  an external consumer with no monorepo access — reversed once `@kenresoft/astro` existed and
+  an external consumer with no monorepo access — reversed once `@kenresoft-cms/astro` existed and
   needed a real, friction-free consumption path from that example; a real SDK's own example app
   living in the SDK's own monorepo is the standard pattern, and preserving the workaround past
   the point it served a purpose would have been awkward tooling for its own sake.
@@ -184,7 +184,7 @@ framing in §2 and the non-goals in §19, both of which already anticipated this
   importing just the enum still pulls the whole module (zod included) into any bundle that
   imports it. Runtime-value enums now live in `packages/contracts/schemas/enums.ts` with zero
   zod import, and `apps/admin` imports that file via an explicit `exports` subpath
-  (`@kenresoft/contracts/schemas/enums`) rather than the package's main barrel, which still
+  (`@kenresoft-cms/contracts/schemas/enums`) rather than the package's main barrel, which still
   entangled things even after the enums moved out. Confirmed by grepping the built admin
   bundle for `ZodError`/`ZodObject`/`ZodType` before and after the fix.
 
@@ -467,10 +467,10 @@ kenresoft-cms/
 │   ├── types/
 │   └── config/
 ├── integrations/
-│   └── astro/        — @kenresoft/astro, the first-class Astro client (§15)
+│   └── astro/        — @kenresoft-cms/astro, the first-class Astro client (§15)
 ├── docs/
 ├── examples/
-│   └── astro-site/   — reference Astro consumer built on @kenresoft/astro
+│   └── astro-site/   — reference Astro consumer built on @kenresoft-cms/astro
 ├── tests/
 ├── .github/
 │   └── workflows/
@@ -823,7 +823,7 @@ of time (an announcement, a dated blog post) without keeping a session open unti
 Astro is a first-class, officially supported frontend target — not a requirement. The CMS is
 frontend-agnostic; the public API (§8) is the only integration boundary, and any framework
 (Next.js, Vue, Flutter, ...) can call it directly with a plain `fetch()`. Astro gets a typed
-client, `@kenresoft/astro` (`integrations/astro/`), so Astro developers don't have to hand-roll
+client, `@kenresoft-cms/astro` (`integrations/astro/`), so Astro developers don't have to hand-roll
 `fetch()` calls or know the API's internal shape — but the CMS core never imports anything
 Astro-specific, and nothing about the client is actually Astro-specific at the code level
 either (it's a plain fetch wrapper any JS/TS project could use — see
@@ -832,7 +832,7 @@ either (it's a plain fetch wrapper any JS/TS project could use — see
 ```
 Astro site
    |
-   +--> @kenresoft/astro
+   +--> @kenresoft-cms/astro
               |
               v
         Kenresoft CMS public API   (GET /api/v1/public/...)

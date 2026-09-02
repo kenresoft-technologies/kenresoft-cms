@@ -1,4 +1,4 @@
-# @kenresoft/api — API Worker
+# @kenresoft-cms/api — API Worker
 
 The Kenresoft CMS API Worker: a Hono application on Cloudflare Workers backed by D1 (content,
 users, sessions) and R2 (media files), with authentication via better-auth. This is the only
@@ -54,8 +54,8 @@ From the repo root:
 ```bash
 pnpm install
 cp .dev.vars.example .dev.vars   # fill in BETTER_AUTH_SECRET
-pnpm --filter @kenresoft/database migrate:local
-pnpm --filter @kenresoft/api dev   # or `pnpm dev` at the root to also start the admin
+pnpm --filter @kenresoft-cms/database migrate:local
+pnpm --filter @kenresoft-cms/api dev   # or `pnpm dev` at the root to also start the admin
 ```
 
 Runs on `http://localhost:8787` via `wrangler dev` against a local D1/R2 simulation — no real
@@ -64,11 +64,11 @@ Cloudflare resources touched. `.dev.vars` (gitignored) overrides `wrangler.toml`
 
 ## 5. Database and migrations
 
-Schema and migrations live in the sibling `@kenresoft/database` package (Drizzle ORM), not here:
+Schema and migrations live in the sibling `@kenresoft-cms/database` package (Drizzle ORM), not here:
 
 ```bash
-pnpm --filter @kenresoft/database migrate:local    # local D1 (dev)
-pnpm --filter @kenresoft/database migrate:remote    # your deployed D1
+pnpm --filter @kenresoft-cms/database migrate:local    # local D1 (dev)
+pnpm --filter @kenresoft-cms/database migrate:remote    # your deployed D1
 ```
 
 Every schema change goes through a Drizzle migration — never edit the D1 schema without one.
@@ -131,7 +131,7 @@ works for, verified with a real click-through against this exact repository:
 state that a subdirectory button URL isolates that directory as the *entire* contents of the new
 repo it creates ("your application must be fully isolated within that subdirectory, including any
 dependencies"). This is a pnpm workspace monorepo — `apps/api` depends on two sibling workspace
-packages (`@kenresoft/database`, `@kenresoft/contracts`) that wouldn't exist in an isolated
+packages (`@kenresoft-cms/database`, `@kenresoft-cms/contracts`) that wouldn't exist in an isolated
 `apps/api`-only checkout, so a subdirectory URL would fail at `pnpm install` before any build
 step ran. Pointing the button at the full repo instead sidesteps this entirely — the whole
 workspace comes along, and `wrangler.toml` living at the **repository root** (not inside this
@@ -149,8 +149,8 @@ pnpm run setup        # provisions + deploys both Workers, recommended
 or, for just this component:
 
 ```bash
-pnpm --filter @kenresoft/api deploy
-pnpm --filter @kenresoft/database migrate:remote
+pnpm --filter @kenresoft-cms/api deploy
+pnpm --filter @kenresoft-cms/database migrate:remote
 ```
 
 The first plain `wrangler deploy` auto-provisions D1/R2 if `wrangler.toml` doesn't already have

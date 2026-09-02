@@ -1,4 +1,4 @@
-import { createDb } from '@kenresoft/database';
+import { createDb } from '@kenresoft-cms/database';
 import type { Context } from 'hono';
 
 import type { Bindings } from './env';

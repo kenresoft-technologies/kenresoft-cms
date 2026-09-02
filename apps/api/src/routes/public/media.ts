@@ -1,6 +1,6 @@
 import { createRoute, z } from '@hono/zod-openapi';
-import { publicMediaSchema } from '@kenresoft/contracts';
-import type { PublicMedia } from '@kenresoft/contracts';
+import { publicMediaSchema } from '@kenresoft-cms/contracts';
+import type { PublicMedia } from '@kenresoft-cms/contracts';
 
 import { getDb } from '../../lib/db';
 import { createOpenApiApp } from '../../lib/openapi';
@@ -32,7 +32,7 @@ publicMediaRoute.get('*', async (c, next) => {
 
 // The subset of Media metadata that's safe to expose publicly (docs on publicMediaSchema) —
 // closes a real gap for external consumers of the file route below: without this, there's no
-// way to set an <img alt> or reserve layout space while the image loads (@kenresoft/astro and
+// way to set an <img alt> or reserve layout space while the image loads (@kenresoft-cms/astro and
 // examples/astro-site currently fall back to the entry's title as alt text for exactly this
 // reason — docs/ASTRO.md's Known limitations). Same no-auth trust model as the file route: once
 // uploaded, a file (and now its renderable metadata) is addressable by anyone who has its id.

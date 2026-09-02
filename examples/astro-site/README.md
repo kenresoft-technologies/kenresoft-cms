@@ -1,13 +1,13 @@
 # Kenresoft CMS — Astro example
 
 A minimal Astro site that renders published content from a Kenresoft CMS deployment's
-**public** API, via the typed `@kenresoft/astro` client — no auth, no database access, no
+**public** API, via the typed `@kenresoft-cms/astro` client — no auth, no database access, no
 credentials of any kind. See [`docs/ASTRO.md`](../../docs/ASTRO.md) for the full guide
 (architecture, environment variables, static-vs-SSR rationale, known limitations); this is a
 generic reference, not the real Pathvera site.
 
 This **is** part of the repo's pnpm workspace (`pnpm-workspace.yaml` lists `examples/*`), so it
-can depend on `@kenresoft/astro` (`../../integrations/astro`) as an ordinary `workspace:*`
+can depend on `@kenresoft-cms/astro` (`../../integrations/astro`) as an ordinary `workspace:*`
 package — a plain `pnpm install` at the repo root wires it up via a symlink, same as any other
 internal package.
 

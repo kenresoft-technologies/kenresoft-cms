@@ -17,12 +17,12 @@ or an Astro site without any of them getting special access.
 ## Astro as a first-class integration
 
 Astro is not required, but it *is* officially supported, in the sense that this repo ships and
-maintains a typed client for it: `@kenresoft/astro` (`integrations/astro/`). Its entire purpose
+maintains a typed client for it: `@kenresoft-cms/astro` (`integrations/astro/`). Its entire purpose
 is removing the need to hand-write `fetch()` calls and re-derive the public API's response
 shape from scratch:
 
 ```ts
-import { createKenresoftClient } from '@kenresoft/astro';
+import { createKenresoftClient } from '@kenresoft-cms/astro';
 
 const cms = createKenresoftClient({ url: 'http://localhost:8787' });
 
@@ -36,10 +36,10 @@ Astro is this project's first-class frontend target (`docs/ARCHITECTURE.md` §2/
 because the code needs Astro to run. Other frameworks are expected to call the public API
 directly rather than through this package, at least for now (see Future work below).
 
-### Why not `@kenresoft/cms-sdk`, why not framework-generic?
+### Why not `@kenresoft-cms/cms-sdk`, why not framework-generic?
 
-An earlier draft of `docs/ARCHITECTURE.md` §15 sketched a hypothetical `@kenresoft/cms-sdk`.
-This implementation uses `@kenresoft/astro` instead, matching Astro's own convention for
+An earlier draft of `docs/ARCHITECTURE.md` §15 sketched a hypothetical `@kenresoft-cms/cms-sdk`.
+This implementation uses `@kenresoft-cms/astro` instead, matching Astro's own convention for
 official integrations (`@astrojs/<name>`-style naming) and keeping the scope honest: this
 package was built for, and tested against, one framework. A framework-generic SDK is future
 work, not a rename of this package (see Future work).
@@ -88,7 +88,7 @@ Kenresoft CMS/API (wrangler dev, :8787)
         |  GET /api/v1/public/:contentType/:slug
         |  GET /api/v1/public/media/:id/file
         v
-@kenresoft/astro  (integrations/astro)
+@kenresoft-cms/astro  (integrations/astro)
         |
         v
    Astro site  (examples/astro-site)
@@ -106,7 +106,7 @@ Two terminals:
 
 ```bash
 # Terminal 1 — the CMS
-pnpm --filter @kenresoft/api dev        # http://localhost:8787
+pnpm --filter @kenresoft-cms/api dev        # http://localhost:8787
 
 # Terminal 2 — the Astro example
 pnpm --filter kenresoft-cms-example-astro dev   # http://localhost:4321
@@ -117,11 +117,11 @@ including both of the above.)
 
 Both `integrations/astro` and `examples/astro-site` are ordinary pnpm workspace members
 (`pnpm-workspace.yaml` lists `integrations/*` and `examples/*` alongside `apps/*`/`packages/*`)
-— a plain `pnpm install` at the repo root wires `@kenresoft/astro` into the example via a
+— a plain `pnpm install` at the repo root wires `@kenresoft-cms/astro` into the example via a
 workspace symlink, same as any other internal package. There is no separate install step and
 no `--ignore-workspace` flag needed; an earlier version of this example was deliberately kept
 outside the workspace to mimic an external consumer, but that made consuming
-`@kenresoft/astro` from it awkward for no real benefit — a real SDK's own example app living in
+`@kenresoft-cms/astro` from it awkward for no real benefit — a real SDK's own example app living in
 the SDK's own monorepo is a completely standard pattern.
 
 ## Environment variables
@@ -162,7 +162,7 @@ when the slug doesn't resolve, rather than pre-generating a fixed list of paths.
 Static output was the right choice for Phase 1's first vertical slice (the simplest reliable
 strategy, matching `docs/ARCHITECTURE.md` §20.1's "Astro renders the post" framing) but stopped
 being the right default once "does a new post actually appear" became something worth verifying
-end-to-end. `@kenresoft/astro`'s client has no build-time-only assumptions either way — it's
+end-to-end. `@kenresoft-cms/astro`'s client has no build-time-only assumptions either way — it's
 just `fetch`, equally callable from a static `getStaticPaths()` page or an SSR one — so this was
 a config change in this example plus dropping `getStaticPaths()` from one page, not a redesign
 of the CMS API or the client.
@@ -211,7 +211,7 @@ doc's Cloudflare compatibility section) — listed as open decisions, not commit
 
 - **Public content-type metadata** — see Known limitations above; a decision point, not a gap
   being tracked toward a default "yes."
-- A framework-generic SDK (`@kenresoft/sdk` or similar) that `@kenresoft/astro` could become a
+- A framework-generic SDK (`@kenresoft-cms/sdk` or similar) that `@kenresoft-cms/astro` could become a
   thin wrapper around, for Next.js/Vue/Flutter/etc. consumers — today those frameworks call the
   public API directly, which is a fully supported, first-class path (`docs/ARCHITECTURE.md`
   §4), just without a typed client yet.

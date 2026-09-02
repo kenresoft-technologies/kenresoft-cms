@@ -1,5 +1,5 @@
-import type { UserRole } from '@kenresoft/contracts';
-import type { Database } from '@kenresoft/database';
+import type { UserRole } from '@kenresoft-cms/contracts';
+import type { Database } from '@kenresoft-cms/database';
 
 import { countGuardians } from '../repositories/users';
 

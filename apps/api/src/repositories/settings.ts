@@ -1,5 +1,5 @@
-import { eq, settings } from '@kenresoft/database';
-import type { Database, NewSettings, Settings } from '@kenresoft/database';
+import { eq, settings } from '@kenresoft-cms/database';
+import type { Database, NewSettings, Settings } from '@kenresoft-cms/database';
 
 export function getSettings(db: Database): Promise<Settings | undefined> {
   return db.query.settings.findFirst();

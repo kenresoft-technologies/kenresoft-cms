@@ -1,6 +1,6 @@
 import { z } from '@hono/zod-openapi';
-import { formSubmissionSchema } from '@kenresoft/contracts';
-import type { FormSubmission, FormSubmissionStatus } from '@kenresoft/contracts';
+import { formSubmissionSchema } from '@kenresoft-cms/contracts';
+import type { FormSubmission, FormSubmissionStatus } from '@kenresoft-cms/contracts';
 
 import { getDb } from '../../lib/db';
 import { validateSubmission } from '../../lib/form-submission-validation';
@@ -9,7 +9,7 @@ import type { Bindings } from '../../lib/env';
 import { listFormFields } from '../../repositories/form-fields';
 import { createFormSubmission } from '../../repositories/form-submissions';
 import { getFormBySlug } from '../../repositories/forms';
-import type { FormSubmission as DbFormSubmission } from '@kenresoft/database';
+import type { FormSubmission as DbFormSubmission } from '@kenresoft-cms/database';
 
 export const publicFormsRoute = createOpenApiApp<{ Bindings: Bindings }>();
 

@@ -8,8 +8,8 @@ import {
   updateUserDeveloperToolsAccessSchema,
   updateUserDisabledSchema,
   updateUserRoleSchema,
-} from '@kenresoft/contracts';
-import type { AdminUser, Session, UserRole } from '@kenresoft/contracts';
+} from '@kenresoft-cms/contracts';
+import type { AdminUser, Session, UserRole } from '@kenresoft-cms/contracts';
 import { z } from 'zod';
 
 import { recordAudit } from '../../lib/audit';

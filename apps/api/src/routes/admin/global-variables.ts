@@ -4,8 +4,8 @@ import {
   globalVariableSchema,
   idParamSchema,
   updateGlobalVariableSchema,
-} from '@kenresoft/contracts';
-import type { GlobalVariable } from '@kenresoft/contracts';
+} from '@kenresoft-cms/contracts';
+import type { GlobalVariable } from '@kenresoft-cms/contracts';
 import { z } from 'zod';
 
 import { getDb } from '../../lib/db';
@@ -22,7 +22,7 @@ import {
 } from '../../repositories/global-variables';
 import type { Bindings } from '../../lib/env';
 import type { AuthedVariables } from '../../middleware/require-session';
-import type { GlobalVariable as DbGlobalVariable } from '@kenresoft/database';
+import type { GlobalVariable as DbGlobalVariable } from '@kenresoft-cms/database';
 
 export const globalVariablesRoute = createOpenApiApp<{ Bindings: Bindings; Variables: AuthedVariables }>();
 

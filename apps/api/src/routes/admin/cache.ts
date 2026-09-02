@@ -1,5 +1,5 @@
 import { createRoute } from '@hono/zod-openapi';
-import { cachePurgeResultSchema } from '@kenresoft/contracts';
+import { cachePurgeResultSchema } from '@kenresoft-cms/contracts';
 
 import { getDb } from '../../lib/db';
 import { createOpenApiApp } from '../../lib/openapi';

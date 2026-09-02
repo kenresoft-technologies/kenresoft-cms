@@ -27,12 +27,12 @@ rules, and the implementation roadmap. Read it before making architectural chang
 deviation from it should be recorded in its Changelog section.
 
 **Monorepo layout** (pnpm workspaces):
-- `apps/api/` — `@kenresoft/api` (Cloudflare Worker, Hono, D1, R2)
-- `apps/admin/` — `@kenresoft/admin` (React + Vite admin SPA)
-- `packages/database/` — `@kenresoft/database` (Drizzle schema, migrations, seed data)
-- `packages/contracts/` — `@kenresoft/contracts` (shared Zod schemas / API contract)
-- `packages/types/` — `@kenresoft/types` (shared TypeScript types)
-- `packages/config/` — `@kenresoft/config` (shared ESLint/TS/Prettier config)
+- `apps/api/` — `@kenresoft-cms/api` (Cloudflare Worker, Hono, D1, R2)
+- `apps/admin/` — `@kenresoft-cms/admin` (React + Vite admin SPA)
+- `packages/database/` — `@kenresoft-cms/database` (Drizzle schema, migrations, seed data)
+- `packages/contracts/` — `@kenresoft-cms/contracts` (shared Zod schemas / API contract)
+- `packages/types/` — `@kenresoft-cms/types` (shared TypeScript types)
+- `packages/config/` — `@kenresoft-cms/config` (shared ESLint/TS/Prettier config)
 
 ---
 
@@ -235,12 +235,12 @@ Per the roadmap in `docs/ARCHITECTURE.md` §20:
   per-form Submissions page picked up the join too. `README.md` was also brought back in line
   with reality (it had still said "Phase 0, no application code yet").
 - **Astro integration, Phase 1 (local only)** — done, see `docs/ASTRO.md` for the full guide.
-  A new `@kenresoft/astro` workspace package (`integrations/astro/`) — a typed client
+  A new `@kenresoft-cms/astro` workspace package (`integrations/astro/`) — a typed client
   (`createKenresoftClient`) wrapping the public API's `entries.list`/`entries.get`, deliberately
   without a `contentTypes.list()` since no public content-type-metadata endpoint exists to back
   one. `examples/astro-site` (previously a hand-rolled `fetch` wrapper) was rebuilt on top of
   it and brought into the pnpm workspace (`pnpm-workspace.yaml` now lists `integrations/*` and
-  `examples/*`) so it can depend on `@kenresoft/astro` via a normal `workspace:*` link instead
+  `examples/*`) so it can depend on `@kenresoft-cms/astro` via a normal `workspace:*` link instead
   of the `--ignore-workspace` standalone install it briefly needed. Verified end-to-end against
   a real local deployment: created a draft entry via the admin API, confirmed the public API
   404s it exactly like a nonexistent slug, published it, confirmed both the public API and
@@ -257,7 +257,7 @@ Per the roadmap in `docs/ARCHITECTURE.md` §20:
   /api/v1/public/media/:id/file`, mounted before the generic `/api/v1/public/:contentType`
   catch-all (same reason `/public/forms` needed the same treatment), edge-cached for a year via
   the Cache API (media is immutable — no edit endpoint, only create/delete) and invalidated on
-  delete. `@kenresoft/astro` gained `media.url({ id })`; `examples/astro-site` now renders a
+  delete. `@kenresoft-cms/astro` gained `media.url({ id })`; `examples/astro-site` now renders a
   featured image when a `media`-type field is present, using the entry's title as `<img alt>`
   since Media's real `altText` still isn't exposed publicly. Verified live end-to-end against
   the running local deployment (upload → public fetch returns byte-identical file with the
@@ -398,7 +398,7 @@ entry above — walks the `media` table's R2 keys and shells out to `wrangler r2
 `put` per object (the same approach `recover-owner.mjs` uses for D1), verified end-to-end
 against real local dev state (backup, then restore the same objects back over themselves,
 confirmed byte-identical). **Public media metadata** (`GET /api/v1/public/media/:id` →
-`{ altText, contentType, width, height }`, `@kenresoft/astro`'s new `media.get()`) closes the
+`{ altText, contentType, width, height }`, `@kenresoft-cms/astro`'s new `media.get()`) closes the
 smaller of the two Astro gaps noted under Public media serving above; `examples/astro-site`
 now renders real alt text (falling back to the entry's title only when a file has none set)
 and `width`/`height` attributes instead of always faking alt text from the title. The other,
@@ -662,9 +662,9 @@ subdirectory-scoped button for `apps/admin` was confirmed impossible by actually
 Cloudflare's own docs say a subdirectory URL does (isolate that directory as the *entire* new
 repo) — copying `apps/admin` alone into a scratch directory and running `pnpm install` fails
 immediately, `ERR_PNPM_WORKSPACE_PKG_NOT_FOUND`, since it has a real (not type-only) runtime
-dependency on the sibling `@kenresoft/contracts` workspace package. `apps/admin/README.md`
+dependency on the sibling `@kenresoft-cms/contracts` workspace package. `apps/admin/README.md`
 documents this plainly instead of claiming a button that doesn't work; fixing it for real would
-mean publishing `@kenresoft/contracts` to npm or vendoring it, neither attempted (out of scope).
+mean publishing `@kenresoft-cms/contracts` to npm or vendoring it, neither attempted (out of scope).
 `scripts/setup.mjs`'s CORS-origin wiring is now idempotent (`addCorsOrigin()`, verified with a
 scratch-file test: three consecutive calls with the same origin add it exactly once and report
 `false`/no-op on the second and third) — previously it unconditionally appended on every run.
@@ -685,3 +685,54 @@ and all 23 `apps/admin` test files pass (individually/in small batches for the A
 full single-process run hit the same pre-existing Windows/workerd local-module-fallback
 resource-exhaustion flakiness documented earlier in this file, not a code issue, confirmed by the
 same files passing cleanly once resource pressure eased).
+
+**CI fix: the generic build job needs a placeholder `VITE_API_URL`** (2026-09-02) —
+`apps/admin/scripts/generate-headers.mjs` (from the entry above) correctly throws when
+`VITE_API_URL` is unset, since a real deploy genuinely needs it — but `.github/workflows/ci.yml`'s
+`pnpm build` step only validates that the monorepo compiles and was never pointed at any
+deployment target, so it broke CI on the very next push. Fixed by giving that one job a
+placeholder `VITE_API_URL`, leaving `deploy.yml`'s real deploy path (already sourcing a real
+`vars.VITE_API_URL`) untouched. Verified by watching the actual GitHub Actions run go green
+(`gh run watch`), not just a local repro.
+
+**Admin-only deploy button: the real fix, not just the documented limitation** (2026-09-02/03) —
+the entry above's `apps/admin/README.md` correctly documented that a subdirectory-scoped "Deploy
+to Cloudflare" button couldn't work, since `apps/admin` had two `workspace:*` dependencies a
+subdirectory-isolated clone can't resolve at all (`ERR_PNPM_WORKSPACE_PKG_NOT_FOUND`):
+`@kenresoft-cms/contracts` (real runtime code — `ROLE_RANK`/`roleAtLeast`) and
+`@kenresoft-cms/config` (dev-only ESLint rules), plus a `tsconfig.json` `extends` reaching outside
+the directory entirely. Fixed all three: `@kenresoft-cms/config`'s rules and the root
+`tsconfig.json`'s compiler options are now inlined directly into `apps/admin` (own copies,
+`eslint.config.js`/`tsconfig{,.node}.json` — no automatic sync if the shared config changes,
+flagged in a comment); `@kenresoft-cms/contracts` is now a real, publicly published npm package
+(source unchanged, still lives at `packages/contracts`), depended on by a real semver range
+instead of `workspace:*`, with a new root `.npmrc` (`link-workspace-packages=true`) keeping local
+monorepo dev symlinked to the workspace copy exactly as before — only a standalone clone outside
+the monorepo actually reaches the registry. Along the way, prompted by a direct user question
+about branding, every workspace package was renamed from the `@kenresoft/*` scope to
+`@kenresoft-cms/*` (a mechanical rename across all 6 packages and every consumer, verified by a
+clean typecheck and the full test suite afterward) before publishing, since `@kenresoft` is the
+company's general scope and `@kenresoft-cms` is specific to this product.
+`packages/contracts/package.json` uses `publishConfig` to point external consumers at a compiled
+`dist/` (new `tsconfig.build.json`) while keeping the base `main`/`types`/`exports` pointed at raw
+`.ts` source for fast local monorepo dev with no separate build step — verified via `pnpm pack`
+(not plain `npm pack`, confirmed to NOT apply `publishConfig` overrides or rewrite `workspace:*` —
+a real gotcha caught by inspecting the packed tarball's `package.json`, not assumed).
+
+Published for real to the npm registry, under a `kenresoft-cms` npm Organization the user created
+for this (npm requires an Organization matching the scope; publishing also required a per-publish
+browser 2FA approval an ordinary access token can't bypass). One real mistake happened here and
+was caught, not silently avoided: the first publish (`0.1.0`) shipped with a stale `README.md`
+still naming the old `@kenresoft/contracts` scope — root-caused to the rename script using
+`git grep -l`, which only touches **tracked** files, silently skipping `README.md`/`.npmrc`/
+`tsconfig.build.json` that had been created earlier in the same session and were still untracked
+at rename time. Fixed by patching the two affected files and publishing `0.1.1` immediately
+(the live registry content re-verified via `npm view ... readme` afterward, not assumed fixed).
+The full install/build/deploy chain was re-verified twice against completely isolated standalone
+copies of `apps/admin` — once via a local tarball (before the real publish, to de-risk it), once
+against the real published registry package after — `pnpm install && pnpm build && wrangler
+deploy --dry-run` all succeeding with zero errors both times. Not yet done: an actual live
+click-through of Cloudflare's "Deploy to Cloudflare" button UI for a subdirectory URL pointing at
+`apps/admin` specifically — the dependency-resolution blocker that made this categorically
+impossible is fixed and verified as above, but the button's own wizard flow hasn't been exercised
+for real.

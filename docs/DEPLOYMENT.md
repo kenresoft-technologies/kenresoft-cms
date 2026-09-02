@@ -19,7 +19,7 @@ the API Worker) provisioned automatically the first time you deploy — see belo
   the Worker's own source code is — the button only detects a config there, and a subdirectory
   URL makes Cloudflare treat that subdirectory as the *entire* contents of the new repo it
   creates, which would break `apps/api`'s `workspace:*` dependencies on
-  `@kenresoft/database`/`@kenresoft/contracts` (this failed exactly this way, with Cloudflare
+  `@kenresoft-cms/database`/`@kenresoft-cms/contracts` (this failed exactly this way, with Cloudflare
   reporting "No Wrangler configuration detected", before the config moved to the root — see
   `wrangler.toml`'s own top comment, and [`apps/api/README.md`](../apps/api/README.md) for the
   full explanation). There is no equivalent button for the Admin Worker — see
@@ -146,8 +146,8 @@ one.
 ## 6. Deploy, then run migrations
 
 ```bash
-pnpm --filter @kenresoft/api deploy
-pnpm --filter @kenresoft/database migrate:remote
+pnpm --filter @kenresoft-cms/api deploy
+pnpm --filter @kenresoft-cms/database migrate:remote
 ```
 
 Deploy first: if you skipped the explicit `wrangler d1 create` in step 3, this is what

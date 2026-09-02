@@ -68,7 +68,7 @@ export function buildFormSnippets({
     .map((line, index) => (index === 0 ? line : `  ${line}`))
     .join('\n');
 
-  const astro = `import { createKenresoftClient } from '@kenresoft/astro';
+  const astro = `import { createKenresoftClient } from '@kenresoft-cms/astro';
 
 const cms = createKenresoftClient({ url: import.meta.env.PUBLIC_CMS_URL });
 

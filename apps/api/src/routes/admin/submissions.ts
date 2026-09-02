@@ -1,5 +1,5 @@
 import { createRoute } from '@hono/zod-openapi';
-import { formSubmissionWithFormSchema } from '@kenresoft/contracts';
+import { formSubmissionWithFormSchema } from '@kenresoft-cms/contracts';
 import { z } from 'zod';
 
 import { getDb } from '../../lib/db';

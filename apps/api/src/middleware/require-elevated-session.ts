@@ -1,4 +1,4 @@
-import type { Database } from '@kenresoft/database';
+import type { Database } from '@kenresoft-cms/database';
 import type { MiddlewareHandler } from 'hono';
 
 import { getDb } from '../lib/db';

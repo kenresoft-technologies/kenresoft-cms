@@ -2,7 +2,7 @@
   "name": "kenresoft-cms-example-astro",
   "version": "0.1.0",
   "private": true,
-  "description": "Reference Astro site consuming a Kenresoft CMS deployment's public API via @kenresoft/astro.",
+  "description": "Reference Astro site consuming a Kenresoft CMS deployment's public API via @kenresoft-cms/astro.",
   "type": "module",
   "scripts": {
     "dev": "astro dev",
@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@astrojs/cloudflare": "^12.6.13",
-    "@kenresoft/astro": "workspace:*",
+    "@kenresoft-cms/astro": "workspace:*",
     "astro": "^5.1.0"
   },
   "devDependencies": {

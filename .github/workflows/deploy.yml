@@ -51,13 +51,13 @@ jobs:
       # deployment owner's own D1, configured when they forked the repo (§11), never a
       # database chosen by this workflow.
       - name: Apply D1 migrations
-        run: pnpm --filter @kenresoft/database migrate:remote
+        run: pnpm --filter @kenresoft-cms/database migrate:remote
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
       - name: Deploy Worker
-        run: pnpm --filter @kenresoft/api deploy
+        run: pnpm --filter @kenresoft-cms/api deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -88,7 +88,7 @@ jobs:
       # — the deployment owner's own deployed API URL, set once as a repository/environment
       # variable after the API's first deploy establishes its URL. See docs/DEPLOYMENT.md.
       - name: Build admin app
-        run: pnpm --filter @kenresoft/admin build
+        run: pnpm --filter @kenresoft-cms/admin build
         env:
           VITE_API_URL: ${{ vars.VITE_API_URL }}
 
@@ -97,7 +97,7 @@ jobs:
       # still reached over its normal public HTTPS URL by the admin app's existing
       # VITE_API_URL + fetch() integration, nothing merged.
       - name: Deploy admin Worker
-        run: pnpm --filter @kenresoft/admin deploy
+        run: pnpm --filter @kenresoft-cms/admin deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

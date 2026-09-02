@@ -1,6 +1,6 @@
-import { eq, forms } from '@kenresoft/database';
-import type { UpdateFormInput } from '@kenresoft/contracts';
-import type { Database, Form, NewForm } from '@kenresoft/database';
+import { eq, forms } from '@kenresoft-cms/database';
+import type { UpdateFormInput } from '@kenresoft-cms/contracts';
+import type { Database, Form, NewForm } from '@kenresoft-cms/database';
 
 export async function createForm(db: Database, input: Pick<NewForm, 'name' | 'slug'>): Promise<Form> {
   const [form] = await db.insert(forms).values(input).returning();

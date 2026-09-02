@@ -9,7 +9,7 @@ import {
   updateFormFieldSchema,
   updateFormSchema,
   updateFormSubmissionStatusSchema,
-} from '@kenresoft/contracts';
+} from '@kenresoft-cms/contracts';
 import type {
   Form,
   FormField,
@@ -17,7 +17,7 @@ import type {
   FormSubmission,
   FormSubmissionStatus,
   FormSubmissionWithForm,
-} from '@kenresoft/contracts';
+} from '@kenresoft-cms/contracts';
 import { z } from 'zod';
 
 import { getDb } from '../../lib/db';
@@ -42,7 +42,7 @@ import type {
   Form as DbForm,
   FormField as DbFormField,
   FormSubmission as DbFormSubmission,
-} from '@kenresoft/database';
+} from '@kenresoft-cms/database';
 
 export const formsRoute = createOpenApiApp<{ Bindings: Bindings; Variables: AuthedVariables }>();
 

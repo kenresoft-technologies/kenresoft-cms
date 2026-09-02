@@ -1,5 +1,5 @@
 {
-  "name": "@kenresoft/admin",
+  "name": "@kenresoft-cms/admin",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -19,7 +19,7 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@fontsource-variable/geist": "^5.3.0",
-    "@kenresoft/contracts": "workspace:*",
+    "@kenresoft-cms/contracts": "^0.1.0",
     "@tanstack/react-query": "^5.102.5",
     "@tanstack/react-table": "^8.21.3",
     "@tiptap/extension-character-count": "^3.31.0",
@@ -54,7 +54,7 @@
     "tw-animate-css": "^1.4.0"
   },
   "devDependencies": {
-    "@kenresoft/config": "workspace:*",
+    "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.62.1",
     "@tailwindcss/vite": "^4.3.3",
     "@testing-library/jest-dom": "^6.6.3",
@@ -66,11 +66,14 @@
     "@types/turndown": "^5.0.6",
     "@vitejs/plugin-react": "^6.1.0",
     "eslint": "^10.9.1",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.5",
     "globals": "^17.11.0",
     "jsdom": "^25.0.1",
     "shadcn": "^4.19.0",
     "tailwindcss": "^4.3.3",
     "typescript": "^5.9.3",
+    "typescript-eslint": "^8.68.0",
     "vite": "^8.2.2",
     "vitest": "^4.1.11",
     "wrangler": "^4.42.4"

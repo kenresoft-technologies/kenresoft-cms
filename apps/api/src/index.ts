@@ -1,6 +1,6 @@
 import { OpenAPIHono } from '@hono/zod-openapi';
 import { Scalar } from '@scalar/hono-api-reference';
-import { createDb } from '@kenresoft/database';
+import { createDb } from '@kenresoft-cms/database';
 
 import { createAuth } from './lib/auth';
 import { authRateLimit } from './middleware/auth-rate-limit';

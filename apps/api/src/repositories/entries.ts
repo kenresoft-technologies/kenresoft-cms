@@ -1,5 +1,5 @@
-import { and, contentTypes, desc, entries, entryRevisions, eq, lte, user } from '@kenresoft/database';
-import type { Database, Entry, EntryRevision, NewEntry } from '@kenresoft/database';
+import { and, contentTypes, desc, entries, entryRevisions, eq, lte, user } from '@kenresoft-cms/database';
+import type { Database, Entry, EntryRevision, NewEntry } from '@kenresoft-cms/database';
 
 export interface EntryWithContentType extends Entry {
   contentTypeName: string;

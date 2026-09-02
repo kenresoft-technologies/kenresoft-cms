@@ -1,5 +1,5 @@
-import { auditLog } from '@kenresoft/database';
-import type { Database } from '@kenresoft/database';
+import { auditLog } from '@kenresoft-cms/database';
+import type { Database } from '@kenresoft-cms/database';
 
 // The one place audit-log rows get written, so "never put a password/token/recovery code in
 // metadata" (docs/ARCHITECTURE.md §10) has a single place to hold rather than being a rule

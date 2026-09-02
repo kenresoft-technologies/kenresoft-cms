@@ -98,7 +98,7 @@ export interface DeveloperSnippets {
   curl: string;
 }
 
-// Astro is first-class here — see @kenresoft/astro (integrations/astro/src/index.ts), the
+// Astro is first-class here — see @kenresoft-cms/astro (integrations/astro/src/index.ts), the
 // only framework this CMS ships an actual client for. Every other tab is plain HTTP against
 // the public API, since building framework-specific SDKs for this feature is explicitly out
 // of scope.
@@ -117,7 +117,7 @@ export function buildDeveloperSnippets({
   const getPath = `/api/v1/public/${slug}/your-entry-slug`;
   const firstField = fields[0]?.name ?? 'id';
 
-  const astro = `import { createKenresoftClient } from '@kenresoft/astro';
+  const astro = `import { createKenresoftClient } from '@kenresoft-cms/astro';
 
 const cms = createKenresoftClient({ url: import.meta.env.PUBLIC_CMS_URL });
 
@@ -212,7 +212,7 @@ export function buildEntrySnippets({
   const pascal = toPascalCase(slug) || 'Entry';
   const path = `/api/v1/public/${slug}/${entrySlug}`;
 
-  const astro = `import { createKenresoftClient } from '@kenresoft/astro';
+  const astro = `import { createKenresoftClient } from '@kenresoft-cms/astro';
 
 const cms = createKenresoftClient({ url: import.meta.env.PUBLIC_CMS_URL });
 

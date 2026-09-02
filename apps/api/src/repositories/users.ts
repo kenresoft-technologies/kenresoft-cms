@@ -1,6 +1,6 @@
-import { and, count, desc, eq, inArray, ne, session, user } from '@kenresoft/database';
-import type { Database } from '@kenresoft/database';
-import type { UserRole } from '@kenresoft/contracts';
+import { and, count, desc, eq, inArray, ne, session, user } from '@kenresoft-cms/database';
+import type { Database } from '@kenresoft-cms/database';
+import type { UserRole } from '@kenresoft-cms/contracts';
 
 export interface UserWithLastActive {
   id: string;

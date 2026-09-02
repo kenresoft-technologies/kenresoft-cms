@@ -3,7 +3,7 @@
 // this file is a thin re-export barrel so the ~20 files across this app that already
 // `import type {...} from '@/lib/types'` don't need touching individually.
 //
-// The const-array value import below deliberately reaches past @kenresoft/contracts' own
+// The const-array value import below deliberately reaches past @kenresoft-cms/contracts' own
 // barrel (api/index.ts) straight to schemas/enums.ts. Confirmed empirically: importing
 // FIELD_TYPES etc. via the barrel — even after splitting enums into their own zod-free file —
 // still pulled zod into this app's production bundle, because Rollup didn't fully separate
@@ -20,7 +20,7 @@ export {
   ROLE_RANK,
   roleAtLeast,
   USER_ROLES,
-} from '@kenresoft/contracts/schemas/enums';
+} from '@kenresoft-cms/contracts/schemas/enums';
 
 // Type-only — fully erased at build regardless of which contracts module defines them, so
 // these go through the normal barrel.
@@ -46,4 +46,4 @@ export type {
   Session,
   Settings,
   UserRole,
-} from '@kenresoft/contracts';
+} from '@kenresoft-cms/contracts';

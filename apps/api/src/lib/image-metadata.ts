@@ -1,4 +1,4 @@
-import type { MediaContentType } from '@kenresoft/database';
+import type { MediaContentType } from '@kenresoft-cms/database';
 
 export interface SniffedImage {
   contentType: MediaContentType;

@@ -1,5 +1,5 @@
 import { createRoute } from '@hono/zod-openapi';
-import { confirmPasswordResetSchema, genericMessageSchema, requestPasswordResetSchema } from '@kenresoft/contracts';
+import { confirmPasswordResetSchema, genericMessageSchema, requestPasswordResetSchema } from '@kenresoft-cms/contracts';
 import { hashPassword } from 'better-auth/crypto';
 import { z } from 'zod';
 

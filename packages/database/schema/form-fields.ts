@@ -3,7 +3,7 @@ import { sqliteTable, text, integer, uniqueIndex } from 'drizzle-orm/sqlite-core
 
 import { forms } from './forms';
 // FORM_FIELD_TYPES itself lives in packages/contracts — see field-definitions.ts for why.
-import type { FormFieldType } from '@kenresoft/contracts';
+import type { FormFieldType } from '@kenresoft-cms/contracts';
 
 export type { FormFieldType };
 

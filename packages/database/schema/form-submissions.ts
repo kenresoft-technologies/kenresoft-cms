@@ -3,7 +3,7 @@ import { sqliteTable, text, integer, index } from 'drizzle-orm/sqlite-core';
 
 import { forms } from './forms';
 // FORM_SUBMISSION_STATUSES itself lives in packages/contracts — see field-definitions.ts for why.
-import type { FormSubmissionStatus } from '@kenresoft/contracts';
+import type { FormSubmissionStatus } from '@kenresoft-cms/contracts';
 
 export type { FormSubmissionStatus };
 

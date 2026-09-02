@@ -1,6 +1,6 @@
 import { createRoute, z } from '@hono/zod-openapi';
-import { altTextSchema, mediaSchema } from '@kenresoft/contracts';
-import type { Media } from '@kenresoft/contracts';
+import { altTextSchema, mediaSchema } from '@kenresoft-cms/contracts';
+import type { Media } from '@kenresoft-cms/contracts';
 
 import { getDb } from '../../lib/db';
 import { sniffImage } from '../../lib/image-metadata';
@@ -10,7 +10,7 @@ import { requireRole } from '../../middleware/require-role';
 import { createMedia, deleteMedia, getMediaById, listMedia } from '../../repositories/media';
 import type { Bindings } from '../../lib/env';
 import type { AuthedVariables } from '../../middleware/require-session';
-import type { Media as DbMedia } from '@kenresoft/database';
+import type { Media as DbMedia } from '@kenresoft-cms/database';
 
 export const mediaRoute = createOpenApiApp<{ Bindings: Bindings; Variables: AuthedVariables }>();
 

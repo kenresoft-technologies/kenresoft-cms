@@ -1,6 +1,6 @@
 import { createRoute } from '@hono/zod-openapi';
-import { entrySchema } from '@kenresoft/contracts';
-import type { Entry, EntryStatus } from '@kenresoft/contracts';
+import { entrySchema } from '@kenresoft-cms/contracts';
+import type { Entry, EntryStatus } from '@kenresoft-cms/contracts';
 import { z } from 'zod';
 
 import { getDb } from '../../lib/db';
@@ -9,7 +9,7 @@ import { createOpenApiApp } from '../../lib/openapi';
 import { publicCacheControlHeader, publicCacheKey } from '../../lib/public-cache';
 import { getContentTypeBySlug } from '../../repositories/content-types';
 import { getPublishedEntryBySlug, listPublishedEntriesForContentType } from '../../repositories/entries';
-import type { Entry as DbEntry } from '@kenresoft/database';
+import type { Entry as DbEntry } from '@kenresoft-cms/database';
 
 export const publicContentRoute = createOpenApiApp<{ Bindings: Bindings }>();
 

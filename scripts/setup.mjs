@@ -228,7 +228,7 @@ async function main() {
   // sidesteps that entirely. Unlike scripts/lib/wrangler-cli.mjs's wrangler invocations, no
   // user-controlled values are interpolated into this command, so shell:true carries none of
   // the quoting/escaping risk that trick was written to avoid.
-  execFileSync('pnpm', ['--filter', '@kenresoft/admin', 'build'], {
+  execFileSync('pnpm', ['--filter', '@kenresoft-cms/admin', 'build'], {
     cwd: REPO_ROOT,
     stdio: 'inherit',
     shell: true,

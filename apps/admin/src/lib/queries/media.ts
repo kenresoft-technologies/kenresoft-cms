@@ -44,7 +44,7 @@ export function mediaFileUrl(id: string): string {
 }
 
 // The route a real frontend consumer actually uses — admin-gated mediaFileUrl above is only
-// for rendering thumbnails inside the authenticated admin UI. Matches @kenresoft/astro's own
+// for rendering thumbnails inside the authenticated admin UI. Matches @kenresoft-cms/astro's own
 // media.url() (integrations/astro/src/index.ts).
 export function publicMediaFileUrl(id: string): string {
   return `${import.meta.env.VITE_API_URL}/api/v1/public/media/${id}/file`;

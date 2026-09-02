@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
 // MEDIA_CONTENT_TYPES itself lives in packages/contracts — see field-definitions.ts for why.
-import type { MediaContentType } from '@kenresoft/contracts';
+import type { MediaContentType } from '@kenresoft-cms/contracts';
 
 export type { MediaContentType };
 

@@ -1,5 +1,5 @@
 import { SELF, env } from 'cloudflare:test';
-import { createDb } from '@kenresoft/database';
+import { createDb } from '@kenresoft-cms/database';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 const db = createDb(env.DB);

@@ -1,4 +1,4 @@
-import { ROLE_RANK } from '@kenresoft/contracts';
+import { ROLE_RANK } from '@kenresoft-cms/contracts';
 import type { MiddlewareHandler } from 'hono';
 
 import type { Bindings } from '../lib/env';

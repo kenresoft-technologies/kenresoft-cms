@@ -1,7 +1,23 @@
+// Inlined from the root tsconfig.json rather than "extends": "../../tsconfig.json" — apps/admin
+// must stay installable as a standalone clone (see apps/admin/README.md), where a relative path
+// outside this directory wouldn't exist. Mirror any change to the root tsconfig here too.
 {
-  "extends": "../../tsconfig.json",
   "compilerOptions": {
+    "target": "ES2022",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "moduleDetection": "force",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "declaration": true,
+    "declarationMap": true,
     "jsx": "react-jsx",
     "types": ["vite/client"],
     "baseUrl": ".",

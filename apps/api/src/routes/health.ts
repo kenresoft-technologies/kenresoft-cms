@@ -1,6 +1,6 @@
 import { createRoute } from '@hono/zod-openapi';
-import { sql } from '@kenresoft/database';
-import { healthResponseSchema } from '@kenresoft/contracts';
+import { sql } from '@kenresoft-cms/database';
+import { healthResponseSchema } from '@kenresoft-cms/contracts';
 
 import { getDb } from '../lib/db';
 import { createOpenApiApp } from '../lib/openapi';

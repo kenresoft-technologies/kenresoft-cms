@@ -5,8 +5,8 @@ import {
   recoveryCodesGeneratedSchema,
   recoveryCodesStatusSchema,
   transferOwnershipSchema,
-} from '@kenresoft/contracts';
-import type { AdminUser, UserRole } from '@kenresoft/contracts';
+} from '@kenresoft-cms/contracts';
+import type { AdminUser, UserRole } from '@kenresoft-cms/contracts';
 import { z } from 'zod';
 
 import { recordAudit } from '../../lib/audit';

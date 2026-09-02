@@ -1,5 +1,5 @@
 ---
-import { createKenresoftClient } from '@kenresoft/astro';
+import { createKenresoftClient } from '@kenresoft-cms/astro';
 import BaseLayout from '../layouts/BaseLayout.astro';
 
 const cms = createKenresoftClient({ url: import.meta.env.PUBLIC_KENRESOFT_CMS_URL });
@@ -18,7 +18,7 @@ const features = [
   },
   {
     title: 'Astro as a first-class citizen',
-    body: '@kenresoft/astro is a typed client purpose-built for this integration: entries, media, and form submissions, with real TypeScript types generated from the API contract.',
+    body: '@kenresoft-cms/astro is a typed client purpose-built for this integration: entries, media, and form submissions, with real TypeScript types generated from the API contract.',
   },
   {
     title: 'Cloudflare-native',

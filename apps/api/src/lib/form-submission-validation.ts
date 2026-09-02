@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { FormField } from '@kenresoft/database';
+import type { FormField } from '@kenresoft-cms/database';
 
 // Public form input is adversarial by default (§9) — strips every angle bracket from a
 // string value before it's ever persisted, rather than trusting that Zod's type/format

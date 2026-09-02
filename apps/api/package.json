@@ -1,5 +1,5 @@
 {
-  "name": "@kenresoft/api",
+  "name": "@kenresoft-cms/api",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -19,8 +19,8 @@
   },
   "dependencies": {
     "@hono/zod-openapi": "^1.6.1",
-    "@kenresoft/contracts": "workspace:*",
-    "@kenresoft/database": "workspace:*",
+    "@kenresoft-cms/contracts": "workspace:*",
+    "@kenresoft-cms/database": "workspace:*",
     "@scalar/hono-api-reference": "^0.11.16",
     "better-auth": "1.4.21",
     "drizzle-orm": "^0.45.2",
@@ -30,7 +30,7 @@
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.9.14",
     "@cloudflare/workers-types": "^5.20260826.1",
-    "@kenresoft/config": "workspace:*",
+    "@kenresoft-cms/config": "workspace:*",
     "eslint": "^10.9.1",
     "typescript": "^5.9.3",
     "vitest": "^3.2.4",

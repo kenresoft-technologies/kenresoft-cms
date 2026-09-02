@@ -37,13 +37,13 @@ created becomes the deployment's **owner** (`docs/ARCHITECTURE.md` §10 has the 
 pnpm install
 cp .dev.vars.example .dev.vars           # fill in BETTER_AUTH_SECRET
 cp apps/admin/.env.example apps/admin/.env
-pnpm --filter @kenresoft/database migrate:local
+pnpm --filter @kenresoft-cms/database migrate:local
 pnpm dev
 ```
 
 `pnpm dev` starts every app in parallel — API on `http://localhost:8787` (`wrangler dev`), admin
 on `http://localhost:5173` (Vite). Each also runs independently:
-`pnpm --filter @kenresoft/api dev` / `pnpm --filter @kenresoft/admin dev`.
+`pnpm --filter @kenresoft-cms/api dev` / `pnpm --filter @kenresoft-cms/admin dev`.
 
 ## Advanced: Individual Components
 
@@ -56,8 +56,8 @@ running it — each has its own README with prerequisites, configuration, and a 
 - **[API Worker](apps/api/README.md)** — Hono + D1 + R2 + Better Auth + REST API. Has a real,
   working one-click "Deploy to Cloudflare" button.
 - **[Admin Worker](apps/admin/README.md)** — the React/Vite CMS dashboard, deployed as Workers
-  Static Assets. No working standalone deploy button today — that README explains exactly why
-  and what to do instead.
+  Static Assets. Installable and deployable standalone (its own npm-published dependencies, no
+  workspace packages required) — see that README for what's verified vs. not yet.
 - **[Astro Integration](integrations/astro/README.md)** — a typed client for reading CMS content
   from an Astro (or any JS/TS) site. Not a deployable Worker — a library your own site depends
   on. See also [`examples/astro-site`](examples/astro-site) for a full reference site.
@@ -68,15 +68,15 @@ running it — each has its own README with prerequisites, configuration, and a 
 wrangler.toml   The API Worker's config — lives at the repo root, not apps/api/, so the
                 "Deploy to Cloudflare" button (which only looks there) can find it
 apps/
-  api/      @kenresoft/api    — API Worker (Hono + D1 + R2 + Better Auth)
-  admin/    @kenresoft/admin  — Admin Worker (React + Vite, Workers Static Assets)
+  api/      @kenresoft-cms/api    — API Worker (Hono + D1 + R2 + Better Auth)
+  admin/    @kenresoft-cms/admin  — Admin Worker (React + Vite, Workers Static Assets)
 packages/
-  database/   @kenresoft/database   — Drizzle schema, migrations, seed data
-  contracts/  @kenresoft/contracts  — Shared Zod schemas + API contract, used by api/admin/SDK
-  types/      @kenresoft/types      — Shared TypeScript types
-  config/     @kenresoft/config     — Shared ESLint/TS/Prettier base config
+  database/   @kenresoft-cms/database   — Drizzle schema, migrations, seed data
+  contracts/  @kenresoft-cms/contracts  — Shared Zod schemas + API contract, used by api/admin/SDK
+  types/      @kenresoft-cms/types      — Shared TypeScript types
+  config/     @kenresoft-cms/config     — Shared ESLint/TS/Prettier base config
 integrations/
-  astro/      @kenresoft/astro      — Astro Integration: typed client for the public API
+  astro/      @kenresoft-cms/astro      — Astro Integration: typed client for the public API
 docs/       Architecture and reference documentation, including docs/ASTRO.md
 examples/
   astro-site/ Reference Astro site built on the Astro Integration — see its own README

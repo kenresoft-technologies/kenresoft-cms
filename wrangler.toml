@@ -3,7 +3,7 @@
 # Lives at the repo root, not inside apps/api/, even though that's the Worker's own directory —
 # the "Deploy to Cloudflare" button (README.md) only detects a wrangler config at the repository
 # root; a monorepo subdirectory URL does a sparse checkout of just that folder instead, which
-# would break apps/api's workspace:* dependencies on @kenresoft/database/@kenresoft/contracts
+# would break apps/api's workspace:* dependencies on @kenresoft-cms/database/@kenresoft-cms/contracts
 # (confirmed the hard way — the button reported "No Wrangler configuration detected" when this
 # file lived at apps/api/wrangler.toml with no subdirectory in the button URL). Every path below
 # is relative to this file's own location (the repo root), not to whatever cwd a command runs

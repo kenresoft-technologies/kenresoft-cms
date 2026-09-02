@@ -1,5 +1,5 @@
-import { desc, eq, formSubmissions, forms } from '@kenresoft/database';
-import type { Database, FormSubmission, FormSubmissionStatus, NewFormSubmission } from '@kenresoft/database';
+import { desc, eq, formSubmissions, forms } from '@kenresoft-cms/database';
+import type { Database, FormSubmission, FormSubmissionStatus, NewFormSubmission } from '@kenresoft-cms/database';
 
 export async function createFormSubmission(
   db: Database,

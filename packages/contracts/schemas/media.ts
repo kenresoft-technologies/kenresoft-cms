@@ -25,7 +25,7 @@ export const altTextSchema = z.string().max(500).optional();
 // alongside the already-public file bytes (.../media/:id/file) — no key (the internal R2
 // object path), filename, or timestamps, since those describe internal storage rather than
 // how to render the file. altText/width/height close a real gap for public consumers (e.g.
-// @kenresoft/astro): the file route alone gives no way to set an <img alt> or avoid layout
+// @kenresoft-cms/astro): the file route alone gives no way to set an <img alt> or avoid layout
 // shift while the image loads.
 export const publicMediaSchema = z.object({
   altText: z.string().nullable(),

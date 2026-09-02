@@ -5,8 +5,8 @@ import {
   entrySchema,
   entryWithContentTypeSchema,
   updateEntrySchema,
-} from '@kenresoft/contracts';
-import type { Entry, EntryRevision, EntryStatus, EntryWithContentType } from '@kenresoft/contracts';
+} from '@kenresoft-cms/contracts';
+import type { Entry, EntryRevision, EntryStatus, EntryWithContentType } from '@kenresoft-cms/contracts';
 import { z } from 'zod';
 
 import { getDb } from '../../lib/db';
@@ -25,7 +25,7 @@ import {
   updateEntry,
 } from '../../repositories/entries';
 import type { EntryWithContentType as DbEntryWithContentType } from '../../repositories/entries';
-import type { Database, Entry as DbEntry, EntryRevision as DbEntryRevision } from '@kenresoft/database';
+import type { Database, Entry as DbEntry, EntryRevision as DbEntryRevision } from '@kenresoft-cms/database';
 
 export const entriesRoute = createOpenApiApp<{ Bindings: Bindings; Variables: AuthedVariables }>();
 

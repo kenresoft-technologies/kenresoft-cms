@@ -1,5 +1,5 @@
-import { asc, eq, globalVariables } from '@kenresoft/database';
-import type { Database, GlobalVariable, NewGlobalVariable } from '@kenresoft/database';
+import { asc, eq, globalVariables } from '@kenresoft-cms/database';
+import type { Database, GlobalVariable, NewGlobalVariable } from '@kenresoft-cms/database';
 
 export function listGlobalVariables(db: Database): Promise<GlobalVariable[]> {
   return db.query.globalVariables.findMany({ orderBy: asc(globalVariables.key) });

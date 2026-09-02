@@ -22,7 +22,7 @@ if (!existsSync(envFile)) {
 // not just the first.
 rmSync(path.join(repoRoot, 'apps/api/.wrangler/e2e-state'), { recursive: true, force: true });
 
-execSync('pnpm --filter @kenresoft/database migrate:e2e', {
+execSync('pnpm --filter @kenresoft-cms/database migrate:e2e', {
   stdio: 'inherit',
   cwd: repoRoot,
 });

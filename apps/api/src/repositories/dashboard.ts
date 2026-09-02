@@ -1,5 +1,5 @@
-import { contentTypes, count, desc, entries, eq, media, sum } from '@kenresoft/database';
-import type { Database } from '@kenresoft/database';
+import { contentTypes, count, desc, entries, eq, media, sum } from '@kenresoft-cms/database';
+import type { Database } from '@kenresoft-cms/database';
 
 export interface DashboardStats {
   contentTypeCount: number;

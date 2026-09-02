@@ -1,5 +1,5 @@
-import { account, and, eq } from '@kenresoft/database';
-import type { Database } from '@kenresoft/database';
+import { account, and, eq } from '@kenresoft-cms/database';
+import type { Database } from '@kenresoft-cms/database';
 
 // better-auth stores the email/password credential as one `account` row per user with
 // providerId 'credential' (confirmed against the installed better-auth@1.4.21 dist, not just

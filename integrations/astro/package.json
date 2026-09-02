@@ -1,5 +1,5 @@
 {
-  "name": "@kenresoft/astro",
+  "name": "@kenresoft-cms/astro",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -14,8 +14,8 @@
     "lint": "eslint ."
   },
   "devDependencies": {
-    "@kenresoft/config": "workspace:*",
-    "@kenresoft/contracts": "workspace:*",
+    "@kenresoft-cms/config": "workspace:*",
+    "@kenresoft-cms/contracts": "workspace:*",
     "eslint": "^10.9.1",
     "typescript": "^5.9.3"
   }

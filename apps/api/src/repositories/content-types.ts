@@ -1,6 +1,6 @@
-import { contentTypes, eq } from '@kenresoft/database';
-import type { UpdateContentTypeInput } from '@kenresoft/contracts';
-import type { ContentType, Database, NewContentType } from '@kenresoft/database';
+import { contentTypes, eq } from '@kenresoft-cms/database';
+import type { UpdateContentTypeInput } from '@kenresoft-cms/contracts';
+import type { ContentType, Database, NewContentType } from '@kenresoft-cms/database';
 
 export async function createContentType(
   db: Database,

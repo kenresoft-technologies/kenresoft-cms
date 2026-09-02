@@ -1,5 +1,5 @@
 import { SELF, env } from 'cloudflare:test';
-import { createDb, eq, verification } from '@kenresoft/database';
+import { createDb, eq, verification } from '@kenresoft-cms/database';
 import { verifyPassword } from 'better-auth/crypto';
 import { beforeEach, describe, expect, it } from 'vitest';
 

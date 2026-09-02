@@ -6,7 +6,7 @@ import { contentTypes } from './content-types';
 // runtime value, and this module calls sqliteTable(...) at module scope (a side effect that
 // would drag drizzle-orm into the browser bundle if the array were imported from here
 // directly). This is a type-only import, fully erased at build.
-import type { FieldType } from '@kenresoft/contracts';
+import type { FieldType } from '@kenresoft-cms/contracts';
 
 export type { FieldType };
 

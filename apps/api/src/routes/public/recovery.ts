@@ -1,5 +1,5 @@
 import { createRoute } from '@hono/zod-openapi';
-import { redeemRecoveryCodeSchema } from '@kenresoft/contracts';
+import { redeemRecoveryCodeSchema } from '@kenresoft-cms/contracts';
 import { hashPassword } from 'better-auth/crypto';
 import { z } from 'zod';
 

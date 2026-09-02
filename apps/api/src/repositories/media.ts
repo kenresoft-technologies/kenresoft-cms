@@ -1,5 +1,5 @@
-import { desc, eq, media } from '@kenresoft/database';
-import type { Database, Media, NewMedia } from '@kenresoft/database';
+import { desc, eq, media } from '@kenresoft-cms/database';
+import type { Database, Media, NewMedia } from '@kenresoft-cms/database';
 
 export async function createMedia(
   db: Database,

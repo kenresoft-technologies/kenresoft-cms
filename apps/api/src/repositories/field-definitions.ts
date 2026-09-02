@@ -1,6 +1,6 @@
-import { asc, eq, fieldDefinitions } from '@kenresoft/database';
-import type { UpdateFieldDefinitionInput } from '@kenresoft/contracts';
-import type { Database, FieldDefinition, NewFieldDefinition } from '@kenresoft/database';
+import { asc, eq, fieldDefinitions } from '@kenresoft-cms/database';
+import type { UpdateFieldDefinitionInput } from '@kenresoft-cms/contracts';
+import type { Database, FieldDefinition, NewFieldDefinition } from '@kenresoft-cms/database';
 
 export async function createFieldDefinition(
   db: Database,

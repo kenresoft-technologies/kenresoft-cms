@@ -31,7 +31,7 @@ export function MediaDeveloperPanel({ item, className }: { item: Media; classNam
 
   const html = `<img\n  src="${url}"\n  alt="${alt}"\n${hasDimensions ? `  width="${item.width}"\n  height="${item.height}"\n` : ''}/>`;
 
-  const astro = `import { createKenresoftClient } from '@kenresoft/astro';
+  const astro = `import { createKenresoftClient } from '@kenresoft-cms/astro';
 
 const cms = createKenresoftClient({ url: import.meta.env.PUBLIC_CMS_URL });
 const src = cms.media.url({ id: '${item.id}' });`;

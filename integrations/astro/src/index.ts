@@ -1,7 +1,7 @@
-import type { Entry, FormSubmission, PublicMedia } from '@kenresoft/contracts';
+import type { Entry, FormSubmission, PublicMedia } from '@kenresoft-cms/contracts';
 
 // Type-only imports — erased at compile time, so this package never actually depends on zod
-// (or anything else @kenresoft/contracts pulls in) at runtime. They exist purely so this
+// (or anything else @kenresoft-cms/contracts pulls in) at runtime. They exist purely so this
 // client's return types stay in sync with the API's real response shapes instead of a
 // hand-maintained copy — see the "Types" note in docs/ASTRO.md.
 export type { Entry, FormSubmission, PublicMedia };

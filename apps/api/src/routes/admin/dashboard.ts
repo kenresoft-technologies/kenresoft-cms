@@ -1,5 +1,5 @@
 import { createRoute } from '@hono/zod-openapi';
-import { dashboardStatsSchema } from '@kenresoft/contracts';
+import { dashboardStatsSchema } from '@kenresoft-cms/contracts';
 
 import { getDb } from '../../lib/db';
 import { createOpenApiApp } from '../../lib/openapi';

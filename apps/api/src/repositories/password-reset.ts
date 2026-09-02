@@ -1,6 +1,6 @@
-import { and, eq, gt, like, verification } from '@kenresoft/database';
+import { and, eq, gt, like, verification } from '@kenresoft-cms/database';
 import { constantTimeEqual, generateRandomString } from 'better-auth/crypto';
-import type { Database } from '@kenresoft/database';
+import type { Database } from '@kenresoft-cms/database';
 
 // Reuses better-auth's own `verification` table rather than a new one — but not better-auth's
 // own password-reset routes, which store the raw token in plaintext in `identifier`

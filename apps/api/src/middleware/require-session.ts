@@ -1,4 +1,4 @@
-import type { UserRole } from '@kenresoft/contracts';
+import type { UserRole } from '@kenresoft-cms/contracts';
 import type { MiddlewareHandler } from 'hono';
 
 import { createAuth } from '../lib/auth';
@@ -6,7 +6,7 @@ import type { Bindings } from '../lib/env';
 
 // Re-exported under the old name so every existing `import type { Role } from
 // './require-session'` call site (requireRole's call sites, mainly) keeps working unchanged —
-// the single source of truth for the union itself is now @kenresoft/contracts' UserRole.
+// the single source of truth for the union itself is now @kenresoft-cms/contracts' UserRole.
 export type Role = UserRole;
 
 export interface SessionUser {

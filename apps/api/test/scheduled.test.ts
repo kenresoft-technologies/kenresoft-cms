@@ -4,7 +4,7 @@ import {
   env,
   waitOnExecutionContext,
 } from 'cloudflare:test';
-import { createDb } from '@kenresoft/database';
+import { createDb } from '@kenresoft-cms/database';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import worker from '../src/index';

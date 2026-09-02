@@ -1,4 +1,4 @@
-# @kenresoft/admin — Admin Worker
+# @kenresoft-cms/admin — Admin Worker
 
 The Kenresoft CMS admin dashboard: a React + Vite single-page application, deployed as its own
 Cloudflare Worker serving **static assets only** — no server-side code, no API logic, no
@@ -30,8 +30,9 @@ and it's not something this component should ever grow past being.
 
 - The [API Worker](../api/README.md) deployed (or running locally) first — this app has nothing
   to talk to otherwise.
-- `pnpm` and Node 20+; `pnpm install` at the **repo root** (this is a pnpm workspace package, it
-  won't install standalone — see "Deployment" below for how this affects the deploy button).
+- `pnpm` and Node 20+. Inside this monorepo, `pnpm install` at the **repo root** is the normal
+  path. This directory can also be installed **standalone** (copied out on its own, no sibling
+  workspace packages) — see "Deployment" below for what that depends on.
 
 ## 4. Local development
 
@@ -40,7 +41,7 @@ From the repo root:
 ```bash
 pnpm install
 cp apps/admin/.env.example apps/admin/.env
-pnpm --filter @kenresoft/admin dev   # or `pnpm dev` at the root to also start the API
+pnpm --filter @kenresoft-cms/admin dev   # or `pnpm dev` at the root to also start the API
 ```
 
 Runs on `http://localhost:5173` via Vite, pointed at `VITE_API_URL` from `.env` (defaults to the
@@ -51,7 +52,7 @@ deployment's content without redeploying the admin app itself.
 ## 5. Build process
 
 ```bash
-VITE_API_URL=https://your-api-worker-url.workers.dev pnpm --filter @kenresoft/admin build
+VITE_API_URL=https://your-api-worker-url.workers.dev pnpm --filter @kenresoft-cms/admin build
 ```
 
 Runs `vite build` (output: `dist/`) and then `scripts/generate-headers.mjs`, which writes
@@ -74,27 +75,37 @@ provide it yourself as shown above.
 
 ## 7. Deployment
 
-**There is no working one-click "Deploy to Cloudflare" button for this component, and this
-README will not pretend otherwise.** This was investigated concretely, not assumed:
+**This directory is now installable standalone** (copied out on its own, with no sibling
+workspace packages present) — this was a real, investigated limitation until recently, fixed by
+removing every `workspace:*` dependency this app had:
 
 - Cloudflare's deploy-button docs state that pointing the button at a **subdirectory** of a repo
   makes Cloudflare treat that subdirectory as the *entire* contents of the new repository it
   creates — "your application must be fully isolated within that subdirectory, including any
-  dependencies."
-- This repo is a pnpm workspace, and `apps/admin` has a real (not just type-only) runtime
-  dependency on a sibling workspace package, `@kenresoft/contracts` (`ROLE_RANK`, `roleAtLeast`,
-  and several enum arrays are bundled into the actual production JS, not erased at build).
-- Confirmed empirically, not just reasoned about: copying `apps/admin` alone into an isolated
-  directory and running `pnpm install` there fails immediately —
-  `ERR_PNPM_WORKSPACE_PKG_NOT_FOUND`, before any build or deploy step even runs.
-- A full-repository button URL (the kind that works for the [API Worker](../api/README.md))
-  doesn't help either: Cloudflare's button always deploys whatever Worker config it finds at the
-  repository root, which is the API's `wrangler.toml`, not this app's.
-
-Fixing this for real would mean either publishing `@kenresoft/contracts` as a real, versioned npm
-package, or vendoring its contents into this app — both genuine architectural changes, out of
-scope here, not attempted. If you want this to become a real one-click target, that's the actual
-next step, not a wrangler config tweak.
+  dependencies." This app used to fail that requirement two different ways.
+- It had a real (not just type-only) runtime dependency on a sibling workspace package,
+  `@kenresoft-cms/contracts` (`ROLE_RANK`, `roleAtLeast`, and several enum arrays are bundled into
+  the actual production JS, not erased at build) — fixed by **publishing it to npm**
+  (`@kenresoft-cms/contracts`, MIT-licensed, source lives at `packages/contracts` in this repo) and
+  depending on it by a real semver range instead of `workspace:*`. Inside this monorepo, pnpm
+  still links the local workspace copy for day-to-day development (`link-workspace-packages=true`
+  in the root `.npmrc`) — the published package only matters once this directory leaves the
+  monorepo.
+- It also depended on `@kenresoft-cms/config` (shared ESLint rules, dev-only) and reached outside
+  its own directory for `tsconfig.json`'s `extends`. Neither carries runtime logic worth
+  publishing, so both were **inlined directly into this directory** instead (`eslint.config.js`,
+  `tsconfig.json`, `tsconfig.node.json`) — if the monorepo's shared lint/TS config changes, mirror
+  the change here too; there's no automatic sync.
+- Confirmed empirically, not just reasoned about, against the *real* published npm package (not a
+  simulation): copying this directory alone into an isolated directory with none of its former
+  siblings present, then running `pnpm install && VITE_API_URL=... pnpm build && wrangler deploy
+  --dry-run` — all three succeeded with no errors, reproducing exactly the isolation Cloudflare's
+  own docs describe for a subdirectory button URL.
+- **Not yet verified**: an actual live "Deploy to Cloudflare" button click-through against
+  Cloudflare's own UI for a subdirectory URL pointing at this directory. The dependency-resolution
+  blocker that made this categorically impossible is fixed and verified as above; the button's own
+  wizard flow (subdirectory URL syntax, environment-variable prompts for `VITE_API_URL`) has not
+  been clicked through for real the way the [API Worker's button](../api/README.md) has.
 
 **What actually works today:**
 

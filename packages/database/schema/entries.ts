@@ -4,7 +4,7 @@ import { sqliteTable, text, integer, uniqueIndex, index } from 'drizzle-orm/sqli
 import { contentTypes } from './content-types';
 import { user } from './auth';
 // ENTRY_STATUSES itself lives in packages/contracts — see field-definitions.ts for why.
-import type { EntryStatus } from '@kenresoft/contracts';
+import type { EntryStatus } from '@kenresoft-cms/contracts';
 
 export type { EntryStatus };
 

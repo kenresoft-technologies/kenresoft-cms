@@ -1,6 +1,6 @@
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
-import { createDb } from '@kenresoft/database';
+import { createDb } from '@kenresoft-cms/database';
 
 import { authOptions } from './auth-options';
 import type { Bindings } from './env';

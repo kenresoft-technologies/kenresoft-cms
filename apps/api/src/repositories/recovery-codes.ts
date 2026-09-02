@@ -1,6 +1,6 @@
-import { count, eq, recoveryCode } from '@kenresoft/database';
+import { count, eq, recoveryCode } from '@kenresoft-cms/database';
 import { constantTimeEqual, generateRandomString } from 'better-auth/crypto';
-import type { Database } from '@kenresoft/database';
+import type { Database } from '@kenresoft-cms/database';
 
 const CODE_COUNT = 10;
 

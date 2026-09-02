@@ -8,8 +8,8 @@ import {
   reorderFieldDefinitionsSchema,
   updateContentTypeSchema,
   updateFieldDefinitionSchema,
-} from '@kenresoft/contracts';
-import type { ContentType, FieldDefinition, FieldType } from '@kenresoft/contracts';
+} from '@kenresoft-cms/contracts';
+import type { ContentType, FieldDefinition, FieldType } from '@kenresoft-cms/contracts';
 import { z } from 'zod';
 
 import { getDb } from '../../lib/db';
@@ -31,7 +31,7 @@ import {
 } from '../../repositories/field-definitions';
 import type { Bindings } from '../../lib/env';
 import type { AuthedVariables } from '../../middleware/require-session';
-import type { ContentType as DbContentType, FieldDefinition as DbFieldDefinition } from '@kenresoft/database';
+import type { ContentType as DbContentType, FieldDefinition as DbFieldDefinition } from '@kenresoft-cms/database';
 
 export const contentTypesRoute = createOpenApiApp<{ Bindings: Bindings; Variables: AuthedVariables }>();
 

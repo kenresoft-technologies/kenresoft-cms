@@ -1,6 +1,6 @@
-import { asc, eq, formFields } from '@kenresoft/database';
-import type { UpdateFormFieldInput } from '@kenresoft/contracts';
-import type { Database, FormField, NewFormField } from '@kenresoft/database';
+import { asc, eq, formFields } from '@kenresoft-cms/database';
+import type { UpdateFormFieldInput } from '@kenresoft-cms/contracts';
+import type { Database, FormField, NewFormField } from '@kenresoft-cms/database';
 
 export async function createFormField(
   db: Database,

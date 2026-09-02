@@ -1,5 +1,5 @@
 {
-  "name": "@kenresoft/database",
+  "name": "@kenresoft-cms/database",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -15,12 +15,12 @@
     "lint": "eslint ."
   },
   "dependencies": {
-    "@kenresoft/contracts": "workspace:*",
+    "@kenresoft-cms/contracts": "workspace:*",
     "drizzle-orm": "^0.45.2"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260826.1",
-    "@kenresoft/config": "workspace:*",
+    "@kenresoft-cms/config": "workspace:*",
     "drizzle-kit": "^0.31.7",
     "eslint": "^10.9.1",
     "typescript": "^5.9.3",
