@@ -4,6 +4,7 @@ export interface Bindings {
   FORM_SUBMISSION_RATE_LIMITER: RateLimit;
   AUTH_RATE_LIMITER: RateLimit;
   RECOVERY_RATE_LIMITER: RateLimit;
+  PUBLIC_CONTENT_RATE_LIMITER: RateLimit;
   API_VERSION: string;
   CORS_ORIGINS: string;
   BETTER_AUTH_SECRET: string;

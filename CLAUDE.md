@@ -817,3 +817,72 @@ built `dist/` (via `vite preview`) confirmed the `/login` route pulls in exactly
 lazy chunk plus the shared shell — not the old monolith — with the page rendering correctly and
 no console errors beyond the expected placeholder-API-URL network failure; and the full
 typecheck/lint/test suite (23 files, 129 tests) re-run clean afterward.
+
+**Upgrade story for existing installs, plus a CMS-completeness gap pass** (2026-09-03, prompted
+directly by the user asking how someone running an older version actually updates) — done. Found
+a real, live bug while answering that question, not just designing the update path in the
+abstract: `scripts/setup.mjs`'s `ensureAuthSecret()` unconditionally regenerated and overwrote
+`BETTER_AUTH_SECRET` on every run, silently invalidating every current user's session — meaning
+the obvious "just run `pnpm run setup` again to update" instinct would have quietly logged
+everyone out. Fixed to check first (`wrangler secret list --format json`, confirmed empirically
+to return real parseable JSON) and only prompt to rotate if already set, defaulting no — a second
+real gotcha surfaced while building this: `runWrangler()`'s default `stdio` inherits stderr
+straight to the terminal rather than capturing it, so the initial version of this check (matching
+error *messages*) could never have actually detected the "Worker not found" case for a genuinely
+first-ever install; confirmed via direct reproduction that `error.stderr` was `null` under the
+default stdio before fixing it with a per-call `stdio: ['pipe','pipe','pipe']` override. New
+`pnpm run update` (`scripts/update.mjs`) is the actual answer to the update question: installs
+deps, applies any new migrations, redeploys both Workers — and deliberately nothing else (no
+secrets, no D1/R2 provisioning, no CORS writes, no email re-prompt). `deployApi()`/
+`buildAndDeployAdmin()` were extracted out of `setup.mjs` into a new shared
+`scripts/lib/deploy-helpers.mjs` so both scripts share one implementation instead of two copies
+drifting apart. `packages/create/bin/create-kenresoft-cms.mjs` now also adds an `upstream` git
+remote and an initial commit after scaffolding — without a remote, a scaffolded install had no
+way to receive future updates at all short of re-scaffolding from scratch; the initial commit
+gives a later `git fetch upstream && git merge upstream/<branch>` real history to merge against
+rather than an empty unborn branch. New `docs/DEPLOYMENT.md` "Updating an existing install"
+section ties this together (get the code however your install was created, then `pnpm run
+update`, never `setup` again). All three pieces verified for real, not just read back: a live,
+piped-input run of `pnpm run setup` against real throwaway D1/R2/Workers confirmed the new
+rotate-or-skip prompt appears and correctly leaves the secret untouched when declined; `pnpm run
+update` against that same real deployment then completed with zero prompts, correctly reported
+"no migrations to apply," and redeployed both Workers cleanly; every real resource was deleted
+and `wrangler.toml` reverted afterward, matching this project's standing practice.
+
+Also researched (web search, not assumed) what a self-hosted CMS this project's size is generally
+expected to have, cross-referenced against what already exists here, to find genuine gaps rather
+than re-suggest already-built things:
+- **Fixed as a direct, bounded gap**: the public content/media API (list-by-content-type,
+  get-by-slug, media file/metadata) had no rate limiting at all, unlike forms/auth/recovery — a
+  flood of requests for varying or nonexistent slugs never hits the edge cache
+  (`public-cache.ts`) and reaches D1 every time. New `PUBLIC_CONTENT_RATE_LIMITER` (300/60s per
+  IP — deliberately loose; this guards against abuse/cost, not a security boundary, and real
+  read traffic legitimately bursts far above what a login attempt should) applied broadly across
+  `/api/v1/public/*` in `apps/api/src/index.ts`, layered under the tighter route-specific
+  limiters that already existed. New `apps/api/wrangler.test.toml` binding entry and a new test
+  file (`public-content-rate-limit.test.ts`) mirroring the existing `auth-rate-limit.test.ts`
+  pattern.
+- **Documented, not code** (confirmed via research, not assumed): Cloudflare D1's
+  [Time Travel](https://developers.cloudflare.com/d1/reference/time-travel/) is a free,
+  always-on, zero-setup 30-day point-in-time-recovery feature — meaning D1 already had a strong
+  automatic safety net this project had never told anyone about. R2 was separately confirmed to
+  have **no** equivalent built-in versioning (still an open Cloudflare feature request, not
+  shipped), which is exactly why `backup-media.mjs` matters more for media than the D1 export
+  path does for content. Both now explained together at the top of `docs/DEPLOYMENT.md`'s
+  "Backups and recovery" section.
+- **New `CHANGELOG.md`**: starts now rather than reconstructing 183 prior commits — this file
+  (`CLAUDE.md`) is the detailed historical/agent-context record; `CHANGELOG.md` is the short,
+  user-facing "what changed" list for someone deciding whether to `pnpm run update`.
+- **Flagged as real gaps, deliberately not built without a decision** (matching this project's
+  own standing rule against speculative feature work — see the Workers KV precedent above): admin
+  **two-factor authentication** (genuinely low-effort to add specifically here — `better-auth`,
+  already a dependency, ships an official `two-factor` plugin, confirmed present in
+  `node_modules`, so this would mostly be wiring plus admin UI, not a new auth system);
+  **webhooks** on publish/update (common in comparable headless CMSs, but the original driving
+  use case — triggering a static rebuild — is now moot for `examples/astro-site` since the SSR
+  migration, so the remaining use cases are speculative until someone has one); **content-level
+  export/import** (bulk entry portability, independent of the full-database D1 export); and
+  **multi-language/locale content variants** (a large feature genuinely absent, common in
+  Strapi/Payload/Directus). Deliberately not implemented: none of these have a concrete driving
+  need yet, and building them speculatively would repeat the exact mistake the Workers KV
+  decision above was written to avoid.

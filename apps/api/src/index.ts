@@ -6,6 +6,7 @@ import { createAuth } from './lib/auth';
 import { authRateLimit } from './middleware/auth-rate-limit';
 import { blockViewerMutations } from './middleware/block-viewer-mutations';
 import { corsMiddleware } from './middleware/cors';
+import { publicContentRateLimit } from './middleware/public-content-rate-limit';
 import { requireSession } from './middleware/require-session';
 import { securityHeaders } from './middleware/security-headers';
 import { invalidatePublicEntryCache } from './lib/public-cache';
@@ -42,6 +43,11 @@ app.route('/api/v1/health', healthRoute);
 
 app.use('/api/v1/auth/*', authRateLimit);
 app.on(['GET', 'POST'], '/api/v1/auth/*', (c) => createAuth(c.env).handler(c.req.raw));
+
+// A loose baseline (300/60s) across every /api/v1/public/* route, layered under the tighter,
+// purpose-specific limiters forms/password-reset/recovery already have below — this one closes
+// the gap for the routes that had none at all (content, media, global-variables).
+app.use('/api/v1/public/*', publicContentRateLimit);
 
 // Mounted before the more general /api/v1/public/:contentType catchall so "forms"/"media"/
 // "global-variables" are never ambiguous with a content-type slug.

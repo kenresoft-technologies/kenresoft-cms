@@ -51,10 +51,33 @@ async function main() {
   // The downloaded tarball never contains a .git directory, but remove it defensively in case a
   // future packaging change on GitHub's end ever includes one — this must always be a fresh repo.
   rmSync(path.join(target, '.git'), { recursive: true, force: true });
+  let gitReady = false;
   try {
-    execFileSync('git', ['init'], { cwd: target, stdio: 'ignore' });
+    execFileSync('git', ['init', '--quiet'], { cwd: target, stdio: 'ignore' });
+    // Points back at the real template so a later `git fetch upstream && git merge
+    // upstream/<branch>` can actually pull in future CMS updates — without this remote, a
+    // scaffolded install has no way to receive updates at all beyond re-scaffolding from scratch.
+    // Named "upstream" (not "origin") since the user's own eventual remote belongs at "origin".
+    execFileSync('git', ['remote', 'add', 'upstream', `https://github.com/${REPO}.git`], {
+      cwd: target,
+      stdio: 'ignore',
+    });
+    // An initial commit gives that future merge real history to diff against — merging into a
+    // freshly-`git init`'d repo with zero commits has nothing to compare against. Wrapped
+    // separately from `init`/`remote add` above: this step alone fails if the user has no git
+    // identity (user.name/user.email) configured yet, which shouldn't block scaffolding.
+    execFileSync('git', ['add', '-A'], { cwd: target, stdio: 'ignore' });
+    execFileSync(
+      'git',
+      ['commit', '--quiet', '-m', `Initial commit from Kenresoft CMS (${REPO}@${REF})`],
+      { cwd: target, stdio: 'ignore' },
+    );
+    gitReady = true;
   } catch {
-    console.warn('(git not found on PATH — skipped `git init`; every file is there regardless.)');
+    console.warn(
+      '(git init/commit step failed or git is not on PATH — every file is there regardless; ' +
+        'see the README for setting up git manually if you want upstream updates later.)',
+    );
   }
 
   console.log('\nDone! Next steps:\n');
@@ -64,6 +87,13 @@ async function main() {
   console.log(
     '\nSee https://github.com/kenresoft-technologies/kenresoft-cms#readme for what that provisions.',
   );
+  if (gitReady) {
+    console.log(
+      '\nTo pull in future CMS updates later: git fetch upstream && git merge upstream/' +
+        (REF === 'HEAD' ? '<branch>' : REF) +
+        ' — see docs/DEPLOYMENT.md\'s "Updating an existing install" section.',
+    );
+  }
 }
 
 main().catch((err) => {

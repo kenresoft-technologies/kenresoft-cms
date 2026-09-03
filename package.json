@@ -15,7 +15,8 @@
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
     "clean": "pnpm -r clean",
-    "setup": "node scripts/setup.mjs"
+    "setup": "node scripts/setup.mjs",
+    "update": "node scripts/update.mjs"
   },
   "devDependencies": {
     "wrangler": "^4.42.4"

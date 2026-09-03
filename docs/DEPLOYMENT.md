@@ -302,7 +302,47 @@ deploys can never race each other.
 None of this is required — `wrangler deploy` / `wrangler pages deploy` from your own machine or
 CI provider is just as valid a way to ship changes.
 
+## Updating an existing install
+
+New CMS features and fixes land on the project's `develop` branch (its default branch) —
+`CHANGELOG.md` tracks what actually changed, in plain terms, so you know what you're pulling in
+before you do.
+
+**Get the new code first**, however your install got here:
+
+- Cloned with `git clone`: `git pull`.
+- Scaffolded with `npm create @kenresoft-cms@latest`: that added an `upstream` remote pointing at
+  the real template automatically — `git fetch upstream && git merge upstream/develop` (or
+  whichever branch/ref you started from).
+- Neither (e.g. downloaded a zip): re-run `npm create @kenresoft-cms@latest` into a fresh
+  directory and manually port over your customizations — there's no remote to merge from
+  otherwise.
+
+**Then redeploy** — from the repo root:
+
+```bash
+pnpm run update
+```
+
+This installs dependencies, applies any new database migrations, and redeploys both Workers with
+the new code. Deliberately **not** `pnpm run setup` run again: unlike `setup`, `update` never
+touches your `BETTER_AUTH_SECRET`, never re-provisions D1/R2, and never re-prompts for email
+setup — it's the safe subset for an install that already exists. (`setup` itself is also now
+safe to re-run if you genuinely need to — it checks before touching `BETTER_AUTH_SECRET` rather
+than silently regenerating it, asking first since rotating it logs out every current user.)
+
 ## Backups and recovery
+
+**D1 also has a free, automatic, zero-setup safety net independent of anything below**:
+Cloudflare's [Time Travel](https://developers.cloudflare.com/d1/reference/time-travel/) retains a
+30-day point-in-time-recoverable history of every D1 database with nothing to configure or
+remember to run — `wrangler d1 time-travel restore your-cms-db --timestamp=...` restores to any
+minute within that window. It's not a substitute for an off-platform export (Time Travel can't
+help if Cloudflare itself has an incident, and 30 days is a hard limit), which is what the manual
+export below is for, but it means an accidental bad migration or a slip of `DELETE` is recoverable
+immediately, at no cost, even if you've never run a manual backup at all. R2 has no equivalent
+built-in versioning (confirmed — it's a standing feature request, not shipped), which is exactly
+why `backup-media.mjs` below matters more for media than the D1 export does for content.
 
 **D1** (content types, entries, forms, users, settings, media *metadata*): export and restore
 both work, verified end-to-end against a real deployment —

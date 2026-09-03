@@ -19,7 +19,6 @@
 //
 // Usage: pnpm run setup
 
-import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { createInterface } from 'node:readline/promises';
 import { randomBytes } from 'node:crypto';
@@ -27,6 +26,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 import { runWrangler, runWranglerInherit } from './lib/wrangler-cli.mjs';
+import { buildAndDeployAdmin, deployApi } from './lib/deploy-helpers.mjs';
 
 const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const API_DIR = join(REPO_ROOT, 'apps', 'api');
@@ -130,7 +130,42 @@ async function ensureR2() {
   writeToml(readToml().slice(0, block.start) + newBlockText + readToml().slice(block.end));
 }
 
+// Checks whether BETTER_AUTH_SECRET is already set on the Worker before touching it — re-running
+// `pnpm run setup` used to unconditionally regenerate and overwrite it every time, silently
+// invalidating every existing user's session (better-auth signs session tokens with this secret)
+// on what looked like a harmless re-run, e.g. for an update. There's no Worker to query yet on a
+// genuinely first-ever run (before the first `wrangler deploy`), which `wrangler secret list`
+// reports as a distinct, catchable "Worker ... not found" error rather than an empty list —
+// confirmed empirically, not assumed. Overrides runWrangler's default stderr:'inherit' with
+// 'pipe' for this one call — also confirmed empirically that error.stderr is otherwise `null`,
+// since 'inherit' sends it straight to the terminal instead of the thrown error object, which
+// would have made the "not found" check below silently never match. Any failure other than
+// "not found" still re-throws instead of being silently swallowed.
 async function ensureAuthSecret() {
+  let alreadySet = false;
+  try {
+    const output = runWrangler(
+      ['secret', 'list', '--config', WRANGLER_TOML_PATH, '--format', 'json'],
+      { cwd: API_DIR, stdio: ['pipe', 'pipe', 'pipe'] },
+    );
+    const secrets = JSON.parse(output);
+    alreadySet = secrets.some((s) => s.name === 'BETTER_AUTH_SECRET');
+  } catch (error) {
+    const stderr = error && typeof error === 'object' && 'stderr' in error ? String(error.stderr) : '';
+    if (!/not found/i.test(stderr)) throw error;
+  }
+
+  if (alreadySet) {
+    const rotate = await confirm(
+      'BETTER_AUTH_SECRET is already set on this Worker. Rotate it? This immediately logs out every currently signed-in user',
+      false,
+    );
+    if (!rotate) {
+      console.log('✓ BETTER_AUTH_SECRET already set — leaving it unchanged.');
+      return;
+    }
+  }
+
   const useGenerated = await confirm('Generate BETTER_AUTH_SECRET automatically?', true);
   const secret = useGenerated ? randomBytes(32).toString('base64url') : await ask('Paste your own BETTER_AUTH_SECRET value');
   runWrangler(['secret', 'put', 'BETTER_AUTH_SECRET', '--config', WRANGLER_TOML_PATH], { cwd: API_DIR, input: secret });
@@ -183,17 +218,6 @@ function addCorsOrigin(origin) {
   return true;
 }
 
-function deployApi() {
-  console.log('Deploying the API Worker...');
-  const output = runWrangler(['deploy', '--config', WRANGLER_TOML_PATH], { cwd: API_DIR });
-  process.stdout.write(output);
-  const match = output.match(/https:\/\/[a-z0-9.-]+\.workers\.dev/);
-  if (!match) {
-    throw new Error('Could not find the deployed Worker URL in `wrangler deploy` output — deploy may have failed.');
-  }
-  return match[0];
-}
-
 async function main() {
   console.log('Kenresoft CMS — guided setup\n');
 
@@ -212,42 +236,20 @@ async function main() {
   await ensureAuthSecret();
   await maybeSetUpEmail();
 
-  const firstUrl = deployApi();
+  const firstUrl = deployApi({ apiDir: API_DIR, wranglerTomlPath: WRANGLER_TOML_PATH });
   console.log(`\nFirst deploy done: ${firstUrl}`);
 
   console.log('Setting BETTER_AUTH_URL to the real deployed URL and redeploying...');
   writeToml(replaceLine(readToml(), 'BETTER_AUTH_URL =', `BETTER_AUTH_URL = "${firstUrl}"`));
-  const finalUrl = deployApi();
+  const finalUrl = deployApi({ apiDir: API_DIR, wranglerTomlPath: WRANGLER_TOML_PATH });
   console.log(`\n✓ API deployed: ${finalUrl}`);
 
-  console.log('\nBuilding the admin app...');
-  // Shells out to `pnpm --filter` (with shell:true) rather than resolving vite's own binary
-  // directly — pnpm's strict per-package linking doesn't guarantee apps/admin's `vite`
-  // devDependency is reachable from a root-level script the way wrangler is (resolved once,
-  // fixed location); letting pnpm itself resolve and run apps/admin's own `build` script
-  // sidesteps that entirely. Unlike scripts/lib/wrangler-cli.mjs's wrangler invocations, no
-  // user-controlled values are interpolated into this command, so shell:true carries none of
-  // the quoting/escaping risk that trick was written to avoid.
-  execFileSync('pnpm', ['--filter', '@kenresoft-cms/admin', 'build'], {
-    cwd: REPO_ROOT,
-    stdio: 'inherit',
-    shell: true,
-    env: { ...process.env, VITE_API_URL: finalUrl },
-  });
-
-  console.log('Deploying the admin app (its own Worker — apps/admin/wrangler.toml)...');
-  const adminOutput = runWrangler(['deploy'], { cwd: ADMIN_DIR });
-  process.stdout.write(adminOutput);
-  const adminMatch = adminOutput.match(/https:\/\/[a-z0-9.-]+\.workers\.dev/);
-  if (!adminMatch) {
-    throw new Error('Could not find the deployed admin Worker URL in `wrangler deploy` output — deploy may have failed.');
-  }
-  const adminUrl = adminMatch[0];
+  const adminUrl = buildAndDeployAdmin({ repoRoot: REPO_ROOT, adminDir: ADMIN_DIR, apiUrl: finalUrl });
 
   console.log(`\nAdmin deployed: ${adminUrl}`);
   if (addCorsOrigin(adminUrl)) {
     console.log('Added the admin origin to CORS_ORIGINS — redeploying once more...');
-    deployApi();
+    deployApi({ apiDir: API_DIR, wranglerTomlPath: WRANGLER_TOML_PATH });
   } else {
     console.log('✓ Admin origin already present in CORS_ORIGINS — skipping (running setup again is safe).');
   }

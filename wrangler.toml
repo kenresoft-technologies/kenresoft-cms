@@ -68,6 +68,17 @@ name = "RECOVERY_RATE_LIMITER"
 namespace_id = "1003"
 simple = { limit = 3, period = 60 }
 
+[[ratelimits]]
+# Public content/media reads (list-by-content-type, get-by-slug, media file/metadata) had no
+# rate limiting at all — a real gap, since only requests for a slug already sitting in the edge
+# cache (public-cache.ts) are cheap; a flood of varying/nonexistent slugs reaches D1 every time.
+# Much looser than the write-side limiters above — this guards against abuse/cost, not a
+# security boundary, and real read traffic can legitimately burst (a page going viral, a
+# frontend's build-time fetch of many entries) far above what a login attempt ever should.
+name = "PUBLIC_CONTENT_RATE_LIMITER"
+namespace_id = "1004"
+simple = { limit = 300, period = 60 }
+
 [triggers]
 # Scheduled publishing (§13) — checks for draft entries whose publishAt has elapsed.
 crons = ["*/5 * * * *"]
