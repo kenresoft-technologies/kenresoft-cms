@@ -1026,3 +1026,80 @@ zero-install bootstrap convention akin to `npm init`, not a statement that the r
 uses npm). Fixed with a one-line clarification in both places: right after the install command,
 and in the "Package manager" section itself, so whichever one a reader lands on first resolves the
 apparent conflict.
+
+**Dependency security updates (Dependabot alerts closed)** (2026-09-03, prompted directly by a
+user request after GitHub reported 72 open alerts, 3 critical) — done, with one deliberately
+accepted exception and three real bugs found and fixed along the way. Bumped: `better-auth`
+1.4.21 → 1.7.2 (both `apps/api`/`apps/admin`), `astro` ^5.1.0 → ^7.3.0 and `@astrojs/cloudflare`
+^12.6.13 → ^14.3.0 together in `examples/astro-site` (the adapter's 14.x line requires Astro
+^7.2.0, confirmed via its own published `peerDependencies` rather than assumed), `wrangler`
+^4.42.4 → ^4.128.0 and `@cloudflare/workers-types` → ^5.20260903.1 everywhere either is pinned.
+Two purely-transitive dependencies with no fix yet in their actual parent packages (`qs` via
+`shadcn`'s bundled MCP SDK → express → body-parser; `esbuild` via `drizzle-kit`'s still-unfixed
+`@esbuild-kit/core-utils` chain) are forced to safe versions via a `pnpm.overrides` block — which,
+confirmed empirically (an override set to a nonexistent version correctly made `pnpm install`
+fail), actually still belongs in `package.json`'s `"pnpm"` key for the exact pnpm version this
+repo pins, not `pnpm-workspace.yaml` despite that being current pnpm's own documented location and
+despite this pnpm version's own install output claiming the `package.json` key is "no longer read"
+— a real, confirmed-misleading warning in this version, not a hint to actually act on.
+
+One alert deliberately left open, not silently dropped: `@cloudflare/vitest-pool-workers@0.9.14`
+(a `apps/api`-only devDependency) pins an internal `wrangler@4.44.0`, itself flagged for a "high"
+command-injection CVE in `wrangler pages deploy`'s `--commit-hash` handling. Real-world
+exploitability here is nil — this transitive copy is invoked only to simulate the Workers runtime
+for local test runs, and this codebase never calls `wrangler pages deploy` from any test, script,
+or CI step — but it was still worth a real attempt to fix rather than dismiss outright. Bumping
+`@cloudflare/vitest-pool-workers` to its current 0.22.0 turned out to be a real breaking migration,
+discovered empirically rather than assumed: the package's own architecture changed from a custom
+Vitest "pool" (`defineWorkersConfig()`) to a Vite/Vitest **plugin** model (`cloudflareTest()` composed
+with plain `defineConfig`, confirmed via Cloudflare's current Vitest-integration docs) — every one
+of this project's 29 test files depends on the old ambient `cloudflare:test` types and the old
+config API, so adopting it would mean rewriting the whole test harness, not a version bump. A
+narrower, scoped `pnpm.overrides` entry (`"@cloudflare/vitest-pool-workers>wrangler": "^4.59.1"`)
+was tried next — it resolved cleanly, but broke the test runtime outright (a malformed
+`file:`-prefixed module path inside `vitest@3.2.7`'s own worker-thread loader, traced to the newer
+wrangler pulling in an incompatible newer `miniflare`/`workerd` pairing that `vitest-pool-workers
+0.9.14`'s own worker-loading code wasn't built against) — confirmed by reproducing the exact
+failure, then reverting and confirming the suite passed again immediately. Left as an accepted,
+documented, low-real-risk gap rather than destabilizing the entire test suite for a devDependency
+whose actual attack surface doesn't apply to this project at all.
+
+Two real, unrelated bugs surfaced purely by attempting the upgrade, not something anyone flagged
+in advance: (1) an interrupted `pnpm install --force` (hit mid-run by a real Windows file-lock
+EPERM, not this session's fault) had silently left `@rolldown/binding-win32-x64-msvc` on disk with
+only its 21MB native `.node` binary and no `package.json` — enough for a direct `require()` of the
+binary to work, but not enough for Node's module resolution to find any entry point at all, which
+broke `astro check` specifically (Vite 8's new Rust bundler) with a confusingly-unrelated-looking
+"Cannot find native binding... npm has a bug" error. Fixed by deleting just that one corrupted
+package directory and letting pnpm re-link it from the store — confirmed via `astro check` passing
+clean afterward, not just assumed fixed. (2) `apps/admin/src/components/two-factor-settings.tsx`
+broke at typecheck, exactly matching a breaking change flagged in better-auth 1.7's own release
+notes: `enable()`'s resolved data is now a discriminated union on a new `method` field (`"otp"` |
+`"totp"`) rather than always exposing `totpURI`/`backupCodes` directly. Fixed by narrowing on
+`method !== 'totp'` before reading either field (this project only ever enrolls TOTP, never
+OTP-by-email/SMS) — caught by the type system, not by a test, though `ProfilePage.test.tsx`'s own
+mock needed the same `method: 'totp'` field added to keep matching the real shape.
+
+The one change needing a real database migration, found only by running the actual test suite
+against real D1 (not from any changelog): better-auth 1.7 scopes account identity by
+`(issuer, accountId)`, not `accountId` alone, and refuses to start against a Drizzle schema
+missing the new `account.issuer` column — surfacing as every single auth-touching test file
+failing with `BetterAuthError: The field "issuer" does not exist in the "account" Drizzle
+schema`. Fixed per better-auth's own 1.7 upgrade guide
+(https://better-auth.com/docs/guides/1-7-upgrade-guide#account-identity-is-scoped-by-issuer):
+added `account.issuer` (text, `NOT NULL DEFAULT 'local:credential'`) plus a unique index on
+`(issuer, account_id)` (migration `0018_glamorous_leper_queen.sql`). The literal default value is
+deliberately correct forever here, not just a one-time backfill convenience — this project only
+ever creates credential (email/password) accounts, never social/OAuth/SIWE/SSO, so every account
+row past and future gets the same deterministic namespace the upgrade guide specifies for that
+case. Verified for real end-to-end, not just via the test suite: a from-scratch isolated
+`wrangler dev` instance (dedicated port, freshly-migrated D1 state, the same root `wrangler.toml`
++ `--persist-to` combination the real Playwright E2E harness uses — an earlier verification
+attempt against `wrangler.test.toml` instead surfaced a real "no such table" error that turned out
+to be this session's own leftover zombie `wrangler dev` processes from earlier verification
+attempts holding stale ports, not a product bug; found and cleaned up by PID, not worked around)
+confirmed real sign-up and sign-in both succeed and issue a real session cookie. Full validation
+after every change in this pass: clean typecheck/lint across the whole workspace, all 23
+`apps/admin` test files (134 tests) and all 29 `apps/api` test files passing (individually,
+per this project's standing Windows/workerd-resource-contention note — confirmed flaky-only by
+re-running each file that failed as part of a larger batch on its own).

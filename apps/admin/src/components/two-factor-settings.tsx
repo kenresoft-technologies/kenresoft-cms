@@ -68,6 +68,13 @@ function EnableTwoFactorDialog({ onOpenChange }: { onOpenChange: (open: boolean)
       setError(authError?.message ?? 'Could not start enrollment — check your password.');
       return;
     }
+    // enable() defaults to TOTP enrollment when `method` isn't passed (as here) — the `method:
+    // 'otp'` branch only exists because better-auth's response type is a discriminated union
+    // covering both enrollment kinds; this project deliberately only offers TOTP + backup codes.
+    if (data.method !== 'totp') {
+      setError('Unexpected enrollment method returned.');
+      return;
+    }
 
     setTotpURI(data.totpURI);
     setBackupCodes(data.backupCodes);

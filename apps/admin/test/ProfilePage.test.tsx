@@ -139,7 +139,11 @@ describe('ProfilePage', () => {
 
   it('enables two-factor authentication through the password-then-verify flow', async () => {
     enableTwoFactorMock.mockResolvedValue({
-      data: { totpURI: 'otpauth://totp/Kenresoft%20CMS:a@b.com?secret=ABC123&issuer=Kenresoft', backupCodes: ['aaaaa-11111'] },
+      data: {
+        method: 'totp',
+        totpURI: 'otpauth://totp/Kenresoft%20CMS:a@b.com?secret=ABC123&issuer=Kenresoft',
+        backupCodes: ['aaaaa-11111'],
+      },
       error: null,
     });
     verifyTotpMock.mockResolvedValue({ error: null });

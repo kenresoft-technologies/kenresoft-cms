@@ -127,6 +127,13 @@
       "when": 1788429298134,
       "tag": "0017_lovely_shriek",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1788441059598,
+      "tag": "0018_glamorous_leper_queen",
+      "breakpoints": true
     }
   ]
 }

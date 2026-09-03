@@ -19,6 +19,12 @@
     "update": "node scripts/update.mjs"
   },
   "devDependencies": {
-    "wrangler": "^4.42.4"
+    "wrangler": "^4.128.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "qs": "^6.16.0",
+      "esbuild": "^0.28.1"
+    }
   }
 }

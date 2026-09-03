@@ -12,6 +12,13 @@ landed on `develop`.
 
 ### Fixed
 
+- Dependency security updates: `better-auth` 1.4.21 → 1.7.2, `astro`/`@astrojs/cloudflare`
+  (example site) to their current majors, `wrangler` and `@cloudflare/workers-types` bumped
+  everywhere, plus `qs`/`esbuild` pinned to safe versions via `pnpm` overrides where an
+  unfixed transitive dependency (drizzle-kit, shadcn's bundled tooling) hadn't caught up yet.
+  Requires running the new database migration (`0018_glamorous_leper_queen.sql` — better-auth
+  1.7 scopes account identity by `(issuer, accountId)`, not `accountId` alone) via `pnpm run
+  update`.
 - `pnpm run setup` no longer silently regenerates `BETTER_AUTH_SECRET` (logging out every current
   user) when re-run against an already-configured deployment — it now checks first and asks
   before rotating.

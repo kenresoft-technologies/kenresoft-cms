@@ -17,7 +17,7 @@ const db = createDb(env.DB);
 async function authedCookie(email: string): Promise<string> {
   const response = await SELF.fetch('https://example.com/api/v1/auth/sign-up/email', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Origin: 'https://example.com' },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password: 'correct horse battery staple', name: 'Test User' }),
   });
   const setCookie = response.headers.get('set-cookie');
