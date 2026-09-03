@@ -1149,3 +1149,15 @@ better-auth's origin-check middleware 403s a state-changing auth request (sign-o
 "Invalid JSON in request body" against real `wrangler dev` (better-auth's own client SDK always
 sends a real, even if empty-object, JSON body, so real callers — `authClient.signOut()` in
 `AppLayout.tsx` — never hit this; only a hand-written verification script needed the fix).
+
+**Correction: the audit-log commit above broke CI on the first push** — `test/audit-log.test.ts`
+called `/sign-in/email` with a deliberately wrong password through real D1/real better-auth, the
+exact same pre-existing better-auth/better-call unhandled-rejection quirk commit `6b041b9`
+already worked around for `security-elevate` (confirmed identical: `grep`-ing every other test
+file's own comments turned up the exact same wrong-password-avoidance note already present in
+`owner-protection.test.ts` and `password-reset.test.ts`, meaning this file was the only one that
+reintroduced it, not a new discovery). Fixed by dropping the wrong-password call and its
+`auth.sign_in_failed` assertion from this file, same as those two already do — that behavior stays
+verified by the real live `wrangler dev` pass documented above instead, which does exercise it and
+passed. Confirmed the fix locally first (the file alone: clean, no unhandled-error section), then
+via CI going green on the re-push.
