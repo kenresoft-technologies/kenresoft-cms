@@ -24,6 +24,7 @@ import { ComingSoonSection } from './ComingSoonSection';
 import { GeneralSection } from './GeneralSection';
 import { SocialSection } from './SocialSection';
 import { UsersPermissionsSection } from './UsersPermissionsSection';
+import { WebhooksSection } from './WebhooksSection';
 
 export type SettingsSectionId =
   | 'general'
@@ -154,15 +155,8 @@ export const SETTINGS_SECTIONS: SettingsSectionMeta[] = [
     id: 'webhooks',
     label: 'Webhooks',
     icon: Webhook,
-    available: false,
-    render: () => (
-      <ComingSoonSection
-        title="Webhooks"
-        icon={Webhook}
-        description="Outbound notifications when content changes in this deployment."
-        planned={['Per-content-type publish/unpublish webhooks', 'Delivery logs and retries', 'Signing secrets']}
-      />
-    ),
+    available: true,
+    render: () => <WebhooksSection />,
   },
   {
     id: 'advanced',

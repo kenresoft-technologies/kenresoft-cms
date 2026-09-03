@@ -84,3 +84,12 @@ export const ROLE_RANK: Record<UserRole, number> = {
 export function roleAtLeast(role: UserRole, minimum: UserRole): boolean {
   return ROLE_RANK[role] >= ROLE_RANK[minimum];
 }
+
+// Fired from apps/api/src/routes/admin/entries.ts at the route layer (not the repository),
+// since only the route handler has both the pre-update and post-update entry to compare
+// statuses against — "updated" always fires alongside "published"/"unpublished" on a status-
+// changing update, so a webhook subscriber who only wants "anything changed" has one reliable
+// event to listen for without also having to know about the more specific ones.
+export const WEBHOOK_EVENTS = ['entry.created', 'entry.updated', 'entry.published', 'entry.unpublished', 'entry.deleted'] as const;
+
+export type WebhookEvent = (typeof WEBHOOK_EVENTS)[number];

@@ -10,6 +10,7 @@ import { publicContentRateLimit } from './middleware/public-content-rate-limit';
 import { requireSession } from './middleware/require-session';
 import { securityHeaders } from './middleware/security-headers';
 import { invalidatePublicEntryCache } from './lib/public-cache';
+import { dispatchWebhookEvent, retryFailedWebhookDeliveries } from './lib/webhooks';
 import { getContentTypeById } from './repositories/content-types';
 import { publishDueEntries } from './repositories/entries';
 import { cacheRoute } from './routes/admin/cache';
@@ -23,6 +24,7 @@ import { securityRoute } from './routes/admin/security';
 import { settingsRoute } from './routes/admin/settings';
 import { submissionsRoute } from './routes/admin/submissions';
 import { usersRoute } from './routes/admin/users';
+import { webhooksRoute } from './routes/admin/webhooks';
 import { healthRoute } from './routes/health';
 import { publicContentRoute } from './routes/public/content';
 import { publicFormsRoute } from './routes/public/forms';
@@ -76,6 +78,7 @@ app.route('/api/v1/admin/submissions', submissionsRoute);
 app.route('/api/v1/admin/settings', settingsRoute);
 app.route('/api/v1/admin/users', usersRoute);
 app.route('/api/v1/admin/security', securityRoute);
+app.route('/api/v1/admin/webhooks', webhooksRoute);
 
 // Aggregates every route registered via .openapi() across the top-level app and its mounted
 // OpenAPIHono sub-apps — routes not yet migrated off plain Hono (§ commit sequence) simply
@@ -115,7 +118,19 @@ export default {
             await invalidatePublicEntryCache(contentType.slug, entry.slug);
           }),
         );
+        for (const entry of published) {
+          dispatchWebhookEvent(db, ctx, 'entry.published', entry.contentTypeId, {
+            entryId: entry.id,
+            contentTypeId: entry.contentTypeId,
+            slug: entry.slug,
+            status: entry.status,
+          });
+        }
       })(),
     );
+    // Retries failed webhook deliveries on the same 5-minute cadence as scheduled publishing
+    // above, rather than introducing a second Cron Trigger or a queue for this — see
+    // lib/webhooks.ts for the retry/attempt-limit logic itself.
+    ctx.waitUntil(retryFailedWebhookDeliveries(db, ctx));
   },
 } satisfies ExportedHandler<Bindings>;

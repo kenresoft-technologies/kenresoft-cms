@@ -7,10 +7,12 @@ import { entryRevisions } from './entry-revisions';
 import { forms } from './forms';
 import { formFields } from './form-fields';
 import { formSubmissions } from './form-submissions';
+import { webhooks, webhookDeliveries } from './webhooks';
 
 export const contentTypesRelations = relations(contentTypes, ({ many }) => ({
   fields: many(fieldDefinitions),
   entries: many(entries),
+  webhooks: many(webhooks),
 }));
 
 export const fieldDefinitionsRelations = relations(fieldDefinitions, ({ one }) => ({
@@ -45,4 +47,13 @@ export const formFieldsRelations = relations(formFields, ({ one }) => ({
 
 export const formSubmissionsRelations = relations(formSubmissions, ({ one }) => ({
   form: one(forms, { fields: [formSubmissions.formId], references: [forms.id] }),
+}));
+
+export const webhooksRelations = relations(webhooks, ({ one, many }) => ({
+  contentType: one(contentTypes, { fields: [webhooks.contentTypeId], references: [contentTypes.id] }),
+  deliveries: many(webhookDeliveries),
+}));
+
+export const webhookDeliveriesRelations = relations(webhookDeliveries, ({ one }) => ({
+  webhook: one(webhooks, { fields: [webhookDeliveries.webhookId], references: [webhooks.id] }),
 }));

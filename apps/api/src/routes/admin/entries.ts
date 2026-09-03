@@ -11,6 +11,7 @@ import { z } from 'zod';
 
 import { getDb } from '../../lib/db';
 import { invalidatePublicEntryCache } from '../../lib/public-cache';
+import { dispatchWebhookEvent } from '../../lib/webhooks';
 import { createOpenApiApp } from '../../lib/openapi';
 import type { Bindings } from '../../lib/env';
 import type { AuthedVariables } from '../../middleware/require-session';
@@ -94,6 +95,14 @@ async function invalidateCacheForEntry(
   await invalidatePublicEntryCache(contentType.slug, entry.slug);
 }
 
+// Deliberately just the entry's identity/status, not its full `data` — keeps every delivered
+// payload small and bounded regardless of entry size, and avoids handing an entry's complete
+// content to every configured webhook by default. A subscriber that needs the full content can
+// call the API back with entryId (its own credentials, its own access decision).
+function webhookPayload(entry: Pick<DbEntry, 'id' | 'contentTypeId' | 'slug' | 'status'>) {
+  return { entryId: entry.id, contentTypeId: entry.contentTypeId, slug: entry.slug, status: entry.status };
+}
+
 entriesRoute.openapi(
   createRoute({
     method: 'get',
@@ -147,6 +156,10 @@ entriesRoute.openapi(
     try {
       const entry = await createEntry(db, contentTypeId, input, c.get('user').id);
       c.executionCtx.waitUntil(invalidateCacheForEntry(db, entry));
+      dispatchWebhookEvent(db, c.executionCtx, 'entry.created', entry.contentTypeId, webhookPayload(entry));
+      if (entry.status === 'published') {
+        dispatchWebhookEvent(db, c.executionCtx, 'entry.published', entry.contentTypeId, webhookPayload(entry));
+      }
       return c.json(toEntry(entry), 201);
     } catch {
       return c.json({ error: 'Content type not found' }, 404);
@@ -221,11 +234,18 @@ entriesRoute.openapi(
     }
 
     const input = c.req.valid('json');
+    const previousStatus = existing.status;
     const entry = await updateEntry(db, id, input, user.id);
     if (!entry) {
       return c.json({ error: 'Entry not found' }, 404);
     }
     c.executionCtx.waitUntil(invalidateCacheForEntry(db, entry));
+    dispatchWebhookEvent(db, c.executionCtx, 'entry.updated', entry.contentTypeId, webhookPayload(entry));
+    if (previousStatus !== 'published' && entry.status === 'published') {
+      dispatchWebhookEvent(db, c.executionCtx, 'entry.published', entry.contentTypeId, webhookPayload(entry));
+    } else if (previousStatus === 'published' && entry.status !== 'published') {
+      dispatchWebhookEvent(db, c.executionCtx, 'entry.unpublished', entry.contentTypeId, webhookPayload(entry));
+    }
     return c.json(toEntry(entry), 200);
   },
 );
@@ -263,6 +283,7 @@ entriesRoute.openapi(
 
     await deleteEntry(db, entry.id);
     c.executionCtx.waitUntil(invalidateCacheForEntry(db, entry));
+    dispatchWebhookEvent(db, c.executionCtx, 'entry.deleted', entry.contentTypeId, webhookPayload(entry));
     return c.body(null, 204);
   },
 );
@@ -331,11 +352,18 @@ entriesRoute.openapi(
       return c.json({ error: 'You can only restore entries you created' }, 403);
     }
 
+    const previousStatus = existing.status;
     const entry = await restoreEntryRevision(db, id, revisionId, user.id);
     if (!entry) {
       return c.json({ error: 'Entry or revision not found' }, 404);
     }
     c.executionCtx.waitUntil(invalidateCacheForEntry(db, entry));
+    dispatchWebhookEvent(db, c.executionCtx, 'entry.updated', entry.contentTypeId, webhookPayload(entry));
+    if (previousStatus !== 'published' && entry.status === 'published') {
+      dispatchWebhookEvent(db, c.executionCtx, 'entry.published', entry.contentTypeId, webhookPayload(entry));
+    } else if (previousStatus === 'published' && entry.status !== 'published') {
+      dispatchWebhookEvent(db, c.executionCtx, 'entry.unpublished', entry.contentTypeId, webhookPayload(entry));
+    }
     return c.json(toEntry(entry), 200);
   },
 );

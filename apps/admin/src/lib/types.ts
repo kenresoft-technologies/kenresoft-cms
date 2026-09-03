@@ -20,6 +20,7 @@ export {
   ROLE_RANK,
   roleAtLeast,
   USER_ROLES,
+  WEBHOOK_EVENTS,
 } from '@kenresoft-cms/contracts/schemas/enums';
 
 // Type-only — fully erased at build regardless of which contracts module defines them, so
@@ -46,4 +47,8 @@ export type {
   Session,
   Settings,
   UserRole,
+  Webhook,
+  WebhookDelivery,
+  WebhookEvent,
+  WebhookWithSecret,
 } from '@kenresoft-cms/contracts';

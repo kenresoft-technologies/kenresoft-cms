@@ -918,3 +918,43 @@ firing too many auth calls back-to-back, which is itself further confirmation th
 works correctly against these new routes too). New tests: `LoginPage.test.tsx` (TOTP and
 backup-code login paths) and `ProfilePage.test.tsx` (enable/disable flows, mocking `qrcode`'s
 `toDataURL` since jsdom has no canvas).
+
+**Webhooks** (2026-09-03, the second flagged gap picked up on direct user instruction to keep
+going) — done, and both delivery and its failure path verified against real network activity,
+not just unit-tested. New `webhooks`/`webhook_deliveries` tables (migration
+`0017_lovely_shriek.sql`) — one webhook can subscribe to any subset of `entry.created`/
+`entry.updated`/`entry.published`/`entry.unpublished`/`entry.deleted`, optionally scoped to one
+content type (null = every content type), with a server-generated signing secret (`crypto.
+getRandomValues`, never client-supplied — same reasoning as `BETTER_AUTH_SECRET`) never returned
+by any route except the moment it's created or explicitly regenerated. Every route
+(`apps/api/src/routes/admin/webhooks.ts`) is admin-and-above only, stricter than content-types/
+forms which admit editor for field-level edits — a webhook's secret and its ability to make this
+deployment POST arbitrary JSON to any URL an admin chooses put it closer to a security-relevant
+capability than day-to-day editorial work. Dispatch (`apps/api/src/lib/webhooks.ts`) is wired
+into every entry write path (`routes/admin/entries.ts`'s create/update/delete/restore, plus the
+existing scheduled auto-publish sweep in `index.ts`) via `ctx.waitUntil()`, so a slow or dead
+subscriber endpoint never holds up the response an editor is waiting on; each delivered payload
+is deliberately just the entry's identity/status, not its full `data`, keeping every delivery
+small and bounded regardless of entry size. Failed deliveries retry automatically (fixed 5
+attempts) on the same 5-minute Cron Trigger scheduled publishing already uses, rather than
+introducing a second trigger or a queue for this. A real gotcha surfaced and fixed along the
+way: `dispatchWebhookEvent`/`retryFailedWebhookDeliveries` initially typed their execution-context
+parameter as the global `ExecutionContext` — failed to typecheck against Hono's own
+`c.executionCtx`, traced to two different `@cloudflare/workers-types` versions coexisting in this
+monorepo's dependency tree (already visible in `pnpm install`'s own peer-dependency warnings);
+fixed by typing the parameter as `Pick<ExecutionContext, 'waitUntil'>`, the only method actually
+used, sidestepping the version mismatch entirely rather than chasing which package needed
+pinning. Verified for real, twice: `apps/api/test/webhooks-routes.test.ts`'s dispatch tests point
+a subscribed webhook at a `.invalid` domain (IANA-reserved to never resolve) and assert the
+failure gets recorded correctly — confirmed the more obvious choice, an unreachable `localhost`
+port, actually crashes this project's Windows workerd test sandbox with an uncatchable low-level
+`ConnectEx` error distinct from a normal fetch rejection, so the DNS-failure path was used
+instead once that was found; and, separately, a genuine live delivery was driven end-to-end
+against a real local `wrangler dev` instance and a real Node HTTP receiver — signed payloads
+correctly received, the `X-Kenresoft-Signature` header independently re-derived and confirmed to
+match (and confirmed to reject when computed with the wrong secret, proving the check actually
+discriminates), and the API's own delivery log confirmed to show both as successful with the
+receiver's real 200 status. New Settings → Webhooks UI (`apps/admin/src/pages/settings/
+WebhooksSection.tsx`) replaces that section's `ComingSoonSection` placeholder — list, create/edit
+dialogs, a delivery-log viewer, secret reveal-once-on-create-or-regenerate, and an inline
+enabled/disabled toggle per row.

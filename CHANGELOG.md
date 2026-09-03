@@ -34,3 +34,8 @@ landed on `develop`.
 - Two-factor authentication (TOTP + backup codes) — enable it per-account from Profile → Security.
   Requires running the new database migration (`0016_green_franklin_richards.sql`) via `pnpm run
   update` or `pnpm --filter @kenresoft-cms/database migrate:remote`.
+- Webhooks — configure them from Settings → Webhooks. Fires a signed (`X-Kenresoft-Signature`,
+  HMAC-SHA256) POST request to a URL you provide whenever an entry is created, updated,
+  published, unpublished, or deleted, optionally scoped to one content type. Failed deliveries
+  retry automatically (up to 5 attempts) on the existing 5-minute scheduled-publishing cron.
+  Requires running the new database migration (`0017_lovely_shriek.sql`) via `pnpm run update`.
