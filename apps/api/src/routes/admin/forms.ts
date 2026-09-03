@@ -20,6 +20,7 @@ import type {
 } from '@kenresoft-cms/contracts';
 import { z } from 'zod';
 
+import { recordAudit } from '../../lib/audit';
 import { getDb } from '../../lib/db';
 import { createOpenApiApp } from '../../lib/openapi';
 import { requireRole } from '../../middleware/require-role';
@@ -142,6 +143,13 @@ formsRoute.openapi(
     const input = c.req.valid('json');
     const db = getDb(c);
     const form = await createForm(db, input);
+    await recordAudit(db, {
+      actorUserId: c.get('user').id,
+      action: 'form.created',
+      targetType: 'form',
+      targetId: form.id,
+      metadata: { name: form.name, slug: form.slug },
+    });
     return c.json(toForm(form), 201);
   },
 );
@@ -208,6 +216,13 @@ formsRoute.openapi(
 
     const input = c.req.valid('json');
     const updated = await updateForm(db, id, input);
+    await recordAudit(db, {
+      actorUserId: c.get('user').id,
+      action: 'form.updated',
+      targetType: 'form',
+      targetId: id,
+      metadata: { ...input },
+    });
     return c.json(toForm(updated!), 200);
   },
 );
@@ -279,6 +294,13 @@ formsRoute.openapi(
       formId: form.id,
       sortOrder: input.sortOrder ?? existingFields.length,
     });
+    await recordAudit(db, {
+      actorUserId: c.get('user').id,
+      action: 'form_field.created',
+      targetType: 'form_field',
+      targetId: field.id,
+      metadata: { formId: form.id, name: field.name, fieldType: field.fieldType },
+    });
     return c.json(toFormField(field), 201);
   },
 );
@@ -316,6 +338,13 @@ formsRoute.openapi(
 
     const input = c.req.valid('json');
     const updated = await updateFormField(db, fieldId, input);
+    await recordAudit(db, {
+      actorUserId: c.get('user').id,
+      action: 'form_field.updated',
+      targetType: 'form_field',
+      targetId: fieldId,
+      metadata: { formId: id, ...input },
+    });
     return c.json(toFormField(updated!), 200);
   },
 );
@@ -345,6 +374,13 @@ formsRoute.openapi(
     }
 
     await deleteFormField(db, fieldId);
+    await recordAudit(db, {
+      actorUserId: c.get('user').id,
+      action: 'form_field.deleted',
+      targetType: 'form_field',
+      targetId: fieldId,
+      metadata: { formId: id, name: field.name },
+    });
     return c.body(null, 204);
   },
 );

@@ -27,6 +27,7 @@ export {
 // these go through the normal barrel.
 export type {
   AdminUser,
+  AuditLogEntryWithActor,
   ContentType,
   ContentTypeExport,
   DashboardStats,

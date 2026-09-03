@@ -12,6 +12,7 @@ import {
 import type { Entry, EntryRevision, EntryStatus, EntryWithContentType } from '@kenresoft-cms/contracts';
 import { z } from 'zod';
 
+import { recordAudit } from '../../lib/audit';
 import { getDb } from '../../lib/db';
 import { invalidatePublicEntryCache } from '../../lib/public-cache';
 import { dispatchWebhookEvent } from '../../lib/webhooks';
@@ -109,6 +110,21 @@ function webhookPayload(entry: Pick<DbEntry, 'id' | 'contentTypeId' | 'slug' | '
   return { entryId: entry.id, contentTypeId: entry.contentTypeId, slug: entry.slug, status: entry.status };
 }
 
+async function auditEntryChange(
+  db: Database,
+  actorUserId: string,
+  action: string,
+  entry: Pick<DbEntry, 'id' | 'contentTypeId' | 'slug'>,
+): Promise<void> {
+  await recordAudit(db, {
+    actorUserId,
+    action,
+    targetType: 'entry',
+    targetId: entry.id,
+    metadata: { contentTypeId: entry.contentTypeId, slug: entry.slug },
+  });
+}
+
 entriesRoute.openapi(
   createRoute({
     method: 'get',
@@ -159,12 +175,15 @@ entriesRoute.openapi(
     const { contentTypeId } = c.req.valid('query');
     const input = c.req.valid('json');
     const db = getDb(c);
+    const userId = c.get('user').id;
     try {
-      const entry = await createEntry(db, contentTypeId, input, c.get('user').id);
+      const entry = await createEntry(db, contentTypeId, input, userId);
       c.executionCtx.waitUntil(invalidateCacheForEntry(db, entry));
       dispatchWebhookEvent(db, c.executionCtx, 'entry.created', entry.contentTypeId, webhookPayload(entry));
+      await auditEntryChange(db, userId, 'entry.created', entry);
       if (entry.status === 'published') {
         dispatchWebhookEvent(db, c.executionCtx, 'entry.published', entry.contentTypeId, webhookPayload(entry));
+        await auditEntryChange(db, userId, 'entry.published', entry);
       }
       return c.json(toEntry(entry), 201);
     } catch {
@@ -289,6 +308,7 @@ entriesRoute.openapi(
           entry.contentTypeId,
           webhookPayload(entry),
         );
+        await auditEntryChange(db, userId, existing ? 'entry.updated' : 'entry.created', entry);
       } catch (err) {
         errors.push({ slug: item.slug, error: err instanceof Error ? err.message : 'Unknown error' });
       }
@@ -372,10 +392,13 @@ entriesRoute.openapi(
     }
     c.executionCtx.waitUntil(invalidateCacheForEntry(db, entry));
     dispatchWebhookEvent(db, c.executionCtx, 'entry.updated', entry.contentTypeId, webhookPayload(entry));
+    await auditEntryChange(db, user.id, 'entry.updated', entry);
     if (previousStatus !== 'published' && entry.status === 'published') {
       dispatchWebhookEvent(db, c.executionCtx, 'entry.published', entry.contentTypeId, webhookPayload(entry));
+      await auditEntryChange(db, user.id, 'entry.published', entry);
     } else if (previousStatus === 'published' && entry.status !== 'published') {
       dispatchWebhookEvent(db, c.executionCtx, 'entry.unpublished', entry.contentTypeId, webhookPayload(entry));
+      await auditEntryChange(db, user.id, 'entry.unpublished', entry);
     }
     return c.json(toEntry(entry), 200);
   },
@@ -415,6 +438,7 @@ entriesRoute.openapi(
     await deleteEntry(db, entry.id);
     c.executionCtx.waitUntil(invalidateCacheForEntry(db, entry));
     dispatchWebhookEvent(db, c.executionCtx, 'entry.deleted', entry.contentTypeId, webhookPayload(entry));
+    await auditEntryChange(db, user.id, 'entry.deleted', entry);
     return c.body(null, 204);
   },
 );
@@ -490,10 +514,13 @@ entriesRoute.openapi(
     }
     c.executionCtx.waitUntil(invalidateCacheForEntry(db, entry));
     dispatchWebhookEvent(db, c.executionCtx, 'entry.updated', entry.contentTypeId, webhookPayload(entry));
+    await auditEntryChange(db, user.id, 'entry.restored', entry);
     if (previousStatus !== 'published' && entry.status === 'published') {
       dispatchWebhookEvent(db, c.executionCtx, 'entry.published', entry.contentTypeId, webhookPayload(entry));
+      await auditEntryChange(db, user.id, 'entry.published', entry);
     } else if (previousStatus === 'published' && entry.status !== 'published') {
       dispatchWebhookEvent(db, c.executionCtx, 'entry.unpublished', entry.contentTypeId, webhookPayload(entry));
+      await auditEntryChange(db, user.id, 'entry.unpublished', entry);
     }
     return c.json(toEntry(entry), 200);
   },

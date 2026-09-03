@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   LayoutList,
   LogOut,
+  ScrollText,
   Search,
   Settings,
   User,
@@ -16,6 +17,7 @@ import {
 import { Link, Navigate, NavLink, Outlet, useLocation } from 'react-router';
 
 import { authClient } from '@/lib/auth-client';
+import { roleAtLeast, type UserRole } from '@/lib/types';
 import { CommandPalette } from '@/components/command-palette';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -63,6 +65,12 @@ const adminItems = [
   { to: '/settings', label: 'Settings', end: false, icon: Settings },
 ];
 
+// Hidden below admin rather than shown-then-403ing on click — unlike Users/Settings, there's no
+// meaningful read-only view of the audit log for a lower role (the API rejects the request
+// outright, requireRole('admin') in routes/admin/audit-log.ts), so surfacing the link at all
+// would just be a dead end for editor/author/viewer.
+const auditLogItem = { to: '/audit-log', label: 'Audit log', end: false, icon: ScrollText };
+
 function initials(label: string) {
   const parts = label.trim().split(/\s+/);
   if (parts.length > 1) return `${parts[0]![0]}${parts[parts.length - 1]![0]}`.toUpperCase();
@@ -104,6 +112,10 @@ export function AppLayout() {
     return <Navigate to="/login" replace />;
   }
 
+  const visibleAdminItems = roleAtLeast(session.user.role as UserRole, 'admin')
+    ? [...adminItems, auditLogItem]
+    : adminItems;
+
   return (
     <SidebarProvider>
       <Sidebar collapsible="icon">
@@ -133,7 +145,7 @@ export function AppLayout() {
           <SidebarGroup>
             <SidebarGroupLabel>Administration</SidebarGroupLabel>
             <SidebarGroupContent>
-              <NavItems items={adminItems} pathname={location.pathname} />
+              <NavItems items={visibleAdminItems} pathname={location.pathname} />
             </SidebarGroupContent>
           </SidebarGroup>
         </SidebarContent>

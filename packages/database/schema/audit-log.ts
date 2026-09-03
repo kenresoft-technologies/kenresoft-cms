@@ -30,6 +30,7 @@ export const auditLog = sqliteTable(
   (table) => [
     index('audit_log_action_idx').on(table.action),
     index('audit_log_created_at_idx').on(table.createdAt),
+    index('audit_log_actor_user_id_idx').on(table.actorUserId),
   ],
 );
 

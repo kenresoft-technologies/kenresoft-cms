@@ -1,10 +1,12 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router';
-import { ClipboardList, FileText, Images, Inbox, LayoutDashboard, LayoutList, Settings, Users } from 'lucide-react';
+import { ClipboardList, FileText, Images, Inbox, LayoutDashboard, LayoutList, ScrollText, Settings, Users } from 'lucide-react';
 
+import { authClient } from '@/lib/auth-client';
 import { useContentTypes } from '@/lib/queries/content-types';
 import { useDashboardStats } from '@/lib/queries/dashboard';
 import { useForms } from '@/lib/queries/forms';
+import { roleAtLeast, type UserRole } from '@/lib/types';
 import { Command, CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 
 interface CommandPaletteProps {
@@ -16,9 +18,11 @@ interface CommandPaletteProps {
 // open state lives in AppLayout so the header's search button can toggle the same instance.
 export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const navigate = useNavigate();
+  const { data: session } = authClient.useSession();
   const { data: contentTypes } = useContentTypes();
   const { data: forms } = useForms();
   const { data: stats } = useDashboardStats();
+  const isAdmin = roleAtLeast((session?.user.role ?? 'viewer') as UserRole, 'admin');
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -77,6 +81,12 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
               <Settings />
               Settings
             </CommandItem>
+            {isAdmin ? (
+              <CommandItem value="Audit log" onSelect={() => go('/audit-log')}>
+                <ScrollText />
+                Audit log
+              </CommandItem>
+            ) : null}
           </CommandGroup>
           {contentTypes && contentTypes.length > 0 ? (
             <CommandGroup heading="Content types">

@@ -10,6 +10,13 @@ landed on `develop`.
 
 ## Unreleased
 
+### Added
+
+- Audit log — content, structural, and auth activity (entry/content-type/field/form/media
+  create/update/delete/publish/unpublish, sign-up/in/out, failed sign-ins) is now recorded and
+  browsable from a new Audit log page (admin/owner only). Requires the new database migration
+  (`0019_warm_stranger.sql`) via `pnpm run update`.
+
 ### Fixed
 
 - Dependency security updates: `better-auth` 1.4.21 → 1.7.2, `astro`/`@astrojs/cloudflare`

@@ -2,6 +2,7 @@ import { createRoute, z } from '@hono/zod-openapi';
 import { altTextSchema, mediaSchema } from '@kenresoft-cms/contracts';
 import type { Media } from '@kenresoft-cms/contracts';
 
+import { recordAudit } from '../../lib/audit';
 import { getDb } from '../../lib/db';
 import { sniffImage } from '../../lib/image-metadata';
 import { createOpenApiApp } from '../../lib/openapi';
@@ -106,6 +107,13 @@ mediaRoute.post('/', requireRole('admin', 'editor'), async (c) => {
     height: sniffed.height,
     altText: altTextParsed.data ?? null,
   });
+  await recordAudit(db, {
+    actorUserId: c.get('user').id,
+    action: 'media.uploaded',
+    targetType: 'media',
+    targetId: row.id,
+    metadata: { filename: row.filename, contentType: row.contentType, size: row.size },
+  });
 
   return c.json(toMedia(row), 201);
 });
@@ -202,6 +210,13 @@ mediaRoute.openapi(
     // Without this, a deleted file would keep being served from the public route's edge
     // cache for up to a year (lib/public-cache.ts's media TTL).
     await invalidatePublicMediaCache(row.id);
+    await recordAudit(db, {
+      actorUserId: c.get('user').id,
+      action: 'media.deleted',
+      targetType: 'media',
+      targetId: row.id,
+      metadata: { filename: row.filename },
+    });
 
     return c.body(null, 204);
   },

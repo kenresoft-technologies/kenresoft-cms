@@ -12,6 +12,7 @@ import {
 import type { ContentType, FieldDefinition, FieldType } from '@kenresoft-cms/contracts';
 import { z } from 'zod';
 
+import { recordAudit } from '../../lib/audit';
 import { getDb } from '../../lib/db';
 import { createOpenApiApp } from '../../lib/openapi';
 import { requireRole } from '../../middleware/require-role';
@@ -111,6 +112,13 @@ contentTypesRoute.openapi(
       ...input,
       description: input.description ?? null,
     });
+    await recordAudit(db, {
+      actorUserId: c.get('user').id,
+      action: 'content_type.created',
+      targetType: 'content_type',
+      targetId: contentType.id,
+      metadata: { name: contentType.name, slug: contentType.slug },
+    });
     return c.json(toContentType(contentType), 201);
   },
 );
@@ -180,6 +188,13 @@ contentTypesRoute.openapi(
 
     const input = c.req.valid('json');
     const updated = await updateContentType(db, id, input);
+    await recordAudit(db, {
+      actorUserId: c.get('user').id,
+      action: 'content_type.updated',
+      targetType: 'content_type',
+      targetId: id,
+      metadata: { ...input },
+    });
     return c.json(toContentType(updated!), 200);
   },
 );
@@ -252,6 +267,13 @@ contentTypesRoute.openapi(
       contentTypeId: contentType.id,
       sortOrder: input.sortOrder ?? existingFields.length,
     });
+    await recordAudit(db, {
+      actorUserId: c.get('user').id,
+      action: 'field.created',
+      targetType: 'field_definition',
+      targetId: field.id,
+      metadata: { contentTypeId: contentType.id, name: field.name, fieldType: field.fieldType },
+    });
     return c.json(toFieldDefinition(field), 201);
   },
 );
@@ -297,6 +319,13 @@ contentTypesRoute.openapi(
     const { fieldIds } = c.req.valid('json');
     try {
       const fields = await reorderFieldDefinitions(db, contentType.id, fieldIds);
+      await recordAudit(db, {
+        actorUserId: c.get('user').id,
+        action: 'fields.reordered',
+        targetType: 'content_type',
+        targetId: contentType.id,
+        metadata: { fieldIds },
+      });
       return c.json(fields.map(toFieldDefinition), 200);
     } catch {
       return c.json({ error: "fieldIds must exactly match this content type's existing fields" }, 400);
@@ -339,6 +368,13 @@ contentTypesRoute.openapi(
 
     const input = c.req.valid('json');
     const updated = await updateFieldDefinition(db, fieldId, input);
+    await recordAudit(db, {
+      actorUserId: c.get('user').id,
+      action: 'field.updated',
+      targetType: 'field_definition',
+      targetId: fieldId,
+      metadata: { contentTypeId: id, ...input },
+    });
     return c.json(toFieldDefinition(updated!), 200);
   },
 );
@@ -368,6 +404,13 @@ contentTypesRoute.openapi(
     }
 
     await deleteFieldDefinition(db, fieldId);
+    await recordAudit(db, {
+      actorUserId: c.get('user').id,
+      action: 'field.deleted',
+      targetType: 'field_definition',
+      targetId: fieldId,
+      metadata: { contentTypeId: id, name: field.name },
+    });
     return c.body(null, 204);
   },
 );

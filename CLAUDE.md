@@ -1103,3 +1103,49 @@ after every change in this pass: clean typecheck/lint across the whole workspace
 `apps/admin` test files (134 tests) and all 29 `apps/api` test files passing (individually,
 per this project's standing Windows/workerd-resource-contention note — confirmed flaky-only by
 re-running each file that failed as part of a larger batch on its own).
+
+**Audit log extended to content/structural/auth activity** (2026-09-03, direct user request,
+first of a two-part instruction — Live Preview is the follow-up entry below) — done. The
+`audit_log` table and `recordAudit()` helper (`apps/api/src/lib/audit.ts`) already existed for
+role changes, disabling, and ownership transfer (see the Owner-role entry above) — extended by
+reusing that exact helper at every content/structural write path rather than building a second
+mechanism: entry create/update/delete/publish/unpublish/restore (including per-item during bulk
+import — `routes/admin/entries.ts`), content-type create/update, field create/update/delete/
+reorder, form/form-field create/update/delete, and media upload/delete
+(`routes/admin/{content-types,forms,media}.ts`). Auth events (`auth.sign_up`, `auth.sign_in`,
+`auth.sign_in_failed`, `auth.sign_out`) needed a different mechanism, since they happen inside
+better-auth's own request handler, not this codebase's route files: a global `hooks: { before,
+after }` pair added to the `betterAuth({...})` call in `apps/api/src/lib/auth.ts` (not
+`auth-options.ts`, which has no `db` in scope — same reason `databaseHooks` already lives in
+`auth.ts`), using `createAuthMiddleware` from `better-auth/api`. Sign-in success/failure and
+sign-up are detected in an `after` hook by checking `ctx.path` against `/sign-in/email`/
+`/sign-up/email` and inspecting `ctx.context.newSession` (present on success) vs.
+`ctx.context.returned instanceof APIError` (present on failure) — both confirmed by reading
+better-auth's own `dispatch.mjs` (`internalContext.context.returned = result.response` is set
+to the endpoint's real success-or-caught-error result *before* after-hooks run), not just
+trusted from docs. Sign-out needed a `before` hook specifically: by the time an `after` hook
+could run, better-auth's own `/sign-out` handler has already deleted the session row, losing the
+user id — the `before` hook instead reads the same signed cookie the real handler does
+(`ctx.getSignedCookie` + `ctx.context.internalAdapter.findSession`, copied from better-auth's own
+sign-out route source) one step earlier, read-only. New `GET /api/v1/admin/audit-log`
+(`requireRole('admin')`, matching the floor the user-management mutations that write most of
+these rows already use) backs a new **Audit log** page (`apps/admin/src/pages/AuditLogPage.tsx`),
+hidden from the sidebar/command-palette below admin (unlike Users/Settings, there's no
+meaningful read-only view once the API 403s outright) — actor/action/date-range filters, the
+action dropdown populated from whatever's actually been logged rather than a hardcoded list, and
+a per-row metadata dialog. A new `audit_log_actor_user_id_idx` index (migration
+`0019_warm_stranger.sql`) backs the actor filter; `packages/database/src/index.ts` gained `gte`
+alongside the existing re-exported drizzle-orm operators (only `lte` existed before, needed for
+the log's `from`/`to` date-range filter). Verified three ways: `apps/api/test/audit-log.test.ts`
+(real D1, 4 tests covering every action category, the sign-in-failure actor-label/no-user-id
+shape, and both filters), the full existing suite re-run clean (23 admin files/134 tests, 30 api
+files), and a real live pass against an isolated `wrangler dev` instance driving actual HTTP
+sign-up/sign-in/sign-in-failure/sign-out/content-type/field/entry/media calls — 25/25 real
+assertions, including two real gotchas the vitest-pool-workers-based test suite didn't surface:
+better-auth's origin-check middleware 403s a state-changing auth request (sign-out) with no real
+`Origin` header against a live Worker (a real browser always sends one; the test suite's
+`SELF.fetch` apparently doesn't need one for reasons internal to that harness), and a raw
+`fetch()` POST with a `Content-Type: application/json` header but a truly empty body 400s as
+"Invalid JSON in request body" against real `wrangler dev` (better-auth's own client SDK always
+sends a real, even if empty-object, JSON body, so real callers — `authClient.signOut()` in
+`AppLayout.tsx` — never hit this; only a hand-written verification script needed the fix).
