@@ -84,13 +84,43 @@ function replaceLine(toml, linePrefix, newLine) {
   return lines.join('\n');
 }
 
+// Runs a wrangler `... info --json` lookup and reports whether the resource is genuinely still
+// there, rather than trusting that a `database_id`/`bucket_name` already sitting in wrangler.toml
+// means the underlying Cloudflare resource still exists — it could have been deleted out-of-band
+// (dashboard, another script, account cleanup) since the file was written, in which case treating
+// "config has an id" as "resource exists" would skip provisioning and only fail later, deeper
+// into the setup. `notFoundPattern` distinguishes "genuinely doesn't exist" (recreate it) from
+// any other failure (auth, network, rate limit — re-thrown, since silently recreating a resource
+// setup can't actually confirm is gone would be worse than just stopping). Confirmed empirically
+// against the real Cloudflare API, not assumed: a missing D1 database's `d1 info` fails with
+// "Couldn't find a D1 DB..." while a missing R2 bucket's `r2 bucket info` fails with "The
+// specified bucket does not exist" — different enough wording that each call site passes its own
+// pattern rather than sharing one regex.
+function resourceExists(infoArgs, notFoundPattern) {
+  try {
+    runWrangler(infoArgs, { cwd: API_DIR, stdio: ['pipe', 'pipe', 'pipe'] });
+    return true;
+  } catch (error) {
+    const stderr = error && typeof error === 'object' && 'stderr' in error ? String(error.stderr) : '';
+    if (notFoundPattern.test(stderr)) return false;
+    throw error;
+  }
+}
+
 async function ensureD1() {
   const toml = readToml();
   const block = findTopLevelBlock(toml, '[[d1_databases]]');
   if (!block) throw new Error('Could not find [[d1_databases]] in wrangler.toml.');
-  if (/\bdatabase_id\s*=/.test(block.text)) {
-    console.log('✓ D1 database already configured (database_id present) — skipping.');
-    return;
+  const hasExistingId = /\bdatabase_id\s*=/.test(block.text);
+  if (hasExistingId) {
+    if (resourceExists(['d1', 'info', 'kenresoft-cms-db', '--json'], /couldn't find/i)) {
+      console.log('✓ D1 database already configured and confirmed present on Cloudflare — skipping.');
+      return;
+    }
+    console.log(
+      '⚠ wrangler.toml has a database_id, but "kenresoft-cms-db" no longer exists on Cloudflare ' +
+        '(deleted outside this script?) — recreating it.',
+    );
   }
 
   console.log('Creating D1 database "kenresoft-cms-db"...');
@@ -110,7 +140,9 @@ async function ensureD1() {
   }
   console.log(`Created D1 database: ${databaseId}`);
 
-  const newBlockText = insertAfterLine(block.text, 'database_name = "kenresoft-cms-db"\n', `database_id = "${databaseId}"\n`);
+  const newBlockText = hasExistingId
+    ? block.text.replace(/database_id\s*=\s*"[^"]*"/, `database_id = "${databaseId}"`)
+    : insertAfterLine(block.text, 'database_name = "kenresoft-cms-db"\n', `database_id = "${databaseId}"\n`);
   writeToml(readToml().slice(0, block.start) + newBlockText + readToml().slice(block.end));
 }
 
@@ -118,16 +150,25 @@ async function ensureR2() {
   const toml = readToml();
   const block = findTopLevelBlock(toml, '[[r2_buckets]]');
   if (!block) throw new Error('Could not find [[r2_buckets]] in wrangler.toml.');
-  if (/\bbucket_name\s*=/.test(block.text)) {
-    console.log('✓ R2 bucket already configured (bucket_name present) — skipping.');
-    return;
+  const hasExistingName = /\bbucket_name\s*=/.test(block.text);
+  if (hasExistingName) {
+    if (resourceExists(['r2', 'bucket', 'info', 'kenresoft-cms-media', '--json'], /does not exist/i)) {
+      console.log('✓ R2 bucket already configured and confirmed present on Cloudflare — skipping.');
+      return;
+    }
+    console.log(
+      '⚠ wrangler.toml has a bucket_name, but "kenresoft-cms-media" no longer exists on Cloudflare ' +
+        '(deleted outside this script?) — recreating it.',
+    );
   }
 
   console.log('Creating R2 bucket "kenresoft-cms-media"...');
   runWrangler(['r2', 'bucket', 'create', 'kenresoft-cms-media'], { cwd: API_DIR });
 
-  const newBlockText = insertAfterLine(block.text, 'binding = "MEDIA_BUCKET"\n', 'bucket_name = "kenresoft-cms-media"\n');
-  writeToml(readToml().slice(0, block.start) + newBlockText + readToml().slice(block.end));
+  if (!hasExistingName) {
+    const newBlockText = insertAfterLine(block.text, 'binding = "MEDIA_BUCKET"\n', 'bucket_name = "kenresoft-cms-media"\n');
+    writeToml(readToml().slice(0, block.start) + newBlockText + readToml().slice(block.end));
+  }
 }
 
 // Checks whether BETTER_AUTH_SECRET is already set on the Worker before touching it — re-running

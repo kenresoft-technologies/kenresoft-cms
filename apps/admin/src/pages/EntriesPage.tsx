@@ -1,12 +1,19 @@
-import { useMemo, useState } from 'react';
-import { FileText, Plus, Trash2 } from 'lucide-react';
+import { useMemo, useRef, useState } from 'react';
+import { Download, FileText, Plus, Trash2, Upload } from 'lucide-react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { toast } from 'sonner';
 import type { ColumnDef } from '@tanstack/react-table';
 
+import { ApiError } from '@/lib/api-client';
 import { useContentType } from '@/lib/queries/content-types';
-import { useDeleteEntryById, useEntries, useUpdateEntryStatusById } from '@/lib/queries/entries';
-import type { EntryStatus, EntryWithContentType } from '@/lib/types';
+import {
+  exportEntries,
+  useDeleteEntryById,
+  useEntries,
+  useImportEntries,
+  useUpdateEntryStatusById,
+} from '@/lib/queries/entries';
+import type { ContentTypeExport, EntryStatus, EntryWithContentType } from '@/lib/types';
 import { DataTable } from '@/components/data-table';
 import { EmptyState } from '@/components/empty-state';
 import { EntryRowActions } from '@/components/entry-row-actions';
@@ -37,9 +44,60 @@ export function EntriesPage() {
   const { data: entries, isPending, error, refetch } = useEntries(contentTypeId ?? '');
   const deleteEntry = useDeleteEntryById(contentTypeId ?? '');
   const updateStatus = useUpdateEntryStatusById(contentTypeId ?? '');
+  const importEntries = useImportEntries(contentTypeId ?? '');
+  const importFileInputRef = useRef<HTMLInputElement>(null);
 
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [pendingDelete, setPendingDelete] = useState<EntryWithContentType | EntryWithContentType[] | null>(null);
+
+  async function handleExport() {
+    if (!contentTypeId) return;
+    try {
+      const data = await exportEntries(contentTypeId);
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${data.contentType.slug}-entries.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Export failed');
+    }
+  }
+
+  function handleImportClick() {
+    importFileInputRef.current?.click();
+  }
+
+  async function handleImportFileSelected(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    let parsed: ContentTypeExport;
+    try {
+      parsed = JSON.parse(await file.text()) as ContentTypeExport;
+    } catch {
+      toast.error('That file is not valid JSON');
+      return;
+    }
+
+    try {
+      const result = await importEntries.mutateAsync(parsed);
+      const parts = [`${result.created} created`, `${result.updated} updated`];
+      if (result.errors.length > 0) parts.push(`${result.errors.length} failed`);
+      if (result.errors.length > 0) {
+        toast.warning(`Import finished: ${parts.join(', ')}`, {
+          description: result.errors.map((e) => `${e.slug}: ${e.error}`).join('; '),
+        });
+      } else {
+        toast.success(`Import finished: ${parts.join(', ')}`);
+      }
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Import failed');
+    }
+  }
 
   const filteredEntries = useMemo(
     () => (statusFilter === 'all' ? (entries ?? []) : (entries ?? []).filter((entry) => entry.status === statusFilter)),
@@ -121,13 +179,30 @@ export function EntriesPage() {
     [contentTypeId],
   );
 
-  const newEntryLink = (
-    <Button asChild>
-      <Link to={`/content-types/${contentTypeId}/entries/new`}>
-        <Plus />
-        New entry
-      </Link>
-    </Button>
+  const headerActions = (
+    <>
+      <input
+        ref={importFileInputRef}
+        type="file"
+        accept="application/json"
+        className="hidden"
+        onChange={(event) => void handleImportFileSelected(event)}
+      />
+      <Button variant="outline" onClick={handleImportClick} disabled={importEntries.isPending}>
+        <Upload />
+        Import
+      </Button>
+      <Button variant="outline" onClick={() => void handleExport()} disabled={!entries || entries.length === 0}>
+        <Download />
+        Export
+      </Button>
+      <Button asChild>
+        <Link to={`/content-types/${contentTypeId}/entries/new`}>
+          <Plus />
+          New entry
+        </Link>
+      </Button>
+    </>
   );
 
   return (
@@ -143,7 +218,7 @@ export function EntriesPage() {
       <PageHeader
         title="Entries"
         description={contentType ? `Instances of ${contentType.name}.` : 'Content instances.'}
-        actions={newEntryLink}
+        actions={<div className="flex items-center gap-2">{headerActions}</div>}
       />
 
       {error ? <p className="text-destructive">{error.message}</p> : null}

@@ -15,11 +15,18 @@ landed on `develop`.
 - `pnpm run setup` no longer silently regenerates `BETTER_AUTH_SECRET` (logging out every current
   user) when re-run against an already-configured deployment — it now checks first and asks
   before rotating.
+- `pnpm run setup` now confirms a D1 database/R2 bucket referenced in `wrangler.toml` still
+  actually exists on Cloudflare before skipping its provisioning step, instead of trusting that a
+  `database_id`/`bucket_name` already being present in the config means the resource is still
+  there — recreates it if it was deleted out-of-band.
 - `apps/admin`'s production bundle dropped from one shared 1.9MB chunk to a 351kB shell plus small
   per-page chunks, via route-based code splitting — most pages now download only a few kB.
 
 ### Added
 
+- Entry export/import — export every entry for a content type as a portable JSON file, and
+  re-import it (creating new entries or updating existing ones by slug) into the same or another
+  deployment, from the Entries page's new Export/Import buttons.
 - `pnpm run update` — redeploys an existing install with new code (install, migrate, redeploy
   both Workers) without touching secrets, D1/R2 resources, or CORS config, unlike `pnpm run
   setup`. This is the command to run for an update instead.

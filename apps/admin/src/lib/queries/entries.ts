@@ -1,7 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { apiClient } from '@/lib/api-client';
-import type { Entry, EntryRevision, EntryStatus, EntryWithContentType } from '@/lib/types';
+import type {
+  ContentTypeExport,
+  Entry,
+  EntryRevision,
+  EntryStatus,
+  EntryWithContentType,
+  ImportEntriesResult,
+} from '@/lib/types';
 
 type EntryWriteInput = {
   slug: string;
@@ -98,6 +105,25 @@ export function useEntryRevisions(entryId: string) {
     queryKey: ['entries', 'by-id', entryId, 'revisions'],
     queryFn: () => apiClient.get<EntryRevision[]>(`/api/v1/admin/entries/${entryId}/revisions`),
     enabled: Boolean(entryId),
+  });
+}
+
+// Not a useQuery — export is triggered on demand (a button click that immediately downloads a
+// file), not something rendered on the page, so a plain async fetch avoids caching a payload
+// that's never displayed anywhere.
+export async function exportEntries(contentTypeId: string): Promise<ContentTypeExport> {
+  return apiClient.get<ContentTypeExport>(`/api/v1/admin/entries/export?contentTypeId=${contentTypeId}`);
+}
+
+export function useImportEntries(contentTypeId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: ContentTypeExport) =>
+      apiClient.post<ImportEntriesResult>(`/api/v1/admin/entries/import?contentTypeId=${contentTypeId}`, input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['entries', contentTypeId] });
+    },
   });
 }
 

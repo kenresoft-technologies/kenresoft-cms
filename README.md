@@ -20,6 +20,11 @@ pnpm run setup
 (Equivalent to `git clone https://github.com/kenresoft-technologies/kenresoft-cms.git
 your-site-name` — same files, no GitHub URL to remember.)
 
+`npm create` here is only the bootstrap mechanism — it's the standard, zero-install way any npm
+user can fetch and scaffold a new project (`npm create <pkg>` is npm's built-in convention, akin
+to `npm init`), not a statement that this repo uses npm. The scaffolded project itself, and every
+command after that first line, uses **pnpm** — see "Package manager" below.
+
 One command, provisions and deploys the whole system into your own Cloudflare account:
 
 - **API Worker** (`apps/api`) and **Admin Worker** (`apps/admin`) — deployed
@@ -97,7 +102,11 @@ publishing and revisions, the R2 media library, the public + admin REST API (Ope
 caching), and forms with spam/rate-limited public submissions. Several cross-cutting UI passes
 on top of that took the Admin Worker from functional CRUD screens to a full admin experience —
 dashboard, command palette, drag-to-reorder fields, a redesigned Settings area, dark mode, and
-more. The Astro Integration is done and production-deployable (`docs/ASTRO.md`).
+more. The Astro Integration (`@kenresoft-cms/astro`, the typed client library — see
+`docs/ASTRO.md`) is done: it's SSR, not a rebuild-to-see-changes static site, and has been
+verified end-to-end against a real deployed API. The reference `examples/astro-site` built on
+it has not itself been deployed to a live Cloudflare project by this project — see
+[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)'s "The marketing site" step for deploying your own.
 
 For the authoritative, continuously-updated account of what's done and what isn't, see the
 **Status** section of [`CLAUDE.md`](CLAUDE.md). For the target end state, see
@@ -105,7 +114,10 @@ For the authoritative, continuously-updated account of what's done and what isn'
 
 ## Package manager
 
-This repo uses **pnpm** exclusively. Do not use npm or yarn.
+This repo uses **pnpm** exclusively. Do not use npm or yarn — the one exception is
+`npm create @kenresoft-cms@latest` above, which only bootstraps a new project directory (see that
+section); everything inside the resulting project, including its own dependency installs, still
+goes through pnpm.
 
 ## License
 

@@ -160,9 +160,18 @@ The first request to your deployed Worker's sign-up page becomes the owner accou
 
 ## 7. The marketing site (optional)
 
-`examples/astro-site` is a reference Astro integration, not a required part of the CMS. It
-renders server-side (Cloudflare Pages Functions via `@astrojs/cloudflare`) and fetches from
-your public API at request time — no rebuild needed when you publish new content.
+`examples/astro-site` is a reference Astro integration, not a required part of the CMS — a
+separate frontend that happens to consume the CMS's public API, not one of the CMS's own two
+Workers (API + Admin, both moved to Workers Static Assets — see "Two Workers, one install"
+above). It renders server-side (Cloudflare Pages Functions via `@astrojs/cloudflare`) and
+fetches from your public API at request time — no rebuild needed when you publish new content.
+
+This example deploys to Cloudflare **Pages** below, not Workers, because that's simply
+`@astrojs/cloudflare`'s own default adapter target for this Astro version — it is not a required
+or even recommended choice specific to this CMS, and Pages remains a fully supported Cloudflare
+product for it. If your own site's Astro/framework setup targets Workers Static Assets instead
+(or a different host entirely), use that instead; nothing about the CMS's own two Workers depends
+on how you deploy this separate example.
 
 ```bash
 wrangler pages project create your-cms-site

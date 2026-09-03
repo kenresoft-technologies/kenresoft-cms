@@ -958,3 +958,71 @@ receiver's real 200 status. New Settings → Webhooks UI (`apps/admin/src/pages/
 WebhooksSection.tsx`) replaces that section's `ComingSoonSection` placeholder — list, create/edit
 dialogs, a delivery-log viewer, secret reveal-once-on-create-or-regenerate, and an inline
 enabled/disabled toggle per row.
+
+**Content-level export/import** (2026-09-03, the third of the four originally-flagged gaps) —
+done: `GET /api/v1/admin/entries/export?contentTypeId=` and
+`POST /api/v1/admin/entries/import?contentTypeId=` (`apps/api/src/routes/admin/entries.ts`,
+registered before `/{id}` for the same static-path-precedence reason as the field-reorder route
+in `routes/admin/content-types.ts`). Deliberately scoped to one content type at a time, not a
+whole-database dump — that's already covered by D1's own export/Time Travel
+(`docs/DEPLOYMENT.md`'s Backups section) and was explicitly called out as the gap this feature
+fills. The exported shape (`packages/contracts/schemas/entries.ts`'s `contentTypeExportSchema`)
+carries the content type's name/slug alongside each entry's slug/status/data/publishAt but
+deliberately no ids or timestamps — ids aren't portable across deployments, and import identifies
+"already exists" by slug (`getEntryBySlug`, already existed for the public API) rather than id, so
+a file can be re-imported into the same content type on a different deployment entirely, not just
+re-uploaded into itself. Import upserts per entry (create if the slug is new, update if it
+already exists) via the existing `createEntry`/`updateEntry` repository functions — meaning each
+imported entry is itself snapshotted as a revision and dispatches the same `entry.created`/
+`entry.updated` webhook events and public-cache invalidation a normal write would, not a bypass
+path. A file's embedded content-type identity is checked against the target content type's slug
+and the import 400s on a mismatch, catching the "imported the wrong file into the wrong content
+type" mistake rather than silently scrambling data. Gated `requireRole('admin', 'editor')`
+(stricter than every other entry route, which has no role gate beyond the global viewer block) —
+a bulk import writes entries regardless of who created them, bypassing the per-entry
+author-ownership check (`canWriteEntry`) every single-entry write route enforces, so it needed the
+same floor as structural content-type/field changes rather than being left open to every
+non-viewer role. `apps/admin`'s Entries page gained Export (downloads a `.json` file via a
+`Blob`/`URL.createObjectURL` — no new backend needed for the download itself) and Import (a
+hidden file input plus a toast summarizing created/updated/failed counts, with per-slug error
+detail on failure) buttons. Verified with `apps/api/test/entries-export-import.test.ts` (5 tests,
+real D1): round-trip export shape, create-vs-update-by-slug behavior in one import call, the
+content-type-mismatch 400, and the editor-vs-author role gate (author demoted via the existing
+`PATCH /users/:id/role` route, since a fresh signup after the first always defaults to editor).
+
+**Three gaps from an external review, closed** (2026-09-03, prompted by a third-party read-through
+of the repo ahead of a wider release) — done. (1) `scripts/setup.mjs`'s `ensureD1()`/`ensureR2()`
+previously treated "a `database_id`/`bucket_name` is already present in `wrangler.toml`" as proof
+the resource still exists on Cloudflare, when it only proves the config remembers having created
+one — a database or bucket deleted out-of-band (dashboard, another script, account cleanup) would
+be silently skipped here and only fail much later, deeper into setup, with a confusing error far
+from the actual cause. Fixed with a real existence check (`wrangler d1 info`/`r2 bucket info
+--json`) before skipping, confirmed empirically against the real Cloudflare account (not
+guessed): a missing D1 database fails `d1 info` with "Couldn't find a D1 DB...", a missing R2
+bucket fails `r2 bucket info` with "The specified bucket does not exist" — different enough
+wording that each call site checks its own pattern. A genuinely-missing resource is now recreated
+(D1's `database_id` line gets overwritten in place rather than a second one inserted; R2's
+`bucket_name` is already the same hardcoded value so needs no rewrite at all), while any other
+failure (auth, network, rate limit) still re-throws instead of being misread as "safe to
+recreate." (2) `docs/DEPLOYMENT.md`'s marketing-site step still told readers to deploy
+`examples/astro-site` to Cloudflare Pages with no explanation of why, sitting right next to the
+Admin Worker's step above it — which had, in a previous pass, deliberately moved *away* from
+Pages onto Workers Static Assets — with nothing distinguishing "we're still using Pages here" from
+"we moved away from Pages." Fixed by making the distinction explicit in that section: Pages is
+this example's target only because it's `@astrojs/cloudflare`'s own adapter default, not a
+CMS-wide recommendation, and readers targeting Workers Static Assets (or any other host) for their
+own Astro/framework site should just use that instead — nothing about the CMS's own two Workers
+depends on this example's deploy target. The root README's "Astro Integration is done and
+production-deployable" line was also tightened to separate two different claims that single
+sentence had been conflating: the `@kenresoft-cms/astro` client library itself (SSR-verified
+against a real deployed API — genuinely done) versus the `examples/astro-site` reference site's
+own deployment (never actually deployed to a live Cloudflare project by this project, confirmed by
+re-reading this file's own C1/production-reset entries above, which cover the CMS's two Workers
+only). (3) The root README's install section led with `npm create @kenresoft-cms@latest`
+immediately above a later "this repo uses pnpm exclusively, do not use npm or yarn" statement,
+with nothing connecting the two — a genuinely reasonable point of confusion for a first-time
+reader, even though the two aren't actually contradictory (`npm create <pkg>` is npm's standard,
+zero-install bootstrap convention akin to `npm init`, not a statement that the resulting project
+uses npm). Fixed with a one-line clarification in both places: right after the install command,
+and in the "Package manager" section itself, so whichever one a reader lands on first resolves the
+apparent conflict.

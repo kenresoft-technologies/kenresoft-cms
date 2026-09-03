@@ -1,9 +1,12 @@
 import { createRoute } from '@hono/zod-openapi';
 import {
+  contentTypeExportSchema,
   createEntrySchema,
   entryRevisionSchema,
   entrySchema,
   entryWithContentTypeSchema,
+  importEntriesResultSchema,
+  importEntriesSchema,
   updateEntrySchema,
 } from '@kenresoft-cms/contracts';
 import type { Entry, EntryRevision, EntryStatus, EntryWithContentType } from '@kenresoft-cms/contracts';
@@ -13,6 +16,7 @@ import { getDb } from '../../lib/db';
 import { invalidatePublicEntryCache } from '../../lib/public-cache';
 import { dispatchWebhookEvent } from '../../lib/webhooks';
 import { createOpenApiApp } from '../../lib/openapi';
+import { requireRole } from '../../middleware/require-role';
 import type { Bindings } from '../../lib/env';
 import type { AuthedVariables } from '../../middleware/require-session';
 import { getContentTypeById } from '../../repositories/content-types';
@@ -20,6 +24,7 @@ import {
   createEntry,
   deleteEntry,
   getEntryById,
+  getEntryBySlug,
   listEntriesWithContentType,
   listEntryRevisions,
   restoreEntryRevision,
@@ -45,6 +50,7 @@ function canWriteEntry(role: string, entry: Pick<DbEntry, 'createdBy'>, userId: 
 // and author (§ unified admin Entries view).
 const listQuerySchema = z.object({ contentTypeId: z.string().min(1).optional() });
 const createEntryQuerySchema = z.object({ contentTypeId: z.string().min(1) });
+const contentTypeScopedQuerySchema = z.object({ contentTypeId: z.string().min(1) });
 const idParamSchema = z.object({ id: z.string().min(1) });
 const revisionParamsSchema = z.object({ id: z.string().min(1), revisionId: z.string().min(1) });
 
@@ -164,6 +170,131 @@ entriesRoute.openapi(
     } catch {
       return c.json({ error: 'Content type not found' }, 404);
     }
+  },
+);
+
+// Registered before /{id} below — Hono matches routes in registration order, and a GET to
+// /export would otherwise be captured by /{id} first, the same ordering hazard already
+// documented on the field-reorder route in routes/admin/content-types.ts.
+entriesRoute.openapi(
+  createRoute({
+    method: 'get',
+    path: '/export',
+    tags: ['Entries'],
+    summary: 'Export every entry for a content type as portable JSON',
+    request: { query: contentTypeScopedQuerySchema },
+    responses: {
+      200: {
+        description: "The content type's identity plus every one of its entries.",
+        content: { 'application/json': { schema: contentTypeExportSchema } },
+      },
+      404: {
+        description: 'No content type with that id.',
+        content: { 'application/json': { schema: notFoundSchema } },
+      },
+    },
+  }),
+  async (c) => {
+    const { contentTypeId } = c.req.valid('query');
+    const db = getDb(c);
+    const contentType = await getContentTypeById(db, contentTypeId);
+    if (!contentType) {
+      return c.json({ error: 'Content type not found' }, 404);
+    }
+
+    const rows = await listEntriesWithContentType(db, contentTypeId);
+    return c.json(
+      {
+        contentType: { name: contentType.name, slug: contentType.slug },
+        exportedAt: new Date().toISOString(),
+        entries: rows.map((row) => ({
+          slug: row.slug,
+          status: row.status as EntryStatus,
+          data: row.data,
+          publishAt: row.publishAt ? row.publishAt.toISOString() : null,
+        })),
+      },
+      200,
+    );
+  },
+);
+
+// admin/editor only — a bulk import writes entries regardless of who created them, bypassing
+// the per-entry author-ownership check (canWriteEntry) that every other write route above
+// enforces, so it's gated at the same level as content-type/field structural changes rather
+// than left open to every non-viewer role like the single-entry write routes above.
+entriesRoute.openapi(
+  createRoute({
+    method: 'post',
+    path: '/import',
+    tags: ['Entries'],
+    summary: 'Bulk-import entries into a content type from a previous export',
+    middleware: requireRole('admin', 'editor'),
+    request: {
+      query: contentTypeScopedQuerySchema,
+      body: { content: { 'application/json': { schema: importEntriesSchema } } },
+    },
+    responses: {
+      200: {
+        description: 'Import summary — how many entries were created, updated, or failed.',
+        content: { 'application/json': { schema: importEntriesResultSchema } },
+      },
+      400: {
+        description: 'The import file was exported from a different content type.',
+        content: { 'application/json': { schema: notFoundSchema } },
+      },
+      404: {
+        description: 'No content type with that id.',
+        content: { 'application/json': { schema: notFoundSchema } },
+      },
+    },
+  }),
+  async (c) => {
+    const { contentTypeId } = c.req.valid('query');
+    const db = getDb(c);
+    const contentType = await getContentTypeById(db, contentTypeId);
+    if (!contentType) {
+      return c.json({ error: 'Content type not found' }, 404);
+    }
+
+    const input = c.req.valid('json');
+    if (input.contentType && input.contentType.slug !== contentType.slug) {
+      return c.json(
+        { error: `This file was exported from "${input.contentType.slug}", not "${contentType.slug}"` },
+        400,
+      );
+    }
+
+    const userId = c.get('user').id;
+    let created = 0;
+    let updated = 0;
+    const errors: { slug: string; error: string }[] = [];
+
+    for (const item of input.entries) {
+      try {
+        const existing = await getEntryBySlug(db, contentTypeId, item.slug);
+        const publishAt = item.publishAt ? new Date(item.publishAt) : null;
+        const entry = existing
+          ? await updateEntry(db, existing.id, { status: item.status, data: item.data, publishAt }, userId)
+          : await createEntry(db, contentTypeId, { slug: item.slug, status: item.status, data: item.data, publishAt }, userId);
+        if (!entry) continue;
+
+        if (existing) updated++;
+        else created++;
+        c.executionCtx.waitUntil(invalidateCacheForEntry(db, entry));
+        dispatchWebhookEvent(
+          db,
+          c.executionCtx,
+          existing ? 'entry.updated' : 'entry.created',
+          entry.contentTypeId,
+          webhookPayload(entry),
+        );
+      } catch (err) {
+        errors.push({ slug: item.slug, error: err instanceof Error ? err.message : 'Unknown error' });
+      }
+    }
+
+    return c.json({ created, updated, errors }, 200);
   },
 );
 

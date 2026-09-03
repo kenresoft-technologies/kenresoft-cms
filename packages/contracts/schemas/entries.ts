@@ -37,6 +37,45 @@ export type Entry = z.infer<typeof entrySchema>;
 export type CreateEntryInput = z.infer<typeof createEntrySchema>;
 export type UpdateEntryInput = z.infer<typeof updateEntrySchema>;
 
+// A single entry's portable shape for export/import — no id/contentTypeId/timestamps, since
+// those are either internal (id, ownership timestamps) or supplied by whichever content type
+// the file is being imported into, not carried in the file itself.
+export const exportedEntrySchema = z.object({
+  slug: slugSchema,
+  status: z.enum(ENTRY_STATUSES),
+  data: z.record(z.string(), z.unknown()),
+  publishAt: z.string().nullable(),
+});
+
+export type ExportedEntry = z.infer<typeof exportedEntrySchema>;
+
+// The content type identity travels with the file so an import can refuse a file exported from
+// a different content type by mistake (checked by slug, since ids aren't portable across
+// deployments) — see contentTypeExportSchema below for the export shape this input is meant to
+// come from.
+export const importEntriesSchema = z.object({
+  contentType: z.object({ name: z.string(), slug: z.string() }).optional(),
+  entries: z.array(exportedEntrySchema),
+});
+
+export type ImportEntriesInput = z.infer<typeof importEntriesSchema>;
+
+export const importEntriesResultSchema = z.object({
+  created: z.number(),
+  updated: z.number(),
+  errors: z.array(z.object({ slug: z.string(), error: z.string() })),
+});
+
+export type ImportEntriesResult = z.infer<typeof importEntriesResultSchema>;
+
+export const contentTypeExportSchema = z.object({
+  contentType: z.object({ name: z.string(), slug: z.string() }),
+  exportedAt: z.string(),
+  entries: z.array(exportedEntrySchema),
+});
+
+export type ContentTypeExport = z.infer<typeof contentTypeExportSchema>;
+
 // Admin-only — backs the unified "all entries" listing across every content type. Deliberately
 // NOT folded into entrySchema: entrySchema is reused verbatim by the public, unauthenticated
 // content API (apps/api/src/routes/public/content.ts), and this shape's authorName/authorEmail
