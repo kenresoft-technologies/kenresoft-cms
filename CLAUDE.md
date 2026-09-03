@@ -766,3 +766,18 @@ no explicit branch/ref in their URLs, so they already correctly follow the defau
 separate fix needed there. The npm token pasted in plain chat during the earlier publish attempt
 never completed a publish (blocked by npm's OTP-for-publish requirement) but remains a loose end
 only the account owner can close — flagged to revoke it, not something this session can do.
+
+**The two loose ends closed for real** (2026-09-03) — the user published both packages
+(`@kenresoft-cms/contracts@0.1.2`, `@kenresoft-cms/create@0.1.0`) and revoked the leaked npm
+token. `npm create @kenresoft-cms@latest` was then verified for real against the live registry
+(not just by running the script file directly): it correctly resolves, downloads, and scaffolds a
+real project. The Admin Worker's draft deploy-button URL was also real-click-tested by the user —
+the `tree/<branch>/<path>` subdirectory format is now **confirmed working**: Cloudflare's wizard
+correctly scoped itself to `apps/admin`, evidenced by its own pre-filled `kenresoft-cms-admin`
+project name (from this directory's `wrangler.toml`, not the API's) and `npm run build`/`npm run
+deploy` commands (from this directory's own `package.json`, not a repo-root one), and it correctly
+prompted for `VITE_API_URL`. The flow was deliberately backed out of before actually clicking
+Cloudflare's own "Deploy" — that step creates a real GitHub repo and a real Worker, not warranted
+for a config-detection check with a placeholder API URL. `apps/admin/README.md` updated to reflect
+this precisely: config-detection confirmed by a real click-through, full completion-to-a-live-
+Worker still open for whoever next has a real API URL to complete it with.

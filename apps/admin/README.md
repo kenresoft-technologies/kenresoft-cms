@@ -101,17 +101,20 @@ removing every `workspace:*` dependency this app had:
   siblings present, then running `pnpm install && VITE_API_URL=... pnpm build && wrangler deploy
   --dry-run` — all three succeeded with no errors, reproducing exactly the isolation Cloudflare's
   own docs describe for a subdirectory button URL.
-- **Not yet verified**: an actual live "Deploy to Cloudflare" button click-through against
-  Cloudflare's own UI for a subdirectory URL pointing at this directory. The dependency-resolution
-  blocker that made this categorically impossible is fixed and verified as above; the button's own
-  wizard flow (subdirectory URL syntax, environment-variable prompts for `VITE_API_URL`) has not
-  been clicked through for real the way the [API Worker's button](../api/README.md) has.
-
-Below is an **unverified draft** of what that button URL should be, going by the subdirectory URL
-format Cloudflare's own `create-cloudflare` tool documents (`github.com/<owner>/<repo>/tree/
-<branch>/<path>`) — not a confirmed fact for *this specific* button service, since Cloudflare's own
-deploy-button docs don't spell out the subdirectory query format explicitly. Click it once to find
-out for real; update this note either way once someone has:
+- **Verified with a real click-through, partially**: the `tree/<branch>/<path>` subdirectory URL
+  format below does work — Cloudflare's setup wizard correctly scoped itself to this directory,
+  confirmed by its own pre-filled values: **Project name** came back as `kenresoft-cms-admin`
+  (this directory's `wrangler.toml`, not the API's), and **Build command**/**Deploy command** came
+  back as `npm run build`/`npm run deploy` (this directory's own `package.json` scripts). It also
+  correctly prompted for a `VITE_API_URL` environment variable, confirming it detected that
+  requirement too.
+- **Not yet verified**: actually completing the flow (clicking its own "Deploy" button through to
+  a live Worker). The wizard was walked up to that point and then deliberately backed out of
+  instead of completing it — going further creates real, hard-to-reverse resources (a new GitHub
+  repository under whoever's account clicks it, plus a real Cloudflare Worker), not appropriate to
+  trigger with a placeholder `VITE_API_URL`. Someone with a real, already-deployed API Worker URL
+  to provide should complete it at least once to confirm the deploy itself succeeds, the way the
+  [API Worker's button](../api/README.md) was confirmed.
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/kenresoft-technologies/kenresoft-cms/tree/develop/apps/admin)
 
