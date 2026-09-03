@@ -886,3 +886,35 @@ than re-suggest already-built things:
   Strapi/Payload/Directus). Deliberately not implemented: none of these have a concrete driving
   need yet, and building them speculatively would repeat the exact mistake the Workers KV
   decision above was written to avoid.
+
+**Two-factor authentication** (2026-09-03, the first of the flagged gaps above actually picked
+up, on direct user instruction to keep closing them) — done, and real end-to-end for once
+rather than trusted from docs alone. `better-auth`'s official `two-factor` plugin
+(`apps/api/src/lib/auth-options.ts`, TOTP + backup codes only — no email/SMS OTP, since that
+needs its own send-email wiring nobody asked for) needed a real schema addition:
+`user.two_factor_enabled` plus a new `two_factor` table (secret, backup codes), migration
+`0016_green_franklin_richards.sql`, generated via `drizzle-kit generate` rather than
+hand-written, shape dictated entirely by the plugin's own schema — confirmed against the
+installed package's actual `.d.mts` files and schema object rather than assumed from memory of
+the library's API. Enrollment lives on `apps/admin`'s Profile → Security tab (new
+`two-factor-settings.tsx`: password → QR code + backup codes → verify-and-enable, matching
+better-auth's own default `skipVerificationOnEnable: false` two-step flow, confirmed via their
+docs rather than guessed), not a deployment-wide Settings toggle — 2FA is inherently per-account.
+`LoginPage.tsx` now handles the post-password 2FA challenge: checking `data.twoFactorRedirect`
+directly off `signIn.email()`'s own resolved value (simpler than the plugin's alternative
+`onTwoFactorRedirect` client-callback config, which would have needed bridging a callback
+registered outside React into component state) and switching to a code-entry step with a
+backup-code fallback. The new `PUBLIC_CONTENT_RATE_LIMITER` pass's own `AUTH_RATE_LIMITER`
+(pre-existing, POST-only, 10/60s) automatically covers every new two-factor endpoint too, since
+it's applied broadly to `/api/v1/auth/*` — confirmed as a side effect of verification, not a
+separate change. Verified for real: wrote an RFC 6238 TOTP generator from scratch in a throwaway
+Node script (base32 decode + HMAC-SHA1 + dynamic truncation) and drove the actual API of a real,
+isolated local `wrangler dev` instance (dedicated D1 persist-to path, per this project's standing
+rule to never touch a developer's own local dev database) through sign-up → enable → verify →
+enforced-2FA sign-in → backup-code sign-in → backup-code regeneration (old code confirmed
+rejected) → disable → confirmed plain sign-in works again — 25 real assertions, all passing
+(split across two script runs after the first one legitimately tripped `AUTH_RATE_LIMITER` from
+firing too many auth calls back-to-back, which is itself further confirmation that limiter
+works correctly against these new routes too). New tests: `LoginPage.test.tsx` (TOTP and
+backup-code login paths) and `ProfilePage.test.tsx` (enable/disable flows, mocking `qrcode`'s
+`toDataURL` since jsdom has no canvas).

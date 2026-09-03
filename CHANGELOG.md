@@ -31,3 +31,6 @@ landed on `develop`.
   Worker installable as a standalone Cloudflare Worker at all.
 - Rate limiting on the public content/media API (`PUBLIC_CONTENT_RATE_LIMITER`, 300 requests/60s
   per IP) — previously only forms, auth, and recovery routes were protected.
+- Two-factor authentication (TOTP + backup codes) — enable it per-account from Profile → Security.
+  Requires running the new database migration (`0016_green_franklin_richards.sql`) via `pnpm run
+  update` or `pnpm --filter @kenresoft-cms/database migrate:remote`.

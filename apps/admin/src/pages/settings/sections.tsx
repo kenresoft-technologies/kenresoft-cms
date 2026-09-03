@@ -75,8 +75,8 @@ export const SETTINGS_SECTIONS: SettingsSectionMeta[] = [
       <ComingSoonSection
         title="Security"
         icon={Shield}
-        description="Authentication and session policy for this deployment."
-        planned={['Two-factor authentication', 'Active session management', 'Password policy controls']}
+        description="Deployment-wide authentication policy. Two-factor authentication and active session management are already available per-account on your Profile page (top-right menu → Profile → Security)."
+        planned={['Password policy controls', 'Requiring two-factor authentication for admin/owner accounts']}
       />
     ),
   },

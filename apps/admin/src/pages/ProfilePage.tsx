@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 
 import { authClient } from '@/lib/auth-client';
 import { AvatarPickerDialog } from '@/components/avatar-picker-dialog';
+import { TwoFactorSettings } from '@/components/two-factor-settings';
 import { PageBreadcrumb } from '@/components/page-breadcrumb';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -65,7 +66,7 @@ function ProfileTab({ user }: { user: { name: string; email: string; role: strin
   );
 }
 
-function SecurityTab() {
+function SecurityTab({ twoFactorEnabled }: { twoFactorEnabled: boolean }) {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -86,36 +87,39 @@ function SecurityTab() {
   }
 
   return (
-    <form className="flex max-w-md flex-col gap-4" onSubmit={handleSubmit}>
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="current-password">Current password</Label>
-        <Input
-          id="current-password"
-          type="password"
-          autoComplete="current-password"
-          required
-          value={currentPassword}
-          onChange={(event) => setCurrentPassword(event.target.value)}
-        />
-      </div>
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="new-password">New password</Label>
-        <Input
-          id="new-password"
-          type="password"
-          autoComplete="new-password"
-          required
-          minLength={8}
-          value={newPassword}
-          onChange={(event) => setNewPassword(event.target.value)}
-        />
-      </div>
-      <div>
-        <Button type="submit" disabled={isSubmitting}>
-          {isSubmitting ? 'Changing…' : 'Change password'}
-        </Button>
-      </div>
-    </form>
+    <div className="flex max-w-md flex-col gap-6">
+      <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="current-password">Current password</Label>
+          <Input
+            id="current-password"
+            type="password"
+            autoComplete="current-password"
+            required
+            value={currentPassword}
+            onChange={(event) => setCurrentPassword(event.target.value)}
+          />
+        </div>
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="new-password">New password</Label>
+          <Input
+            id="new-password"
+            type="password"
+            autoComplete="new-password"
+            required
+            minLength={8}
+            value={newPassword}
+            onChange={(event) => setNewPassword(event.target.value)}
+          />
+        </div>
+        <div>
+          <Button type="submit" disabled={isSubmitting}>
+            {isSubmitting ? 'Changing…' : 'Change password'}
+          </Button>
+        </div>
+      </form>
+      <TwoFactorSettings enabled={twoFactorEnabled} />
+    </div>
   );
 }
 
@@ -170,7 +174,7 @@ export function ProfilePage() {
           />
         </TabsContent>
         <TabsContent value="security">
-          <SecurityTab />
+          <SecurityTab twoFactorEnabled={Boolean(user.twoFactorEnabled)} />
         </TabsContent>
       </Tabs>
     </div>

@@ -1,4 +1,5 @@
 import type { BetterAuthOptions } from 'better-auth';
+import { twoFactor } from 'better-auth/plugins';
 
 // better-auth is pinned to an exact version (not ^) because @better-auth/cli's schema
 // generator bundles its own internal better-auth copy rather than using the app's — as of
@@ -89,4 +90,14 @@ export const authOptions = {
       },
     },
   },
+  plugins: [
+    // TOTP + backup codes only — no email/SMS OTP (otpOptions left unset), since this app has
+    // no SMS provider and the email path would need its own send-email wiring duplicate of
+    // apps/api/src/lib/email for a second, less-common 2FA method nobody asked for. The
+    // `two_factor`/`user.two_factor_enabled` schema this needs lives in
+    // packages/database/schema/auth.ts, shaped to match exactly what this plugin expects.
+    twoFactor({
+      issuer: 'Kenresoft CMS',
+    }),
+  ],
 } satisfies BetterAuthOptions;

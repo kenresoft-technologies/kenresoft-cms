@@ -35,12 +35,31 @@ export function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [needsTwoFactor, setNeedsTwoFactor] = useState(false);
+  const [useBackupCode, setUseBackupCode] = useState(false);
+  const [twoFactorCode, setTwoFactorCode] = useState('');
 
   // Reacts to the same session store AppLayout redirects from — sign-in resolves the HTTP
   // call before the client's session store finishes its own follow-up refresh, so navigating
   // immediately on submit would race AppLayout's session check and bounce back here.
   if (!isPending && session) {
     return <Navigate to="/" replace />;
+  }
+
+  // A 200 here doesn't guarantee the browser actually kept the session cookie: when the admin
+  // and API are on different sites (e.g. this app's own dev:live mode, pointed at a deployed
+  // API from localhost), that cookie is a cross-site "third party" cookie, which browsers
+  // increasingly block by default — silently, with no error the server can ever see.
+  // Confirming the session actually landed turns that into a message instead of a login screen
+  // that just sits there with no explanation. Shared by both the plain sign-in path and the
+  // post-2FA-verification path below, since both need the exact same confirmation.
+  async function confirmSessionLanded() {
+    const { data: sessionData } = await authClient.getSession();
+    if (!sessionData) {
+      setError(
+        "Signed in, but your browser blocked the session cookie. This happens when the admin and API are served from different sites and your browser blocks third-party/cross-site cookies — check your browser's cookie settings for this site, or use a same-site deployment.",
+      );
+    }
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -53,7 +72,7 @@ export function LoginPage() {
     // pointed at a real deployment: a CORS-rejected request throws instead of resolving to
     // `{ error }`, and with no catch here that left isSubmitting stuck true with no feedback).
     try {
-      const { error: authError } =
+      const { data, error: authError } =
         mode === 'sign-in'
           ? await authClient.signIn.email({ email, password })
           : await authClient.signUp.email({ email, password, name });
@@ -63,18 +82,39 @@ export function LoginPage() {
         return;
       }
 
-      // A 200 here doesn't guarantee the browser actually kept the session cookie: when the
-      // admin and API are on different sites (e.g. this app's own dev:live mode, pointed at a
-      // deployed API from localhost), that cookie is a cross-site "third party" cookie, which
-      // browsers increasingly block by default — silently, with no error the server can ever
-      // see. Confirming the session actually landed turns that into a message instead of a
-      // login screen that just sits there with no explanation.
-      const { data: sessionData } = await authClient.getSession();
-      if (!sessionData) {
-        setError(
-          "Signed in, but your browser blocked the session cookie. This happens when the admin and API are served from different sites and your browser blocks third-party/cross-site cookies — check your browser's cookie settings for this site, or use a same-site deployment.",
-        );
+      // An account with two-factor enabled resolves this call successfully but does *not* set
+      // a real session yet — better-auth's two-factor plugin marks it this way instead
+      // (docs.better-auth.com/plugins/2fa) rather than returning an error, so this has to be
+      // checked before assuming sign-in is actually complete.
+      if (data && 'twoFactorRedirect' in data && data.twoFactorRedirect) {
+        setNeedsTwoFactor(true);
+        return;
       }
+
+      await confirmSessionLanded();
+    } catch {
+      setError('Could not reach the server. Check your connection and try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function handleVerifyTwoFactor(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError(null);
+    setIsSubmitting(true);
+
+    try {
+      const { error: authError } = useBackupCode
+        ? await authClient.twoFactor.verifyBackupCode({ code: twoFactorCode })
+        : await authClient.twoFactor.verifyTotp({ code: twoFactorCode });
+
+      if (authError) {
+        setError(authError.message ?? 'Invalid code — please try again.');
+        return;
+      }
+
+      await confirmSessionLanded();
     } catch {
       setError('Could not reach the server. Check your connection and try again.');
     } finally {
@@ -132,18 +172,73 @@ export function LoginPage() {
         </div>
 
         <div className="flex w-full max-w-md flex-col gap-8">
-          <div className="flex flex-col gap-2">
-            <h2 className="text-3xl font-semibold tracking-tight">
-              {mode === 'sign-in' ? 'Sign in' : 'Create your account'}
-            </h2>
-            <p className="text-base text-muted-foreground">
-              {mode === 'sign-in'
-                ? 'Welcome back — enter your credentials to continue.'
-                : 'The first account created on this deployment becomes its admin.'}
-            </p>
-          </div>
+          {needsTwoFactor ? (
+            <>
+              <div className="flex flex-col gap-2">
+                <h2 className="text-3xl font-semibold tracking-tight">Two-factor verification</h2>
+                <p className="text-base text-muted-foreground">
+                  {useBackupCode
+                    ? 'Enter one of your backup codes.'
+                    : 'Enter the code from your authenticator app.'}
+                </p>
+              </div>
 
-          <form className="flex flex-col gap-5" onSubmit={handleSubmit}>
+              <form className="flex flex-col gap-5" onSubmit={handleVerifyTwoFactor}>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="two-factor-code" className="text-sm">
+                    {useBackupCode ? 'Backup code' : 'Authenticator code'}
+                  </Label>
+                  <Input
+                    id="two-factor-code"
+                    inputMode={useBackupCode ? 'text' : 'numeric'}
+                    autoComplete="one-time-code"
+                    autoFocus
+                    required
+                    value={twoFactorCode}
+                    onChange={(event) => setTwoFactorCode(event.target.value)}
+                    className={FIELD_CLASS}
+                  />
+                </div>
+
+                {error ? (
+                  <div className="flex items-start gap-2.5 rounded-lg border border-destructive/25 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                    <AlertCircle className="mt-0.5 size-4 shrink-0" />
+                    <span>{error}</span>
+                  </div>
+                ) : null}
+
+                <Button type="submit" disabled={isSubmitting} className={`${FIELD_CLASS} mt-1 gap-2 text-base`}>
+                  {isSubmitting ? <Loader2 className="size-5 animate-spin" /> : null}
+                  {isSubmitting ? 'Verifying…' : 'Verify'}
+                </Button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUseBackupCode((prev) => !prev);
+                    setTwoFactorCode('');
+                    setError(null);
+                  }}
+                  className="text-center text-sm text-muted-foreground hover:text-foreground"
+                >
+                  {useBackupCode ? 'Use your authenticator app instead' : 'Use a backup code instead'}
+                </button>
+              </form>
+            </>
+          ) : (
+            <>
+              <div className="flex flex-col gap-2">
+                <h2 className="text-3xl font-semibold tracking-tight">
+                  {mode === 'sign-in' ? 'Sign in' : 'Create your account'}
+                </h2>
+                <p className="text-base text-muted-foreground">
+                  {mode === 'sign-in'
+                    ? 'Welcome back — enter your credentials to continue.'
+                    : 'The first account created on this deployment becomes its admin.'}
+                </p>
+              </div>
+
+              <form className="flex flex-col gap-5" onSubmit={handleSubmit}>
             {mode === 'sign-up' ? (
               <div className="flex flex-col gap-2">
                 <Label htmlFor="name" className="text-sm">
@@ -234,9 +329,11 @@ export function LoginPage() {
             <span className="h-px flex-1 bg-border" />
           </div>
 
-          <Button type="button" variant="outline" onClick={switchMode} className={`${FIELD_CLASS} text-base`}>
-            {mode === 'sign-in' ? 'Create an account' : 'Sign in instead'}
-          </Button>
+              <Button type="button" variant="outline" onClick={switchMode} className={`${FIELD_CLASS} text-base`}>
+                {mode === 'sign-in' ? 'Create an account' : 'Sign in instead'}
+              </Button>
+            </>
+          )}
         </div>
       </div>
     </div>

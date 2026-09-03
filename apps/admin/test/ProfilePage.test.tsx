@@ -6,11 +6,22 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ProfilePage } from '@/pages/ProfilePage';
 
-const { getMock, useSessionMock, updateUserMock, changePasswordMock } = vi.hoisted(() => ({
+const {
+  getMock,
+  useSessionMock,
+  updateUserMock,
+  changePasswordMock,
+  enableTwoFactorMock,
+  verifyTotpMock,
+  disableTwoFactorMock,
+} = vi.hoisted(() => ({
   getMock: vi.fn(),
   useSessionMock: vi.fn(),
   updateUserMock: vi.fn(),
   changePasswordMock: vi.fn(),
+  enableTwoFactorMock: vi.fn(),
+  verifyTotpMock: vi.fn(),
+  disableTwoFactorMock: vi.fn(),
 }));
 
 vi.mock('@/lib/api-client', async () => {
@@ -23,8 +34,17 @@ vi.mock('@/lib/auth-client', () => ({
     useSession: useSessionMock,
     updateUser: updateUserMock,
     changePassword: changePasswordMock,
+    twoFactor: {
+      enable: enableTwoFactorMock,
+      verifyTotp: verifyTotpMock,
+      disable: disableTwoFactorMock,
+    },
   },
 }));
+
+// qrcode renders to a canvas/data-URL synchronously in the browser, but jsdom has no canvas —
+// only the resulting <img src> matters for this component, not how it got generated.
+vi.mock('qrcode', () => ({ default: { toDataURL: vi.fn().mockResolvedValue('data:image/png;base64,fake') } }));
 
 function renderPage() {
   const queryClient = new QueryClient({
@@ -46,6 +66,9 @@ describe('ProfilePage', () => {
     useSessionMock.mockReset();
     updateUserMock.mockReset();
     changePasswordMock.mockReset();
+    enableTwoFactorMock.mockReset();
+    verifyTotpMock.mockReset();
+    disableTwoFactorMock.mockReset();
     useSessionMock.mockReturnValue({
       data: {
         user: {
@@ -54,6 +77,7 @@ describe('ProfilePage', () => {
           role: 'admin',
           image: null,
           createdAt: '2026-01-01T00:00:00.000Z',
+          twoFactorEnabled: false,
         },
       },
       isPending: false,
@@ -104,5 +128,62 @@ describe('ProfilePage', () => {
         newPassword: 'new-password-123',
       }),
     );
+  });
+
+  it('shows two-factor authentication as not enabled by default', async () => {
+    renderPage();
+    await userEvent.click(screen.getByRole('tab', { name: 'Security' }));
+
+    expect(screen.getByText('Not enabled')).toBeInTheDocument();
+  });
+
+  it('enables two-factor authentication through the password-then-verify flow', async () => {
+    enableTwoFactorMock.mockResolvedValue({
+      data: { totpURI: 'otpauth://totp/Kenresoft%20CMS:a@b.com?secret=ABC123&issuer=Kenresoft', backupCodes: ['aaaaa-11111'] },
+      error: null,
+    });
+    verifyTotpMock.mockResolvedValue({ error: null });
+
+    renderPage();
+    await userEvent.click(screen.getByRole('tab', { name: 'Security' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Enable two-factor authentication' }));
+
+    await userEvent.type(screen.getByLabelText('Password'), 'my-password');
+    await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
+
+    expect(enableTwoFactorMock).toHaveBeenCalledWith({ password: 'my-password', issuer: 'Kenresoft CMS' });
+    await waitFor(() => expect(screen.getByText('aaaaa-11111')).toBeInTheDocument());
+
+    await userEvent.type(screen.getByLabelText('Code from your app'), '654321');
+    await userEvent.click(screen.getByRole('button', { name: 'Verify and enable' }));
+
+    await waitFor(() => expect(verifyTotpMock).toHaveBeenCalledWith({ code: '654321' }));
+  });
+
+  it('disables two-factor authentication with a password confirmation', async () => {
+    useSessionMock.mockReturnValue({
+      data: {
+        user: {
+          name: 'Pathvera Admin',
+          email: 'admin@pathvera.test',
+          role: 'admin',
+          image: null,
+          createdAt: '2026-01-01T00:00:00.000Z',
+          twoFactorEnabled: true,
+        },
+      },
+      isPending: false,
+    });
+    disableTwoFactorMock.mockResolvedValue({ error: null });
+
+    renderPage();
+    await userEvent.click(screen.getByRole('tab', { name: 'Security' }));
+    expect(screen.getByText('Enabled')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Disable' }));
+    await userEvent.type(screen.getByLabelText('Password'), 'my-password');
+    await userEvent.click(screen.getByRole('button', { name: 'Disable two-factor authentication' }));
+
+    await waitFor(() => expect(disableTwoFactorMock).toHaveBeenCalledWith({ password: 'my-password' }));
   });
 });

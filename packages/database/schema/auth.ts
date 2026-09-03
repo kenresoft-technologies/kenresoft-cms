@@ -25,6 +25,10 @@ export const user = sqliteTable("user", {
   // can hand developer tooling to the one technical author on a team without exposing it to
   // every author by default.
   developerToolsAccess: integer("developer_tools_access", { mode: "boolean" }).default(false).notNull(),
+  // Managed entirely by better-auth's own two-factor plugin schema (apps/api/src/lib/
+  // auth-options.ts) — column name/shape here must match what that plugin expects verbatim,
+  // not a field this app's own code ever writes directly.
+  twoFactorEnabled: integer("two_factor_enabled", { mode: "boolean" }).default(false).notNull(),
 });
 
 export const session = sqliteTable(
@@ -97,9 +101,33 @@ export const verification = sqliteTable(
   (table) => [index("verification_identifier_idx").on(table.identifier)],
 );
 
+// better-auth's two-factor plugin's own table (schema shape fixed by that plugin, not this
+// app's design) — id/userId/secret/backupCodes, secret and backupCodes stored exactly as the
+// plugin writes them (backupCodes is a plugin-managed encoded string, never parsed here).
+export const twoFactor = sqliteTable(
+  "two_factor",
+  {
+    id: text("id").primaryKey(),
+    secret: text("secret").notNull(),
+    backupCodes: text("backup_codes").notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+  },
+  (table) => [index("two_factor_userId_idx").on(table.userId), index("two_factor_secret_idx").on(table.secret)],
+);
+
 export const userRelations = relations(user, ({ many }) => ({
   sessions: many(session),
   accounts: many(account),
+  twoFactor: many(twoFactor),
+}));
+
+export const twoFactorRelations = relations(twoFactor, ({ one }) => ({
+  user: one(user, {
+    fields: [twoFactor.userId],
+    references: [user.id],
+  }),
 }));
 
 export const sessionRelations = relations(session, ({ one }) => ({

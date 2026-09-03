@@ -6,11 +6,20 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { LoginPage } from '@/pages/LoginPage';
 import { ThemeProvider } from '@/lib/theme';
 
-const { useSessionMock, signInEmailMock, signUpEmailMock, getSessionMock } = vi.hoisted(() => ({
+const {
+  useSessionMock,
+  signInEmailMock,
+  signUpEmailMock,
+  getSessionMock,
+  verifyTotpMock,
+  verifyBackupCodeMock,
+} = vi.hoisted(() => ({
   useSessionMock: vi.fn(),
   signInEmailMock: vi.fn(),
   signUpEmailMock: vi.fn(),
   getSessionMock: vi.fn(),
+  verifyTotpMock: vi.fn(),
+  verifyBackupCodeMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth-client', () => ({
@@ -19,6 +28,7 @@ vi.mock('@/lib/auth-client', () => ({
     signIn: { email: signInEmailMock },
     signUp: { email: signUpEmailMock },
     getSession: getSessionMock,
+    twoFactor: { verifyTotp: verifyTotpMock, verifyBackupCode: verifyBackupCodeMock },
   },
 }));
 
@@ -41,6 +51,8 @@ describe('LoginPage', () => {
     signInEmailMock.mockReset();
     signUpEmailMock.mockReset();
     getSessionMock.mockReset();
+    verifyTotpMock.mockReset();
+    verifyBackupCodeMock.mockReset();
     getSessionMock.mockResolvedValue({ data: { user: { email: 'user@pathvera.test' } } });
   });
 
@@ -140,6 +152,49 @@ describe('LoginPage', () => {
       password: 'correct horse battery staple',
       name: 'Ada Lovelace',
     });
+  });
+
+  it('prompts for a 2FA code when sign-in reports twoFactorRedirect, then verifies it', async () => {
+    useSessionMock.mockReturnValue({ data: null, isPending: false });
+    signInEmailMock.mockResolvedValue({ data: { twoFactorRedirect: true }, error: null });
+    verifyTotpMock.mockResolvedValue({ error: null });
+
+    renderLoginPage();
+
+    await userEvent.type(screen.getByLabelText('Email'), 'user@pathvera.test');
+    await userEvent.type(screen.getByLabelText('Password'), 'correct horse battery staple');
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+
+    await waitFor(() => expect(screen.getByText('Two-factor verification')).toBeInTheDocument());
+    // A real session check must not have run yet off the sign-in call itself — only after
+    // the 2FA code is verified — otherwise "signed in but blocked cookie" would misfire here.
+    expect(getSessionMock).not.toHaveBeenCalled();
+
+    await userEvent.type(screen.getByLabelText('Authenticator code'), '123456');
+    await userEvent.click(screen.getByRole('button', { name: 'Verify' }));
+
+    expect(verifyTotpMock).toHaveBeenCalledWith({ code: '123456' });
+    await waitFor(() => expect(getSessionMock).toHaveBeenCalled());
+  });
+
+  it('falls back to a backup code on the 2FA step', async () => {
+    useSessionMock.mockReturnValue({ data: null, isPending: false });
+    signInEmailMock.mockResolvedValue({ data: { twoFactorRedirect: true }, error: null });
+    verifyBackupCodeMock.mockResolvedValue({ error: null });
+
+    renderLoginPage();
+
+    await userEvent.type(screen.getByLabelText('Email'), 'user@pathvera.test');
+    await userEvent.type(screen.getByLabelText('Password'), 'correct horse battery staple');
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+
+    await waitFor(() => expect(screen.getByText('Two-factor verification')).toBeInTheDocument());
+    await userEvent.click(screen.getByRole('button', { name: 'Use a backup code instead' }));
+    await userEvent.type(screen.getByLabelText('Backup code'), 'abcd1-efgh2');
+    await userEvent.click(screen.getByRole('button', { name: 'Verify' }));
+
+    expect(verifyBackupCodeMock).toHaveBeenCalledWith({ code: 'abcd1-efgh2' });
+    expect(verifyTotpMock).not.toHaveBeenCalled();
   });
 
   it('toggles back to sign-in mode', async () => {
