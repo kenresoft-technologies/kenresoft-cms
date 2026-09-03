@@ -23,6 +23,7 @@ export function toSettingsInput(settings: Settings | null): SettingsInput {
     socialLinks: settings?.socialLinks ?? null,
     corsOrigin: settings?.corsOrigin ?? null,
     featureFlags: settings?.featureFlags ?? null,
+    previewUrl: settings?.previewUrl ?? null,
   };
 }
 

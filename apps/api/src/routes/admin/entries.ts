@@ -7,6 +7,7 @@ import {
   entryWithContentTypeSchema,
   importEntriesResultSchema,
   importEntriesSchema,
+  previewTokenResponseSchema,
   updateEntrySchema,
 } from '@kenresoft-cms/contracts';
 import type { Entry, EntryRevision, EntryStatus, EntryWithContentType } from '@kenresoft-cms/contracts';
@@ -15,6 +16,7 @@ import { z } from 'zod';
 import { recordAudit } from '../../lib/audit';
 import { getDb } from '../../lib/db';
 import { invalidatePublicEntryCache } from '../../lib/public-cache';
+import { signPreviewToken } from '../../lib/preview-token';
 import { dispatchWebhookEvent } from '../../lib/webhooks';
 import { createOpenApiApp } from '../../lib/openapi';
 import { requireRole } from '../../middleware/require-role';
@@ -344,6 +346,40 @@ entriesRoute.openapi(
       return c.json({ error: 'Entry not found' }, 404);
     }
     return c.json(toEntry(entry), 200);
+  },
+);
+
+// No role gate beyond authentication — a read-only capability (generating a signed token proves
+// nothing and writes nothing) matching entries' own GET routes above, available to viewer too
+// like any other read. The token itself, not this route, is what actually gates access to the
+// entry's content: apps/api/src/lib/preview-token.ts, routes/public/preview.ts.
+entriesRoute.openapi(
+  createRoute({
+    method: 'get',
+    path: '/{id}/preview-token',
+    tags: ['Entries'],
+    summary: 'Generate a signed, time-limited Live Preview token for this entry',
+    request: { params: idParamSchema },
+    responses: {
+      200: {
+        description: 'A token valid for 15 minutes, usable once against the public preview route.',
+        content: { 'application/json': { schema: previewTokenResponseSchema } },
+      },
+      404: {
+        description: 'No entry with that id.',
+        content: { 'application/json': { schema: notFoundSchema } },
+      },
+    },
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const db = getDb(c);
+    const entry = await getEntryById(db, id);
+    if (!entry) {
+      return c.json({ error: 'Entry not found' }, 404);
+    }
+    const { token, expiresAt } = await signPreviewToken(c.env.BETTER_AUTH_SECRET, entry.id);
+    return c.json({ token, expiresAt: expiresAt.toISOString() }, 200);
   },
 );
 

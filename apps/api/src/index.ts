@@ -32,6 +32,7 @@ import { publicFormsRoute } from './routes/public/forms';
 import { publicGlobalVariablesRoute } from './routes/public/global-variables';
 import { publicMediaRoute } from './routes/public/media';
 import { publicPasswordResetRoute } from './routes/public/password-reset';
+import { publicPreviewRoute } from './routes/public/preview';
 import { publicRecoveryRoute } from './routes/public/recovery';
 import { systemRoute } from './routes/system/recover-owner';
 import type { Bindings } from './lib/env';
@@ -59,6 +60,7 @@ app.route('/api/v1/public/media', publicMediaRoute);
 app.route('/api/v1/public/global-variables', publicGlobalVariablesRoute);
 app.route('/api/v1/public/password-reset', publicPasswordResetRoute);
 app.route('/api/v1/public/recovery', publicRecoveryRoute);
+app.route('/api/v1/public/preview', publicPreviewRoute);
 app.route('/api/v1/public', publicContentRoute);
 
 // Not under /admin (unauthenticated by design) or /public (not a normal content route) —

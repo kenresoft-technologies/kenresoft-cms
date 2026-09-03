@@ -70,6 +70,7 @@ describe('SettingsPage', () => {
         corsOrigin: null,
         socialLinks: null,
         featureFlags: null,
+        previewUrl: null,
       }),
     );
   });

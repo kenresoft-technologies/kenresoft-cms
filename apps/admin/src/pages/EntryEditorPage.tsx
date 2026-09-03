@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { ExternalLink } from 'lucide-react';
 import { useBlocker, useNavigate, useParams } from 'react-router';
 import { toast } from 'sonner';
 
@@ -7,8 +8,9 @@ import { EntryRevisionHistory } from '@/components/entry-revision-history';
 import { FieldInput } from '@/components/field-input';
 import { ApiError } from '@/lib/api-client';
 import { useContentType } from '@/lib/queries/content-types';
-import { useCreateEntry, useDeleteEntry, useEntry, useUpdateEntry } from '@/lib/queries/entries';
+import { useCreateEntry, useDeleteEntry, useEntry, useUpdateEntry, fetchPreviewToken } from '@/lib/queries/entries';
 import { useFieldDefinitions } from '@/lib/queries/field-definitions';
+import { useSettings } from '@/lib/queries/settings';
 import { useDeveloperMode } from '@/lib/developer-mode';
 import { ENTRY_STATUSES, type Entry, type EntryStatus, type FieldDefinition, type FieldType } from '@/lib/types';
 import {
@@ -57,9 +59,62 @@ function toDatetimeLocalValue(iso: string | null): string {
 
 interface EntryFormProps {
   contentTypeId: string;
+  contentTypeSlug: string;
   entryId: string;
   fields: FieldDefinition[];
   entry: Entry | undefined;
+}
+
+// Builds the live URL from Settings → API's configured template (previewUrl) and a freshly
+// generated, entry-scoped token, then opens it in a new tab — a new tab rather than an inline
+// split-screen so the editor sees the real frontend at real size, with its own responsive
+// behavior and browser chrome, not a cramped iframe (also sidesteps whatever the target site's
+// own X-Frame-Options/CSP frame-ancestors might otherwise block). Deliberately built from the
+// *saved* entry, not the form's in-progress edits — Live Preview shows what will actually
+// render through the real templates right now, which is only true of what's already persisted.
+function LivePreviewButton({
+  contentTypeSlug,
+  entry,
+  isDirty,
+}: {
+  contentTypeSlug: string;
+  entry: Entry;
+  isDirty: boolean;
+}) {
+  const { data: settings } = useSettings();
+  const [loading, setLoading] = useState(false);
+
+  async function handlePreview() {
+    if (isDirty) {
+      toast.error('Save your changes first — Live Preview shows what is currently saved.');
+      return;
+    }
+    if (!settings?.previewUrl) {
+      toast.error('Set a Preview URL template in Settings → API first');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const { token } = await fetchPreviewToken(entry.id);
+      const url = settings.previewUrl
+        .replace('{contentType}', encodeURIComponent(contentTypeSlug))
+        .replace('{slug}', encodeURIComponent(entry.slug));
+      const separator = url.includes('?') ? '&' : '?';
+      window.open(`${url}${separator}preview_token=${encodeURIComponent(token)}`, '_blank', 'noopener,noreferrer');
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Failed to generate a preview link');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Button type="button" variant="outline" disabled={loading} onClick={() => void handlePreview()}>
+      <ExternalLink />
+      {loading ? 'Generating…' : 'Live Preview'}
+    </Button>
+  );
 }
 
 function DeleteEntryAlert({ contentTypeId, entryId, slug }: { contentTypeId: string; entryId: string; slug: string }) {
@@ -105,7 +160,7 @@ function DeleteEntryAlert({ contentTypeId, entryId, slug }: { contentTypeId: str
 // loading gate below — so local state can be initialized once via useState's lazy
 // initializer instead of syncing it in from a query with useEffect + setState (which
 // eslint-plugin-react-hooks flags: react.dev/learn/you-might-not-need-an-effect).
-function EntryForm({ contentTypeId, entryId, fields, entry }: EntryFormProps) {
+function EntryForm({ contentTypeId, contentTypeSlug, entryId, fields, entry }: EntryFormProps) {
   const isNew = entry === undefined;
   const navigate = useNavigate();
   const createEntry = useCreateEntry(contentTypeId);
@@ -281,6 +336,9 @@ function EntryForm({ contentTypeId, entryId, fields, entry }: EntryFormProps) {
                     Save &amp; publish
                   </Button>
                 ) : null}
+                {!isNew && entry ? (
+                  <LivePreviewButton contentTypeSlug={contentTypeSlug} entry={entry} isDirty={isDirty} />
+                ) : null}
               </div>
             </CardContent>
           </Card>
@@ -374,7 +432,7 @@ export function EntryEditorPage() {
   const { data: fields } = useFieldDefinitions(contentTypeId ?? '');
   const { data: entry } = useEntry(isNew ? '' : (entryId ?? ''));
   const developerMode = useDeveloperMode();
-  const ready = Boolean(fields) && (isNew || Boolean(entry));
+  const ready = Boolean(fields) && Boolean(contentType) && (isNew || Boolean(entry));
 
   return (
     <div className="flex flex-col gap-6">
@@ -422,10 +480,11 @@ export function EntryEditorPage() {
         </div>
       ) : null}
 
-      {ready && contentTypeId && entryId ? (
+      {ready && contentTypeId && entryId && contentType ? (
         <EntryForm
           key={`${entryId}-${entry?.updatedAt ?? 'new'}`}
           contentTypeId={contentTypeId}
+          contentTypeSlug={contentType.slug}
           entryId={entryId}
           fields={fields!}
           entry={isNew ? undefined : entry}

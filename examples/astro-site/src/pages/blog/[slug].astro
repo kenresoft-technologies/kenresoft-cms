@@ -5,9 +5,16 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 const cms = createKenresoftClient({ url: import.meta.env.PUBLIC_KENRESOFT_CMS_URL });
 
 // Fetched per-request, not via getStaticPaths — see astro.config.mjs's comment on why this
-// site moved to SSR. A missing/unpublished slug 404s exactly like the public API itself does.
+// site moved to SSR. A missing/unpublished slug 404s exactly like the public API itself does —
+// unless a Live Preview token is present (Kenresoft CMS's Entry Editor "Preview" button appends
+// one), in which case a draft (or any status) renders instead, through this exact same template.
 const { slug } = Astro.params;
-const entry = slug ? await cms.entries.get({ contentType: 'blog-post', slug }) : null;
+const previewToken = Astro.url.searchParams.get('preview_token');
+const entry = slug
+  ? previewToken
+    ? await cms.entries.preview({ contentType: 'blog-post', slug, token: previewToken })
+    : await cms.entries.get({ contentType: 'blog-post', slug })
+  : null;
 
 if (!entry) {
   return new Response(null, { status: 404, statusText: 'Not Found' });
@@ -36,6 +43,11 @@ const publishedDate = new Date(entry.createdAt).toLocaleDateString(undefined, {
 ---
 
 <BaseLayout title={`${title} — Kenresoft CMS`} description={typeof entry.data.excerpt === 'string' ? entry.data.excerpt : undefined}>
+  {previewToken ? (
+    <div class="preview-banner">
+      Preview mode — viewing a {entry.status} entry. This banner never appears without a valid preview link.
+    </div>
+  ) : null}
   <article class="post">
     <a class="back-link" href="/blog">← Back to blog</a>
     <h1>{title}</h1>
@@ -54,6 +66,15 @@ const publishedDate = new Date(entry.createdAt).toLocaleDateString(undefined, {
 </BaseLayout>
 
 <style>
+  .preview-banner {
+    background: #fef3c7;
+    color: #92400e;
+    text-align: center;
+    padding: 0.6rem 1rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+  }
+
   .post {
     max-width: 720px;
     margin: 0 auto;

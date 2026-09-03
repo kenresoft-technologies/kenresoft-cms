@@ -18,6 +18,7 @@ export type SettingsInput = {
   socialLinks: Record<string, string> | null;
   corsOrigin: string | null;
   featureFlags: Record<string, boolean> | null;
+  previewUrl: string | null;
 };
 
 export function useUpdateSettings() {

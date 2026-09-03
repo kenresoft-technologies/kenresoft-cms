@@ -14,6 +14,12 @@ export const settings = sqliteTable('settings', {
   socialLinks: text('social_links', { mode: 'json' }).$type<Record<string, string>>(),
   corsOrigin: text('cors_origin'),
   featureFlags: text('feature_flags', { mode: 'json' }).$type<Record<string, boolean>>(),
+  // Live Preview's URL template for the public frontend, e.g. "https://mysite.com/{contentType}/
+  // {slug}" — the CMS is frontend-agnostic (docs/ARCHITECTURE.md §15) and has no way to know an
+  // arbitrary frontend's own routing, so the operator supplies the pattern their own site
+  // actually uses. Substituted verbatim (no templating engine) by
+  // apps/admin/src/pages/EntryEditorPage.tsx when building a preview link.
+  previewUrl: text('preview_url'),
   createdAt: integer('created_at', { mode: 'timestamp' })
     .notNull()
     .default(sql`(unixepoch())`),

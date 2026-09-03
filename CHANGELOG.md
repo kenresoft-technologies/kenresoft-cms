@@ -16,6 +16,14 @@ landed on `develop`.
   create/update/delete/publish/unpublish, sign-up/in/out, failed sign-ins) is now recorded and
   browsable from a new Audit log page (admin/owner only). Requires the new database migration
   (`0019_warm_stranger.sql`) via `pnpm run update`.
+- Live Preview — a new "Live Preview" button on the Entry Editor opens a draft (or any-status)
+  entry rendered through your actual frontend's real templates, via a signed, time-limited,
+  single-entry preview link. Configure your frontend's URL pattern in Settings → API → Live
+  Preview (`{contentType}`/`{slug}` placeholders). The normal public API's "drafts 404 exactly
+  like a nonexistent slug" behavior is unchanged. Requires the new database migration
+  (`0020_slim_swarm.sql`) via `pnpm run update`. The `@kenresoft-cms/astro` client (not
+  independently published — pull this repo's changes to pick it up) gained a matching
+  `entries.preview()` method, and `examples/astro-site`'s blog page shows how to wire it up.
 
 ### Fixed
 

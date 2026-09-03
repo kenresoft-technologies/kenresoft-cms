@@ -37,6 +37,13 @@ export type Entry = z.infer<typeof entrySchema>;
 export type CreateEntryInput = z.infer<typeof createEntrySchema>;
 export type UpdateEntryInput = z.infer<typeof updateEntrySchema>;
 
+export const previewTokenResponseSchema = z.object({
+  token: z.string(),
+  expiresAt: z.string(),
+});
+
+export type PreviewTokenResponse = z.infer<typeof previewTokenResponseSchema>;
+
 // A single entry's portable shape for export/import — no id/contentTypeId/timestamps, since
 // those are either internal (id, ownership timestamps) or supplied by whichever content type
 // the file is being imported into, not carried in the file itself.

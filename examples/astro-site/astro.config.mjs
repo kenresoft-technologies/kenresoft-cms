@@ -9,5 +9,11 @@ import cloudflare from '@astrojs/cloudflare';
 // (docs/ARCHITECTURE.md §12), so per-request fetches here aren't hitting D1 directly.
 export default defineConfig({
   output: 'server',
-  adapter: cloudflare(),
+  // session: false — this site has no server-side session state of its own (every page is a
+  // stateless per-request fetch from the CMS's public API); the adapter otherwise auto-wires a
+  // KV session driver by default (@astrojs/cloudflare v14, confirmed via its own changelog),
+  // which needs real local KV simulation this project never provisions (no wrangler.jsonc here
+  // at all — deliberately, since this example has no bindings of its own to declare) and was
+  // crashing `astro dev`'s real-workerd dev server before it could become ready.
+  adapter: cloudflare({ session: false }),
 });

@@ -47,6 +47,16 @@ export interface GetEntryOptions extends ListEntriesOptions {
   slug: string;
 }
 
+export interface PreviewEntryOptions extends GetEntryOptions {
+  /**
+   * A signed, entry-scoped token from `GET /api/v1/admin/entries/:id/preview-token` (Kenresoft
+   * CMS's Entry Editor generates one and appends it to the preview link it opens) — an
+   * expired/invalid/wrong-entry token 404s (`null`) exactly like a nonexistent slug does through
+   * `entries.get()`. Never the normal path for rendering published content.
+   */
+  token: string;
+}
+
 export interface MediaUrlOptions {
   /** A Media item's id — typically the value stored in a `media`-type field on an Entry. */
   id: string;
@@ -81,6 +91,11 @@ export interface KenresoftClient {
      * exist, from the public API's perspective).
      */
     get(options: GetEntryOptions): Promise<Entry | null>;
+    /**
+     * Fetches one entry regardless of draft/published status, given a valid preview token for
+     * it — see `PreviewEntryOptions.token`. Powers Live Preview; not used for normal rendering.
+     */
+    preview(options: PreviewEntryOptions): Promise<Entry | null>;
   };
   media: {
     /**
@@ -135,6 +150,9 @@ export function createKenresoftClient(config: KenresoftClientConfig): KenresoftC
       },
       get({ contentType, slug }) {
         return request<Entry>(`/api/v1/public/${contentType}/${slug}`);
+      },
+      preview({ contentType, slug, token }) {
+        return request<Entry>(`/api/v1/public/preview/${contentType}/${slug}?token=${encodeURIComponent(token)}`);
       },
     },
     media: {

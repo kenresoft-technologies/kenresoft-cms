@@ -8,6 +8,7 @@ import type {
   EntryStatus,
   EntryWithContentType,
   ImportEntriesResult,
+  PreviewTokenResponse,
 } from '@/lib/types';
 
 type EntryWriteInput = {
@@ -113,6 +114,12 @@ export function useEntryRevisions(entryId: string) {
 // that's never displayed anywhere.
 export async function exportEntries(contentTypeId: string): Promise<ContentTypeExport> {
   return apiClient.get<ContentTypeExport>(`/api/v1/admin/entries/export?contentTypeId=${contentTypeId}`);
+}
+
+// Not a useQuery — generated fresh on demand right before opening a preview link (a cached one
+// could easily have already expired by the time it's reused).
+export async function fetchPreviewToken(entryId: string): Promise<PreviewTokenResponse> {
+  return apiClient.get<PreviewTokenResponse>(`/api/v1/admin/entries/${entryId}/preview-token`);
 }
 
 export function useImportEntries(contentTypeId: string) {

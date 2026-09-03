@@ -1161,3 +1161,75 @@ reintroduced it, not a new discovery). Fixed by dropping the wrong-password call
 verified by the real live `wrangler dev` pass documented above instead, which does exercise it and
 passed. Confirmed the fix locally first (the file alone: clean, no unhandled-error section), then
 via CI going green on the re-push.
+
+**Live Preview** (2026-09-03, the second of the two-part instruction that opened with audit
+logging above) — done: a real render of a draft (or any-status) entry through the actual public
+frontend's own templates, not just the Entry Editor's existing in-admin Preview tab (a plain data
+dump, never a real layout/template). The core constraint — Phase 6's "a draft 404s exactly like a
+nonexistent slug" guarantee on the *normal* public API must stay completely unchanged — is met by
+never touching that route at all: Live Preview is an entirely separate, additively-mounted public
+route, `GET /api/v1/public/preview/{contentType}/{slug}?token=...`
+(`apps/api/src/routes/public/preview.ts`), which returns an entry of *any* status but only with a
+valid, signed, entry-scoped, time-limited (15 min) token — missing/wrong/expired/wrong-entry all
+collapse to the same 404 `routes/public/content.ts` already uses for a real draft, so probing this
+route without a token reveals nothing either. `GET /api/v1/admin/entries/{id}/preview-token`
+(`routes/admin/entries.ts`, no role gate beyond authentication — generating a token proves and
+writes nothing, matching entries' own read routes) issues the token. Signing
+(`apps/api/src/lib/preview-token.ts`) uses a key *derived* from `BETTER_AUTH_SECRET` via HMAC
+(`HMAC(BETTER_AUTH_SECRET, "kenresoft-cms:preview-token:v1")`) rather than the raw secret or a new
+required deployment secret — zero-config for every existing deployment (no new secret to set
+before `pnpm run update` picks this up) while keeping the preview-signing key distinct from the
+session-signing one. Since the CMS is frontend-agnostic (docs/ARCHITECTURE.md §15) and has no way
+to know an arbitrary frontend's own URL routing, a new `settings.previewUrl` column (migration
+`0020_slim_swarm.sql`, configured from Settings → API's new "Live Preview" section) holds a
+`{contentType}`/`{slug}`-templated URL the operator supplies to match their own site — for
+`examples/astro-site` locally that's `http://localhost:4321/blog/{slug}` (it only reads `{slug}`,
+since it hardcodes one content type to `/blog`). The Entry Editor's new "Live Preview" button
+(`EntryEditorPage.tsx`) fetches a token, substitutes the template, and `window.open()`s it in a
+new tab — a new tab rather than an inline split-screen/iframe, so the editor sees the real
+frontend at real size with its own responsive behavior and browser chrome, and so nothing depends
+on the target site's own X-Frame-Options/CSP allowing itself to be framed by the admin's different
+origin. Deliberately built from the *saved* entry, not in-progress form edits (disabled with a
+toast nudging the editor to save first if the form is dirty) — Live Preview shows what will
+actually render through the real templates right now, which is only true of what's already
+persisted. `@kenresoft-cms/astro` gained `entries.preview({contentType, slug, token})`, mirroring
+`entries.get()`'s shape exactly; `examples/astro-site`'s `blog/[slug].astro` checks for a
+`?preview_token=` query param and calls it instead of `entries.get()` when present, rendering a
+small "Preview mode" banner through the same template so an editor previewing a page can't
+mistake it for the live site.
+
+Verified three ways. (1) `apps/api/test/live-preview.test.ts` (real D1, 5 tests): the normal
+public route's unchanged 404-for-a-draft behavior (explicitly re-asserted, not just assumed
+untouched, by diffing its response against a genuinely nonexistent slug's), a full token-generate-
+then-preview round trip for both a draft and an already-published entry, and rejection of no
+token/a garbage token/a different entry's own valid token. (2) `EntryEditorPage.test.tsx` gained
+two tests: the button's fetch-token-then-`window.open()`-with-the-right-URL flow, and the
+save-first nudge when the form is dirty. (3) A real, live pass end-to-end through the actual
+rendered frontend, not just the API: built `examples/astro-site` for real
+(`PUBLIC_KENRESOFT_CMS_URL` pointed at an isolated local `wrangler dev` API instance) and served
+that build with `wrangler dev --config dist/server/wrangler.json` (the config `@astrojs/cloudflare`
+itself generates) — confirmed the normal URL 404s a real draft entry, then confirmed the preview
+URL (a real token from the real admin API) rendered the actual draft title/body through the real
+`BaseLayout` template with the preview banner visible, HTML captured and read directly rather than
+just trusting a 200 status.
+
+That live pass surfaced two real, unrelated bugs along the way, both fixed, neither hypothetical.
+(1) `astro dev`'s real-workerd-backed dev server (a behavior change starting at `@astrojs/
+cloudflare` v13, confirmed via that package's own changelog, not assumed) crashed on startup with
+no forwarded error — root-caused, not guessed, to the adapter auto-wiring a KV-backed session
+driver by default as of v14, which needs local KV simulation this project never provisions (no
+wrangler config exists for this example at all, deliberately, since it has no bindings of its own
+to declare). Fixed with `cloudflare({ session: false })` in `astro.config.mjs` — this example has
+no server-side session state of its own; every page is a stateless per-request fetch from the CMS
+public API. (2) Once startup was fixed, `astro build` failed outright with a real module-
+resolution error ("`./_internal/logger` is not exported... from package astro") — this project's
+own dependency-security pass earlier the same day had bumped `astro` to `7.3.0` and `@astrojs/
+cloudflare` to `14.3.0` together and verified `astro check` (typecheck) passed, but never actually
+ran `astro build` for this one package afterward (the root `pnpm build` script's filter
+deliberately excludes `examples/*`/`integrations/*`, so this broke silently and stayed broken
+until this session's own live-preview verification happened to be the first thing to actually
+build it). Fixed by bumping `astro` to the `7.3.1` patch release (confirmed via `npm view` that
+one existed) — build succeeded immediately after, no further changes needed. Neither issue was
+present in `astro check`'s typecheck-only coverage; both needed an actual `build`/`dev` run to
+surface, which is exactly why this feature's own verification insisted on one rather than stopping
+at typecheck/lint/unit-test green.

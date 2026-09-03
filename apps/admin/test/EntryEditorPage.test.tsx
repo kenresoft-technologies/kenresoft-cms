@@ -211,4 +211,70 @@ describe('EntryEditorPage', () => {
 
     await waitFor(() => expect(deleteMock).toHaveBeenCalledWith('/api/v1/admin/entries/e-1'));
   });
+
+  it('generates a preview token and opens the built preview URL in a new tab', async () => {
+    getMock.mockImplementation((path: string) => {
+      if (path.endsWith('/fields')) return Promise.resolve(fields);
+      if (path.endsWith('/revisions')) return Promise.resolve([]);
+      if (path.endsWith('/preview-token')) {
+        return Promise.resolve({ token: 'tok-123', expiresAt: new Date(Date.now() + 900_000).toISOString() });
+      }
+      if (path === '/api/v1/admin/content-types/ct-1') {
+        return Promise.resolve({ id: 'ct-1', slug: 'blog-post', name: 'Blog Post' });
+      }
+      if (path === '/api/v1/admin/settings') {
+        return Promise.resolve({ previewUrl: 'http://localhost:4321/{contentType}/{slug}' });
+      }
+      return Promise.resolve({
+        id: 'e-1',
+        slug: 'hello-world',
+        status: 'published',
+        data: { title: 'Hello World', featured: true },
+        publishAt: null,
+      });
+    });
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+
+    renderEditor('/content-types/ct-1/entries/e-1');
+    await waitFor(() => expect(screen.getByLabelText('Slug')).toHaveValue('hello-world'));
+
+    await userEvent.click(screen.getByRole('button', { name: 'Live Preview' }));
+
+    await waitFor(() => expect(getMock).toHaveBeenCalledWith('/api/v1/admin/entries/e-1/preview-token'));
+    await waitFor(() =>
+      expect(openSpy).toHaveBeenCalledWith(
+        'http://localhost:4321/blog-post/hello-world?preview_token=tok-123',
+        '_blank',
+        'noopener,noreferrer',
+      ),
+    );
+  });
+
+  it('asks to save first instead of previewing when there are unsaved changes', async () => {
+    getMock.mockImplementation((path: string) => {
+      if (path.endsWith('/fields')) return Promise.resolve(fields);
+      if (path.endsWith('/revisions')) return Promise.resolve([]);
+      if (path === '/api/v1/admin/content-types/ct-1') {
+        return Promise.resolve({ id: 'ct-1', slug: 'blog-post', name: 'Blog Post' });
+      }
+      if (path === '/api/v1/admin/settings') {
+        return Promise.resolve({ previewUrl: 'http://localhost:4321/{contentType}/{slug}' });
+      }
+      return Promise.resolve({
+        id: 'e-1',
+        slug: 'hello-world',
+        status: 'published',
+        data: { title: 'Hello World', featured: true },
+        publishAt: null,
+      });
+    });
+
+    renderEditor('/content-types/ct-1/entries/e-1');
+    await waitFor(() => expect(screen.getByLabelText('Slug')).toHaveValue('hello-world'));
+
+    await userEvent.type(screen.getByLabelText('Slug'), '-edited');
+    await userEvent.click(screen.getByRole('button', { name: 'Live Preview' }));
+
+    expect(getMock).not.toHaveBeenCalledWith('/api/v1/admin/entries/e-1/preview-token');
+  });
 });

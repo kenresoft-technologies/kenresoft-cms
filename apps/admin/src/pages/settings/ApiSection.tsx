@@ -122,6 +122,80 @@ function EmailDeliverySection() {
   );
 }
 
+// The CMS is frontend-agnostic (docs/ARCHITECTURE.md §15) and has no way to know an arbitrary
+// frontend's own URL routing, so the operator supplies the pattern their own site actually uses
+// — substituted verbatim, no templating engine, by EntryEditorPage.tsx when building a link.
+function LivePreviewSection({ settings, readOnly }: SectionProps) {
+  const updateSettings = useUpdateSettings();
+
+  const [previewUrl, setPreviewUrl] = useState(settings?.previewUrl ?? '');
+  const [savedPreviewUrl, setSavedPreviewUrl] = useState(settings?.previewUrl ?? '');
+  const [error, setError] = useState<string | null>(null);
+
+  const dirty = previewUrl !== savedPreviewUrl;
+
+  async function handleSave() {
+    setError(null);
+    const trimmed = previewUrl.trim();
+    if (trimmed && !trimmed.includes('{slug}')) {
+      setError('The template must include a {slug} placeholder');
+      return;
+    }
+
+    try {
+      await updateSettings.mutateAsync({ ...toSettingsInput(settings), previewUrl: trimmed || null });
+      setPreviewUrl(trimmed);
+      setSavedPreviewUrl(trimmed);
+      toast.success('Settings saved');
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to save settings';
+      setError(message);
+      toast.error(message);
+    }
+  }
+
+  return (
+    <SettingsSection
+      title="Live Preview"
+      description="The URL template your frontend uses to render one entry, so the Entry Editor's Preview button can open it."
+      footer={
+        <SettingsSaveBar
+          dirty={dirty}
+          pending={updateSettings.isPending}
+          readOnly={readOnly}
+          onSave={() => void handleSave()}
+          onDiscard={() => {
+            setPreviewUrl(savedPreviewUrl);
+            setError(null);
+          }}
+        />
+      }
+    >
+      <div className="flex flex-col gap-2">
+        <Label htmlFor="settings-preview-url">Preview URL template</Label>
+        <Input
+          id="settings-preview-url"
+          placeholder="http://localhost:4321/{contentType}/{slug}"
+          disabled={readOnly}
+          value={previewUrl}
+          onChange={(event) => setPreviewUrl(event.target.value)}
+        />
+        <p className="text-sm text-muted-foreground">
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">{'{contentType}'}</code> and{' '}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">{'{slug}'}</code> are replaced with the
+          entry's own values — for <code className="rounded bg-muted px-1 py-0.5 text-xs">examples/astro-site</code>{' '}
+          running locally, that's <code className="rounded bg-muted px-1 py-0.5 text-xs">http://localhost:4321/blog/{'{slug}'}</code>{' '}
+          (this example only reads <code className="rounded bg-muted px-1 py-0.5 text-xs">{'{slug}'}</code>, since it
+          has one content type hardcoded to the <code className="rounded bg-muted px-1 py-0.5 text-xs">/blog</code>{' '}
+          path).
+        </p>
+      </div>
+
+      {error ? <p className="text-sm text-destructive">{error}</p> : null}
+    </SettingsSection>
+  );
+}
+
 export function ApiSection({ settings, readOnly }: SectionProps) {
   const updateSettings = useUpdateSettings();
 
@@ -161,6 +235,8 @@ export function ApiSection({ settings, readOnly }: SectionProps) {
       <DeveloperExperienceSection settings={settings} readOnly={readOnly} />
 
       <EmailDeliverySection />
+
+      <LivePreviewSection settings={settings} readOnly={readOnly} />
 
       <SettingsSection
         title="API access"
