@@ -107,6 +107,14 @@ removing every `workspace:*` dependency this app had:
   wizard flow (subdirectory URL syntax, environment-variable prompts for `VITE_API_URL`) has not
   been clicked through for real the way the [API Worker's button](../api/README.md) has.
 
+Below is an **unverified draft** of what that button URL should be, going by the subdirectory URL
+format Cloudflare's own `create-cloudflare` tool documents (`github.com/<owner>/<repo>/tree/
+<branch>/<path>`) — not a confirmed fact for *this specific* button service, since Cloudflare's own
+deploy-button docs don't spell out the subdirectory query format explicitly. Click it once to find
+out for real; update this note either way once someone has:
+
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/kenresoft-technologies/kenresoft-cms/tree/develop/apps/admin)
+
 **What actually works today:**
 
 ```bash

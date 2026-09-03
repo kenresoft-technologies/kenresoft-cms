@@ -735,4 +735,34 @@ deploy --dry-run` all succeeding with zero errors both times. Not yet done: an a
 click-through of Cloudflare's "Deploy to Cloudflare" button UI for a subdirectory URL pointing at
 `apps/admin` specifically — the dependency-resolution blocker that made this categorically
 impossible is fixed and verified as above, but the button's own wizard flow hasn't been exercised
-for real.
+for real. `apps/admin/README.md` now carries a draft button URL for this
+(`.../tree/develop/apps/admin`, going by the subdirectory format Cloudflare's own
+`create-cloudflare` tool documents) explicitly marked unverified, rather than either omitting it or
+claiming it works — Cloudflare's own deploy-button docs don't spell out the subdirectory query
+format for this specific button service.
+
+**A real `npm create` scaffolding tool, and the three remaining loose ends from the pass above**
+(2026-09-03) — done. `packages/contracts/package.json` gained `repository`/`bugs`/`homepage`
+fields and published as `0.1.2` (the npm page was missing them). New package
+`@kenresoft-cms/create` (`packages/create`, published to npm) backs `npm create
+@kenresoft-cms@latest my-cms` — now the root README's primary "Recommended" install command,
+`git clone` demoted to a parenthetical equivalent. Its one file, `bin/create-kenresoft-cms.mjs`,
+downloads a GitHub tarball, extracts it stripped of the top-level `<repo>-<ref>/` wrapper, removes
+any `.git` defensively, and runs a fresh `git init` — deliberately fetching the template fresh on
+every invocation rather than bundling a snapshot in the published package, so future CMS changes
+reach users immediately with no need to ever republish this tool (only a change to the download
+script's own mechanics would). A real bug was caught before publishing, not after: the script
+initially hardcoded `BRANCH = 'main'`, discovered wrong by checking `git log` on `origin/main` vs
+`origin/develop` — `main` was nearly empty (this repo's actual default branch, confirmed via
+`gh repo view --json defaultBranchRef`, is `develop`; `main` is reserved for an eventual release
+promotion per this file's own branch rules). Fixed by using GitHub's special `HEAD` ref instead of
+any hardcoded branch name — confirmed empirically (not assumed) that `codeload.github.com`'s
+`HEAD` ref resolves to whatever the repository's actual default branch is, by checking for a file
+only present on `develop`. Verified end-to-end for real: ran the script against a scratch
+directory, confirmed the extracted content matched `develop` (not stale `main`), confirmed a fresh
+un-committed git repo was created, then cleaned up. The existing "Deploy to Cloudflare" buttons
+(API Worker's and the new Admin Worker draft) were separately checked and confirmed to already use
+no explicit branch/ref in their URLs, so they already correctly follow the default branch too — no
+separate fix needed there. The npm token pasted in plain chat during the earlier publish attempt
+never completed a publish (blocked by npm's OTP-for-publish requirement) but remains a loose end
+only the account owner can close — flagged to revoke it, not something this session can do.

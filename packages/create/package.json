@@ -1,0 +1,35 @@
+{
+  "name": "@kenresoft-cms/create",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Scaffold a new Kenresoft CMS install: npm create @kenresoft-cms@latest my-cms",
+  "license": "MIT",
+  "homepage": "https://github.com/kenresoft-technologies/kenresoft-cms#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kenresoft-technologies/kenresoft-cms.git",
+    "directory": "packages/create"
+  },
+  "bugs": "https://github.com/kenresoft-technologies/kenresoft-cms/issues",
+  "bin": {
+    "create-kenresoft-cms": "./bin/create-kenresoft-cms.mjs"
+  },
+  "files": ["bin"],
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "tar": "^7.5.22"
+  },
+  "devDependencies": {
+    "@kenresoft-cms/config": "workspace:*",
+    "eslint": "^10.9.1",
+    "globals": "^17.11.0"
+  }
+}

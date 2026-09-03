@@ -11,11 +11,14 @@ and technical specification (the source of truth for design decisions).
 ## Recommended: Complete CMS Installation
 
 ```bash
-git clone https://github.com/kenresoft-technologies/kenresoft-cms.git your-site-name
+npm create @kenresoft-cms@latest your-site-name
 cd your-site-name
 pnpm install
 pnpm run setup
 ```
+
+(Equivalent to `git clone https://github.com/kenresoft-technologies/kenresoft-cms.git
+your-site-name` — same files, no GitHub URL to remember.)
 
 One command, provisions and deploys the whole system into your own Cloudflare account:
 
@@ -75,6 +78,7 @@ packages/
   contracts/  @kenresoft-cms/contracts  — Shared Zod schemas + API contract, used by api/admin/SDK
   types/      @kenresoft-cms/types      — Shared TypeScript types
   config/     @kenresoft-cms/config     — Shared ESLint/TS/Prettier base config
+  create/     @kenresoft-cms/create     — `npm create @kenresoft-cms@latest` scaffolding tool
 integrations/
   astro/      @kenresoft-cms/astro      — Astro Integration: typed client for the public API
 docs/       Architecture and reference documentation, including docs/ASTRO.md

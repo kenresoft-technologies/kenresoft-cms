@@ -1,9 +1,16 @@
 {
   "name": "@kenresoft-cms/contracts",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "type": "module",
   "description": "Zod schemas and API contract shared between Kenresoft CMS's API Worker and Admin Worker.",
   "license": "MIT",
+  "homepage": "https://github.com/kenresoft-technologies/kenresoft-cms/tree/main/packages/contracts#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kenresoft-technologies/kenresoft-cms.git",
+    "directory": "packages/contracts"
+  },
+  "bugs": "https://github.com/kenresoft-technologies/kenresoft-cms/issues",
   "main": "./api/index.ts",
   "types": "./api/index.ts",
   "exports": {
