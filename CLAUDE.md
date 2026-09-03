@@ -296,10 +296,10 @@ Per the roadmap in `docs/ARCHITECTURE.md` §20:
   a stuck first-login flow, a request to surface better-auth's session table for monitoring, a
   request for SonicJS's four-role Admin/Editor/Author/Viewer split instead of this app's
   original two, and a screenshot of SonicJS's own Users page as a UI density/maturity
-  reference). Roles/sessions/Users-UI items are done; the login-flow report is still open — an
-  automated reproduction of the exact reported steps completed cleanly, which rules out the
-  leading same-tab-redirect theory but hasn't identified a cause, so it needs more repro detail
-  (exact URL/environment tested) before further diagnosis. Renamed `owner` → `admin`
+  reference). Roles/sessions/Users-UI items are done; the login-flow report was open at the time
+  of this entry (an automated reproduction of the exact reported steps had completed cleanly,
+  ruling out the leading same-tab-redirect theory but not identifying a cause) — since resolved,
+  see the dedicated entry below. Renamed `owner` → `admin`
   (data-only migration, same privileges) and added **Author** (create entries freely; edit/
   delete only entries they created — `canWriteEntry()` in `apps/api/src/routes/admin/
   entries.ts`; unrestricted reads) and **Viewer** (read-only everywhere via a new global
@@ -408,8 +408,22 @@ content-modeling structure publicly), not something to resolve unilaterally. Als
 the way: `docs/ASTRO.md`'s Static vs SSR section and two Known-limitations/Future-work bullets
 still described the pre-SSR-migration static-output behavior — a real gap between docs and
 `astro.config.mjs` (`output: 'server'` since the Astro SSR migration entry above), now
-corrected. The reported stuck first-login flow remains open pending more repro detail from
-whoever originally saw it (exact URL/environment/steps) — still nothing to act on without that.
+corrected. The reported stuck first-login flow was believed still open at the time of this entry
+(see the correction immediately below — it had, in fact, already been fixed by this point, just
+not yet reflected here).
+
+**Correction: the stuck first-login flow was already fixed, and this file just hadn't caught up**
+(commit `faaaab5`, 2026-08-28 — predates several entries above that kept describing it as open).
+Real root cause: on a cross-site deployment (admin and API on different origins — the same setup
+`pnpm dev:live` uses against a live Worker), the session cookie is third-party from the browser's
+point of view, and some browsers block third-party cookies by default. The sign-in call still
+resolved with no error, since the server-side session write succeeded — only the cookie silently
+never landed in the browser, leaving `/login` looking unchanged with nothing to click and no
+explanation. Verified against the actual reporting account: a session existed server-side, but
+the browser never got redirected. Fixed in `apps/admin/src/pages/LoginPage.tsx` — confirms the
+session actually landed (`authClient.getSession()`) right after a successful sign-in/sign-up
+before redirecting, and surfaces an explicit error message when it didn't, instead of leaving the
+screen looking unchanged with no feedback at all.
 
 **Tiptap rich-text editor** (closing a real gap a follow-up audit found: `docs/ARCHITECTURE.md`
 and this file both documented Tiptap as the `rich_text` field's editor, §25's "LOCKED" stack
@@ -781,3 +795,25 @@ Cloudflare's own "Deploy" — that step creates a real GitHub repo and a real Wo
 for a config-detection check with a placeholder API URL. `apps/admin/README.md` updated to reflect
 this precisely: config-detection confirmed by a real click-through, full completion-to-a-live-
 Worker still open for whoever next has a real API URL to complete it with.
+
+**Admin bundle code-splitting** (2026-09-03, prompted directly by the recurring "chunks larger
+than 500kB" build warning) — done: `apps/admin/src/routes/router.tsx`'s every route (except the
+top-level `AppLayout` shell) now uses React Router's own `route.lazy` data-router API instead of a
+static `element` import, so each page is its own chunk downloaded only when actually visited,
+rather than one shared bundle. The old single `index-*.js` was 1.9MB — dominated by two
+page-specific dependency trees every session paid for regardless of which page they ever opened:
+Tiptap's full extension set (`EntryEditorPage` only — confirmed via `grep` that
+`field-input.tsx`, the only consumer of the rich-text editor, is itself only ever imported by that
+one page) and Recharts (`DashboardPage` only). After the split: the shared shell chunk is 351kB,
+most pages are a few kB each, and only `EntryEditorPage` (726kB — Tiptap's own inherent weight:
+starter kit, tables, code blocks with `lowlight` syntax highlighting, the Markdown round-trip
+converters) still exceeds Vite's 500kB warning threshold. Deliberately left at that size rather
+than chased further (e.g. also async-loading the Markdown-mode converters only when that view is
+opened) — it's a single opt-in, feature-rich editor route, not something loaded on every page load
+the way the old bundle was, and splitting further would trade a modest additional size win for
+real complexity (async-loading library code mid-edit) and UX risk (visible pop-in while typing).
+Verified two ways, not just by reading the build output: a real Playwright browser load of the
+built `dist/` (via `vite preview`) confirmed the `/login` route pulls in exactly its own small
+lazy chunk plus the shared shell — not the old monolith — with the page rendering correctly and
+no console errors beyond the expected placeholder-API-URL network failure; and the full
+typecheck/lint/test suite (23 files, 129 tests) re-run clean afterward.

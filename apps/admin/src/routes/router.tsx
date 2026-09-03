@@ -1,62 +1,114 @@
 import { createBrowserRouter } from 'react-router';
 
-import { AllEntriesPage } from '@/pages/AllEntriesPage';
-import { AllSubmissionsPage } from '@/pages/AllSubmissionsPage';
 import { AppLayout } from '@/layouts/AppLayout';
-import { ContentTypeDetailPage } from '@/pages/ContentTypeDetailPage';
-import { ContentTypesPage } from '@/pages/ContentTypesPage';
-import { DashboardPage } from '@/pages/DashboardPage';
-import { EntriesPage } from '@/pages/EntriesPage';
-import { EntryEditorPage } from '@/pages/EntryEditorPage';
-import { FormDetailPage } from '@/pages/FormDetailPage';
-import { FormsPage } from '@/pages/FormsPage';
-import { FormSubmissionsPage } from '@/pages/FormSubmissionsPage';
-import { ForgotPasswordPage } from '@/pages/ForgotPasswordPage';
-import { GlobalVariablesPage } from '@/pages/GlobalVariablesPage';
-import { LoginPage } from '@/pages/LoginPage';
-import { MediaLibraryPage } from '@/pages/MediaLibraryPage';
-import { ProfilePage } from '@/pages/ProfilePage';
-import { RecoverWithCodePage } from '@/pages/RecoverWithCodePage';
-import { ResetPasswordPage } from '@/pages/ResetPasswordPage';
-import { SettingsPage } from '@/pages/SettingsPage';
-import { UsersPage } from '@/pages/UsersPage';
 
+// Every page is a separate chunk, downloaded only when its route is actually visited —
+// apps/admin's bundle had grown to ~1.9MB as one chunk (Vite's 500kB warning threshold),
+// dominated by page-specific dependencies that most sessions never touch on first load:
+// Tiptap's full extension set (EntryEditorPage, ~800kB+ of the total on its own — tables,
+// code-block syntax highlighting via lowlight, turndown/marked for the Markdown round trip)
+// and Recharts (DashboardPage only). `route.lazy` (not `React.lazy` + `Suspense`) is React
+// Router's own data-router mechanism for this — it keeps the previous page on screen during
+// the fetch rather than needing a manual fallback UI.
 export const router = createBrowserRouter([
   {
     path: '/login',
-    element: <LoginPage />,
+    lazy: async () => ({ Component: (await import('@/pages/LoginPage')).LoginPage }),
   },
   {
     path: '/forgot-password',
-    element: <ForgotPasswordPage />,
+    lazy: async () => ({
+      Component: (await import('@/pages/ForgotPasswordPage')).ForgotPasswordPage,
+    }),
   },
   {
     path: '/reset-password',
-    element: <ResetPasswordPage />,
+    lazy: async () => ({ Component: (await import('@/pages/ResetPasswordPage')).ResetPasswordPage }),
   },
   {
     path: '/recover-with-code',
-    element: <RecoverWithCodePage />,
+    lazy: async () => ({
+      Component: (await import('@/pages/RecoverWithCodePage')).RecoverWithCodePage,
+    }),
   },
   {
     path: '/',
     element: <AppLayout />,
     children: [
-      { index: true, element: <DashboardPage /> },
-      { path: 'entries', element: <AllEntriesPage /> },
-      { path: 'content-types', element: <ContentTypesPage /> },
-      { path: 'global-variables', element: <GlobalVariablesPage /> },
-      { path: 'media', element: <MediaLibraryPage /> },
-      { path: 'forms', element: <FormsPage /> },
-      { path: 'forms/:formId', element: <FormDetailPage /> },
-      { path: 'forms/:formId/submissions', element: <FormSubmissionsPage /> },
-      { path: 'submissions', element: <AllSubmissionsPage /> },
-      { path: 'settings', element: <SettingsPage /> },
-      { path: 'users', element: <UsersPage /> },
-      { path: 'profile', element: <ProfilePage /> },
-      { path: 'content-types/:contentTypeId', element: <ContentTypeDetailPage /> },
-      { path: 'content-types/:contentTypeId/entries', element: <EntriesPage /> },
-      { path: 'content-types/:contentTypeId/entries/:entryId', element: <EntryEditorPage /> },
+      {
+        index: true,
+        lazy: async () => ({ Component: (await import('@/pages/DashboardPage')).DashboardPage }),
+      },
+      {
+        path: 'entries',
+        lazy: async () => ({ Component: (await import('@/pages/AllEntriesPage')).AllEntriesPage }),
+      },
+      {
+        path: 'content-types',
+        lazy: async () => ({
+          Component: (await import('@/pages/ContentTypesPage')).ContentTypesPage,
+        }),
+      },
+      {
+        path: 'global-variables',
+        lazy: async () => ({
+          Component: (await import('@/pages/GlobalVariablesPage')).GlobalVariablesPage,
+        }),
+      },
+      {
+        path: 'media',
+        lazy: async () => ({
+          Component: (await import('@/pages/MediaLibraryPage')).MediaLibraryPage,
+        }),
+      },
+      {
+        path: 'forms',
+        lazy: async () => ({ Component: (await import('@/pages/FormsPage')).FormsPage }),
+      },
+      {
+        path: 'forms/:formId',
+        lazy: async () => ({ Component: (await import('@/pages/FormDetailPage')).FormDetailPage }),
+      },
+      {
+        path: 'forms/:formId/submissions',
+        lazy: async () => ({
+          Component: (await import('@/pages/FormSubmissionsPage')).FormSubmissionsPage,
+        }),
+      },
+      {
+        path: 'submissions',
+        lazy: async () => ({
+          Component: (await import('@/pages/AllSubmissionsPage')).AllSubmissionsPage,
+        }),
+      },
+      {
+        path: 'settings',
+        lazy: async () => ({ Component: (await import('@/pages/SettingsPage')).SettingsPage }),
+      },
+      {
+        path: 'users',
+        lazy: async () => ({ Component: (await import('@/pages/UsersPage')).UsersPage }),
+      },
+      {
+        path: 'profile',
+        lazy: async () => ({ Component: (await import('@/pages/ProfilePage')).ProfilePage }),
+      },
+      {
+        path: 'content-types/:contentTypeId',
+        lazy: async () => ({
+          Component: (await import('@/pages/ContentTypeDetailPage')).ContentTypeDetailPage,
+        }),
+      },
+      {
+        path: 'content-types/:contentTypeId/entries',
+        lazy: async () => ({ Component: (await import('@/pages/EntriesPage')).EntriesPage }),
+      },
+      {
+        path: 'content-types/:contentTypeId/entries/:entryId',
+        lazy: async () => ({
+          Component: (await import('@/pages/EntryEditorPage')).EntryEditorPage,
+        }),
+      },
     ],
   },
 ]);
