@@ -81,7 +81,8 @@ describe('DashboardPage', () => {
     expect(screen.getByText('7')).toBeInTheDocument(); // total entries
     expect(screen.getByText('5 published, 2 draft')).toBeInTheDocument();
     expect(screen.getByText('4')).toBeInTheDocument();
-    expect(screen.getByText('2 KB')).toBeInTheDocument();
+    // Shown twice now: the Media stat card's hint, and the Storage Usage card's own media row.
+    expect(screen.getAllByText('2 KB')).toHaveLength(2);
     expect(screen.getByText('hello-world')).toBeInTheDocument();
     expect(screen.getByText('Blog Post')).toBeInTheDocument();
     expect(screen.queryByText('Start with a content type')).not.toBeInTheDocument();
