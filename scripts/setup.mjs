@@ -309,6 +309,14 @@ async function main() {
   const adminUrl = buildAndDeployAdmin({ repoRoot: REPO_ROOT, adminDir: ADMIN_DIR, apiUrl: finalUrl });
 
   console.log(`\nAdmin deployed: ${adminUrl}`);
+
+  // Without this, the password-reset email link falls back to CORS_ORIGINS' first entry
+  // (lib/env.ts's own documented fallback) — which, once addCorsOrigin() below appends this
+  // exact adminUrl to the *end* of that list, is never the value it should be. Setting the
+  // secret directly (not a wrangler.toml var) takes effect immediately, no redeploy needed.
+  runWrangler(['secret', 'put', 'ADMIN_URL', '--config', WRANGLER_TOML_PATH], { cwd: API_DIR, input: adminUrl });
+  console.log('✓ ADMIN_URL set — password-reset emails will link to the real admin URL.');
+
   if (addCorsOrigin(adminUrl)) {
     console.log('Added the admin origin to CORS_ORIGINS — redeploying once more...');
     deployApi({ apiDir: API_DIR, wranglerTomlPath: WRANGLER_TOML_PATH });
