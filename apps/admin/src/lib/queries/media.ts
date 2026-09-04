@@ -5,10 +5,14 @@ import type { Media } from '@/lib/types';
 
 const mediaKey = ['media'] as const;
 
-export function useMediaList() {
+// `enabled` defaults to true (every existing caller keeps fetching on mount as before) — added
+// so AvatarPickerDialog can pass `open` and only fetch once its picker is actually opened,
+// instead of every ProfilePage visit eagerly pulling the entire media library in the background.
+export function useMediaList(enabled = true) {
   return useQuery({
     queryKey: mediaKey,
     queryFn: () => apiClient.get<Media[]>('/api/v1/admin/media'),
+    enabled,
   });
 }
 

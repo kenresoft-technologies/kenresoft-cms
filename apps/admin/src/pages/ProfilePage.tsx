@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 function initials(name: string) {
@@ -124,7 +125,7 @@ function SecurityTab({ twoFactorEnabled }: { twoFactorEnabled: boolean }) {
 }
 
 export function ProfilePage() {
-  const { data: session } = authClient.useSession();
+  const { data: session, isPending } = authClient.useSession();
 
   async function handleAvatarSelect(url: string) {
     const { error } = await authClient.updateUser({ image: url });
@@ -135,7 +136,28 @@ export function ProfilePage() {
     }
   }
 
-  if (!session) return null;
+  // Previously `if (!session) return null` — a blank page with zero feedback while the session
+  // loads, which is exactly when this route's own lazy chunk (plus its now-deferred qrcode/media
+  // fetches) is still settling. A skeleton at least shows something happened.
+  if (isPending || !session) {
+    return (
+      <div className="flex flex-col gap-6">
+        <PageBreadcrumb items={[{ label: 'Profile' }]} />
+        <div className="flex items-center gap-4">
+          <Skeleton className="size-12 rounded-full" />
+          <div className="flex flex-col gap-2">
+            <Skeleton className="h-6 w-40" />
+            <Skeleton className="h-4 w-56" />
+          </div>
+        </div>
+        <div className="flex max-w-md flex-col gap-4">
+          <Skeleton className="h-9 w-full" />
+          <Skeleton className="h-9 w-full" />
+          <Skeleton className="h-16 w-full" />
+        </div>
+      </div>
+    );
+  }
 
   const user = session.user;
 

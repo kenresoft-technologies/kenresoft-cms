@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { Copy, ShieldCheck, ShieldOff } from 'lucide-react';
-import QRCode from 'qrcode';
 import { toast } from 'sonner';
 
 import { authClient } from '@/lib/auth-client';
@@ -78,6 +77,10 @@ function EnableTwoFactorDialog({ onOpenChange }: { onOpenChange: (open: boolean)
 
     setTotpURI(data.totpURI);
     setBackupCodes(data.backupCodes);
+    // Dynamically imported — `qrcode` is only ever needed once someone actually starts 2FA
+    // enrollment, not on every Profile page visit, so it shouldn't be part of that route's
+    // eagerly-parsed lazy chunk.
+    const { default: QRCode } = await import('qrcode');
     setQrDataUrl(await QRCode.toDataURL(data.totpURI));
     setStep('verify');
   }
