@@ -1356,3 +1356,33 @@ real import) and `apps/api/test/plugin-hello.test.ts` (real D1: the health-check
 editor-role gate, the configured-greeting-prefix path, the event firing on create); admin gained
 `HelloPage.test.tsx` and an `AppLayout.test.tsx` case for the new "Plugins" nav group. Commerce
 (Phase 2) is explicitly not started — no Commerce schema, route, or admin page exists anywhere.
+
+**Dependabot alert cleanup: 19 of 20 closed via a narrower override than the one that failed
+before** (2026-09-04) — GitHub reported 20 open alerts (8 high, 10 moderate, 2 low) after the
+plugin-platform push; investigated for real rather than assumed stale. All 20 traced to exactly
+one root cause: `apps/api`'s `@cloudflare/vitest-pool-workers@0.9.14` devDependency pins its own
+internal `wrangler@4.44.0`, which drags in an old `miniflare@4.20251011.0` that hard-pins
+`undici@7.14.0` (16 of the 20 alerts alone), `sharp@^0.33.5`, and `ws@8.18.0` — every other copy
+of these three packages across the workspace was already on a patched version (confirmed via
+`pnpm why <pkg> -r`). This is the exact same devDependency already flagged as a deliberately
+accepted risk in this file's "Dependency security updates" entry above, where bumping the pool
+package to 0.22.0 turned out to be a real breaking test-harness migration, and a scoped
+`pnpm.overrides` on `@cloudflare/vitest-pool-workers>wrangler` resolved cleanly but broke the
+test runtime outright (an incompatible miniflare/workerd pairing). Checked whether anything had
+changed since: `@cloudflare/vitest-pool-workers`'s latest is still 0.22.0, same architecture,
+same migration cost — not attempted again.
+
+What's different this time: `undici`/`sharp`/`ws` are leaf packages the old miniflare bundles for
+its own polyfills, not the CLI/workerd pairing itself that broke last time — overriding just
+those three (`package.json`'s `pnpm.overrides`, leaving the internal `wrangler`/`miniflare`
+untouched) sidesteps the exact coupling that broke the runtime before. Verified for real, not
+assumed safe: `pnpm why <pkg> -r` confirmed all three resolved to patched versions inside the
+`vitest-pool-workers` subtree specifically, then the *entire* `apps/api` suite (34 files) and the
+*entire* `apps/admin` suite (24 files, since `jsdom`→`ws` runs through the same override) were
+re-run individually/in small batches per this file's own standing Windows/workerd-flakiness
+practice — real D1, real R2, a real `fetch()` through workerd's `undici` (webhook dispatch to an
+unreachable host), real media upload/sniffing — all passing, plus a clean `pnpm typecheck`/
+`pnpm lint` across the whole workspace. The one alert left open is the `wrangler@4.44.0` CVE
+itself (OS command injection in `wrangler pages deploy`) — unchanged from the already-documented
+reasoning: this transitive copy is never invoked with that subcommand by anything in this
+codebase, and actually replacing it is the same rejected 0.22.0 migration.
