@@ -25,6 +25,7 @@ import {
 } from '@/lib/queries/field-definitions';
 import { useDeveloperMode } from '@/lib/developer-mode';
 import { FIELD_TYPES, roleAtLeast, type FieldDefinition, type FieldType, type UserRole } from '@/lib/types';
+import { ContentTypeBadge } from '@/components/content-type-badge';
 import { ContentTypeDeveloperPanel } from '@/components/developer-panel/content-type-developer-panel';
 import { EmptyState } from '@/components/empty-state';
 import { FieldTypeBadge, fieldTypeIcon } from '@/components/field-type-badge';
@@ -42,7 +43,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -382,7 +385,15 @@ function SortableFieldRow({
       <TableCell>
         <FieldTypeBadge fieldType={field.fieldType} />
       </TableCell>
-      <TableCell className="text-muted-foreground">{field.required ? 'Yes' : 'No'}</TableCell>
+      <TableCell>
+        {field.required ? (
+          <Badge variant="secondary" className="font-normal">
+            Required
+          </Badge>
+        ) : (
+          <span className="text-xs text-muted-foreground">Optional</span>
+        )}
+      </TableCell>
       <TableCell className="w-20 text-right">
         {canEdit ? (
           <div className="flex justify-end gap-1">
@@ -499,6 +510,23 @@ export function ContentTypeDetailPage() {
           </>
         }
       />
+
+      {contentType && contentTypeId ? (
+        <Card>
+          <CardContent className="flex flex-wrap items-center gap-3">
+            <ContentTypeBadge id={contentTypeId} name={contentType.name} />
+            <Badge variant="outline" className="font-mono font-normal text-muted-foreground">
+              {contentType.slug}
+            </Badge>
+            {contentType.description ? (
+              <span className="text-sm text-muted-foreground">{contentType.description}</span>
+            ) : null}
+            <span className="ml-auto text-sm text-muted-foreground">
+              {fields?.length ?? 0} {fields?.length === 1 ? 'field' : 'fields'}
+            </span>
+          </CardContent>
+        </Card>
+      ) : null}
 
       {error ? <p className="text-destructive">{error.message}</p> : null}
 
