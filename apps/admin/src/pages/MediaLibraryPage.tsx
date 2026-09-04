@@ -40,12 +40,20 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatBytes } from '@/lib/format';
 import type { Media, MediaContentType } from '@/lib/types';
+import { cn } from '@/lib/utils';
 
 const MEDIA_TYPE_LABELS: Record<MediaContentType, string> = {
   'image/png': 'PNG',
   'image/jpeg': 'JPEG',
   'image/gif': 'GIF',
   'image/webp': 'WebP',
+};
+
+const MEDIA_TYPE_TONE: Record<MediaContentType, string> = {
+  'image/png': 'border-swatch-2/30 bg-swatch-2/14 text-swatch-2',
+  'image/jpeg': 'border-swatch-4/30 bg-swatch-4/14 text-swatch-4',
+  'image/gif': 'border-swatch-3/30 bg-swatch-3/14 text-swatch-3',
+  'image/webp': 'border-swatch-5/30 bg-swatch-5/14 text-swatch-5',
 };
 
 type TypeFilter = 'all' | MediaContentType;
@@ -206,7 +214,7 @@ function MediaGrid({ items, developerMode }: { items: Media[]; developerMode: bo
           <CardContent className="flex flex-col gap-1 pb-3">
             <p className="truncate text-sm font-medium">{item.filename}</p>
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Badge variant="outline" className="text-[0.65rem]">
+              <Badge variant="outline" className={cn('text-[0.65rem]', MEDIA_TYPE_TONE[item.contentType])}>
                 {MEDIA_TYPE_LABELS[item.contentType]}
               </Badge>
               <span>
@@ -239,7 +247,11 @@ function MediaList({ items, developerMode }: { items: Media[]; developerMode: bo
       {
         accessorKey: 'contentType',
         header: 'Type',
-        cell: ({ row }) => <Badge variant="outline">{MEDIA_TYPE_LABELS[row.original.contentType]}</Badge>,
+        cell: ({ row }) => (
+          <Badge variant="outline" className={MEDIA_TYPE_TONE[row.original.contentType]}>
+            {MEDIA_TYPE_LABELS[row.original.contentType]}
+          </Badge>
+        ),
       },
       {
         id: 'dimensions',
