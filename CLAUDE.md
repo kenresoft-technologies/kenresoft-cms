@@ -1465,3 +1465,60 @@ such binding-based CLI resolution (`wrangler r2 object get/put` always take the 
 name), so `apps/api/scripts/backup-media.mjs`'s `BUCKET_NAME` constant stays a documented manual
 override — its existing comment now also calls out this rename scenario, not just the two it
 already covered (an explicitly-named bucket vs. one left to wrangler's own auto-provisioning).
+
+**Fix: `pnpm run update` silently overwrote a different deployment's live Worker, and could run
+before setup ever completed** (2026-09-05, two direct user reports — one confirmed as a real
+production incident: `pnpm run update` replaced another, unrelated deployment's live API Worker
+sharing the same Cloudflare account and default name, "even the admin [Worker] too") — done, and
+the more serious sibling of the D1/R2 fix above. `wrangler deploy` has no "already exists"
+failure mode the way `d1/r2 ... create` does — every fork of this template ships the same
+default Worker names (`kenresoft-cms-api`/`kenresoft-cms-admin`), and deploying to a name already
+taken by an unrelated Worker in the same account (the exact scenario the D1/R2 fix's own
+collision handling exists for) just silently overwrites it. No error, no warning — confirmed as a
+real incident, not a hypothetical.
+
+Fixed with a new `checkWorkerOwnership()` (`scripts/lib/deploy-helpers.mjs`), verified against
+real Cloudflare infrastructure end to end (all three outcomes below reproduced against a real
+throwaway Worker before shipping): `wrangler versions view <id> --name <name> --json` returns a
+version's full binding list, including the D1 binding's `database_id` — comparing the *live*
+Worker's currently-bound database against this install's own wrangler.toml `database_id` (a
+genuine per-clone fingerprint, especially now that the D1/R2 fix above can make it diverge from
+every other clone's) reveals whether a same-named Worker is really still ours: no Worker at all
+→ `'new'` (safe, nothing to conflict with); live binding matches → `'ours'` (safe, a genuine
+re-run); live binding differs (or is missing entirely) → `'foreign'` (dangerous — belongs to a
+different deployment).
+
+`scripts/setup.mjs` gained `ensureWorkerNamesAreOurs()`, run once right before the very first
+deploy of a run: on `'foreign'`, it explains what's happening and asks for a different Worker
+name (an auto-generated suggestion, same UX as the D1/R2 fix) rather than proceeding — and
+because a genuine re-run of an already-established install always resolves `'ours'`, it never has
+to ask twice. The admin Worker has no bindings of its own to check ownership *by* (it's
+assets-only), so it isn't independently verified — instead, only if the API Worker's default name
+had to change (strong evidence this account already has another install of the project occupying
+the paired default names) is the admin Worker's name *derived* from the now-confirmed-safe API
+name (`-api` → `-admin`) and checked for plain existence, retrying with a fresh suffix on the
+vanishingly unlikely chance that also collides. `scripts/update.mjs` runs the same API-Worker
+check before every redeploy but, unlike setup.mjs, hard-refuses outright on `'foreign'` rather
+than prompting — it's designed to run with zero prompts, and there's no safe automatic choice to
+make on the update path; only setup.mjs's interactive collision handling can pick a new name. An
+install already affected by this bug recovers by running `pnpm run setup` again (not `update`) —
+it detects the live mismatch the exact same way and walks through the same interactive rename.
+
+The second report: `pnpm run update` run before `pnpm run setup` had ever completed could silently
+half-provision a deployment — wrangler's own automatic provisioning still fires on the first
+`wrangler deploy` even via `update`, but every *other* step only `setup.mjs` performs
+(`BETTER_AUTH_SECRET`, CORS wiring, the admin origin) never runs, leaving a Worker that's live but
+broken (better-auth's "you are using the default secret" on every request) with no obvious cause.
+Fixed with a purely local, network-free check: a never-set-up clone's wrangler.toml has no
+`database_id` at all (only `ensureD1()` in setup.mjs ever writes it in), so `update.mjs` now
+refuses outright with a clear "run `pnpm run setup` first" message instead of proceeding. Both new
+`update.mjs` checks read wrangler.toml *after* pulling the latest code, not a pre-pull snapshot —
+what matters is the config actually about to be deployed. The shared TOML-reading logic (`readTomlFile`/
+`findTopLevelBlock`/`extractTomlValue`/`readWorkerName`/`readDatabaseId`, plus the write-side
+`writeTomlFile`/`writeWorkerName`) moved out of `scripts/setup.mjs` into a new
+`scripts/lib/wrangler-toml.mjs` specifically so `update.mjs` could read the same structures
+without duplicating the parsing logic — `readWorkerName`/`writeWorkerName` deliberately restrict
+their match to a wrangler.toml's *preamble* (before the first `[section]`), confirmed necessary
+by testing against the real files: a naive first-line-starting-with-`name = "` match would have
+been ambiguous against the *different* `name = "..."` fields inside `[[ratelimits]]` blocks
+further down the same file.

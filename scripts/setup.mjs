@@ -19,14 +19,23 @@
 //
 // Usage: pnpm run setup
 
-import { readFileSync, writeFileSync } from 'node:fs';
 import { createInterface } from 'node:readline/promises';
 import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 import { runWrangler, runWranglerInherit } from './lib/wrangler-cli.mjs';
-import { buildAndDeployAdmin, deployApi } from './lib/deploy-helpers.mjs';
+import { buildAndDeployAdmin, checkWorkerOwnership, deployApi } from './lib/deploy-helpers.mjs';
+import {
+  extractTomlValue,
+  findTopLevelBlock,
+  insertAfterLine,
+  readTomlFile,
+  readWorkerName,
+  replaceLine,
+  writeTomlFile,
+  writeWorkerName,
+} from './lib/wrangler-toml.mjs';
 
 const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const API_DIR = join(REPO_ROOT, 'apps', 'api');
@@ -34,6 +43,7 @@ const ADMIN_DIR = join(REPO_ROOT, 'apps', 'admin');
 // wrangler.toml lives at the repo root, not apps/api/ (see that file's own top comment) — the
 // "Deploy to Cloudflare" button only detects a config there.
 const WRANGLER_TOML_PATH = join(REPO_ROOT, 'wrangler.toml');
+const ADMIN_WRANGLER_TOML_PATH = join(ADMIN_DIR, 'wrangler.toml');
 
 const rl = createInterface({ input: process.stdin, output: process.stdout });
 async function ask(question, defaultValue) {
@@ -48,54 +58,15 @@ async function confirm(question, defaultYes) {
   return answer === 'y' || answer === 'yes';
 }
 
-// Every helper below (findTopLevelBlock/insertAfterLine/replaceLine/addCorsOrigin) matches
-// against a bare "\n" — correct for this repo's own committed LF line endings, but a real
-// install's wrangler.toml doesn't necessarily stay that way: a fresh `git clone` (packages/
-// create's own scaffolding mechanism) checks files out through git's line-ending filters, and
-// Windows Git commonly defaults to `core.autocrlf=true`, converting every line to CRLF on
-// checkout. Confirmed live: a real install's wrangler.toml had CRLF endings, and
-// `findTopLevelBlock`'s `toml.indexOf('[[d1_databases]]\n')` never matched
-// `[[d1_databases]]\r\n`, failing `pnpm run setup` outright on a re-run. Normalizing to bare LF
-// on read and restoring the file's own original line-ending style on write means every helper
-// below can keep assuming plain "\n" without needing its own CRLF-handling.
-let originalLineEnding = '\n';
+// Thin, path-bound wrappers — every call site below already assumes a single implicit target
+// file (the API's wrangler.toml); readTomlFile/writeTomlFile (scripts/lib/wrangler-toml.mjs) are
+// the path-parameterized versions, needed once this file also has to touch the *admin* Worker's
+// separate wrangler.toml (ensureWorkerNamesAreOurs, below).
 function readToml() {
-  const raw = readFileSync(WRANGLER_TOML_PATH, 'utf8');
-  originalLineEnding = raw.includes('\r\n') ? '\r\n' : '\n';
-  return raw.replace(/\r\n/g, '\n');
+  return readTomlFile(WRANGLER_TOML_PATH);
 }
 function writeToml(content) {
-  const output = originalLineEnding === '\r\n' ? content.replace(/\n/g, '\r\n') : content;
-  writeFileSync(WRANGLER_TOML_PATH, output);
-}
-
-// Isolates the top-level (not [env.production.*]) array-table block for `header` — e.g.
-// "[[d1_databases]]" — so edits never touch Kenresoft's own pinned production section, which
-// uses the distinctly-named "[[env.production.d1_databases]]" header instead.
-function findTopLevelBlock(toml, header) {
-  const start = toml.indexOf(`${header}\n`);
-  if (start === -1) return null;
-  const bodyStart = start + header.length + 1;
-  const nextHeader = toml.slice(bodyStart).search(/\n\[/);
-  const end = nextHeader === -1 ? toml.length : bodyStart + nextHeader + 1;
-  return { start, end, text: toml.slice(start, end) };
-}
-
-function insertAfterLine(blockText, anchorLine, newLine) {
-  const idx = blockText.indexOf(anchorLine);
-  if (idx === -1) {
-    throw new Error(`Expected to find the line "${anchorLine.trim()}" in wrangler.toml — has the file's shape changed?`);
-  }
-  const insertAt = idx + anchorLine.length;
-  return blockText.slice(0, insertAt) + newLine + blockText.slice(insertAt);
-}
-
-function replaceLine(toml, linePrefix, newLine) {
-  const lines = toml.split('\n');
-  const idx = lines.findIndex((line) => line.startsWith(linePrefix));
-  if (idx === -1) throw new Error(`Expected to find a line starting with "${linePrefix}" in wrangler.toml.`);
-  lines[idx] = newLine;
-  return lines.join('\n');
+  writeTomlFile(WRANGLER_TOML_PATH, content);
 }
 
 // Runs a wrangler `... info --json` lookup and reports whether the resource is genuinely still
@@ -119,14 +90,6 @@ function resourceExists(infoArgs, notFoundPattern) {
     if (notFoundPattern.test(stderr)) return false;
     throw error;
   }
-}
-
-// Reads a `key = "value"` line's value out of one wrangler.toml block — used to recover the
-// *actual* database_name/bucket_name a previous run of this script settled on, rather than
-// assuming it's still the hardcoded default (see createUniqueResource below).
-function extractTomlValue(blockText, key) {
-  const match = blockText.match(new RegExp(`\\b${key}\\s*=\\s*"([^"]*)"`));
-  return match?.[1] ?? null;
 }
 
 // A D1 database / R2 bucket name only has to be unique *within one Cloudflare account* — but
@@ -351,6 +314,60 @@ function addCorsOrigin(origin) {
   return true;
 }
 
+// Unlike `d1/r2 ... create`, `wrangler deploy` has no "already exists" failure mode — every fork
+// of this template ships the same default Worker names, and deploying to a name already taken by
+// an unrelated Worker in the same Cloudflare account (one account running more than one
+// deployment of this template — the scenario ensureD1()/ensureR2()'s own collision handling
+// exists for) just silently overwrites it. Confirmed as a real, reported incident: `pnpm run
+// update` replaced a different, unrelated deployment's live API Worker sharing the same account
+// and default name. Runs once, right before the very first deploy of a run — a genuine re-run of
+// setup for an already-established install (whose name was already vetted the first time) always
+// resolves as "ours" below and never has to ask again.
+async function ensureWorkerNamesAreOurs() {
+  const databaseId = extractTomlValue(findTopLevelBlock(readToml(), '[[d1_databases]]').text, 'database_id');
+  if (!databaseId) throw new Error('Expected database_id to already be set by ensureD1() before this step.');
+
+  const originalApiName = readWorkerName(WRANGLER_TOML_PATH);
+  let apiName = originalApiName;
+  for (;;) {
+    const status = checkWorkerOwnership({ workerName: apiName, cwd: API_DIR, expectedDatabaseId: databaseId });
+    if (status.status !== 'foreign') break;
+    console.log(
+      `\n⚠ A Worker named "${apiName}" already exists in this Cloudflare account, bound to a ` +
+        'different D1 database than this install — deploying would silently overwrite an ' +
+        'unrelated deployment (most likely another install of this same project sharing the ' +
+        'same account).',
+    );
+    const suggestion = apiName.endsWith('-api')
+      ? `${apiName.slice(0, -4)}-${randomBytes(2).toString('hex')}-api`
+      : `${apiName}-${randomBytes(2).toString('hex')}`;
+    apiName = await ask('Enter a different name for the API Worker', suggestion);
+  }
+  if (apiName !== originalApiName) {
+    writeWorkerName(WRANGLER_TOML_PATH, apiName);
+    console.log(`✓ API Worker will deploy as "${apiName}".`);
+  }
+  if (apiName === originalApiName) return;
+
+  // The default API name collided, so this account most likely already has another install of
+  // this same project using the paired default admin name too — rename it the same way, deriving
+  // from the now-confirmed-safe API name. The admin Worker has no bindings of its own to compare
+  // (it's assets-only — see its own wrangler.toml's comment), so there's nothing to verify
+  // ownership *by*; existence under the newly-derived name is the best available signal, and a
+  // second, unrelated collision on top of a freshly random-suffixed name is vanishingly unlikely.
+  // A sentinel no real binding could ever equal — checkWorkerOwnership's comparison always fails
+  // against it, so "exists" (any binding, or none at all) always reads as 'foreign' here, never
+  // a false 'ours'. What we actually want is a plain existence check; the admin Worker has no
+  // binding to compare "ours" against at all.
+  const impossibleId = `impossible-${randomBytes(16).toString('hex')}`;
+  let adminName = apiName.endsWith('-api') ? apiName.replace(/-api$/, '-admin') : `${apiName}-admin`;
+  while (checkWorkerOwnership({ workerName: adminName, cwd: ADMIN_DIR, expectedDatabaseId: impossibleId }).status !== 'new') {
+    adminName = `${adminName}-${randomBytes(2).toString('hex')}`;
+  }
+  writeWorkerName(ADMIN_WRANGLER_TOML_PATH, adminName);
+  console.log(`✓ Admin Worker will deploy as "${adminName}" (paired rename, same reason as above).`);
+}
+
 async function main() {
   console.log('Kenresoft CMS — guided setup\n');
 
@@ -370,6 +387,7 @@ async function main() {
 
   await ensureAuthSecret();
   await maybeSetUpEmail();
+  await ensureWorkerNamesAreOurs();
 
   const firstUrl = deployApi({ apiDir: API_DIR, wranglerTomlPath: WRANGLER_TOML_PATH });
   console.log(`\nFirst deploy done: ${firstUrl}`);

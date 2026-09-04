@@ -341,6 +341,18 @@ time `update` pulls new code, since its local history has no real ancestry to me
 — confirming it is safe to proceed reconciles that once, and every update after is a normal,
 low-friction merge.
 
+`update` refuses to run (rather than silently doing the wrong thing) in two situations: if
+`wrangler.toml` has no `database_id` at all — meaning `pnpm run setup` was never actually run
+for this install — run that first; and if the Worker it's about to redeploy is currently bound
+to a *different* D1 database than this install's own `wrangler.toml` expects, meaning it belongs
+to a different deployment (every fork of this template ships the same default Worker name, so
+one Cloudflare account running more than one deployment of it can collide) — `wrangler deploy`
+has no "already exists" safeguard the way provisioning D1/R2 does, so without this check a
+redeploy would silently overwrite the other deployment's live Worker. If you hit this, run
+`pnpm run setup` again instead: it detects the same collision interactively and picks a new,
+unique name for both Workers (pairing the admin Worker's rename to the API Worker's) rather than
+just refusing.
+
 ## Backups and recovery
 
 **D1 also has a free, automatic, zero-setup safety net independent of anything below**:

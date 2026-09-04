@@ -25,7 +25,8 @@ import { dirname, join } from 'node:path';
 
 import { pullLatestCode } from './lib/git-cli.mjs';
 import { runWranglerInherit } from './lib/wrangler-cli.mjs';
-import { buildAndDeployAdmin, deployApi } from './lib/deploy-helpers.mjs';
+import { buildAndDeployAdmin, checkWorkerOwnership, deployApi } from './lib/deploy-helpers.mjs';
+import { readDatabaseId, readWorkerName } from './lib/wrangler-toml.mjs';
 
 const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const API_DIR = join(REPO_ROOT, 'apps', 'api');
@@ -40,6 +41,46 @@ async function main() {
 
   console.log('\nInstalling dependencies...');
   execFileSync('pnpm', ['install'], { cwd: REPO_ROOT, stdio: 'inherit', shell: true });
+
+  // Both checks read wrangler.toml *after* the pull above — its own tracked template content
+  // could in principle have changed upstream (a merge conflict resolved the "wrong" way), and
+  // what matters here is the config about to actually be deployed, not a pre-pull snapshot of it.
+  //
+  // A never-set-up clone's wrangler.toml has no database_id (ensureD1() in setup.mjs is what
+  // writes it in) — reported by a real user who ran this before ever running `pnpm run setup`.
+  // Without this check, migrations-apply below would fail confusingly (no D1 database configured
+  // for the "DB" binding at all), or — worse, if it got past that — `wrangler deploy`'s own
+  // automatic provisioning would silently kick in and half-provision a deployment missing every
+  // other step setup.mjs is responsible for (BETTER_AUTH_SECRET never set, CORS never wired,
+  // admin origin never added), leaving a broken, confusing, and insecure deployment behind.
+  const databaseId = readDatabaseId(WRANGLER_TOML_PATH);
+  if (!databaseId) {
+    throw new Error(
+      'This install has not been set up yet (wrangler.toml has no database_id) — run `pnpm run ' +
+        'setup` first, then use `pnpm run update` for future updates.',
+    );
+  }
+
+  // The other real, reported incident this guards against: `wrangler deploy` has no "already
+  // exists" failure mode, so redeploying to a Worker name shared by a *different* deployment in
+  // this same Cloudflare account (every fork of this template ships the same default name)
+  // would silently overwrite it — this already happened for real. See checkWorkerOwnership's own
+  // comment (scripts/lib/deploy-helpers.mjs) for the full reasoning. Deliberately hard-refuses
+  // rather than prompting — unlike scripts/setup.mjs, this script is meant to run with zero
+  // prompts, and there's no safe automatic choice to make on the update path (only setup.mjs's
+  // interactive collision handling can pick a new name).
+  const apiWorkerName = readWorkerName(WRANGLER_TOML_PATH);
+  const ownership = checkWorkerOwnership({ workerName: apiWorkerName, cwd: API_DIR, expectedDatabaseId: databaseId });
+  if (ownership.status === 'foreign') {
+    throw new Error(
+      `Refusing to deploy: the Worker "${apiWorkerName}" in this Cloudflare account is currently ` +
+        `bound to a different D1 database (${ownership.liveDatabaseId}) than this install's own ` +
+        `wrangler.toml (${databaseId}) — it belongs to a different deployment, and redeploying ` +
+        'would silently overwrite it. If this install\'s Worker was genuinely renamed on ' +
+        'purpose, update wrangler.toml\'s top-level `name` field to match reality; otherwise ' +
+        'investigate before running this again.',
+    );
+  }
 
   console.log('\nApplying any new database migrations...');
   // "DB" (the binding, not the database's own name) — stays correct even for an install whose
