@@ -143,7 +143,13 @@ interface FormTemplate {
   name: string;
   slug: string;
   description: string;
-  fields: { name: string; label: string; fieldType: FormFieldType; required: boolean }[];
+  fields: {
+    name: string;
+    label: string;
+    fieldType: FormFieldType;
+    required: boolean;
+    config?: Record<string, unknown>;
+  }[];
 }
 
 const FORM_TEMPLATES: FormTemplate[] = [
@@ -162,6 +168,68 @@ const FORM_TEMPLATES: FormTemplate[] = [
     slug: 'newsletter',
     description: 'Just an email address — for a footer or landing-page opt-in.',
     fields: [{ name: 'email', label: 'Email', fieldType: 'email', required: true }],
+  },
+  {
+    name: 'Job Application',
+    slug: 'job-application',
+    description: 'Name, email, and a resume upload — for a careers page.',
+    fields: [
+      { name: 'name', label: 'Name', fieldType: 'text', required: true },
+      { name: 'email', label: 'Email', fieldType: 'email', required: true },
+      { name: 'resume', label: 'Resume', fieldType: 'file', required: true },
+    ],
+  },
+  {
+    name: 'Event RSVP',
+    slug: 'event-rsvp',
+    description: 'Name, email, attendance, and a guest count — for an event landing page.',
+    fields: [
+      { name: 'name', label: 'Name', fieldType: 'text', required: true },
+      { name: 'email', label: 'Email', fieldType: 'email', required: true },
+      {
+        name: 'attending',
+        label: 'Attending?',
+        fieldType: 'select',
+        required: true,
+        config: { options: ['Yes', 'No'] },
+      },
+      { name: 'guests', label: 'Number of guests', fieldType: 'number', required: false },
+    ],
+  },
+  {
+    name: 'Support Request',
+    slug: 'support-request',
+    description: 'Name, email, subject, priority, and a description — for a help/support page.',
+    fields: [
+      { name: 'name', label: 'Name', fieldType: 'text', required: true },
+      { name: 'email', label: 'Email', fieldType: 'email', required: true },
+      { name: 'subject', label: 'Subject', fieldType: 'text', required: true },
+      {
+        name: 'priority',
+        label: 'Priority',
+        fieldType: 'select',
+        required: true,
+        config: { options: ['Low', 'Medium', 'High', 'Urgent'] },
+      },
+      { name: 'description', label: 'Description', fieldType: 'textarea', required: true },
+    ],
+  },
+  {
+    name: 'Feedback / Survey',
+    slug: 'feedback',
+    description: 'An optional name/email, a rating, and open-ended comments.',
+    fields: [
+      { name: 'name', label: 'Name', fieldType: 'text', required: false },
+      { name: 'email', label: 'Email', fieldType: 'email', required: false },
+      {
+        name: 'rating',
+        label: 'Rating',
+        fieldType: 'select',
+        required: true,
+        config: { options: ['1', '2', '3', '4', '5'] },
+      },
+      { name: 'comments', label: 'Comments', fieldType: 'textarea', required: false },
+    ],
   },
 ];
 

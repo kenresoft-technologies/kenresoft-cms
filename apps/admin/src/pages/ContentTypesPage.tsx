@@ -1,14 +1,14 @@
 import { useState, type FormEvent } from 'react';
-import { ChevronRight, LayoutList } from 'lucide-react';
+import { ChevronRight, LayoutList, LayoutTemplate } from 'lucide-react';
 import { Link, useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import type { ColumnDef } from '@tanstack/react-table';
 
-import { ApiError } from '@/lib/api-client';
+import { apiClient, ApiError } from '@/lib/api-client';
 import { authClient } from '@/lib/auth-client';
 import { useContentTypes, useCreateContentType } from '@/lib/queries/content-types';
 import { useFieldDefinitions } from '@/lib/queries/field-definitions';
-import { roleAtLeast, type ContentType, type UserRole } from '@/lib/types';
+import { roleAtLeast, type ContentType, type FieldDefinition, type FieldType, type UserRole } from '@/lib/types';
 import { ContentTypeBadge } from '@/components/content-type-badge';
 import { DataTable } from '@/components/data-table';
 import { EmptyState } from '@/components/empty-state';
@@ -89,6 +89,133 @@ const columns: ColumnDef<ContentType>[] = [
     ),
   },
 ];
+
+interface ContentTypeTemplate {
+  name: string;
+  slug: string;
+  description: string;
+  fields: { name: string; label: string; fieldType: FieldType; required: boolean }[];
+}
+
+const CONTENT_TYPE_TEMPLATES: ContentTypeTemplate[] = [
+  {
+    name: 'Blog Post',
+    slug: 'blog-post',
+    description: 'Title, body, a featured image, and a publish date.',
+    fields: [
+      { name: 'title', label: 'Title', fieldType: 'text', required: true },
+      { name: 'body', label: 'Body', fieldType: 'rich_text', required: true },
+      { name: 'featured_image', label: 'Featured image', fieldType: 'media', required: false },
+      { name: 'published_date', label: 'Published date', fieldType: 'date', required: false },
+    ],
+  },
+  {
+    name: 'Page',
+    slug: 'page',
+    description: 'A title and a body — for static pages like About or Contact.',
+    fields: [
+      { name: 'title', label: 'Title', fieldType: 'text', required: true },
+      { name: 'body', label: 'Body', fieldType: 'rich_text', required: true },
+    ],
+  },
+  {
+    name: 'Service',
+    slug: 'service',
+    description: 'Title, description, an icon/image, and a starting price.',
+    fields: [
+      { name: 'title', label: 'Title', fieldType: 'text', required: true },
+      { name: 'description', label: 'Description', fieldType: 'textarea', required: true },
+      { name: 'icon', label: 'Icon / image', fieldType: 'media', required: false },
+      { name: 'price', label: 'Starting price', fieldType: 'text', required: false },
+    ],
+  },
+  {
+    name: 'Team Member',
+    slug: 'team-member',
+    description: 'Name, role, a short bio, and a photo.',
+    fields: [
+      { name: 'name', label: 'Name', fieldType: 'text', required: true },
+      { name: 'role', label: 'Role', fieldType: 'text', required: true },
+      { name: 'bio', label: 'Bio', fieldType: 'textarea', required: false },
+      { name: 'photo', label: 'Photo', fieldType: 'media', required: false },
+    ],
+  },
+  {
+    name: 'FAQ',
+    slug: 'faq',
+    description: 'A question and its answer.',
+    fields: [
+      { name: 'question', label: 'Question', fieldType: 'text', required: true },
+      { name: 'answer', label: 'Answer', fieldType: 'rich_text', required: true },
+    ],
+  },
+];
+
+function ContentTypeTemplatesDialog() {
+  const [open, setOpen] = useState(false);
+  const [creatingSlug, setCreatingSlug] = useState<string | null>(null);
+  const navigate = useNavigate();
+  const createContentType = useCreateContentType();
+
+  async function handleUseTemplate(template: ContentTypeTemplate) {
+    setCreatingSlug(template.slug);
+    try {
+      const contentType = await createContentType.mutateAsync({ name: template.name, slug: template.slug });
+      for (const field of template.fields) {
+        // Sequential, not Promise.all — same reasoning as FormsPage's own ExamplesDialog:
+        // sortOrder is assigned server-side from the current field count, so concurrent creates
+        // would race. apiClient directly, not useCreateFieldDefinition — that hook binds to one
+        // contentTypeId at render time, and this content type doesn't exist until just above.
+        await apiClient.post<FieldDefinition>(`/api/v1/admin/content-types/${contentType.id}/fields`, field);
+      }
+      toast.success(`${template.name} content type created`);
+      setOpen(false);
+      void navigate(`/content-types/${contentType.id}`);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : `Failed to create ${template.name}`);
+    } finally {
+      setCreatingSlug(null);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline">
+          <LayoutTemplate />
+          Examples
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Start from a template</DialogTitle>
+          <DialogDescription>
+            Creates a real content type with these fields already added — edit or delete anything after.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex flex-col gap-3">
+          {CONTENT_TYPE_TEMPLATES.map((template) => (
+            <div key={template.slug} className="flex items-center justify-between gap-4 rounded-lg border p-3">
+              <div>
+                <p className="text-sm font-medium">{template.name}</p>
+                <p className="text-xs text-muted-foreground">{template.description}</p>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={creatingSlug !== null}
+                onClick={() => void handleUseTemplate(template)}
+              >
+                {creatingSlug === template.slug ? 'Creating…' : 'Use template'}
+              </Button>
+            </div>
+          ))}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 function NewContentTypeDialog() {
   const [open, setOpen] = useState(false);
@@ -171,7 +298,14 @@ export function ContentTypesPage() {
       <PageHeader
         title="Content types"
         description="Reusable types such as Blog Post or Service."
-        actions={isAdmin ? <NewContentTypeDialog /> : undefined}
+        actions={
+          isAdmin ? (
+            <>
+              <ContentTypeTemplatesDialog />
+              <NewContentTypeDialog />
+            </>
+          ) : undefined
+        }
       />
 
       {error ? <p className="text-destructive">{error.message}</p> : null}

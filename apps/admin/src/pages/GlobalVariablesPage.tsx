@@ -1,5 +1,5 @@
 import { useMemo, useState, type FormEvent } from 'react';
-import { Pencil, Plus, Trash2, Variable } from 'lucide-react';
+import { LayoutTemplate, Pencil, Plus, Trash2, Variable } from 'lucide-react';
 import { toast } from 'sonner';
 import type { ColumnDef } from '@tanstack/react-table';
 
@@ -103,6 +103,71 @@ function NewVariableDialog() {
             </Button>
           </DialogFooter>
         </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+const SITE_INFO_TEMPLATE: { key: string; value: string }[] = [
+  { key: 'site_name', value: 'Acme Corp' },
+  { key: 'tagline', value: 'Building great things' },
+  { key: 'contact_email', value: 'hello@example.com' },
+  { key: 'contact_phone', value: '+1 (555) 010-1234' },
+  { key: 'social_twitter', value: 'https://twitter.com/example' },
+  { key: 'social_facebook', value: 'https://facebook.com/example' },
+  { key: 'social_instagram', value: 'https://instagram.com/example' },
+  { key: 'footer_copyright', value: `© ${new Date().getFullYear()} Acme Corp. All rights reserved.` },
+];
+
+function GlobalVariableTemplatesDialog() {
+  const [open, setOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const createVariable = useCreateGlobalVariable();
+
+  async function handleUseTemplate() {
+    setCreating(true);
+    try {
+      for (const variable of SITE_INFO_TEMPLATE) {
+        await createVariable.mutateAsync(variable);
+      }
+      toast.success('Site Info variables created');
+      setOpen(false);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Failed to create Site Info variables');
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline">
+          <LayoutTemplate />
+          Examples
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Start from a template</DialogTitle>
+          <DialogDescription>
+            Creates real variables with example values already filled in — edit or delete anything after.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
+            <div>
+              <p className="text-sm font-medium">Site Info</p>
+              <p className="text-xs text-muted-foreground">
+                Name, tagline, contact details, social links, and a copyright line — the basics
+                most sites expose to their frontend.
+              </p>
+            </div>
+            <Button type="button" size="sm" variant="outline" disabled={creating} onClick={() => void handleUseTemplate()}>
+              {creating ? 'Creating…' : 'Use template'}
+            </Button>
+          </div>
+        </div>
       </DialogContent>
     </Dialog>
   );
@@ -234,7 +299,14 @@ export function GlobalVariablesPage() {
       <PageHeader
         title="Global variables"
         description="Reusable key/value pairs, exposed read-only to the public API for frontends to consume."
-        actions={isAdmin ? <NewVariableDialog /> : undefined}
+        actions={
+          isAdmin ? (
+            <>
+              <GlobalVariableTemplatesDialog />
+              <NewVariableDialog />
+            </>
+          ) : undefined
+        }
       />
 
       {error ? <p className="text-destructive">{error.message}</p> : null}
