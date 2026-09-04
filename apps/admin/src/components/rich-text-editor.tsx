@@ -476,7 +476,12 @@ export function RichTextEditor({ value, onChange, placeholder }: RichTextEditorP
     <div
       data-testid="rich-text-editor"
       className={cn(
-        'flex flex-col rounded-lg border border-input focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 dark:bg-input/30',
+        'flex flex-col rounded-lg border border-input focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50',
+        // Only when not fullscreen — dark:bg-input/30 (a translucent tint meant for the normal
+        // bordered-input look) was previously applied unconditionally, competing with
+        // fullscreen's own bg-popover on the same element. Invisible in light mode (--input and
+        // --popover are both near-white there) but a real, visible clash in dark mode.
+        !fullscreen && 'dark:bg-input/30',
         // z-40, not z-50 — Radix dialogs/popovers (the Image button, Link popover) use z-50, so
         // they need to stack above this even while it's fullscreen, not tie with it.
         fullscreen && 'fixed inset-4 z-40 bg-popover shadow-xl',
