@@ -28,8 +28,8 @@ describe('users routes (real D1)', () => {
   });
 
   it('lists users for any authenticated user', async () => {
-    const ownerCookie = await authedCookie('users-owner@pathvera.test');
-    await authedCookie('users-editor@pathvera.test');
+    const ownerCookie = await authedCookie('users-owner@example.test');
+    await authedCookie('users-editor@example.test');
 
     const response = await SELF.fetch('https://example.com/api/v1/admin/users', {
       headers: { Cookie: ownerCookie },
@@ -37,12 +37,12 @@ describe('users routes (real D1)', () => {
     expect(response.status).toBe(200);
     const users = await response.json<{ email: string; role: string }[]>();
     expect(users).toHaveLength(2);
-    expect(users.map((u) => u.email).sort()).toEqual(['users-editor@pathvera.test', 'users-owner@pathvera.test']);
+    expect(users.map((u) => u.email).sort()).toEqual(['users-editor@example.test', 'users-owner@example.test']);
   });
 
   it('rejects role changes from an editor, allows them from an owner', async () => {
-    const ownerCookie = await authedCookie('role-owner@pathvera.test');
-    const editorCookie = await authedCookie('role-editor@pathvera.test');
+    const ownerCookie = await authedCookie('role-owner@example.test');
+    const editorCookie = await authedCookie('role-editor@example.test');
     const editorId = await userId(editorCookie);
 
     const editorAttempt = await SELF.fetch(`https://example.com/api/v1/admin/users/${editorId}/role`, {
@@ -62,7 +62,7 @@ describe('users routes (real D1)', () => {
   });
 
   it('404s when changing the role of a nonexistent user', async () => {
-    const ownerCookie = await authedCookie('role-missing-owner@pathvera.test');
+    const ownerCookie = await authedCookie('role-missing-owner@example.test');
 
     const response = await SELF.fetch('https://example.com/api/v1/admin/users/does-not-exist/role', {
       method: 'PATCH',
@@ -77,7 +77,7 @@ describe('users routes (real D1)', () => {
   // before the "would this leave zero guardians" check ever runs. Ownership only ever moves
   // through Transfer ownership (apps/api/src/routes/admin/security.ts), never this route.
   it('rejects changing the owner\'s own role — even by themselves', async () => {
-    const ownerCookie = await authedCookie('sole-owner@pathvera.test');
+    const ownerCookie = await authedCookie('sole-owner@example.test');
     const ownerId = await userId(ownerCookie);
 
     const response = await SELF.fetch(`https://example.com/api/v1/admin/users/${ownerId}/role`, {
@@ -95,8 +95,8 @@ describe('users routes (real D1)', () => {
   });
 
   it('allows demoting an owner when a second owner remains', async () => {
-    const firstOwnerCookie = await authedCookie('first-owner@pathvera.test');
-    const secondOwnerCookie = await authedCookie('second-owner@pathvera.test');
+    const firstOwnerCookie = await authedCookie('first-owner@example.test');
+    const secondOwnerCookie = await authedCookie('second-owner@example.test');
     const secondOwnerId = await userId(secondOwnerCookie);
 
     await SELF.fetch(`https://example.com/api/v1/admin/users/${secondOwnerId}/role`, {
@@ -120,48 +120,48 @@ describe('users routes (real D1)', () => {
   });
 
   it('creates a user with a temporary password (owner only), who can then sign in with it', async () => {
-    const ownerCookie = await authedCookie('create-owner@pathvera.test');
-    const editorCookie = await authedCookie('create-editor@pathvera.test');
+    const ownerCookie = await authedCookie('create-owner@example.test');
+    const editorCookie = await authedCookie('create-editor@example.test');
 
     const editorAttempt = await SELF.fetch('https://example.com/api/v1/admin/users', {
       method: 'POST',
       headers: { Cookie: editorCookie, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: 'Should Fail', email: 'should-fail@pathvera.test' }),
+      body: JSON.stringify({ name: 'Should Fail', email: 'should-fail@example.test' }),
     });
     expect(editorAttempt.status).toBe(403);
 
     const response = await SELF.fetch('https://example.com/api/v1/admin/users', {
       method: 'POST',
       headers: { Cookie: ownerCookie, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: 'New Editor', email: 'new-editor@pathvera.test' }),
+      body: JSON.stringify({ name: 'New Editor', email: 'new-editor@example.test' }),
     });
     expect(response.status).toBe(201);
     const body = await response.json<{ user: { email: string; role: string }; temporaryPassword: string }>();
-    expect(body.user).toMatchObject({ email: 'new-editor@pathvera.test', role: 'editor' });
+    expect(body.user).toMatchObject({ email: 'new-editor@example.test', role: 'editor' });
     expect(body.temporaryPassword.length).toBeGreaterThan(16);
 
     const signInRes = await SELF.fetch('https://example.com/api/v1/auth/sign-in/email', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: 'new-editor@pathvera.test', password: body.temporaryPassword }),
+      body: JSON.stringify({ email: 'new-editor@example.test', password: body.temporaryPassword }),
     });
     expect(signInRes.status).toBe(200);
   });
 
   it('rejects creating a user with an email that already exists', async () => {
-    const ownerCookie = await authedCookie('dupe-owner@pathvera.test');
+    const ownerCookie = await authedCookie('dupe-owner@example.test');
 
     const response = await SELF.fetch('https://example.com/api/v1/admin/users', {
       method: 'POST',
       headers: { Cookie: ownerCookie, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: 'Dupe', email: 'dupe-owner@pathvera.test' }),
+      body: JSON.stringify({ name: 'Dupe', email: 'dupe-owner@example.test' }),
     });
     expect(response.status).toBe(400);
   });
 
   it('deletes a user (owner only), rejects deleting yourself or the owner', async () => {
-    const ownerCookie = await authedCookie('delete-owner@pathvera.test');
-    const editorCookie = await authedCookie('delete-editor@pathvera.test');
+    const ownerCookie = await authedCookie('delete-owner@example.test');
+    const editorCookie = await authedCookie('delete-editor@example.test');
     const editorId = await userId(editorCookie);
     const ownerId = await userId(ownerCookie);
 
@@ -190,11 +190,11 @@ describe('users routes (real D1)', () => {
       headers: { Cookie: ownerCookie },
     });
     const users = await listRes.json<{ email: string }[]>();
-    expect(users.map((u) => u.email)).toEqual(['delete-owner@pathvera.test']);
+    expect(users.map((u) => u.email)).toEqual(['delete-owner@example.test']);
   });
 
   it('404s deleting a nonexistent user', async () => {
-    const ownerCookie = await authedCookie('delete-missing-owner@pathvera.test');
+    const ownerCookie = await authedCookie('delete-missing-owner@example.test');
 
     const response = await SELF.fetch('https://example.com/api/v1/admin/users/does-not-exist', {
       method: 'DELETE',

@@ -15,7 +15,7 @@ async function authedCookie(email: string): Promise<string> {
 let cookieCounter = 0;
 async function freshCookie(): Promise<string> {
   cookieCounter += 1;
-  return authedCookie(`webhooks-routes-${cookieCounter}@pathvera.test`);
+  return authedCookie(`webhooks-routes-${cookieCounter}@example.test`);
 }
 
 async function makeEditor(): Promise<string> {

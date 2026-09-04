@@ -53,8 +53,8 @@ describe('forms routes (real D1)', () => {
   });
 
   it('rejects admin form creation from an editor, allows it from an owner', async () => {
-    const ownerCookie = await authedCookie('forms-owner@pathvera.test');
-    const editorCookie = await authedCookie('forms-editor@pathvera.test');
+    const ownerCookie = await authedCookie('forms-owner@example.test');
+    const editorCookie = await authedCookie('forms-editor@example.test');
 
     const editorRes = await SELF.fetch('https://example.com/api/v1/admin/forms', {
       method: 'POST',
@@ -72,7 +72,7 @@ describe('forms routes (real D1)', () => {
   });
 
   it('walks the admin flow: create form -> add fields -> list fields', async () => {
-    const cookie = await authedCookie('forms-admin@pathvera.test');
+    const cookie = await authedCookie('forms-admin@example.test');
     const form = await createContactForm(cookie);
 
     const fieldsRes = await SELF.fetch(`https://example.com/api/v1/admin/forms/${form.id}/fields`, {
@@ -84,7 +84,7 @@ describe('forms routes (real D1)', () => {
   });
 
   it('accepts a valid public submission, sanitizes HTML, and stores it', async () => {
-    const cookie = await authedCookie('forms-submit-admin@pathvera.test');
+    const cookie = await authedCookie('forms-submit-admin@example.test');
     const form = await createContactForm(cookie);
 
     const response = await SELF.fetch('https://example.com/api/v1/public/forms/contact/submissions', {
@@ -127,7 +127,7 @@ describe('forms routes (real D1)', () => {
   });
 
   it('rejects a submission missing a required field', async () => {
-    const cookie = await authedCookie('forms-missing-admin@pathvera.test');
+    const cookie = await authedCookie('forms-missing-admin@example.test');
     await createContactForm(cookie);
 
     const response = await SELF.fetch('https://example.com/api/v1/public/forms/contact/submissions', {
@@ -141,7 +141,7 @@ describe('forms routes (real D1)', () => {
   });
 
   it('rejects a submission with an invalid email format', async () => {
-    const cookie = await authedCookie('forms-bademail-admin@pathvera.test');
+    const cookie = await authedCookie('forms-bademail-admin@example.test');
     await createContactForm(cookie);
 
     const response = await SELF.fetch('https://example.com/api/v1/public/forms/contact/submissions', {
@@ -153,7 +153,7 @@ describe('forms routes (real D1)', () => {
   });
 
   it('drops unknown fields from the submission rather than storing them', async () => {
-    const cookie = await authedCookie('forms-extra-admin@pathvera.test');
+    const cookie = await authedCookie('forms-extra-admin@example.test');
     await createContactForm(cookie);
 
     const response = await SELF.fetch('https://example.com/api/v1/public/forms/contact/submissions', {
@@ -167,7 +167,7 @@ describe('forms routes (real D1)', () => {
   });
 
   it('updates a submission\'s status', async () => {
-    const cookie = await authedCookie('forms-status-admin@pathvera.test');
+    const cookie = await authedCookie('forms-status-admin@example.test');
     const form = await createContactForm(cookie);
 
     await SELF.fetch('https://example.com/api/v1/public/forms/contact/submissions', {
@@ -195,7 +195,7 @@ describe('forms routes (real D1)', () => {
   });
 
   it('404s updating a submission that does not belong to the given form', async () => {
-    const cookie = await authedCookie('forms-status-mismatch-admin@pathvera.test');
+    const cookie = await authedCookie('forms-status-mismatch-admin@example.test');
     const formA = await createContactForm(cookie);
     const formB = await (
       await SELF.fetch('https://example.com/api/v1/admin/forms', {
@@ -228,7 +228,7 @@ describe('forms routes (real D1)', () => {
   });
 
   it('lists every submission across every form, joined with its form name/slug', async () => {
-    const cookie = await authedCookie('forms-all-submissions-admin@pathvera.test');
+    const cookie = await authedCookie('forms-all-submissions-admin@example.test');
     const contact = await createContactForm(cookie);
     const newsletter = await (
       await SELF.fetch('https://example.com/api/v1/admin/forms', {
@@ -265,7 +265,7 @@ describe('forms routes (real D1)', () => {
   });
 
   it('rate limits repeat submissions from the same client', async () => {
-    const cookie = await authedCookie('forms-ratelimit-admin@pathvera.test');
+    const cookie = await authedCookie('forms-ratelimit-admin@example.test');
     await createContactForm(cookie);
 
     const submit = () =>
@@ -285,7 +285,7 @@ describe('forms routes (real D1)', () => {
   });
 
   it('updates and deletes a field definition, and renames a form', async () => {
-    const cookie = await authedCookie('forms-field-edit@pathvera.test');
+    const cookie = await authedCookie('forms-field-edit@example.test');
     const headers = { Cookie: cookie, 'Content-Type': 'application/json' };
     const form = await createContactForm(cookie);
 
@@ -326,8 +326,8 @@ describe('forms routes (real D1)', () => {
   });
 
   it('rejects renaming a form from an editor', async () => {
-    const ownerCookie = await authedCookie('forms-rename-owner@pathvera.test');
-    const editorCookie = await authedCookie('forms-rename-editor@pathvera.test');
+    const ownerCookie = await authedCookie('forms-rename-owner@example.test');
+    const editorCookie = await authedCookie('forms-rename-editor@example.test');
     const form = await createContactForm(ownerCookie);
 
     const response = await SELF.fetch(`https://example.com/api/v1/admin/forms/${form.id}`, {
@@ -364,7 +364,7 @@ describe('forms routes (real D1)', () => {
     }
 
     it('accepts a real PDF resume via multipart/form-data and serves it back through the admin download route', async () => {
-      const cookie = await authedCookie('job-app-admin@pathvera.test');
+      const cookie = await authedCookie('job-app-admin@example.test');
       const form = await createJobApplicationForm(cookie);
 
       const pdfBytes = new TextEncoder().encode('%PDF-1.4\n%fake but signature-valid PDF body');
@@ -396,7 +396,7 @@ describe('forms routes (real D1)', () => {
     });
 
     it('rejects a file whose actual bytes are not a recognized format, regardless of its declared type', async () => {
-      const cookie = await authedCookie('job-app-badfile-admin@pathvera.test');
+      const cookie = await authedCookie('job-app-badfile-admin@example.test');
       await createJobApplicationForm(cookie);
 
       const body = new FormData();
@@ -417,7 +417,7 @@ describe('forms routes (real D1)', () => {
     });
 
     it('rejects a submission missing the required file field', async () => {
-      const cookie = await authedCookie('job-app-missing-admin@pathvera.test');
+      const cookie = await authedCookie('job-app-missing-admin@example.test');
       await createJobApplicationForm(cookie);
 
       const body = new FormData();
@@ -432,7 +432,7 @@ describe('forms routes (real D1)', () => {
     });
 
     it('404s downloading an attachment from a field with no file attached', async () => {
-      const cookie = await authedCookie('job-app-nofile-admin@pathvera.test');
+      const cookie = await authedCookie('job-app-nofile-admin@example.test');
       const form = await createJobApplicationForm(cookie);
 
       const body = new FormData();

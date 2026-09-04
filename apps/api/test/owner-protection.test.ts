@@ -46,8 +46,8 @@ describe('owner protection (real D1)', () => {
   });
 
   it('an admin cannot demote the owner', async () => {
-    const ownerCookie = await authedCookie('op-owner-1@pathvera.test');
-    const adminCookie = await authedCookie('op-admin-1@pathvera.test');
+    const ownerCookie = await authedCookie('op-owner-1@example.test');
+    const adminCookie = await authedCookie('op-admin-1@example.test');
     const ownerId = await userId(ownerCookie);
     const adminId = await userId(adminCookie);
     await setRole(ownerCookie, adminId, 'admin');
@@ -62,8 +62,8 @@ describe('owner protection (real D1)', () => {
   });
 
   it('an admin cannot delete the owner', async () => {
-    const ownerCookie = await authedCookie('op-owner-2@pathvera.test');
-    const adminCookie = await authedCookie('op-admin-2@pathvera.test');
+    const ownerCookie = await authedCookie('op-owner-2@example.test');
+    const adminCookie = await authedCookie('op-admin-2@example.test');
     const ownerId = await userId(ownerCookie);
     const adminId = await userId(adminCookie);
     await setRole(ownerCookie, adminId, 'admin');
@@ -76,8 +76,8 @@ describe('owner protection (real D1)', () => {
   });
 
   it('an admin cannot disable the owner, even with a fresh elevation', async () => {
-    const ownerCookie = await authedCookie('op-owner-3@pathvera.test');
-    const adminCookie = await authedCookie('op-admin-3@pathvera.test');
+    const ownerCookie = await authedCookie('op-owner-3@example.test');
+    const adminCookie = await authedCookie('op-admin-3@example.test');
     const ownerId = await userId(ownerCookie);
     const adminId = await userId(adminCookie);
     await setRole(ownerCookie, adminId, 'admin');
@@ -92,11 +92,11 @@ describe('owner protection (real D1)', () => {
   });
 
   it('owner can create an admin, and can later remove them', async () => {
-    const ownerCookie = await authedCookie('op-owner-4@pathvera.test');
+    const ownerCookie = await authedCookie('op-owner-4@example.test');
     const created = await SELF.fetch('https://example.com/api/v1/admin/users', {
       method: 'POST',
       headers: { Cookie: ownerCookie, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: 'New Admin', email: 'op-new-admin-4@pathvera.test' }),
+      body: JSON.stringify({ name: 'New Admin', email: 'op-new-admin-4@example.test' }),
     });
     expect(created.status).toBe(201);
     const { user } = await created.json<{ user: { id: string } }>();
@@ -110,9 +110,9 @@ describe('owner protection (real D1)', () => {
   });
 
   it('disabling an admin requires a fresh elevation, not just an admin session', async () => {
-    const ownerCookie = await authedCookie('op-owner-5@pathvera.test');
-    const targetCookie = await authedCookie('op-target-5@pathvera.test');
-    const actorCookie = await authedCookie('op-actor-5@pathvera.test');
+    const ownerCookie = await authedCookie('op-owner-5@example.test');
+    const targetCookie = await authedCookie('op-target-5@example.test');
+    const actorCookie = await authedCookie('op-actor-5@example.test');
     const targetId = await userId(targetCookie);
     await setRole(ownerCookie, targetId, 'admin');
     await setRole(ownerCookie, await userId(actorCookie), 'admin');
@@ -135,8 +135,8 @@ describe('owner protection (real D1)', () => {
   });
 
   it('disabling a non-admin (editor/author/viewer) needs no elevation', async () => {
-    const ownerCookie = await authedCookie('op-owner-6@pathvera.test');
-    const editorCookie = await authedCookie('op-editor-6@pathvera.test');
+    const ownerCookie = await authedCookie('op-owner-6@example.test');
+    const editorCookie = await authedCookie('op-editor-6@example.test');
     const editorId = await userId(editorCookie);
 
     const response = await SELF.fetch(`https://example.com/api/v1/admin/users/${editorId}/disabled`, {
@@ -161,8 +161,8 @@ describe('owner protection (real D1)', () => {
   // defense-in-depth scenario directly by removing the owner row at the DB layer, the way an
   // operator running raw SQL by hand might. checkGuardianRemains should still catch it.
   it('refuses to leave the deployment with no owner or admin, even in a contrived zero-owner state', async () => {
-    const ownerCookie = await authedCookie('op-owner-8@pathvera.test');
-    const adminCookie = await authedCookie('op-admin-8@pathvera.test');
+    const ownerCookie = await authedCookie('op-owner-8@example.test');
+    const adminCookie = await authedCookie('op-admin-8@example.test');
     const ownerId = await userId(ownerCookie);
     const adminId = await userId(adminCookie);
     await setRole(ownerCookie, adminId, 'admin');

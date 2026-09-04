@@ -42,7 +42,7 @@ describe('media routes (real D1 + R2)', () => {
   });
 
   it('uploads, lists, serves, and deletes a PNG', async () => {
-    const cookie = await authedCookie('media-1@pathvera.test');
+    const cookie = await authedCookie('media-1@example.test');
 
     const form = new FormData();
     form.set('file', new File([pngBytes(256, 128)], 'photo.png', { type: 'image/png' }));
@@ -94,7 +94,7 @@ describe('media routes (real D1 + R2)', () => {
   });
 
   it('rejects a file whose bytes do not match any supported image signature', async () => {
-    const cookie = await authedCookie('media-2@pathvera.test');
+    const cookie = await authedCookie('media-2@example.test');
 
     const form = new FormData();
     form.set(
@@ -111,7 +111,7 @@ describe('media routes (real D1 + R2)', () => {
   });
 
   it('404s deleting a non-existent media item', async () => {
-    const cookie = await authedCookie('media-3@pathvera.test');
+    const cookie = await authedCookie('media-3@example.test');
 
     const response = await SELF.fetch('https://example.com/api/v1/admin/media/does-not-exist', {
       method: 'DELETE',

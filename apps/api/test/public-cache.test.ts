@@ -60,7 +60,7 @@ describe('public content API caching (real D1)', () => {
   });
 
   it('invalidates the cache when an admin edit goes through the API', async () => {
-    const cookie = await authedCookie('cache-invalidate@pathvera.test');
+    const cookie = await authedCookie('cache-invalidate@example.test');
     const headers = { Cookie: cookie, 'Content-Type': 'application/json' };
 
     const contentType = await (

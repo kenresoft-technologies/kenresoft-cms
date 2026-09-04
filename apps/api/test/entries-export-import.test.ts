@@ -15,7 +15,7 @@ async function authedCookie(email: string): Promise<string> {
 let cookieCounter = 0;
 async function freshCookie(): Promise<string> {
   cookieCounter += 1;
-  return authedCookie(`export-import-${cookieCounter}@pathvera.test`);
+  return authedCookie(`export-import-${cookieCounter}@example.test`);
 }
 
 describe('entry export/import (real D1)', () => {

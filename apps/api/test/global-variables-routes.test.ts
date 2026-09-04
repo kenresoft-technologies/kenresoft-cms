@@ -21,8 +21,8 @@ describe('global variables routes (real D1)', () => {
   });
 
   it('walks the admin flow: create -> edit -> delete, rejects creation/deletion from an editor', async () => {
-    const ownerCookie = await authedCookie('gv-owner@pathvera.test');
-    const editorCookie = await authedCookie('gv-editor@pathvera.test');
+    const ownerCookie = await authedCookie('gv-owner@example.test');
+    const editorCookie = await authedCookie('gv-editor@example.test');
     const ownerHeaders = { Cookie: ownerCookie, 'Content-Type': 'application/json' };
 
     const editorCreateAttempt = await SELF.fetch('https://example.com/api/v1/admin/global-variables', {
@@ -76,7 +76,7 @@ describe('global variables routes (real D1)', () => {
   });
 
   it('rejects an invalid key format', async () => {
-    const ownerCookie = await authedCookie('gv-invalid-owner@pathvera.test');
+    const ownerCookie = await authedCookie('gv-invalid-owner@example.test');
 
     const response = await SELF.fetch('https://example.com/api/v1/admin/global-variables', {
       method: 'POST',
@@ -87,7 +87,7 @@ describe('global variables routes (real D1)', () => {
   });
 
   it('serves every variable as a flat key/value map on the public, unauthenticated route', async () => {
-    const ownerCookie = await authedCookie('gv-public-owner@pathvera.test');
+    const ownerCookie = await authedCookie('gv-public-owner@example.test');
     const headers = { Cookie: ownerCookie, 'Content-Type': 'application/json' };
 
     await SELF.fetch('https://example.com/api/v1/admin/global-variables', {

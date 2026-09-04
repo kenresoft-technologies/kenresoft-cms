@@ -43,7 +43,7 @@ describe('ContentTypesPage', () => {
     postMock.mockReset();
     useSessionMock.mockReset();
     useSessionMock.mockReturnValue({
-      data: { user: { email: 'admin@pathvera.test', role: 'admin' } },
+      data: { user: { email: 'admin@example.test', role: 'admin' } },
       isPending: false,
     });
   });
@@ -83,7 +83,7 @@ describe('ContentTypesPage', () => {
 
   it('hides the New content type action for an editor, since only admins can create them', async () => {
     useSessionMock.mockReturnValue({
-      data: { user: { email: 'editor@pathvera.test', role: 'editor' } },
+      data: { user: { email: 'editor@example.test', role: 'editor' } },
       isPending: false,
     });
     getMock.mockResolvedValue([]);

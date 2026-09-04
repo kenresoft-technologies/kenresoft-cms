@@ -55,10 +55,10 @@ describe('password reset (real D1)', () => {
   });
 
   it('responds identically whether or not the email matches an account', async () => {
-    await signUp('pw-reset-exists@pathvera.test');
+    await signUp('pw-reset-exists@example.test');
 
-    const existing = await requestReset('pw-reset-exists@pathvera.test');
-    const missing = await requestReset('pw-reset-does-not-exist@pathvera.test');
+    const existing = await requestReset('pw-reset-exists@example.test');
+    const missing = await requestReset('pw-reset-does-not-exist@example.test');
 
     expect(existing.status).toBe(200);
     expect(missing.status).toBe(200);
@@ -66,11 +66,11 @@ describe('password reset (real D1)', () => {
   });
 
   it('resets the password and signs out every existing session', async () => {
-    const cookie = await signUp('pw-reset-flow@pathvera.test');
+    const cookie = await signUp('pw-reset-flow@example.test');
     const sessionsBefore = await env.DB.prepare('SELECT count(*) as n FROM session').first<{ n: number }>();
     expect(sessionsBefore?.n).toBeGreaterThan(0);
 
-    const userRow = await env.DB.prepare("SELECT id FROM user WHERE email = 'pw-reset-flow@pathvera.test'").first<{
+    const userRow = await env.DB.prepare("SELECT id FROM user WHERE email = 'pw-reset-flow@example.test'").first<{
       id: string;
     }>();
     const token = await createPasswordResetToken(db, userRow!.id);
@@ -95,7 +95,7 @@ describe('password reset (real D1)', () => {
     expect(await verifyPassword({ hash: credentialAccount!.password!, password: PASSWORD })).toBe(false);
     expect(await verifyPassword({ hash: credentialAccount!.password!, password: NEW_PASSWORD })).toBe(true);
 
-    const newPasswordSignIn = await signIn('pw-reset-flow@pathvera.test', NEW_PASSWORD);
+    const newPasswordSignIn = await signIn('pw-reset-flow@example.test', NEW_PASSWORD);
     expect(newPasswordSignIn.status).toBe(200);
   });
 
@@ -108,9 +108,9 @@ describe('password reset (real D1)', () => {
     await SELF.fetch('https://example.com/api/v1/auth/sign-up/email', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: 'pw-reset-once@pathvera.test', password: PASSWORD, name: 'Test User' }),
+      body: JSON.stringify({ email: 'pw-reset-once@example.test', password: PASSWORD, name: 'Test User' }),
     });
-    const userRow = await env.DB.prepare("SELECT id FROM user WHERE email = 'pw-reset-once@pathvera.test'").first<{
+    const userRow = await env.DB.prepare("SELECT id FROM user WHERE email = 'pw-reset-once@example.test'").first<{
       id: string;
     }>();
     const token = await createPasswordResetToken(db, userRow!.id);
@@ -126,9 +126,9 @@ describe('password reset (real D1)', () => {
     await SELF.fetch('https://example.com/api/v1/auth/sign-up/email', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: 'pw-reset-expired@pathvera.test', password: PASSWORD, name: 'Test User' }),
+      body: JSON.stringify({ email: 'pw-reset-expired@example.test', password: PASSWORD, name: 'Test User' }),
     });
-    const userRow = await env.DB.prepare("SELECT id FROM user WHERE email = 'pw-reset-expired@pathvera.test'").first<{
+    const userRow = await env.DB.prepare("SELECT id FROM user WHERE email = 'pw-reset-expired@example.test'").first<{
       id: string;
     }>();
     const token = await createPasswordResetToken(db, userRow!.id);
@@ -145,9 +145,9 @@ describe('password reset (real D1)', () => {
     await SELF.fetch('https://example.com/api/v1/auth/sign-up/email', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: 'pw-reset-replace@pathvera.test', password: PASSWORD, name: 'Test User' }),
+      body: JSON.stringify({ email: 'pw-reset-replace@example.test', password: PASSWORD, name: 'Test User' }),
     });
-    const userRow = await env.DB.prepare("SELECT id FROM user WHERE email = 'pw-reset-replace@pathvera.test'").first<{
+    const userRow = await env.DB.prepare("SELECT id FROM user WHERE email = 'pw-reset-replace@example.test'").first<{
       id: string;
     }>();
 

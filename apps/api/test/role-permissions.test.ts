@@ -40,9 +40,9 @@ describe('role permissions (real D1)', () => {
   });
 
   it('an author can only edit/delete entries they created, not another author\'s', async () => {
-    const adminCookie = await authedCookie('perm-admin@pathvera.test');
-    const authorACookie = await authedCookie('perm-author-a@pathvera.test');
-    const authorBCookie = await authedCookie('perm-author-b@pathvera.test');
+    const adminCookie = await authedCookie('perm-admin@example.test');
+    const authorACookie = await authedCookie('perm-author-a@example.test');
+    const authorBCookie = await authedCookie('perm-author-b@example.test');
     await setRole(adminCookie, await userId(authorACookie), 'author');
     await setRole(adminCookie, await userId(authorBCookie), 'author');
 
@@ -92,8 +92,8 @@ describe('role permissions (real D1)', () => {
   });
 
   it('a viewer can read but never write, across admin routes', async () => {
-    const adminCookie = await authedCookie('perm-viewer-admin@pathvera.test');
-    const viewerCookie = await authedCookie('perm-viewer@pathvera.test');
+    const adminCookie = await authedCookie('perm-viewer-admin@example.test');
+    const viewerCookie = await authedCookie('perm-viewer@example.test');
     await setRole(adminCookie, await userId(viewerCookie), 'viewer');
 
     const readRes = await SELF.fetch('https://example.com/api/v1/admin/content-types', {
@@ -111,14 +111,14 @@ describe('role permissions (real D1)', () => {
     const roleWriteRes = await SELF.fetch('https://example.com/api/v1/admin/users', {
       method: 'POST',
       headers: { Cookie: viewerCookie, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: 'Nope', email: 'nope@pathvera.test' }),
+      body: JSON.stringify({ name: 'Nope', email: 'nope@example.test' }),
     });
     expect(roleWriteRes.status).toBe(403);
   });
 
   it('an editor can add content-type fields but not create the content type itself', async () => {
-    const adminCookie = await authedCookie('perm-field-admin@pathvera.test');
-    const editorCookie = await authedCookie('perm-field-editor@pathvera.test');
+    const adminCookie = await authedCookie('perm-field-admin@example.test');
+    const editorCookie = await authedCookie('perm-field-editor@example.test');
 
     const contentType = await (
       await SELF.fetch('https://example.com/api/v1/admin/content-types', {
@@ -147,8 +147,8 @@ describe('role permissions (real D1)', () => {
   });
 
   it('an admin can list and revoke another user\'s sessions', async () => {
-    const adminCookie = await authedCookie('perm-session-admin@pathvera.test');
-    const editorCookie = await authedCookie('perm-session-editor@pathvera.test');
+    const adminCookie = await authedCookie('perm-session-admin@example.test');
+    const editorCookie = await authedCookie('perm-session-editor@example.test');
     const editorId = await userId(editorCookie);
 
     const editorAttempt = await SELF.fetch(`https://example.com/api/v1/admin/users/${editorId}/sessions`, {

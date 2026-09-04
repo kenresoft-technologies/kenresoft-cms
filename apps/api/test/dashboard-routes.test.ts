@@ -32,7 +32,7 @@ describe('dashboard stats route (real D1)', () => {
   });
 
   it('aggregates counts and recent activity across content types, entries, and media', async () => {
-    const cookie = await authedCookie('dashboard-stats@pathvera.test');
+    const cookie = await authedCookie('dashboard-stats@example.test');
 
     const blogPost = await createContentType(db, { name: 'Blog Post', slug: 'blog-post', description: null });
     const service = await createContentType(db, { name: 'Service', slug: 'service', description: null });
@@ -82,7 +82,7 @@ describe('dashboard stats route (real D1)', () => {
   });
 
   it('returns zeroed stats when nothing exists yet', async () => {
-    const cookie = await authedCookie('dashboard-empty@pathvera.test');
+    const cookie = await authedCookie('dashboard-empty@example.test');
 
     const response = await SELF.fetch('https://example.com/api/v1/admin/dashboard', {
       headers: { Cookie: cookie },

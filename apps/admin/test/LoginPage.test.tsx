@@ -53,7 +53,7 @@ describe('LoginPage', () => {
     getSessionMock.mockReset();
     verifyTotpMock.mockReset();
     verifyBackupCodeMock.mockReset();
-    getSessionMock.mockResolvedValue({ data: { user: { email: 'user@pathvera.test' } } });
+    getSessionMock.mockResolvedValue({ data: { user: { email: 'user@example.test' } } });
   });
 
   it('redirects to / when a session already exists', () => {
@@ -81,12 +81,12 @@ describe('LoginPage', () => {
 
     renderLoginPage();
 
-    await userEvent.type(screen.getByLabelText('Email'), 'user@pathvera.test');
+    await userEvent.type(screen.getByLabelText('Email'), 'user@example.test');
     await userEvent.type(screen.getByLabelText('Password'), 'wrong-password');
     await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
 
     expect(signInEmailMock).toHaveBeenCalledWith({
-      email: 'user@pathvera.test',
+      email: 'user@example.test',
       password: 'wrong-password',
     });
     await waitFor(() => expect(screen.getByText('Invalid credentials')).toBeInTheDocument());
@@ -101,7 +101,7 @@ describe('LoginPage', () => {
 
     renderLoginPage();
 
-    await userEvent.type(screen.getByLabelText('Email'), 'user@pathvera.test');
+    await userEvent.type(screen.getByLabelText('Email'), 'user@example.test');
     await userEvent.type(screen.getByLabelText('Password'), 'whatever');
     await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
 
@@ -123,7 +123,7 @@ describe('LoginPage', () => {
 
     renderLoginPage();
 
-    await userEvent.type(screen.getByLabelText('Email'), 'user@pathvera.test');
+    await userEvent.type(screen.getByLabelText('Email'), 'user@example.test');
     await userEvent.type(screen.getByLabelText('Password'), 'correct horse battery staple');
     await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
 
@@ -143,12 +143,12 @@ describe('LoginPage', () => {
     expect(screen.getByText('Create your account')).toBeInTheDocument();
 
     await userEvent.type(screen.getByLabelText('Name'), 'Ada Lovelace');
-    await userEvent.type(screen.getByLabelText('Email'), 'ada@pathvera.test');
+    await userEvent.type(screen.getByLabelText('Email'), 'ada@example.test');
     await userEvent.type(screen.getByLabelText('Password'), 'correct horse battery staple');
     await userEvent.click(screen.getByRole('button', { name: 'Create account' }));
 
     expect(signUpEmailMock).toHaveBeenCalledWith({
-      email: 'ada@pathvera.test',
+      email: 'ada@example.test',
       password: 'correct horse battery staple',
       name: 'Ada Lovelace',
     });
@@ -161,7 +161,7 @@ describe('LoginPage', () => {
 
     renderLoginPage();
 
-    await userEvent.type(screen.getByLabelText('Email'), 'user@pathvera.test');
+    await userEvent.type(screen.getByLabelText('Email'), 'user@example.test');
     await userEvent.type(screen.getByLabelText('Password'), 'correct horse battery staple');
     await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
 
@@ -184,7 +184,7 @@ describe('LoginPage', () => {
 
     renderLoginPage();
 
-    await userEvent.type(screen.getByLabelText('Email'), 'user@pathvera.test');
+    await userEvent.type(screen.getByLabelText('Email'), 'user@example.test');
     await userEvent.type(screen.getByLabelText('Password'), 'correct horse battery staple');
     await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
 

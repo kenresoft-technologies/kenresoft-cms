@@ -1,6 +1,6 @@
 // Edge caching for the public content API (§12): the Cloudflare Cache API only — Workers KV
 // as a secondary read-through layer is documented (§12) but not implemented yet (cross-colo
-// consistency isn't a concern at Pathvera's current single-region traffic, so the simpler
+// consistency isn't a concern at a typical single-region deployment's traffic, so the simpler
 // single-layer cache is the right V1 scope; see CLAUDE.md).
 const PUBLIC_CACHE_TTL_SECONDS = 300;
 

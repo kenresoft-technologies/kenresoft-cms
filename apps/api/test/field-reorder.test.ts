@@ -22,7 +22,7 @@ describe('field reordering (real D1)', () => {
   });
 
   it('reorders fields to match the given fieldIds order', async () => {
-    const cookie = await authedCookie('reorder@pathvera.test');
+    const cookie = await authedCookie('reorder@example.test');
     const headers = { Cookie: cookie, 'Content-Type': 'application/json' };
 
     const contentType = await (
@@ -77,7 +77,7 @@ describe('field reordering (real D1)', () => {
   });
 
   it('rejects a reorder whose fieldIds do not exactly match the existing fields', async () => {
-    const cookie = await authedCookie('reorder-mismatch@pathvera.test');
+    const cookie = await authedCookie('reorder-mismatch@example.test');
     const headers = { Cookie: cookie, 'Content-Type': 'application/json' };
 
     const contentType = await (
@@ -106,7 +106,7 @@ describe('field reordering (real D1)', () => {
   });
 
   it('404s reordering fields for a non-existent content type', async () => {
-    const cookie = await authedCookie('reorder-404@pathvera.test');
+    const cookie = await authedCookie('reorder-404@example.test');
 
     const response = await SELF.fetch(
       'https://example.com/api/v1/admin/content-types/does-not-exist/fields/reorder',

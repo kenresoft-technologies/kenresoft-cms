@@ -47,7 +47,7 @@ const allEntries = [
     contentTypeName: 'Blog Post',
     contentTypeSlug: 'blog-post',
     authorName: 'Jane Doe',
-    authorEmail: 'jane@pathvera.test',
+    authorEmail: 'jane@example.test',
   },
   {
     id: 'e-2',

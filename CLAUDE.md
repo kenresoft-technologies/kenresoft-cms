@@ -15,11 +15,11 @@ once a deploy pipeline exists.
 ## Project Overview
 
 **Kenresoft CMS** is a reusable, Cloudflare-native, API-first content management platform.
-First production implementation: the Pathvera Group website. It is not a Pathvera-specific
-dashboard, but it is also not a multi-tenant hosted service — it's **single-site-per-deployment**
-(see `docs/ARCHITECTURE.md` §11): every deployment (its own Cloudflare account, D1, R2,
-Worker) backs exactly one website. Additional clients get their own deployment of the same
-open-source codebase, not a new tenant inside Pathvera's.
+First production implementation: a real corporate website. It is not a dashboard for any one
+specific customer, and it is also not a multi-tenant hosted service — it's
+**single-site-per-deployment** (see `docs/ARCHITECTURE.md` §11): every deployment (its own
+Cloudflare account, D1, R2, Worker) backs exactly one website. Additional clients get their own
+deployment of the same open-source codebase, not a new tenant inside another customer's.
 
 **Full architecture and technical specification: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)**
 — this is the source of truth for design decisions, domain model, API contract, security
@@ -133,7 +133,7 @@ Per the roadmap in `docs/ARCHITECTURE.md` §20:
   don't fit a static request schema and stay outside `.openapi()`'s validation, registered
   for documentation only via `registerPath()`. Not yet done: Workers KV as the caching layer's
   documented (§12) secondary read-through tier — out of scope until cross-colo consistency is
-  an actual concern at Pathvera's traffic level.
+  an actual concern at this deployment's traffic level.
 - **Phase 7** (forms + submissions + spam/rate limiting) — done, backend and admin UI both.
   Form/FormField/FormSubmission tables (kept separate from ContentType/Entry — §7 treats
   visitor-submitted data as categorically different from editor-authored content), admin CRUD

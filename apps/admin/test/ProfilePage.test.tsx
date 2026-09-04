@@ -72,8 +72,8 @@ describe('ProfilePage', () => {
     useSessionMock.mockReturnValue({
       data: {
         user: {
-          name: 'Pathvera Admin',
-          email: 'admin@pathvera.test',
+          name: 'Acme Admin',
+          email: 'admin@example.test',
           role: 'admin',
           image: null,
           createdAt: '2026-01-01T00:00:00.000Z',
@@ -87,8 +87,8 @@ describe('ProfilePage', () => {
   it('shows the signed-in user\'s name, email, role, and member-since date', () => {
     renderPage();
 
-    expect(screen.getByRole('heading', { name: 'Pathvera Admin' })).toBeInTheDocument();
-    expect(screen.getByText('admin@pathvera.test')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Acme Admin' })).toBeInTheDocument();
+    expect(screen.getByText('admin@example.test')).toBeInTheDocument();
     expect(screen.getByText('admin')).toBeInTheDocument();
     expect(screen.getByText(new Date('2026-01-01T00:00:00.000Z').toLocaleDateString())).toBeInTheDocument();
   });
@@ -168,8 +168,8 @@ describe('ProfilePage', () => {
     useSessionMock.mockReturnValue({
       data: {
         user: {
-          name: 'Pathvera Admin',
-          email: 'admin@pathvera.test',
+          name: 'Acme Admin',
+          email: 'admin@example.test',
           role: 'admin',
           image: null,
           createdAt: '2026-01-01T00:00:00.000Z',

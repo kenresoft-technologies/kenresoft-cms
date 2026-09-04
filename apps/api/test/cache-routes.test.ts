@@ -25,8 +25,8 @@ describe('cache routes (real D1)', () => {
   });
 
   it('rejects purging the cache from an editor, purges only published entries as an owner', async () => {
-    const ownerCookie = await authedCookie('cache-owner@pathvera.test');
-    const editorCookie = await authedCookie('cache-editor@pathvera.test');
+    const ownerCookie = await authedCookie('cache-owner@example.test');
+    const editorCookie = await authedCookie('cache-editor@example.test');
     const headers = { Cookie: ownerCookie, 'Content-Type': 'application/json' };
 
     const contentType = await (

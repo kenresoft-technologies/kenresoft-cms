@@ -38,7 +38,7 @@ describe('break-glass owner recovery — not configured', () => {
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ secret: 'anything', email: 'nobody@pathvera.test', newPassword: NEW_PASSWORD }),
+        body: JSON.stringify({ secret: 'anything', email: 'nobody@example.test', newPassword: NEW_PASSWORD }),
       },
       bareEnv,
     );
@@ -54,34 +54,34 @@ describe('break-glass owner recovery — configured (real D1)', () => {
   });
 
   it('rejects the wrong secret', async () => {
-    await signUp('recover-owner-2@pathvera.test');
+    await signUp('recover-owner-2@example.test');
     const response = await recoverOwner({
       secret: 'not-the-real-secret',
-      email: 'recover-owner-2@pathvera.test',
+      email: 'recover-owner-2@example.test',
       newPassword: NEW_PASSWORD,
     });
     expect(response.status).toBe(403);
   });
 
   it('rejects a non-owner email even with the correct secret', async () => {
-    await signUp('recover-owner-3-owner@pathvera.test');
+    await signUp('recover-owner-3-owner@example.test');
     // Second signup defaults to editor, not owner — the fixture's target.
-    await signUp('recover-owner-3-editor@pathvera.test');
+    await signUp('recover-owner-3-editor@example.test');
 
     const response = await recoverOwner({
       secret: CONFIGURED_SECRET,
-      email: 'recover-owner-3-editor@pathvera.test',
+      email: 'recover-owner-3-editor@example.test',
       newPassword: NEW_PASSWORD,
     });
     expect(response.status).toBe(404);
   });
 
   it('resets the owner password and signs out every session, given the correct secret', async () => {
-    const ownerCookie = await signUp('recover-owner-4@pathvera.test');
+    const ownerCookie = await signUp('recover-owner-4@example.test');
 
     const response = await recoverOwner({
       secret: CONFIGURED_SECRET,
-      email: 'recover-owner-4@pathvera.test',
+      email: 'recover-owner-4@example.test',
       newPassword: NEW_PASSWORD,
     });
     expect(response.status).toBe(200);
@@ -94,7 +94,7 @@ describe('break-glass owner recovery — configured (real D1)', () => {
     const newPasswordSignIn = await SELF.fetch('https://example.com/api/v1/auth/sign-in/email', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: 'recover-owner-4@pathvera.test', password: NEW_PASSWORD }),
+      body: JSON.stringify({ email: 'recover-owner-4@example.test', password: NEW_PASSWORD }),
     });
     expect(newPasswordSignIn.status).toBe(200);
 

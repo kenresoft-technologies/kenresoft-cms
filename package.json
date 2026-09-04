@@ -2,7 +2,7 @@
   "name": "kenresoft-cms",
   "version": "0.1.0",
   "private": true,
-  "description": "Cloudflare-native, API-first, reusable CMS. First production target: Pathvera Group.",
+  "description": "Cloudflare-native, API-first, reusable CMS. Single-site-per-deployment, self-hostable.",
   "license": "MIT",
   "packageManager": "pnpm@9.15.0",
   "engines": {

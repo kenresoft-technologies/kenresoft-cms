@@ -44,7 +44,7 @@ describe('public media route (real D1 + R2)', () => {
   });
 
   it('serves an uploaded file with no session required', async () => {
-    const cookie = await authedCookie('public-media-1@pathvera.test');
+    const cookie = await authedCookie('public-media-1@example.test');
     const uploaded = await uploadMedia(cookie);
 
     const response = await SELF.fetch(`https://example.com/api/v1/public/media/${uploaded.id}/file`);
@@ -59,7 +59,7 @@ describe('public media route (real D1 + R2)', () => {
   });
 
   it('serves public metadata (alt text, content type, dimensions) with no session required', async () => {
-    const cookie = await authedCookie('public-media-metadata-1@pathvera.test');
+    const cookie = await authedCookie('public-media-metadata-1@example.test');
     const uploaded = await uploadMedia(cookie);
 
     const response = await SELF.fetch(`https://example.com/api/v1/public/media/${uploaded.id}`);
@@ -78,7 +78,7 @@ describe('public media route (real D1 + R2)', () => {
   });
 
   it('serves a cached response on a repeat GET, even after the underlying object is removed', async () => {
-    const cookie = await authedCookie('public-media-2@pathvera.test');
+    const cookie = await authedCookie('public-media-2@example.test');
     const uploaded = await uploadMedia(cookie);
 
     const first = await SELF.fetch(`https://example.com/api/v1/public/media/${uploaded.id}/file`);
@@ -100,7 +100,7 @@ describe('public media route (real D1 + R2)', () => {
   });
 
   it('invalidates the cache when the file is deleted via the admin API', async () => {
-    const cookie = await authedCookie('public-media-3@pathvera.test');
+    const cookie = await authedCookie('public-media-3@example.test');
     const uploaded = await uploadMedia(cookie);
 
     const first = await SELF.fetch(`https://example.com/api/v1/public/media/${uploaded.id}/file`);

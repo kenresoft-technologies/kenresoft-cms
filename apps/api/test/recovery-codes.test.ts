@@ -60,14 +60,14 @@ describe('recovery codes (real D1)', () => {
   });
 
   it('requires elevation, even for the owner', async () => {
-    const ownerCookie = await authedCookie('rc-owner-1@pathvera.test');
+    const ownerCookie = await authedCookie('rc-owner-1@example.test');
     const response = await generateCodes(ownerCookie);
     expect(response.status).toBe(403);
   });
 
   it('rejects a non-owner outright, before elevation is even checked', async () => {
-    const ownerCookie = await authedCookie('rc-owner-2@pathvera.test');
-    const adminCookie = await authedCookie('rc-admin-2@pathvera.test');
+    const ownerCookie = await authedCookie('rc-owner-2@example.test');
+    const adminCookie = await authedCookie('rc-admin-2@example.test');
     // Second signup defaults to editor — promote to admin so this is specifically an
     // admin-vs-owner check, not editor-vs-owner.
     const adminSession = await (
@@ -84,7 +84,7 @@ describe('recovery codes (real D1)', () => {
   });
 
   it('generates codes for the owner once elevated, and reports how many remain', async () => {
-    const ownerCookie = await authedCookie('rc-owner-3@pathvera.test');
+    const ownerCookie = await authedCookie('rc-owner-3@example.test');
     await elevate(ownerCookie);
 
     const response = await generateCodes(ownerCookie);
@@ -98,19 +98,19 @@ describe('recovery codes (real D1)', () => {
   });
 
   it('regenerating invalidates every previous code', async () => {
-    const ownerCookie = await authedCookie('rc-owner-4@pathvera.test');
+    const ownerCookie = await authedCookie('rc-owner-4@example.test');
     await elevate(ownerCookie);
     const first = await (await generateCodes(ownerCookie)).json<{ codes: string[] }>();
 
     await elevate(ownerCookie);
     await generateCodes(ownerCookie);
 
-    const response = await redeem('rc-owner-4@pathvera.test', first.codes[0]!);
+    const response = await redeem('rc-owner-4@example.test', first.codes[0]!);
     expect(response.status).toBe(400);
   });
 
   it('revokes every code without issuing new ones', async () => {
-    const ownerCookie = await authedCookie('rc-owner-5@pathvera.test');
+    const ownerCookie = await authedCookie('rc-owner-5@example.test');
     await elevate(ownerCookie);
     await generateCodes(ownerCookie);
 
@@ -123,11 +123,11 @@ describe('recovery codes (real D1)', () => {
   });
 
   it('redeems a valid code, resets the password, and signs out every session', async () => {
-    const ownerCookie = await authedCookie('rc-owner-6@pathvera.test');
+    const ownerCookie = await authedCookie('rc-owner-6@example.test');
     await elevate(ownerCookie);
     const { codes } = await (await generateCodes(ownerCookie)).json<{ codes: string[] }>();
 
-    const response = await redeem('rc-owner-6@pathvera.test', codes[0]!);
+    const response = await redeem('rc-owner-6@example.test', codes[0]!);
     expect(response.status).toBe(200);
 
     const sessionsAfter = await env.DB.prepare('SELECT count(*) as n FROM session').first<{ n: number }>();
@@ -136,30 +136,30 @@ describe('recovery codes (real D1)', () => {
     const newPasswordSignIn = await SELF.fetch('https://example.com/api/v1/auth/sign-in/email', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: 'rc-owner-6@pathvera.test', password: NEW_PASSWORD }),
+      body: JSON.stringify({ email: 'rc-owner-6@example.test', password: NEW_PASSWORD }),
     });
     expect(newPasswordSignIn.status).toBe(200);
   });
 
   it('is single-use — the same code cannot be redeemed twice', async () => {
-    const ownerCookie = await authedCookie('rc-owner-7@pathvera.test');
+    const ownerCookie = await authedCookie('rc-owner-7@example.test');
     await elevate(ownerCookie);
     const { codes } = await (await generateCodes(ownerCookie)).json<{ codes: string[] }>();
 
-    const first = await redeem('rc-owner-7@pathvera.test', codes[0]!);
+    const first = await redeem('rc-owner-7@example.test', codes[0]!);
     expect(first.status).toBe(200);
 
-    const second = await redeem('rc-owner-7@pathvera.test', codes[0]!, 'yet another passphrase');
+    const second = await redeem('rc-owner-7@example.test', codes[0]!, 'yet another passphrase');
     expect(second.status).toBe(400);
   });
 
   it('rejects a wrong code or a wrong email with the same generic error', async () => {
-    const ownerCookie = await authedCookie('rc-owner-8@pathvera.test');
+    const ownerCookie = await authedCookie('rc-owner-8@example.test');
     await elevate(ownerCookie);
     await generateCodes(ownerCookie);
 
-    const wrongCode = await redeem('rc-owner-8@pathvera.test', 'ZZZZZ-ZZZZZ');
-    const wrongEmail = await redeem('no-such-user@pathvera.test', 'ZZZZZ-ZZZZZ');
+    const wrongCode = await redeem('rc-owner-8@example.test', 'ZZZZZ-ZZZZZ');
+    const wrongEmail = await redeem('no-such-user@example.test', 'ZZZZZ-ZZZZZ');
 
     expect(wrongCode.status).toBe(400);
     expect(wrongEmail.status).toBe(400);

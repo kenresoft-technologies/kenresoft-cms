@@ -15,7 +15,7 @@ async function authedCookie(email: string): Promise<string> {
 let cookieCounter = 0;
 async function freshCookie(): Promise<string> {
   cookieCounter += 1;
-  return authedCookie(`live-preview-${cookieCounter}@pathvera.test`);
+  return authedCookie(`live-preview-${cookieCounter}@example.test`);
 }
 
 describe('Live Preview (real D1)', () => {

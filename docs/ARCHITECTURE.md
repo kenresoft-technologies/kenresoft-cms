@@ -1,7 +1,7 @@
 # Kenresoft CMS — Architecture & Technical Specification
 
 Version 0.8 — Foundation Specification
-First production target: Pathvera Group website
+First production target: a real corporate website
 Vision: Cloudflare-native, API-first, reusable, scalable, open-source-ready CMS
 Status: Proposed / Ready for implementation
 
@@ -111,8 +111,9 @@ heavier admin plugin, deliberately avoided per an existing code comment. The `ap
 page got a corresponding rebuild: stat cards (total/active/administrators/active-this-week,
 all derived from data already in the list response — no new aggregate endpoint), role and
 activity-status filters, a per-row sessions dialog with revoke, and a client-side CSV export —
-prompted directly by a side-by-side comparison against Pathvera's current SonicJS deployment,
-which this CMS is built to eventually replace (see the Changelog's v0.1 framing).
+prompted directly by a side-by-side comparison against the first production deployment's prior
+SonicJS-based CMS, which this project is built to eventually replace (see the Changelog's v0.1
+framing).
 
 **v0.8 (2026-08-27)** — Closes the public-media gap the v0.7 Astro work surfaced but didn't
 fix: a new unauthenticated `GET /api/v1/public/media/:id/file` (§14), mounted before the
@@ -161,8 +162,8 @@ development per the phase boundary — no production deployment attempted or cla
 
 **v0.6 (2026-08-27)** — Completes Phase 6's last item: `packages/contracts` is populated and
 `apps/api` fully migrated to `@hono/zod-openapi`, closing the largest concrete gap found in a
-product-direction audit (Kenresoft CMS is no longer scoped as "Pathvera's CMS" but as a
-reusable, eventually open-source platform other developers would adopt — see the roadmap
+product-direction audit (Kenresoft CMS is no longer scoped as one customer's bespoke CMS but as
+a reusable, eventually open-source platform other developers would adopt — see the roadmap
 framing in §2 and the non-goals in §19, both of which already anticipated this).
 
 - **API contracts (§8)** — every route's request/response Zod schema now lives in
@@ -288,10 +289,10 @@ Everything else below carries forward from v0.1 unchanged.
 ## 1. Executive Decision
 
 Kenresoft CMS is a reusable content-management platform whose first production
-implementation will power the Pathvera Group website. It is not a Pathvera-specific
-dashboard. The core platform must be designed so additional clients can run the same CMS by
+implementation will power a real corporate website. It is not a dashboard specific to that one
+deployment. The core platform must be designed so additional clients can run the same CMS by
 deploying their own instance of it — the same open-source codebase, not a rewrite and not a
-new tenant inside Pathvera's deployment (§11).
+new tenant inside that first deployment (§11).
 
 The platform is Cloudflare-native and database-backed rather than Git-based. Content lives in
 Cloudflare D1, media lives in Cloudflare R2, the API runs on Cloudflare Workers, and the
@@ -328,8 +329,8 @@ deployment of the same open-source codebase: its own Cloudflare account (or acco
 environment), its own D1 database, its own R2 bucket, its own Worker. There is no
 `project_id`-scoped shared database and no cross-tenant boundary to defend inside a
 deployment, because there is no second tenant inside it (§11). V1 launches with one
-production deployment (Pathvera); additional clients get their own deployment from the same
-codebase, not a new tenant inside Pathvera's.
+production deployment; additional clients get their own deployment from the same
+codebase, not a new tenant inside that first one's.
 
 ---
 
@@ -429,7 +430,7 @@ Astro -> CMS API -> D1/R2
 - D1 stores structured metadata/content; R2 stores binary media.
 - The API is responsible for validation, authorization, business rules and database access.
 - Presentation remains outside the CMS core.
-- CMS core must not contain Pathvera-specific business logic.
+- CMS core must not contain any single deployment's specific business logic.
 
 ---
 
@@ -705,7 +706,7 @@ deployment — they get their own deployment of the same open-source codebase.
 ```
 kenresoft-cms (codebase)
       |
-      +--> Pathvera's deployment   → its own Cloudflare account, D1, R2, Worker
+      +--> Client A's deployment   → its own Cloudflare account, D1, R2, Worker
       +--> Client B's deployment   → its own Cloudflare account, D1, R2, Worker
       +--> Client C's deployment   → its own Cloudflare account, D1, R2, Worker
 ```
@@ -728,8 +729,8 @@ without exposing other clients' data, and a fully isolated deployment can.
 
 Reusability is unaffected by dropping multi-tenancy: `packages/contracts`,
 `packages/database`, `apps/api` and `apps/admin` remain fully generic and must never contain
-Pathvera-specific business logic (§4.1) — the same codebase is what gets redeployed per
-client, not a shared runtime.
+any single deployment's specific business logic (§4.1) — the same codebase is what gets
+redeployed per client, not a shared runtime.
 
 This isolation is why Kenresoft holds no master or backdoor account into any deployment, and
 why the codebase must never grow one: each installation's D1 database, secrets
@@ -930,7 +931,7 @@ runtime for development, useful for production-parity testing.
 | 5 | R2 media library |
 | 6 | Public/admin REST API + OpenAPI (`@hono/zod-openapi`) + public API caching (Cache API/KV) |
 | 7 | Forms + submissions + spam/rate limiting |
-| 8 | Astro integration (local: done, §15) and Pathvera production integration (not started) |
+| 8 | Astro integration (local: done, §15) and a real production integration (not started) |
 | 9 | Testing, security hardening, backups and migration testing |
 | 10 | Open-source documentation, examples and release process |
 
@@ -1012,7 +1013,8 @@ API contracts remain human-controlled.
 
 Proceed with Kenresoft CMS. The project is technically realistic and strategically
 worthwhile if its scope is controlled and the architecture remains modular. The first
-production target is Pathvera, but Pathvera must not be embedded into the CMS core.
+production target is one specific customer deployment, but that customer's specifics must not
+be embedded into the CMS core.
 
 The objective is not to immediately compete feature-for-feature with every CMS on the
 market. The objective is to create a reliable, Cloudflare-native, developer-friendly CMS
@@ -1047,7 +1049,7 @@ The architecture should be ambitious while the implementation remains incrementa
 | `@cloudflare/vitest-pool-workers` | LOCKED |
 | pnpm monorepo | LOCKED |
 | Astro integration | FIRST-CLASS TARGET |
-| Pathvera | FIRST PRODUCTION PROJECT |
+| First production deployment | LAUNCHED |
 | Open source | LONG-TERM INTENT |
 
 ---

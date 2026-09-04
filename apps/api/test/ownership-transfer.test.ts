@@ -69,8 +69,8 @@ describe('ownership transfer (real D1)', () => {
   });
 
   it('an admin cannot transfer ownership, even with a fresh elevation', async () => {
-    const ownerCookie = await authedCookie('ot-owner-1@pathvera.test');
-    const adminCookie = await authedCookie('ot-admin-1@pathvera.test');
+    const ownerCookie = await authedCookie('ot-owner-1@example.test');
+    const adminCookie = await authedCookie('ot-admin-1@example.test');
     const adminId = await userId(adminCookie);
     await setRole(ownerCookie, adminId, 'admin');
     expect((await elevate(adminCookie)).status).toBe(200);
@@ -80,16 +80,16 @@ describe('ownership transfer (real D1)', () => {
   });
 
   it('rejects a transfer attempt without a fresh elevation', async () => {
-    const ownerCookie = await authedCookie('ot-owner-2@pathvera.test');
-    const editorCookie = await authedCookie('ot-editor-2@pathvera.test');
+    const ownerCookie = await authedCookie('ot-owner-2@example.test');
+    const editorCookie = await authedCookie('ot-editor-2@example.test');
 
     const response = await transfer(ownerCookie, await userId(editorCookie));
     expect(response.status).toBe(403);
   });
 
   it('transfers ownership atomically: the caller becomes admin, the target becomes owner', async () => {
-    const ownerCookie = await authedCookie('ot-owner-3@pathvera.test');
-    const editorCookie = await authedCookie('ot-editor-3@pathvera.test');
+    const ownerCookie = await authedCookie('ot-owner-3@example.test');
+    const editorCookie = await authedCookie('ot-editor-3@example.test');
     const ownerId = await userId(ownerCookie);
     const editorId = await userId(editorCookie);
 
@@ -103,7 +103,7 @@ describe('ownership transfer (real D1)', () => {
   });
 
   it('rejects transferring ownership to yourself', async () => {
-    const ownerCookie = await authedCookie('ot-owner-4@pathvera.test');
+    const ownerCookie = await authedCookie('ot-owner-4@example.test');
     const ownerId = await userId(ownerCookie);
     expect((await elevate(ownerCookie)).status).toBe(200);
 
@@ -112,8 +112,8 @@ describe('ownership transfer (real D1)', () => {
   });
 
   it('rejects transferring ownership to a disabled account', async () => {
-    const ownerCookie = await authedCookie('ot-owner-disabled@pathvera.test');
-    const targetCookie = await authedCookie('ot-target-disabled@pathvera.test');
+    const ownerCookie = await authedCookie('ot-owner-disabled@example.test');
+    const targetCookie = await authedCookie('ot-target-disabled@example.test');
     const targetId = await userId(targetCookie);
     expect((await setDisabled(ownerCookie, targetId, true)).status).toBe(200);
 
@@ -127,7 +127,7 @@ describe('ownership transfer (real D1)', () => {
   });
 
   it('404s transferring to a nonexistent user', async () => {
-    const ownerCookie = await authedCookie('ot-owner-5@pathvera.test');
+    const ownerCookie = await authedCookie('ot-owner-5@example.test');
     expect((await elevate(ownerCookie)).status).toBe(200);
 
     const response = await transfer(ownerCookie, 'does-not-exist');
@@ -135,9 +135,9 @@ describe('ownership transfer (real D1)', () => {
   });
 
   it('the new owner can transfer ownership again, and the former owner (now admin) cannot', async () => {
-    const firstOwnerCookie = await authedCookie('ot-owner-6@pathvera.test');
-    const secondCookie = await authedCookie('ot-second-6@pathvera.test');
-    const thirdCookie = await authedCookie('ot-third-6@pathvera.test');
+    const firstOwnerCookie = await authedCookie('ot-owner-6@example.test');
+    const secondCookie = await authedCookie('ot-second-6@example.test');
+    const thirdCookie = await authedCookie('ot-third-6@example.test');
     const secondId = await userId(secondCookie);
     const thirdId = await userId(thirdCookie);
 

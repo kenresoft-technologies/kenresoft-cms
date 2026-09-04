@@ -26,7 +26,7 @@ const users = [
   {
     id: 'u-1',
     name: 'Admin User',
-    email: 'admin@pathvera.test',
+    email: 'admin@example.test',
     role: 'admin' as const,
     createdAt: '2026-01-01T00:00:00.000Z',
     lastActiveAt: '2026-01-05T00:00:00.000Z',
@@ -34,7 +34,7 @@ const users = [
   {
     id: 'u-2',
     name: 'Editor User',
-    email: 'editor@pathvera.test',
+    email: 'editor@example.test',
     role: 'editor' as const,
     createdAt: '2026-01-02T00:00:00.000Z',
     lastActiveAt: null,
@@ -63,19 +63,19 @@ describe('UsersPage', () => {
   });
 
   it('lists users with their role, last active, and joined date', async () => {
-    useSessionMock.mockReturnValue({ data: { user: { role: 'admin', email: 'admin@pathvera.test' } } });
+    useSessionMock.mockReturnValue({ data: { user: { role: 'admin', email: 'admin@example.test' } } });
     getMock.mockResolvedValue(users);
 
     renderPage();
 
     await waitFor(() => expect(screen.getByText('Admin User')).toBeInTheDocument());
     expect(screen.getByText('Editor User')).toBeInTheDocument();
-    expect(screen.getByText('editor@pathvera.test')).toBeInTheDocument();
+    expect(screen.getByText('editor@example.test')).toBeInTheDocument();
     expect(screen.getByText('Never')).toBeInTheDocument();
   });
 
   it('shows the stat cards derived from the user list', async () => {
-    useSessionMock.mockReturnValue({ data: { user: { role: 'admin', email: 'admin@pathvera.test' } } });
+    useSessionMock.mockReturnValue({ data: { user: { role: 'admin', email: 'admin@example.test' } } });
     getMock.mockResolvedValue(users);
 
     renderPage();
@@ -88,7 +88,7 @@ describe('UsersPage', () => {
   });
 
   it('shows role as a read-only badge for an editor viewer', async () => {
-    useSessionMock.mockReturnValue({ data: { user: { role: 'editor', email: 'editor@pathvera.test' } } });
+    useSessionMock.mockReturnValue({ data: { user: { role: 'editor', email: 'editor@example.test' } } });
     getMock.mockResolvedValue(users);
 
     renderPage();
@@ -102,7 +102,7 @@ describe('UsersPage', () => {
   });
 
   it('lets an admin change another user\'s role via the inline select', async () => {
-    useSessionMock.mockReturnValue({ data: { user: { role: 'admin', email: 'admin@pathvera.test' } } });
+    useSessionMock.mockReturnValue({ data: { user: { role: 'admin', email: 'admin@example.test' } } });
     getMock.mockResolvedValue(users);
     patchMock.mockResolvedValue({ ...users[1], role: 'admin' });
 
@@ -124,7 +124,7 @@ describe('UsersPage', () => {
   // reload — those all read authClient.useSession()'s client-cached session, which nothing in
   // the role-change mutation used to refresh.
   it("refreshes the cached session after a role change, so a self-demotion doesn't need a manual reload", async () => {
-    useSessionMock.mockReturnValue({ data: { user: { role: 'admin', email: 'admin@pathvera.test' } } });
+    useSessionMock.mockReturnValue({ data: { user: { role: 'admin', email: 'admin@example.test' } } });
     getMock.mockResolvedValue(users);
     patchMock.mockResolvedValue({ ...users[0], role: 'editor' });
 
@@ -142,7 +142,7 @@ describe('UsersPage', () => {
   });
 
   it('filters the list by role', async () => {
-    useSessionMock.mockReturnValue({ data: { user: { role: 'admin', email: 'admin@pathvera.test' } } });
+    useSessionMock.mockReturnValue({ data: { user: { role: 'admin', email: 'admin@example.test' } } });
     getMock.mockResolvedValue(users);
 
     renderPage();
@@ -156,7 +156,7 @@ describe('UsersPage', () => {
   });
 
   it('shows an empty state when there are no users', async () => {
-    useSessionMock.mockReturnValue({ data: { user: { role: 'admin', email: 'admin@pathvera.test' } } });
+    useSessionMock.mockReturnValue({ data: { user: { role: 'admin', email: 'admin@example.test' } } });
     getMock.mockResolvedValue([]);
 
     renderPage();

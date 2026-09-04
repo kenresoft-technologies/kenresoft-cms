@@ -15,7 +15,7 @@ async function authedCookie(email: string): Promise<string> {
 let cookieCounter = 0;
 async function freshCookie(): Promise<string> {
   cookieCounter += 1;
-  return authedCookie(`admin-routes-${cookieCounter}@pathvera.test`);
+  return authedCookie(`admin-routes-${cookieCounter}@example.test`);
 }
 
 describe('admin routes (real D1)', () => {
@@ -134,7 +134,7 @@ describe('admin routes (real D1)', () => {
     const listed = await listRes.json<{ slug: string; authorEmail: string | null }[]>();
     expect(listed).toHaveLength(1);
     expect(listed[0]!.slug).toBe('hello-world');
-    expect(listed[0]!.authorEmail).toMatch(/@pathvera\.test$/);
+    expect(listed[0]!.authorEmail).toMatch(/@example\.test$/);
   });
 
   it('the unified entries listing (no contentTypeId) spans every content type', async () => {
