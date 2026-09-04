@@ -16,6 +16,12 @@ export interface DashboardStats {
   }[];
 }
 
+// No real D1 database-size figure is computed here — confirmed empirically (not assumed)
+// against a real local D1 instance that D1 rejects both `PRAGMA page_count;` and
+// `SELECT * FROM pragma_page_count();` with "not authorized: SQLITE_AUTH", even though the
+// sibling `PRAGMA page_size;` is allowed. Without a real page count there's no honest way to
+// derive total bytes, so the admin's Storage Usage card shows real content-type/entry counts
+// for the database instead of a fabricated size — don't re-attempt this pragma.
 export async function getDashboardStats(db: Database): Promise<DashboardStats> {
   const [contentTypeCountRow] = await db.select({ value: count() }).from(contentTypes);
   const entryStatusRows = await db

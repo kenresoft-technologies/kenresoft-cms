@@ -22,6 +22,7 @@ import { useUsers } from '@/lib/queries/users';
 import { PageHeader } from '@/components/page-header';
 import { StatCard } from '@/components/stat-card';
 import { StatusBadge } from '@/components/status-badge';
+import { StorageUsageCard } from '@/components/storage-usage-card';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
@@ -29,9 +30,12 @@ import type { ChartConfig } from '@/components/ui/chart';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { DashboardStats } from '@/lib/types';
 
+// Draft/published get meaningful colors, not the arbitrary grayscale this used before —
+// published in --success matches StatusBadge's own green-for-published convention everywhere
+// else in the admin.
 const chartConfig = {
-  draft: { label: 'Draft', color: 'var(--chart-1)' },
-  published: { label: 'Published', color: 'var(--chart-2)' },
+  draft: { label: 'Draft', color: 'var(--muted-foreground)' },
+  published: { label: 'Published', color: 'var(--success)' },
 } satisfies ChartConfig;
 
 const QUICK_ACTIONS = [
@@ -179,7 +183,13 @@ export function DashboardPage() {
               value={String(stats.entryCounts.draft + stats.entryCounts.published)}
               hint={`${stats.entryCounts.published} published, ${stats.entryCounts.draft} draft`}
             />
-            <StatCard icon={ImageIcon} label="Media" value={String(stats.mediaCount)} hint={formatBytes(stats.mediaStorageBytes)} />
+            <StatCard
+              icon={ImageIcon}
+              label="Media"
+              value={String(stats.mediaCount)}
+              hint={formatBytes(stats.mediaStorageBytes)}
+              tone="success"
+            />
             <StatCard icon={ClipboardList} label="Forms" value={String(forms?.length ?? 0)} />
             <StatCard icon={UsersIcon} label="Users" value={String(users?.length ?? 0)} />
           </div>
@@ -212,7 +222,7 @@ export function DashboardPage() {
             <QuickActionsCard />
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-2">
+          <div className="grid gap-4 lg:grid-cols-3">
             <Card>
               <CardHeader>
                 <CardTitle>Recent activity</CardTitle>
@@ -232,6 +242,8 @@ export function DashboardPage() {
                 <EntryList entries={drafts} emptyMessage="No drafts among recently updated entries." />
               </CardContent>
             </Card>
+
+            <StorageUsageCard stats={stats} />
           </div>
         </>
       ) : null}
