@@ -48,11 +48,25 @@ async function confirm(question, defaultYes) {
   return answer === 'y' || answer === 'yes';
 }
 
+// Every helper below (findTopLevelBlock/insertAfterLine/replaceLine/addCorsOrigin) matches
+// against a bare "\n" — correct for this repo's own committed LF line endings, but a real
+// install's wrangler.toml doesn't necessarily stay that way: a fresh `git clone` (packages/
+// create's own scaffolding mechanism) checks files out through git's line-ending filters, and
+// Windows Git commonly defaults to `core.autocrlf=true`, converting every line to CRLF on
+// checkout. Confirmed live: a real install's wrangler.toml had CRLF endings, and
+// `findTopLevelBlock`'s `toml.indexOf('[[d1_databases]]\n')` never matched
+// `[[d1_databases]]\r\n`, failing `pnpm run setup` outright on a re-run. Normalizing to bare LF
+// on read and restoring the file's own original line-ending style on write means every helper
+// below can keep assuming plain "\n" without needing its own CRLF-handling.
+let originalLineEnding = '\n';
 function readToml() {
-  return readFileSync(WRANGLER_TOML_PATH, 'utf8');
+  const raw = readFileSync(WRANGLER_TOML_PATH, 'utf8');
+  originalLineEnding = raw.includes('\r\n') ? '\r\n' : '\n';
+  return raw.replace(/\r\n/g, '\n');
 }
 function writeToml(content) {
-  writeFileSync(WRANGLER_TOML_PATH, content);
+  const output = originalLineEnding === '\r\n' ? content.replace(/\n/g, '\r\n') : content;
+  writeFileSync(WRANGLER_TOML_PATH, output);
 }
 
 // Isolates the top-level (not [env.production.*]) array-table block for `header` — e.g.
