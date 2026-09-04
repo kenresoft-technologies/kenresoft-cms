@@ -11,6 +11,12 @@ export function useFormSubmissions(formId: string) {
   });
 }
 
+// Matches mediaFileUrl's pattern (lib/queries/media.ts) — admin-gated, for a download link
+// inside the authenticated admin UI only.
+export function submissionAttachmentUrl(formId: string, submissionId: string, fieldName: string): string {
+  return `${import.meta.env.VITE_API_URL}/api/v1/admin/forms/${formId}/submissions/${submissionId}/files/${fieldName}`;
+}
+
 export function useUpdateFormSubmissionStatus(formId: string) {
   const queryClient = useQueryClient();
 

@@ -44,20 +44,54 @@ publicFormsRoute.post('/:slug/submissions', async (c) => {
     return c.json({ error: 'Too many submissions, please try again later' }, 429);
   }
 
+  // A form with a `file` field can only be submitted as multipart/form-data — a file has no
+  // representation inside a JSON body. Every other form keeps working exactly as before; this
+  // branch is purely additive, not a change to the existing JSON contract.
+  const contentType = c.req.header('Content-Type') ?? '';
   let body: unknown;
-  try {
-    body = await c.req.json();
-  } catch {
-    return c.json({ error: 'Invalid JSON body' }, 400);
+  const uploadedFiles = new Map<string, File>();
+
+  if (contentType.includes('multipart/form-data')) {
+    const formData = await c.req.formData().catch(() => null);
+    if (!formData) {
+      return c.json({ error: 'Invalid multipart/form-data body' }, 400);
+    }
+    const plain: Record<string, unknown> = {};
+    for (const [key, value] of formData.entries()) {
+      if (value instanceof File) uploadedFiles.set(key, value);
+      else plain[key] = value;
+    }
+    body = plain;
+  } else {
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: 'Invalid JSON body' }, 400);
+    }
   }
 
   const fields = await listFormFields(db, form.id);
-  const validated = validateSubmission(fields, body);
+  const validated = await validateSubmission(fields, body, uploadedFiles);
   if (validated.issues) {
     return c.json({ error: 'Validation failed', issues: validated.issues }, 400);
   }
 
-  const submission = await createFormSubmission(db, { formId: form.id, data: validated.data! });
+  const data: Record<string, unknown> = { ...validated.data };
+  for (const [fieldName, attachment] of Object.entries(validated.files ?? {})) {
+    const extension = attachment.filename.includes('.') ? attachment.filename.split('.').pop() : undefined;
+    const key = `form-uploads/${crypto.randomUUID()}${extension ? `.${extension}` : ''}`;
+    await c.env.MEDIA_BUCKET.put(key, attachment.bytes, {
+      httpMetadata: { contentType: attachment.contentType },
+    });
+    data[fieldName] = {
+      key,
+      filename: attachment.filename,
+      size: attachment.bytes.byteLength,
+      contentType: attachment.contentType,
+    };
+  }
+
+  const submission = await createFormSubmission(db, { formId: form.id, data });
   return c.json(toFormSubmission(submission), 201);
 });
 

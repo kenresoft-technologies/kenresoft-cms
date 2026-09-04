@@ -14,6 +14,7 @@ import { EmptyState } from '@/components/empty-state';
 import { PageBreadcrumb } from '@/components/page-breadcrumb';
 import { PageHeader } from '@/components/page-header';
 import { StatusBadge } from '@/components/status-badge';
+import { SubmissionValue } from '@/components/submission-value';
 import { TableSkeleton } from '@/components/table-skeleton';
 import { Button } from '@/components/ui/button';
 import {
@@ -35,10 +36,12 @@ import { Table, TableHeader, TableHead, TableRow } from '@/components/ui/table';
 type StatusFilter = 'all' | FormSubmissionStatus;
 
 function ViewSubmissionDialog({
+  formId,
   submission,
   fieldLabels,
   onOpenChange,
 }: {
+  formId: string;
   submission: FormSubmission | null;
   fieldLabels: Map<string, string>;
   onOpenChange: (open: boolean) => void;
@@ -57,7 +60,7 @@ function ViewSubmissionDialog({
             {Object.entries(submission.data).map(([key, value]) => (
               <div key={key} className="flex flex-col gap-1">
                 <span className="text-xs font-medium text-muted-foreground">{fieldLabels.get(key) ?? key}</span>
-                <p className="text-sm break-words">{String(value)}</p>
+                <SubmissionValue formId={formId} submissionId={submission.id} fieldName={key} value={value} />
               </div>
             ))}
           </div>
@@ -211,6 +214,7 @@ export function FormSubmissionsPage() {
       ) : null}
 
       <ViewSubmissionDialog
+        formId={formId ?? ''}
         submission={viewing}
         fieldLabels={fieldLabels}
         onOpenChange={(open) => {

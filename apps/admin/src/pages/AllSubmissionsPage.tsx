@@ -15,6 +15,7 @@ import { FormBadge } from '@/components/form-badge';
 import { PageBreadcrumb } from '@/components/page-breadcrumb';
 import { PageHeader } from '@/components/page-header';
 import { StatusBadge } from '@/components/status-badge';
+import { SubmissionValue } from '@/components/submission-value';
 import { TableSkeleton } from '@/components/table-skeleton';
 import { Button } from '@/components/ui/button';
 import {
@@ -59,7 +60,7 @@ function ViewSubmissionDialog({
             {Object.entries(submission.data).map(([key, value]) => (
               <div key={key} className="flex flex-col gap-1">
                 <span className="text-xs font-medium text-muted-foreground">{fieldLabels.get(key) ?? key}</span>
-                <p className="text-sm break-words">{String(value)}</p>
+                <SubmissionValue formId={submission.formId} submissionId={submission.id} fieldName={key} value={value} />
               </div>
             ))}
           </div>

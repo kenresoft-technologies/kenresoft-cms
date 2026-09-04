@@ -52,6 +52,23 @@ const idParamSchema = z.object({ id: z.string().min(1) });
 const submissionParamsSchema = z.object({ id: z.string().min(1), submissionId: z.string().min(1) });
 const fieldParamSchema = z.object({ id: z.string().min(1), fieldId: z.string().min(1) });
 
+// A `file`-type field's value in FormSubmission.data — see routes/public/forms.ts, where a
+// submitted attachment is uploaded to R2 and this shape is written in the field's place.
+function attachmentAt(data: Record<string, unknown>, fieldName: string) {
+  const value = data[fieldName];
+  if (
+    value &&
+    typeof value === 'object' &&
+    'key' in value &&
+    typeof (value as { key: unknown }).key === 'string' &&
+    'contentType' in value &&
+    typeof (value as { contentType: unknown }).contentType === 'string'
+  ) {
+    return value as { key: string; contentType: string; filename?: string };
+  }
+  return null;
+}
+
 function toForm(row: DbForm): Form {
   return {
     id: row.id,
@@ -414,6 +431,59 @@ formsRoute.openapi(
     return c.json(submissions.map(toFormSubmissionWithForm), 200);
   },
 );
+
+// Streams the raw attachment bytes — not a JSON response, so (like media.ts's own file route)
+// this stays a plain route with a docs-only registerPath below. No role gate: viewing an
+// attached file is a read action available to every authenticated role, same as viewing the
+// submission's own text fields (§10 — Viewer is read-only, not read-nothing).
+formsRoute.get('/:id/submissions/:submissionId/files/:fieldName', async (c) => {
+  const { id, submissionId, fieldName } = c.req.param();
+  const db = getDb(c);
+  const form = await getFormById(db, id);
+  if (!form) {
+    return c.json({ error: 'Form not found' }, 404);
+  }
+
+  const submission = await getFormSubmissionById(db, submissionId);
+  if (!submission || submission.formId !== form.id) {
+    return c.json({ error: 'Submission not found' }, 404);
+  }
+
+  const attachment = attachmentAt(submission.data, fieldName);
+  if (!attachment) {
+    return c.json({ error: 'No file attached to that field' }, 404);
+  }
+
+  const object = await c.env.MEDIA_BUCKET.get(attachment.key);
+  if (!object) {
+    return c.json({ error: 'File missing from storage' }, 404);
+  }
+
+  return new Response(object.body, {
+    headers: {
+      'Content-Type': attachment.contentType,
+      'Content-Disposition': `attachment; filename="${(attachment.filename ?? 'file').replace(/"/g, '')}"`,
+      'Cache-Control': 'private, no-store',
+    },
+  });
+});
+
+formsRoute.openAPIRegistry.registerPath({
+  method: 'get',
+  path: '/{id}/submissions/{submissionId}/files/{fieldName}',
+  tags: ['Forms'],
+  summary: "Download a submitted attachment from a file-type field",
+  request: {
+    params: z.object({ id: z.string().min(1), submissionId: z.string().min(1), fieldName: z.string().min(1) }),
+  },
+  responses: {
+    200: { description: 'The raw attachment bytes.' },
+    404: {
+      description: 'No form/submission matching those ids, no file attached to that field, or the file is missing from storage.',
+      content: { 'application/json': { schema: notFoundSchema } },
+    },
+  },
+});
 
 // No role gate — triaging submissions (new/read/archived) is an editorial action, same as
 // entry create/edit, which also has no server-side role check.

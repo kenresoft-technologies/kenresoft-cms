@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import type { FormField } from '@kenresoft-cms/database';
 
+import { sniffAttachment } from './attachment-metadata';
+
 // Public form input is adversarial by default (§9) — strips every angle bracket from a
 // string value before it's ever persisted, rather than trusting that Zod's type/format
 // validation alone makes content safe to store and later render. Deliberately not a
@@ -53,8 +55,21 @@ function schemaForField(field: FormField): z.ZodTypeAny {
   return field.required ? base : base.optional();
 }
 
+// §14's own image-upload ceiling — a reasonable cap for a resume/cover-letter attachment, not
+// a hard platform limit.
+const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+
+export interface ValidatedAttachment {
+  bytes: Uint8Array;
+  filename: string;
+  contentType: string;
+}
+
 export interface SubmissionValidationResult {
   data?: Record<string, unknown>;
+  // Keyed by field name — not yet written to R2 (see routes/public/forms.ts), so a validation
+  // failure elsewhere in the same submission never leaves an orphaned object in storage.
+  files?: Record<string, ValidatedAttachment>;
   issues?: { path: PropertyKey[]; message: string }[];
 }
 
@@ -62,18 +77,56 @@ export interface SubmissionValidationResult {
 // definitions (§18) — there's no static shape for "a form submission" the way there is for,
 // say, a content type, since every form defines its own fields. Unknown keys in the input are
 // silently dropped (Zod's default z.object() behavior), not rejected — no reason to fail a
-// legitimate submission over one extra field a client sent.
-export function validateSubmission(fields: FormField[], input: unknown): SubmissionValidationResult {
+// legitimate submission over one extra field a client sent. `file`-type fields are validated
+// separately from the rest (bytes sniffed via attachment-metadata.ts, §9's "never trust the
+// declared type" standard) since they arrive as File objects from a multipart body, never as
+// part of the JSON-validatable shape.
+export async function validateSubmission(
+  fields: FormField[],
+  input: unknown,
+  uploadedFiles: Map<string, File>,
+): Promise<SubmissionValidationResult> {
+  const textFields = fields.filter((field) => field.fieldType !== 'file');
+  const fileFields = fields.filter((field) => field.fieldType === 'file');
+
   const shape: Record<string, z.ZodTypeAny> = {};
-  for (const field of fields) {
+  for (const field of textFields) {
     shape[field.name] = schemaForField(field);
   }
-
   const result = z.object(shape).safeParse(input);
-  if (!result.success) {
-    return {
-      issues: result.error.issues.map((issue) => ({ path: issue.path, message: issue.message })),
+
+  const issues: { path: PropertyKey[]; message: string }[] = result.success
+    ? []
+    : result.error.issues.map((issue) => ({ path: issue.path, message: issue.message }));
+
+  const files: Record<string, ValidatedAttachment> = {};
+  for (const field of fileFields) {
+    const file = uploadedFiles.get(field.name);
+    if (!file || file.size === 0) {
+      if (field.required) issues.push({ path: [field.name], message: 'File is required' });
+      continue;
+    }
+    if (file.size > MAX_ATTACHMENT_BYTES) {
+      issues.push({ path: [field.name], message: `File must be at most ${MAX_ATTACHMENT_BYTES} bytes` });
+      continue;
+    }
+
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const sniffed = sniffAttachment(bytes);
+    if (!sniffed) {
+      issues.push({ path: [field.name], message: 'Unsupported or unrecognized file format' });
+      continue;
+    }
+
+    files[field.name] = {
+      bytes,
+      filename: file.name || `upload.${sniffed.extension}`,
+      contentType: sniffed.contentType,
     };
   }
-  return { data: result.data };
+
+  if (issues.length > 0) {
+    return { issues };
+  }
+  return { data: result.success ? result.data : {}, files };
 }

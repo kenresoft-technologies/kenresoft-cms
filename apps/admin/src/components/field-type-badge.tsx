@@ -12,6 +12,7 @@ import {
   List,
   ListChecks,
   Mail,
+  Paperclip,
   SquareCheck,
   ToggleLeft,
   Type,
@@ -40,6 +41,7 @@ const FIELD_TYPE_ICONS: Record<string, LucideIcon> = {
   multi_select: ListChecks,
   media: Image,
   reference: Link,
+  file: Paperclip,
 };
 
 // A Strapi-Content-Type-Builder-style visual grouping — each field-type family gets one of the
@@ -61,6 +63,7 @@ const FIELD_TYPE_TONE: Record<string, string> = {
   multi_select: 'text-swatch-3',
   media: 'text-swatch-2',
   reference: 'text-swatch-2',
+  file: 'text-swatch-6',
 };
 
 export function fieldTypeIcon(fieldType: string): LucideIcon {

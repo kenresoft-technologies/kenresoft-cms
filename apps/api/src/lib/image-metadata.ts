@@ -1,5 +1,7 @@
 import type { MediaContentType } from '@kenresoft-cms/database';
 
+import { matchesSignature, readUint16LE, readUint32LE } from './binary-reader';
+
 export interface SniffedImage {
   contentType: MediaContentType;
   width: number | null;
@@ -10,10 +12,6 @@ function readUint16BE(bytes: Uint8Array, offset: number): number {
   return (bytes[offset]! << 8) | bytes[offset + 1]!;
 }
 
-function readUint16LE(bytes: Uint8Array, offset: number): number {
-  return bytes[offset]! | (bytes[offset + 1]! << 8);
-}
-
 function readUint32BE(bytes: Uint8Array, offset: number): number {
   return (
     (bytes[offset]! << 24) | (bytes[offset + 1]! << 16) | (bytes[offset + 2]! << 8) | bytes[offset + 3]!
@@ -22,16 +20,6 @@ function readUint32BE(bytes: Uint8Array, offset: number): number {
 
 function readUint24LE(bytes: Uint8Array, offset: number): number {
   return bytes[offset]! | (bytes[offset + 1]! << 8) | (bytes[offset + 2]! << 16);
-}
-
-function readUint32LE(bytes: Uint8Array, offset: number): number {
-  return (
-    (bytes[offset]! | (bytes[offset + 1]! << 8) | (bytes[offset + 2]! << 16) | (bytes[offset + 3]! << 24)) >>> 0
-  );
-}
-
-function matchesSignature(bytes: Uint8Array, signature: number[]): boolean {
-  return bytes.length >= signature.length && signature.every((byte, i) => bytes[i] === byte);
 }
 
 function sniffPng(bytes: Uint8Array): SniffedImage | null {

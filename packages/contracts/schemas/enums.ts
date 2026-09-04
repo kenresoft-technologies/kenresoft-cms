@@ -34,7 +34,17 @@ export const ENTRY_STATUSES = ['draft', 'published'] as const;
 
 export type EntryStatus = (typeof ENTRY_STATUSES)[number];
 
-export const FORM_FIELD_TYPES = ['text', 'textarea', 'email', 'url', 'number', 'select', 'checkbox', 'date'] as const;
+export const FORM_FIELD_TYPES = [
+  'text',
+  'textarea',
+  'email',
+  'url',
+  'number',
+  'select',
+  'checkbox',
+  'date',
+  'file',
+] as const;
 
 export type FormFieldType = (typeof FORM_FIELD_TYPES)[number];
 

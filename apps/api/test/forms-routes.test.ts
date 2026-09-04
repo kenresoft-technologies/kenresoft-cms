@@ -337,4 +337,120 @@ describe('forms routes (real D1)', () => {
     });
     expect(response.status).toBe(403);
   });
+
+  describe('file-upload field (multipart submissions)', () => {
+    async function createJobApplicationForm(cookie: string) {
+      const headers = { Cookie: cookie, 'Content-Type': 'application/json' };
+      const form = await (
+        await SELF.fetch('https://example.com/api/v1/admin/forms', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ name: 'Job Application', slug: 'job-application' }),
+        })
+      ).json<{ id: string }>();
+
+      await SELF.fetch(`https://example.com/api/v1/admin/forms/${form.id}/fields`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ name: 'name', label: 'Name', fieldType: 'text', required: true }),
+      });
+      await SELF.fetch(`https://example.com/api/v1/admin/forms/${form.id}/fields`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ name: 'resume', label: 'Resume', fieldType: 'file', required: true }),
+      });
+
+      return form;
+    }
+
+    it('accepts a real PDF resume via multipart/form-data and serves it back through the admin download route', async () => {
+      const cookie = await authedCookie('job-app-admin@pathvera.test');
+      const form = await createJobApplicationForm(cookie);
+
+      const pdfBytes = new TextEncoder().encode('%PDF-1.4\n%fake but signature-valid PDF body');
+      const body = new FormData();
+      body.set('name', 'Jane Doe');
+      body.set('resume', new File([pdfBytes], 'jane-doe-resume.pdf', { type: 'application/pdf' }));
+
+      const submitRes = await SELF.fetch('https://example.com/api/v1/public/forms/job-application/submissions', {
+        method: 'POST',
+        headers: { 'CF-Connecting-IP': 'file-upload-test-1' },
+        body,
+      });
+      expect(submitRes.status).toBe(201);
+      const submission = await submitRes.json<{ id: string; data: Record<string, unknown> }>();
+      const resume = submission.data['resume'] as { key: string; filename: string; contentType: string; size: number };
+      expect(resume.filename).toBe('jane-doe-resume.pdf');
+      expect(resume.contentType).toBe('application/pdf');
+      expect(resume.size).toBe(pdfBytes.byteLength);
+      // The raw bytes never round-trip through D1 — only the R2 key/metadata does.
+      expect(JSON.stringify(submission.data)).not.toContain('fake but signature-valid');
+
+      const downloadRes = await SELF.fetch(
+        `https://example.com/api/v1/admin/forms/${form.id}/submissions/${submission.id}/files/resume`,
+        { headers: { Cookie: cookie } },
+      );
+      expect(downloadRes.status).toBe(200);
+      expect(downloadRes.headers.get('Content-Type')).toBe('application/pdf');
+      expect(new Uint8Array(await downloadRes.arrayBuffer())).toEqual(pdfBytes);
+    });
+
+    it('rejects a file whose actual bytes are not a recognized format, regardless of its declared type', async () => {
+      const cookie = await authedCookie('job-app-badfile-admin@pathvera.test');
+      await createJobApplicationForm(cookie);
+
+      const body = new FormData();
+      body.set('name', 'Jane Doe');
+      body.set(
+        'resume',
+        new File([new TextEncoder().encode('just plain text, not a real PDF')], 'resume.pdf', {
+          type: 'application/pdf',
+        }),
+      );
+
+      const response = await SELF.fetch('https://example.com/api/v1/public/forms/job-application/submissions', {
+        method: 'POST',
+        headers: { 'CF-Connecting-IP': 'file-upload-test-2' },
+        body,
+      });
+      expect(response.status).toBe(400);
+    });
+
+    it('rejects a submission missing the required file field', async () => {
+      const cookie = await authedCookie('job-app-missing-admin@pathvera.test');
+      await createJobApplicationForm(cookie);
+
+      const body = new FormData();
+      body.set('name', 'Jane Doe');
+
+      const response = await SELF.fetch('https://example.com/api/v1/public/forms/job-application/submissions', {
+        method: 'POST',
+        headers: { 'CF-Connecting-IP': 'file-upload-test-3' },
+        body,
+      });
+      expect(response.status).toBe(400);
+    });
+
+    it('404s downloading an attachment from a field with no file attached', async () => {
+      const cookie = await authedCookie('job-app-nofile-admin@pathvera.test');
+      const form = await createJobApplicationForm(cookie);
+
+      const body = new FormData();
+      body.set('name', 'Jane Doe');
+      body.set('resume', new File([new TextEncoder().encode('%PDF-1.4')], 'r.pdf', { type: 'application/pdf' }));
+      const submission = await (
+        await SELF.fetch('https://example.com/api/v1/public/forms/job-application/submissions', {
+          method: 'POST',
+          headers: { 'CF-Connecting-IP': 'file-upload-test-4' },
+          body,
+        })
+      ).json<{ id: string }>();
+
+      const response = await SELF.fetch(
+        `https://example.com/api/v1/admin/forms/${form.id}/submissions/${submission.id}/files/name`,
+        { headers: { Cookie: cookie } },
+      );
+      expect(response.status).toBe(404);
+    });
+  });
 });
