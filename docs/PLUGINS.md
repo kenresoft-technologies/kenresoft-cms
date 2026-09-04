@@ -1,7 +1,9 @@
 # Plugin Platform
 
 **Status: Phase 1 (generic plugin platform + `plugin-hello` proof) complete, 2026-09-04.
-Phase 2 (Commerce, the first real vertical plugin) not started — see the end of this document.**
+Plugin enablement moved from a static file to a DB-backed, live-toggleable model (also
+2026-09-04) — see Enablement below, which supersedes Phase 1's original design. Phase 2
+(Commerce, the first real vertical plugin) not started — see the end of this document.**
 
 ## What this is
 
@@ -25,8 +27,8 @@ plugin's shape looks like.
 plugin package depend on — neither ever depends on the other's internals. It exports:
 
 - `PluginManifest`/`pluginManifestSchema` — a plugin's identity (`id`, `name`, `version`,
-  `sdkVersion`), its declared `dependencies` (other plugin ids), `capabilities`, and
-  `permissions`.
+  `sdkVersion`), an optional human-readable `description` (shown on the admin Plugins page), its
+  declared `dependencies` (other plugin ids), `capabilities`, and `permissions`.
 - `PluginContext` — the one object a plugin's route handlers ever receive to reach Core: `db`,
   `user`, `hasRole()`, `media`, `config`, `events`, `logger`.
 - `PluginRegistration` — the code-level object (manifest + the plugin's actual Hono sub-app +
@@ -44,24 +46,60 @@ cold-start/deploy time, never obscurely per-request.
 
 ## Enablement
 
-`apps/api/src/plugins/plugins.config.ts` is the one static, deterministic source of truth for
-which plugins are enabled in this deployment:
+**A plugin's code must still be bundled into the Worker at build time** — Cloudflare Workers
+compile everything ahead of deploy, and this platform doesn't fight that (no Dynamic Worker
+Loader, no fetching-and-`eval`-ing remote code; see §3.4/§56 of the source spec's own explicit
+non-goals). `apps/api/src/plugins/registered-plugins.ts` is still the *only* Core file that
+imports a specific plugin package — every other Core file, including `index.ts`, only ever
+imports from `./plugins/*`, never a specific plugin.
 
-```ts
-export const pluginsConfig = {
-  hello: { enabled: true },
-} as const satisfies Record<string, { enabled: boolean }>;
-```
+**Whether a bundled plugin is currently switched on is a different question, and it *is*
+DB-backed and live-toggleable** — an admin can flip it from a new admin "Plugins" page with no
+redeploy. This is a deliberate revision of Phase 1's original design (a static
+`plugins.config.ts` file, edited and redeployed to toggle anything) — that file is gone. What
+replaced it:
 
-Known at build/deploy time, never database-driven. Disabling a plugin here takes its
-routes/admin UI/hooks dark; it never deletes that plugin's own data — a destructive
-uninstall/data-deletion operation is a deliberately separate, not-yet-built concern.
+- `packages/database/schema/plugin-enablement.ts`'s `plugin_enablement` table (Core-owned, one
+  row per plugin, `pluginId`/`enabled`/`updatedAt`) — no row for a given plugin id means
+  **enabled by default**.
+- `apps/api/src/plugins/registry.ts`'s `validatePlugins()`/`VALIDATED_PLUGINS` still run once at
+  Worker module-load, but now only do what can actually be decided before any request (and
+  therefore any D1 binding) exists: manifest shape, `sdkVersion`, duplicate ids. This is
+  everything Phase 1's `resolvePlugins()`/`ENABLED_PLUGINS` used to do *except* deciding
+  enablement — that decision moved out because it can change without a redeploy, so it can't be
+  resolved this early anymore.
+- `apps/api/src/plugins/enablement.ts`'s `requirePluginEnabled(pluginId)` — a **per-request**
+  middleware, applied at the top-level app *before* `requireSession` for every validated
+  plugin's mount point:
+  ```ts
+  app.use(`${base}/*`, requirePluginEnabled(plugin.manifest.id));
+  app.use(`${base}/*`, requireSession);
+  ```
+  Checking enablement before session so a disabled plugin 404s unconditionally regardless of
+  auth state — matching this codebase's existing "disabled/unconfigured is indistinguishable
+  from not installed" convention (the break-glass owner-recovery route). It also checks the
+  plugin's declared `manifest.dependencies` are *currently* enabled, not just installed —
+  Phase 1's static dependency check, adapted to live state.
+- `apps/api/src/routes/admin/plugins.ts` — `GET /api/v1/admin/plugins` (readable by any
+  authenticated role — apps/admin's nav/command-palette need every role to know whether a
+  plugin's link should render, and this isn't sensitive data, only the ability to change it is)
+  and `PATCH /api/v1/admin/plugins/{id}` (admin-only), backing the new
+  `apps/admin/src/pages/PluginsPage.tsx`.
+- `apps/admin/src/plugins/registry.ts`'s `PluginNavItem` gained a required `pluginId`, and both
+  `AppLayout.tsx` and `command-palette.tsx` filter `pluginNavItems` against the live list before
+  rendering — a disabled plugin's link disappears instead of just 404ing when clicked.
 
-`apps/api/src/plugins/registered-plugins.ts` is the *only* Core file that imports a specific
-plugin package (`@kenresoft-cms/plugin-hello`, in this case) — every other Core file, including
-`index.ts`, only ever imports from `./plugins/*` (the registry/mount composition layer), never a
-specific plugin. `index.ts` gains exactly one call, `mountPlugins(app)`, mounting every enabled
-plugin at `/api/plugins/<id>/v1/*`.
+**Hono's route composition doesn't change** — every validated plugin's routes are still mounted
+unconditionally at cold start (cheap, static); only actual request *handling* is now gated by a
+live DB check. **Known, accepted cost, not solved speculatively**: this is one extra D1 read per
+request to a plugin route. No cross-request caching was added — a stateless Workers request has
+no safe in-memory cache across requests without KV/Cache API, which would trade correctness for
+speed and isn't warranted yet at this scale.
+
+Disabling a plugin never deletes its own data — a destructive uninstall/data-deletion operation
+remains a deliberately separate, not-yet-built concern. Adding a *genuinely new* plugin — one not
+yet bundled into this deployment at all — still requires a real code change (the package + one
+line in `registered-plugins.ts`) and a redeploy; only toggling something already bundled is live.
 
 ## Migrations: how a plugin owns a table here
 
@@ -180,12 +218,17 @@ plugin-UI-distribution mechanism (e.g. a plugin shipping its own admin bundle, l
 way) is a real future option if third-party plugin distribution ever becomes a requirement —
 out of scope for now.
 
-## Known limitations (Phase 1)
+## Known limitations
 
-- Plugin enablement is configured independently in `apps/api` (`plugins.config.ts`) and
-  `apps/admin` (`src/plugins/registry.ts`) — no shared, build-time-readable source between the
-  two separately-deployed Workers. Trivial to keep in sync by hand for one plugin; worth solving
-  generically only if plugin count grows.
+- *Which plugins exist* is still configured independently in `apps/api`
+  (`registered-plugins.ts`) and `apps/admin` (`src/plugins/registry.ts`'s `pluginNavItems`) — no
+  shared, build-time-readable source between the two separately-deployed Workers. (*Whether* an
+  already-registered plugin is currently enabled is no longer independent — both apps read the
+  same live `GET /api/v1/admin/plugins` truth, per the Enablement section above.) Trivial to
+  keep in sync by hand for one or two plugins; worth solving generically only if plugin count
+  grows.
+- One extra D1 read per request to any plugin route, to check live enablement — an accepted
+  cost, not cached across requests (see Enablement above).
 - No per-capability context restriction, no lifecycle hook execution, no runtime migration
   existence check — all noted above, all deliberate Phase 1 scope reductions.
 - No granular permission enforcement engine — Core's existing role hierarchy is the enforcement
