@@ -1,10 +1,24 @@
-import { Trash2 } from 'lucide-react';
+import { Clock, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { ApiError } from '@/lib/api-client';
 import { usePurgeCache } from '@/lib/queries/cache';
 import { Button } from '@/components/ui/button';
 import { SettingsSection } from './shared';
+
+function TtlTile({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-start gap-3 rounded-lg border p-4">
+      <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary/10">
+        <Clock className="size-4 text-primary" />
+      </div>
+      <div>
+        <p className="text-sm font-medium">{label}</p>
+        <p className="text-sm text-muted-foreground">{value}</p>
+      </div>
+    </div>
+  );
+}
 
 // Cloudflare's Cache API (what the public API actually uses, docs/ARCHITECTURE.md §12) has no
 // list/enumerate operation — there's no way to show "what's cached right now". These two TTLs
@@ -29,14 +43,8 @@ export function CacheSection({ readOnly }: { readOnly: boolean }) {
         description="Cloudflare's edge cache for the unauthenticated public API (§12) — invalidated automatically on every relevant write."
       >
         <div className="grid gap-4 sm:grid-cols-2">
-          <div className="rounded-lg border p-4">
-            <p className="text-sm font-medium">Entries</p>
-            <p className="text-sm text-muted-foreground">5 minutes</p>
-          </div>
-          <div className="rounded-lg border p-4">
-            <p className="text-sm font-medium">Media files</p>
-            <p className="text-sm text-muted-foreground">1 year (immutable — no edit endpoint)</p>
-          </div>
+          <TtlTile label="Entries" value="5 minutes" />
+          <TtlTile label="Media files" value="1 year (immutable — no edit endpoint)" />
         </div>
       </SettingsSection>
 
