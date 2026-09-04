@@ -26,6 +26,7 @@ import {
   Highlighter,
   ImageOff,
   Image as ImageIcon,
+  Info,
   Italic,
   Link as LinkIcon,
   List,
@@ -508,7 +509,19 @@ export function RichTextEditor({ value, onChange, placeholder }: RichTextEditorP
         </div>
       </div>
 
-      {mode === 'write' ? <Toolbar editor={editor} /> : null}
+      {mode === 'write' ? (
+        <Toolbar editor={editor} />
+      ) : (
+        // Write mode's toolbar row has real height — without an equivalent here, switching to
+        // Preview/Markdown visibly shrinks the whole panel, then grows it back on switching
+        // away, which reads as broken rather than intentional.
+        <div className="flex items-center gap-1.5 border-b border-input p-1 px-2.5 py-1.5 text-xs text-muted-foreground">
+          <Info className="size-3.5 shrink-0" />
+          {mode === 'preview'
+            ? 'Rendered preview of the saved content — switch to Write to edit.'
+            : 'Editing as Markdown — applied back to the document when you switch away.'}
+        </div>
+      )}
 
       {/* min-h-0 overrides flexbox's default min-height:auto, which otherwise lets this grow
           to fit its content instead of respecting flex-1's height and actually scrolling —

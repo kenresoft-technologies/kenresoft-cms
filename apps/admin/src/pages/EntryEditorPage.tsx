@@ -14,6 +14,7 @@ import { useFieldDefinitions } from '@/lib/queries/field-definitions';
 import { useSettings } from '@/lib/queries/settings';
 import { useDeveloperMode } from '@/lib/developer-mode';
 import { ENTRY_STATUSES, type Entry, type EntryStatus, type FieldDefinition, type FieldType } from '@/lib/types';
+import { cn } from '@/lib/utils';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -46,6 +47,39 @@ function formatPreviewValue(value: unknown): string {
   if (typeof value === 'boolean') return value ? 'Yes' : 'No';
   if (Array.isArray(value)) return value.length ? value.join(', ') : '—';
   return String(value);
+}
+
+// A long rich_text/text/textarea value would otherwise turn this compact overview into a wall
+// of text. Clamps visually (CSS line-clamp, not string truncation) so rich_text's real HTML
+// never gets cut mid-tag — safe for both the raw-text and dangerouslySetInnerHTML cases below.
+const LONG_VALUE_THRESHOLD = 200;
+
+function TruncatedValue({ html, text }: { html?: string; text?: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const raw = html ?? text ?? '';
+  const isLong = raw.length > LONG_VALUE_THRESHOLD;
+
+  return (
+    <div className="flex max-w-[70%] flex-col items-end gap-1">
+      {html ? (
+        <div
+          className={cn('ProseMirror w-full text-left text-sm break-words', !expanded && isLong && 'line-clamp-3')}
+          dangerouslySetInnerHTML={{ __html: html }}
+        />
+      ) : (
+        <span className={cn('text-right text-sm break-words', !expanded && isLong && 'line-clamp-3')}>{text}</span>
+      )}
+      {isLong ? (
+        <button
+          type="button"
+          onClick={() => setExpanded((prev) => !prev)}
+          className="text-xs text-primary hover:underline"
+        >
+          {expanded ? 'Show less' : 'Show more'}
+        </button>
+      ) : null}
+    </div>
+  );
 }
 
 // The datetime-local input works in the viewer's local time and has no timezone info, so
@@ -83,6 +117,7 @@ function LivePreviewButton({
   isDirty: boolean;
 }) {
   const { data: settings } = useSettings();
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
 
   async function handlePreview() {
@@ -91,7 +126,10 @@ function LivePreviewButton({
       return;
     }
     if (!settings?.previewUrl) {
-      toast.error('Set a Preview URL template in Settings → API first');
+      toast.error('Live Preview needs a Preview URL template first', {
+        description: 'Set one in Settings → API → Live Preview.',
+        action: { label: 'Open Settings', onClick: () => navigate('/settings?section=api') },
+      });
       return;
     }
 
@@ -284,14 +322,9 @@ function EntryForm({ contentTypeId, contentTypeSlug, entryId, fields, entry }: E
                       // field: only an authenticated editor/owner can reach this value, and it
                       // was produced by Tiptap's schema-constrained editor (rich-text-editor.tsx),
                       // never arbitrary visitor input.
-                      <div
-                        className="ProseMirror max-w-[70%] text-left text-sm break-words"
-                        dangerouslySetInnerHTML={{ __html: data[field.name] as string }}
-                      />
+                      <TruncatedValue html={data[field.name] as string} />
                     ) : (
-                      <span className="max-w-[70%] text-right text-sm break-words">
-                        {formatPreviewValue(data[field.name])}
-                      </span>
+                      <TruncatedValue text={formatPreviewValue(data[field.name])} />
                     )}
                   </div>
                 ))}
