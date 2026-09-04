@@ -1,30 +1,37 @@
 #!/usr/bin/env node
-// Scaffolds a new Kenresoft CMS install by downloading the current `main` branch of the
-// monorepo template directly from GitHub, rather than bundling a snapshot inside this package.
-// That means most future CMS improvements reach `npm create @kenresoft-cms@latest` automatically,
-// on the next run, with no need to republish this tool at all — only a change to this script's
-// own mechanics (the download/extract logic itself) ever needs a version bump here.
+// Scaffolds a new Kenresoft CMS install via a real `git clone` of the monorepo template,
+// rather than a tarball download + fresh `git init` (the original approach). A real clone
+// shares actual commit history with the upstream repo, which is what lets a later `pnpm run
+// update` (which itself runs `git fetch upstream && git merge upstream/<branch>` — see
+// scripts/lib/git-cli.mjs) do a normal, low-conflict merge instead of every file touched by any
+// upstream commit since scaffold time coming back as a conflict with no common ancestor to
+// reconcile against. Confirmed the hard way against a real tarball-scaffolded install: its
+// first real update attempt hit git's "refusing to merge unrelated histories", and even forcing
+// that through surfaced a spurious "add/add" conflict on every such file regardless of whether
+// its content had actually diverged.
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import path from 'node:path';
-import { Readable } from 'node:stream';
-import { pipeline } from 'node:stream/promises';
-import { createGunzip } from 'node:zlib';
-
-import { extract } from 'tar';
 
 // Overridable only via env var, not a documented CLI flag — an internal hook for testing this
 // script against a fork/branch before a real release, not something an end user needs.
-//
-// REF defaults to GitHub's special "HEAD" ref, which codeload.github.com resolves to whatever
-// the repo's current *default* branch actually is (confirmed empirically — the tarball's content
-// matches the default branch, not a hardcoded "main"/"develop" name). That matters concretely
-// here: at the time this was written, this repo's default branch was `develop`, not `main` (see
-// docs/DEPLOYMENT.md and CLAUDE.md's branch rules) — hardcoding a branch name would have shipped
-// a tool that silently scaffolds from the wrong branch the moment that ever changes.
 const REPO = process.env.KENRESOFT_CREATE_REPO ?? 'kenresoft-technologies/kenresoft-cms';
+// 'HEAD' (the default) is passed straight to `git clone` with no `--branch` flag at all, which
+// checks out the repo's actual current default branch automatically — no need to hardcode or
+// separately resolve one.
 const REF = process.env.KENRESOFT_CREATE_REF ?? 'HEAD';
-const TARBALL_URL = `https://codeload.github.com/${REPO}/tar.gz/${REF}`;
+const REPO_URL = `https://github.com/${REPO}.git`;
+
+function ensureGitAvailable() {
+  try {
+    execFileSync('git', ['--version'], { stdio: 'ignore' });
+  } catch {
+    throw new Error(
+      'git is required to scaffold a new install (a real clone is what makes future ' +
+        '`pnpm run update` pulls work cleanly) — install git and try again.',
+    );
+  }
+}
 
 async function main() {
   const targetArg = process.argv[2];
@@ -36,49 +43,20 @@ async function main() {
     process.exitCode = 1;
     return;
   }
-  mkdirSync(target, { recursive: true });
 
-  console.log(`Downloading Kenresoft CMS (${REPO}@${REF}) into ${targetArg ?? '.'} ...`);
-  const response = await fetch(TARBALL_URL);
-  if (!response.ok || !response.body) {
-    throw new Error(`Failed to download ${TARBALL_URL}: ${response.status} ${response.statusText}`);
-  }
+  ensureGitAvailable();
 
-  // GitHub's tarball wraps everything in one top-level "<repo>-<branch>/" directory — strip it
-  // so the template's own files land directly in `target`, the same shape `git clone` gives you.
-  await pipeline(Readable.fromWeb(response.body), createGunzip(), extract({ cwd: target, strip: 1 }));
-
-  // The downloaded tarball never contains a .git directory, but remove it defensively in case a
-  // future packaging change on GitHub's end ever includes one — this must always be a fresh repo.
-  rmSync(path.join(target, '.git'), { recursive: true, force: true });
-  let gitReady = false;
-  try {
-    execFileSync('git', ['init', '--quiet'], { cwd: target, stdio: 'ignore' });
-    // Points back at the real template so a later `git fetch upstream && git merge
-    // upstream/<branch>` can actually pull in future CMS updates — without this remote, a
-    // scaffolded install has no way to receive updates at all beyond re-scaffolding from scratch.
-    // Named "upstream" (not "origin") since the user's own eventual remote belongs at "origin".
-    execFileSync('git', ['remote', 'add', 'upstream', `https://github.com/${REPO}.git`], {
-      cwd: target,
-      stdio: 'ignore',
-    });
-    // An initial commit gives that future merge real history to diff against — merging into a
-    // freshly-`git init`'d repo with zero commits has nothing to compare against. Wrapped
-    // separately from `init`/`remote add` above: this step alone fails if the user has no git
-    // identity (user.name/user.email) configured yet, which shouldn't block scaffolding.
-    execFileSync('git', ['add', '-A'], { cwd: target, stdio: 'ignore' });
-    execFileSync(
-      'git',
-      ['commit', '--quiet', '-m', `Initial commit from Kenresoft CMS (${REPO}@${REF})`],
-      { cwd: target, stdio: 'ignore' },
-    );
-    gitReady = true;
-  } catch {
-    console.warn(
-      '(git init/commit step failed or git is not on PATH — every file is there regardless; ' +
-        'see the README for setting up git manually if you want upstream updates later.)',
-    );
-  }
+  console.log(`Cloning Kenresoft CMS (${REPO}${REF === 'HEAD' ? '' : `@${REF}`}) into ${targetArg ?? '.'} ...`);
+  // Named "upstream" (not "origin") from the start — the user's own eventual remote (if they
+  // push this to their own GitHub repo) belongs at "origin"; "upstream" is what `pnpm run
+  // update` looks for when pulling in future CMS changes. Full clone, not `--depth 1`: a
+  // shallow clone's boundary commit is still real and shared with upstream, so merges would
+  // still work, but a full history sidesteps shallow-clone edge cases in less common git
+  // operations without meaningfully affecting a repo this size.
+  const cloneArgs = ['clone', '--origin', 'upstream'];
+  if (REF !== 'HEAD') cloneArgs.push('--branch', REF);
+  cloneArgs.push(REPO_URL, target);
+  execFileSync('git', cloneArgs, { stdio: 'inherit' });
 
   console.log('\nDone! Next steps:\n');
   if (targetArg) console.log(`  cd ${targetArg}`);
@@ -87,13 +65,11 @@ async function main() {
   console.log(
     '\nSee https://github.com/kenresoft-technologies/kenresoft-cms#readme for what that provisions.',
   );
-  if (gitReady) {
-    console.log(
-      '\nTo pull in future CMS updates later: git fetch upstream && git merge upstream/' +
-        (REF === 'HEAD' ? '<branch>' : REF) +
-        ' — see docs/DEPLOYMENT.md\'s "Updating an existing install" section.',
-    );
-  }
+  console.log(
+    '\nTo pull in future CMS updates later, just run: pnpm run update — it fetches and merges ' +
+      'the latest\nupstream code automatically before redeploying. See docs/DEPLOYMENT.md\'s ' +
+      '"Updating an existing install" section.',
+  );
 }
 
 main().catch((err) => {

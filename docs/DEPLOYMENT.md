@@ -317,28 +317,29 @@ New CMS features and fixes land on the project's `develop` branch (its default b
 `CHANGELOG.md` tracks what actually changed, in plain terms, so you know what you're pulling in
 before you do.
 
-**Get the new code first**, however your install got here:
-
-- Cloned with `git clone`: `git pull`.
-- Scaffolded with `npm create @kenresoft-cms@latest`: that added an `upstream` remote pointing at
-  the real template automatically — `git fetch upstream && git merge upstream/develop` (or
-  whichever branch/ref you started from).
-- Neither (e.g. downloaded a zip): re-run `npm create @kenresoft-cms@latest` into a fresh
-  directory and manually port over your customizations — there's no remote to merge from
-  otherwise.
-
-**Then redeploy** — from the repo root:
+From the repo root, run:
 
 ```bash
 pnpm run update
 ```
 
-This installs dependencies, applies any new database migrations, and redeploys both Workers with
-the new code. Deliberately **not** `pnpm run setup` run again: unlike `setup`, `update` never
-touches your `BETTER_AUTH_SECRET`, never re-provisions D1/R2, and never re-prompts for email
-setup — it's the safe subset for an install that already exists. (`setup` itself is also now
-safe to re-run if you genuinely need to — it checks before touching `BETTER_AUTH_SECRET` rather
-than silently regenerating it, asking first since rotating it logs out every current user.)
+That's the whole thing — it pulls the latest code from the `upstream` git remote (both a plain
+`git clone` of this repo and one scaffolded via `npm create @kenresoft-cms@latest` have one
+already), installs dependencies, applies any new database migrations, and redeploys both Workers.
+Deliberately **not** `pnpm run setup` run again: unlike `setup`, `update` never touches your
+`BETTER_AUTH_SECRET`, never re-provisions D1/R2, and never re-prompts for email setup — it's the
+safe subset for an install that already exists. (`setup` itself is also safe to re-run if you
+genuinely need to — it checks before touching `BETTER_AUTH_SECRET` rather than silently
+regenerating it, asking first since rotating it logs out every current user.)
+
+If your install has no `upstream` remote at all (a raw zip download, or one deliberately
+removed), `update` skips the code-pull step with a note and still redeploys whatever's on disk —
+add the remote yourself to opt back in: `git remote add upstream
+https://github.com/kenresoft-technologies/kenresoft-cms.git`. An install scaffolded before this
+tool switched from a tarball download to a real `git clone` will hit a one-time prompt the first
+time `update` pulls new code, since its local history has no real ancestry to merge against yet
+— confirming it is safe to proceed reconciles that once, and every update after is a normal,
+low-friction merge.
 
 ## Backups and recovery
 

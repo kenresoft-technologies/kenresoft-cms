@@ -10,11 +10,12 @@
 //   - Does NOT touch CORS_ORIGINS — the admin Worker's URL never changes between deploys of the
 //     same Worker, so there's never a new origin to add on an update.
 //   - Does NOT re-run the interactive email setup prompt.
-// What it does do: install dependencies, apply any new migrations (Drizzle only applies ones not
-// yet recorded remotely — safe to run every time), and redeploy both Workers with the current
-// code. This is the command an existing deployment should run instead of `pnpm run setup` to
-// pick up new CMS changes, precisely because setup.mjs's ensureAuthSecret() used to (and other
-// steps still do) prompt/act as if this were a first-ever install.
+// What it does do: pull new code from the "upstream" git remote (see lib/git-cli.mjs), install
+// dependencies, apply any new migrations (Drizzle only applies ones not yet recorded remotely —
+// safe to run every time), and redeploy both Workers with the current code. This is the command
+// an existing deployment should run instead of `pnpm run setup` to pick up new CMS changes,
+// precisely because setup.mjs's ensureAuthSecret() used to (and other steps still do)
+// prompt/act as if this were a first-ever install.
 //
 // Usage: pnpm run update
 
@@ -22,6 +23,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
+import { pullLatestCode } from './lib/git-cli.mjs';
 import { runWranglerInherit } from './lib/wrangler-cli.mjs';
 import { buildAndDeployAdmin, deployApi } from './lib/deploy-helpers.mjs';
 
@@ -32,13 +34,11 @@ const WRANGLER_TOML_PATH = join(REPO_ROOT, 'wrangler.toml');
 
 async function main() {
   console.log('Kenresoft CMS — update an existing install\n');
-  console.log(
-    "This assumes you've already pulled the new code (git pull / git fetch upstream && git merge\n" +
-      'upstream/<branch> — see docs/DEPLOYMENT.md). This script only installs, migrates, and\n' +
-      'redeploys; it never touches your secrets, D1/R2 resources, or CORS config.\n',
-  );
+  console.log('This never touches your secrets, D1/R2 resources, or CORS config.\n');
 
-  console.log('Installing dependencies...');
+  await pullLatestCode(REPO_ROOT);
+
+  console.log('\nInstalling dependencies...');
   execFileSync('pnpm', ['install'], { cwd: REPO_ROOT, stdio: 'inherit', shell: true });
 
   console.log('\nApplying any new database migrations...');
