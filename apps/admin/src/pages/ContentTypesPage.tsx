@@ -9,6 +9,7 @@ import { authClient } from '@/lib/auth-client';
 import { useContentTypes, useCreateContentType } from '@/lib/queries/content-types';
 import { useFieldDefinitions } from '@/lib/queries/field-definitions';
 import { roleAtLeast, type ContentType, type UserRole } from '@/lib/types';
+import { ContentTypeBadge } from '@/components/content-type-badge';
 import { DataTable } from '@/components/data-table';
 import { EmptyState } from '@/components/empty-state';
 import { PageBreadcrumb } from '@/components/page-breadcrumb';
@@ -34,9 +35,9 @@ function FieldsCountCell({ contentTypeId }: { contentTypeId: string }) {
   if (isPending) return <span className="text-muted-foreground">…</span>;
   const count = fields?.length ?? 0;
   return (
-    <span className="text-muted-foreground">
+    <Badge variant="secondary" className="font-normal">
       {count} {count === 1 ? 'field' : 'fields'}
-    </span>
+    </Badge>
   );
 }
 
@@ -45,9 +46,9 @@ const columns: ColumnDef<ContentType>[] = [
     accessorKey: 'name',
     header: 'Name',
     cell: ({ row }) => (
-      <div className="flex flex-col">
-        <Link to={`/content-types/${row.original.id}`} className="font-medium hover:underline">
-          {row.original.name}
+      <div className="flex flex-col gap-1">
+        <Link to={`/content-types/${row.original.id}`} className="w-fit">
+          <ContentTypeBadge id={row.original.id} name={row.original.name} />
         </Link>
         {row.original.description ? (
           <span className="max-w-xs truncate text-xs text-muted-foreground">{row.original.description}</span>

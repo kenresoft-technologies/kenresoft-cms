@@ -7,6 +7,7 @@ import type { ColumnDef } from '@tanstack/react-table';
 import { useContentTypes } from '@/lib/queries/content-types';
 import { useAllEntries, useDeleteEntryGlobal, useUpdateEntryStatusGlobal } from '@/lib/queries/all-entries';
 import type { EntryStatus, EntryWithContentType } from '@/lib/types';
+import { ContentTypeBadge } from '@/components/content-type-badge';
 import { DataTable } from '@/components/data-table';
 import { EmptyState } from '@/components/empty-state';
 import { EntryRowActions } from '@/components/entry-row-actions';
@@ -129,8 +130,8 @@ export function AllEntriesPage() {
         accessorKey: 'contentTypeName',
         header: 'Content Type',
         cell: ({ row }) => (
-          <Link to={`/content-types/${row.original.contentTypeId}`} className="text-muted-foreground hover:underline">
-            {row.original.contentTypeName}
+          <Link to={`/content-types/${row.original.contentTypeId}`} className="w-fit">
+            <ContentTypeBadge id={row.original.contentTypeId} name={row.original.contentTypeName} />
           </Link>
         ),
       },

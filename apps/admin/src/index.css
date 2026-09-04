@@ -25,6 +25,12 @@
     --color-chart-3: var(--chart-3);
     --color-chart-2: var(--chart-2);
     --color-chart-1: var(--chart-1);
+    --color-swatch-6: var(--swatch-6);
+    --color-swatch-5: var(--swatch-5);
+    --color-swatch-4: var(--swatch-4);
+    --color-swatch-3: var(--swatch-3);
+    --color-swatch-2: var(--swatch-2);
+    --color-swatch-1: var(--swatch-1);
     --color-ring: var(--ring);
     --color-input: var(--input);
     --color-border: var(--border);
@@ -75,11 +81,21 @@
     --border: oklch(0.922 0 0);
     --input: oklch(0.922 0 0);
     --ring: var(--accent-brand);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
+    /* A small categorical palette, one hue per swatch, reused for both the dashboard's charts
+       and the deterministic per-content-type accent pills (lib/accent-color.ts) — one source
+       of truth instead of two near-duplicate palettes. --swatch-1 intentionally matches
+       --accent-brand's hue so the most "default" pill still reads as on-brand. */
+    --swatch-1: oklch(0.55 0.16 262);
+    --swatch-2: oklch(0.62 0.13 200);
+    --swatch-3: oklch(0.58 0.15 300);
+    --swatch-4: oklch(0.68 0.15 50);
+    --swatch-5: oklch(0.6 0.12 170);
+    --swatch-6: oklch(0.62 0.18 340);
+    --chart-1: var(--swatch-1);
+    --chart-2: var(--swatch-2);
+    --chart-3: var(--swatch-3);
+    --chart-4: var(--swatch-4);
+    --chart-5: var(--swatch-5);
     --radius: 0.625rem;
     --sidebar: oklch(0.985 0 0);
     --sidebar-foreground: oklch(0.145 0 0);
@@ -114,11 +130,17 @@
     --border: oklch(1 0 0 / 10%);
     --input: oklch(1 0 0 / 15%);
     --ring: var(--accent-brand);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
+    --swatch-1: oklch(0.7 0.15 262);
+    --swatch-2: oklch(0.75 0.12 200);
+    --swatch-3: oklch(0.72 0.14 300);
+    --swatch-4: oklch(0.78 0.14 50);
+    --swatch-5: oklch(0.74 0.11 170);
+    --swatch-6: oklch(0.75 0.16 340);
+    --chart-1: var(--swatch-1);
+    --chart-2: var(--swatch-2);
+    --chart-3: var(--swatch-3);
+    --chart-4: var(--swatch-4);
+    --chart-5: var(--swatch-5);
     --sidebar: oklch(0.205 0 0);
     --sidebar-foreground: oklch(0.985 0 0);
     --sidebar-primary: var(--accent-brand);
