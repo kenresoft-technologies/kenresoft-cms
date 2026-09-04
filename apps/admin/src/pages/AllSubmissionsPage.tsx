@@ -11,6 +11,7 @@ import { useAllSubmissions, useUpdateSubmissionStatusGlobal } from '@/lib/querie
 import type { FormSubmissionStatus, FormSubmissionWithForm } from '@/lib/types';
 import { DataTable } from '@/components/data-table';
 import { EmptyState } from '@/components/empty-state';
+import { FormBadge } from '@/components/form-badge';
 import { PageBreadcrumb } from '@/components/page-breadcrumb';
 import { PageHeader } from '@/components/page-header';
 import { StatusBadge } from '@/components/status-badge';
@@ -161,11 +162,8 @@ export function AllSubmissionsPage() {
         accessorKey: 'formName',
         header: 'Form',
         cell: ({ row }) => (
-          <Link
-            to={`/forms/${row.original.formId}/submissions`}
-            className="text-muted-foreground hover:underline"
-          >
-            {row.original.formName}
+          <Link to={`/forms/${row.original.formId}/submissions`} className="w-fit">
+            <FormBadge id={row.original.formId} name={row.original.formName} />
           </Link>
         ),
       },

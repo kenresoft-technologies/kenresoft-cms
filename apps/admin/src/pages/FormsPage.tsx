@@ -11,6 +11,7 @@ import { useFormFields } from '@/lib/queries/form-fields';
 import { roleAtLeast, type Form, type FormField, type FormFieldType, type UserRole } from '@/lib/types';
 import { DataTable } from '@/components/data-table';
 import { EmptyState } from '@/components/empty-state';
+import { FormBadge } from '@/components/form-badge';
 import { PageBreadcrumb } from '@/components/page-breadcrumb';
 import { PageHeader } from '@/components/page-header';
 import { TableSkeleton } from '@/components/table-skeleton';
@@ -34,14 +35,18 @@ function FieldsCountCell({ formId }: { formId: string }) {
   if (isPending) return <span className="text-muted-foreground">…</span>;
   const count = fields?.length ?? 0;
   return (
-    <span className="text-muted-foreground">
+    <Badge variant="secondary" className="font-normal">
       {count} {count === 1 ? 'field' : 'fields'}
-    </span>
+    </Badge>
   );
 }
 
 const columns: ColumnDef<Form>[] = [
-  { accessorKey: 'name', header: 'Name', cell: ({ row }) => <span className="font-medium">{row.original.name}</span> },
+  {
+    accessorKey: 'name',
+    header: 'Name',
+    cell: ({ row }) => <FormBadge id={row.original.id} name={row.original.name} />,
+  },
   {
     accessorKey: 'slug',
     header: 'Slug',
