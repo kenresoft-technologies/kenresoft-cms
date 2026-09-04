@@ -4,11 +4,10 @@ import type { Media } from '@kenresoft-cms/contracts';
 
 import { recordAudit } from '../../lib/audit';
 import { getDb } from '../../lib/db';
-import { sniffImage } from '../../lib/image-metadata';
 import { createOpenApiApp } from '../../lib/openapi';
-import { invalidatePublicMediaCache } from '../../lib/public-cache';
+import { deleteMediaFile, uploadMedia } from '../../lib/media-service';
 import { requireRole } from '../../middleware/require-role';
-import { createMedia, deleteMedia, getMediaById, listMedia } from '../../repositories/media';
+import { getMediaById, listMedia } from '../../repositories/media';
 import type { Bindings } from '../../lib/env';
 import type { AuthedVariables } from '../../middleware/require-session';
 import type { Media as DbMedia } from '@kenresoft-cms/database';
@@ -17,10 +16,6 @@ export const mediaRoute = createOpenApiApp<{ Bindings: Bindings; Variables: Auth
 
 const notFoundSchema = z.object({ error: z.string() });
 const idParamSchema = z.object({ id: z.string().min(1) });
-
-// §14: reasonable upload ceiling for a corporate-site media library, not a hard platform
-// limit — revisit if a client's use case needs larger files.
-const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 
 function toMedia(row: DbMedia): Media {
   return {
@@ -71,9 +66,6 @@ mediaRoute.post('/', requireRole('admin', 'editor'), async (c) => {
   if (!(file instanceof File)) {
     return c.json({ error: 'file field is required' }, 400);
   }
-  if (file.size === 0 || file.size > MAX_UPLOAD_BYTES) {
-    return c.json({ error: `File must be between 1 byte and ${MAX_UPLOAD_BYTES} bytes` }, 400);
-  }
 
   const altTextRaw = form.get('altText');
   const altTextParsed = altTextSchema.safeParse(
@@ -83,30 +75,17 @@ mediaRoute.post('/', requireRole('admin', 'editor'), async (c) => {
     return c.json({ error: 'Validation failed', issues: altTextParsed.error.issues }, 400);
   }
 
-  // The declared Content-Type (client/browser-supplied) is never trusted (§9) — only the
-  // file's actual bytes decide what it is and whether it's accepted at all.
   const bytes = new Uint8Array(await file.arrayBuffer());
-  const sniffed = sniffImage(bytes);
-  if (!sniffed) {
-    return c.json({ error: 'Unsupported or unrecognized image file' }, 400);
-  }
-
-  const extension = sniffed.contentType.split('/')[1]!;
-  const key = `media/${crypto.randomUUID()}.${extension}`;
-  await c.env.MEDIA_BUCKET.put(key, bytes, {
-    httpMetadata: { contentType: sniffed.contentType },
-  });
-
   const db = getDb(c);
-  const row = await createMedia(db, {
-    key,
-    filename: file.name || key,
-    contentType: sniffed.contentType,
-    size: bytes.byteLength,
-    width: sniffed.width,
-    height: sniffed.height,
+  const result = await uploadMedia(db, c.env.MEDIA_BUCKET, {
+    bytes,
+    filename: file.name,
     altText: altTextParsed.data ?? null,
   });
+  if (!result.ok) {
+    return c.json({ error: result.error }, 400);
+  }
+  const row = result.media;
   await recordAudit(db, {
     actorUserId: c.get('user').id,
     action: 'media.uploaded',
@@ -200,16 +179,11 @@ mediaRoute.openapi(
   async (c) => {
     const { id } = c.req.valid('param');
     const db = getDb(c);
-    const row = await getMediaById(db, id);
+    const row = await deleteMediaFile(db, c.env.MEDIA_BUCKET, id);
     if (!row) {
       return c.json({ error: 'Media not found' }, 404);
     }
 
-    await c.env.MEDIA_BUCKET.delete(row.key);
-    await deleteMedia(db, row.id);
-    // Without this, a deleted file would keep being served from the public route's edge
-    // cache for up to a year (lib/public-cache.ts's media TTL).
-    await invalidatePublicMediaCache(row.id);
     await recordAudit(db, {
       actorUserId: c.get('user').id,
       action: 'media.deleted',
