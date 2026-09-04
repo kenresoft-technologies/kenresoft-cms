@@ -31,13 +31,20 @@ import { dirname, join, resolve } from 'node:path';
 
 const require = createRequire(import.meta.url);
 
-const DB_NAME = 'kenresoft-cms-db';
-// Must match your bucket's actual name. Safe by default if you used the explicit
-// `wrangler r2 bucket create kenresoft-cms-media --update-config` from docs/DEPLOYMENT.md's
-// step 3 — but a bucket left to wrangler's automatic provisioning (bucket_name omitted
-// entirely from wrangler.toml) gets an auto-generated, worker-name-prefixed name instead, not
-// this literal string. Check the repo root's wrangler.toml's [[r2_buckets]] (or
-// [env.<name>.r2_buckets] if you keep your real deployment under a named environment, like
+// The binding, not the database's own name — `d1 execute` accepts either (confirmed via
+// `wrangler d1 execute --help`), and the binding stays correct even for an install whose real
+// database_name differs from the default (e.g. after setup.mjs's collision-driven rename when
+// an "already exists" conflict came up during provisioning — see scripts/setup.mjs).
+const DB_NAME = 'DB';
+// R2 has no binding-based CLI resolution the way D1 does (`r2 object get/put` always take the
+// bucket's real, account-side name) — must match your bucket's actual name. Safe by default if
+// you used the explicit `wrangler r2 bucket create kenresoft-cms-media --update-config` from
+// docs/DEPLOYMENT.md's step 3 — but a bucket left to wrangler's automatic provisioning
+// (bucket_name omitted entirely from wrangler.toml) gets an auto-generated, worker-name-prefixed
+// name instead, not this literal string, and setup.mjs itself picks a different name if
+// "kenresoft-cms-media" already existed in your account (an "already exists" collision during
+// provisioning — see scripts/setup.mjs). Check the repo root's wrangler.toml's [[r2_buckets]]
+// (or [env.<name>.r2_buckets] if you keep your real deployment under a named environment, like
 // Kenresoft's own [env.production] does) and update this constant to match if it differs.
 const BUCKET_NAME = 'kenresoft-cms-media';
 // wrangler.toml lives at the repo root, not apps/api/ (see that file's own top comment) —

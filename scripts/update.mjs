@@ -42,8 +42,11 @@ async function main() {
   execFileSync('pnpm', ['install'], { cwd: REPO_ROOT, stdio: 'inherit', shell: true });
 
   console.log('\nApplying any new database migrations...');
+  // "DB" (the binding, not the database's own name) — stays correct even for an install whose
+  // database_name differs from the default (e.g. after setup.mjs's collision-driven rename when
+  // an "already exists" conflict came up during provisioning).
   runWranglerInherit(
-    ['d1', 'migrations', 'apply', 'kenresoft-cms-db', '--remote', '--config', WRANGLER_TOML_PATH],
+    ['d1', 'migrations', 'apply', 'DB', '--remote', '--config', WRANGLER_TOML_PATH],
     { cwd: API_DIR },
   );
 

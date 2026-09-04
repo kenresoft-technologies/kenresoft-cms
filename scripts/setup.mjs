@@ -121,23 +121,75 @@ function resourceExists(infoArgs, notFoundPattern) {
   }
 }
 
+// Reads a `key = "value"` line's value out of one wrangler.toml block — used to recover the
+// *actual* database_name/bucket_name a previous run of this script settled on, rather than
+// assuming it's still the hardcoded default (see createUniqueResource below).
+function extractTomlValue(blockText, key) {
+  const match = blockText.match(new RegExp(`\\b${key}\\s*=\\s*"([^"]*)"`));
+  return match?.[1] ?? null;
+}
+
+// A D1 database / R2 bucket name only has to be unique *within one Cloudflare account* — but
+// every fork of this template ships the same default name, and one account commonly ends up
+// hosting more than one deployment of it (e.g. an agency running several client sites from a
+// single account, or someone re-running this script after an earlier attempt got far enough to
+// create the resource but not far enough to record its id in wrangler.toml — a re-clone instead
+// of reusing the same folder is enough to lose that). `wrangler d1/r2 ... create <name>` then
+// fails with "already exists", which used to just crash the whole setup outright. Real users hit
+// exactly this — see the CLAUDE.md changelog entry this fix corresponds to.
+//
+// Fixed by catching that specific failure and asking for a different name instead, with an
+// auto-generated suggestion so accepting the default (just press Enter) is enough for the common
+// case. Returns the name that actually succeeded (which callers must persist into wrangler.toml's
+// own `database_name`/`bucket_name` field) alongside create()'s own result — `wrangler d1 info`/
+// `wrangler r2 bucket info` (this file's own existence checks, and anyone else who ever needs to
+// look this resource up by name rather than by binding) only accept the resource's real,
+// account-side name, confirmed via `wrangler d1 info --help`/`wrangler r2 bucket info --help`, so
+// a stale name left behind after a collision-driven rename would make every later existence
+// check falsely report "doesn't exist" and silently create — and switch the binding over to — a
+// second, unrelated resource.
+async function createUniqueResource({ kind, defaultName, create }) {
+  let name = defaultName;
+  for (;;) {
+    try {
+      return { name, result: create(name) };
+    } catch (error) {
+      const stderr = error && typeof error === 'object' && 'stderr' in error ? String(error.stderr) : '';
+      if (!/already exists/i.test(stderr)) throw error;
+
+      const suggestion = `${defaultName}-${randomBytes(2).toString('hex')}`;
+      console.log(
+        `\n⚠ A ${kind} named "${name}" already exists in this Cloudflare account — likely from a ` +
+          'previous setup run, or another deployment of this project sharing the same account. ' +
+          "This name is never seen by end users, so any unique value works — press Enter to accept\n" +
+          'the suggestion below, or type your own.',
+      );
+      name = await ask(`Name for this ${kind}`, suggestion);
+    }
+  }
+}
+
 async function ensureD1() {
   const toml = readToml();
   const block = findTopLevelBlock(toml, '[[d1_databases]]');
   if (!block) throw new Error('Could not find [[d1_databases]] in wrangler.toml.');
   const hasExistingId = /\bdatabase_id\s*=/.test(block.text);
+  // database_name is never omitted the way database_id is (see the file's own comment), so this
+  // reads back whatever name a previous run actually settled on — the fallback only matters for
+  // a wrangler.toml edited by hand into an unexpected shape.
+  const currentName = extractTomlValue(block.text, 'database_name') ?? 'kenresoft-cms-db';
   if (hasExistingId) {
-    if (resourceExists(['d1', 'info', 'kenresoft-cms-db', '--json'], /couldn't find/i)) {
+    if (resourceExists(['d1', 'info', currentName, '--json'], /couldn't find/i)) {
       console.log('✓ D1 database already configured and confirmed present on Cloudflare — skipping.');
       return;
     }
     console.log(
-      '⚠ wrangler.toml has a database_id, but "kenresoft-cms-db" no longer exists on Cloudflare ' +
+      `⚠ wrangler.toml has a database_id, but "${currentName}" no longer exists on Cloudflare ` +
         '(deleted outside this script?) — recreating it.',
     );
   }
 
-  console.log('Creating D1 database "kenresoft-cms-db"...');
+  console.log('Creating D1 database...');
   // `--json` was removed from `d1 create` in current wrangler (confirmed empirically against
   // 4.126.0 — it now errors "Unknown argument: json" outright, breaking this step for every
   // fresh install). `--update-config` looked like the obvious replacement but, also confirmed
@@ -146,17 +198,24 @@ async function ensureD1() {
   // it. Wrangler's own TOML-vs-JSON-config guidance ("newer features are JSON-only") lines up
   // with that. Parsing the plain-text snippet's own `database_id = "..."` line is the only
   // option left for a repo that stays on wrangler.toml.
-  const output = runWrangler(['d1', 'create', 'kenresoft-cms-db'], { cwd: API_DIR });
-  const match = output.match(/database_id\s*=\s*"([^"]+)"/);
-  const databaseId = match?.[1];
-  if (!databaseId) {
-    throw new Error(`Could not find database_id in \`wrangler d1 create\` output: ${output}`);
-  }
-  console.log(`Created D1 database: ${databaseId}`);
+  const { name: databaseName, result: databaseId } = await createUniqueResource({
+    kind: 'D1 database',
+    defaultName: currentName,
+    create: (name) => {
+      const output = runWrangler(['d1', 'create', name], { cwd: API_DIR, stdio: ['pipe', 'pipe', 'pipe'] });
+      const match = output.match(/database_id\s*=\s*"([^"]+)"/);
+      if (!match?.[1]) throw new Error(`Could not find database_id in \`wrangler d1 create\` output: ${output}`);
+      return match[1];
+    },
+  });
+  console.log(`Created D1 database "${databaseName}": ${databaseId}`);
 
-  const newBlockText = hasExistingId
+  let newBlockText = hasExistingId
     ? block.text.replace(/database_id\s*=\s*"[^"]*"/, `database_id = "${databaseId}"`)
-    : insertAfterLine(block.text, 'database_name = "kenresoft-cms-db"\n', `database_id = "${databaseId}"\n`);
+    : insertAfterLine(block.text, `database_name = "${currentName}"\n`, `database_id = "${databaseId}"\n`);
+  if (databaseName !== currentName) {
+    newBlockText = newBlockText.replace(/database_name\s*=\s*"[^"]*"/, `database_name = "${databaseName}"`);
+  }
   writeToml(readToml().slice(0, block.start) + newBlockText + readToml().slice(block.end));
 }
 
@@ -165,24 +224,36 @@ async function ensureR2() {
   const block = findTopLevelBlock(toml, '[[r2_buckets]]');
   if (!block) throw new Error('Could not find [[r2_buckets]] in wrangler.toml.');
   const hasExistingName = /\bbucket_name\s*=/.test(block.text);
+  const currentName = extractTomlValue(block.text, 'bucket_name') ?? 'kenresoft-cms-media';
   if (hasExistingName) {
-    if (resourceExists(['r2', 'bucket', 'info', 'kenresoft-cms-media', '--json'], /does not exist/i)) {
+    if (resourceExists(['r2', 'bucket', 'info', currentName, '--json'], /does not exist/i)) {
       console.log('✓ R2 bucket already configured and confirmed present on Cloudflare — skipping.');
       return;
     }
     console.log(
-      '⚠ wrangler.toml has a bucket_name, but "kenresoft-cms-media" no longer exists on Cloudflare ' +
+      `⚠ wrangler.toml has a bucket_name, but "${currentName}" no longer exists on Cloudflare ` +
         '(deleted outside this script?) — recreating it.',
     );
   }
 
-  console.log('Creating R2 bucket "kenresoft-cms-media"...');
-  runWrangler(['r2', 'bucket', 'create', 'kenresoft-cms-media'], { cwd: API_DIR });
+  console.log('Creating R2 bucket...');
+  // R2 has no separate id field the way D1 does — bucket_name *is* the real identifier, so
+  // (unlike database_id above) there's nothing to fall back on if this doesn't end up matching
+  // whatever name actually got created; always keep them in sync below.
+  const { name: bucketName } = await createUniqueResource({
+    kind: 'R2 bucket',
+    defaultName: currentName,
+    create: (name) => {
+      runWrangler(['r2', 'bucket', 'create', name], { cwd: API_DIR, stdio: ['pipe', 'pipe', 'pipe'] });
+      return name;
+    },
+  });
+  console.log(`Created R2 bucket: ${bucketName}`);
 
-  if (!hasExistingName) {
-    const newBlockText = insertAfterLine(block.text, 'binding = "MEDIA_BUCKET"\n', 'bucket_name = "kenresoft-cms-media"\n');
-    writeToml(readToml().slice(0, block.start) + newBlockText + readToml().slice(block.end));
-  }
+  const newBlockText = hasExistingName
+    ? block.text.replace(/bucket_name\s*=\s*"[^"]*"/, `bucket_name = "${bucketName}"`)
+    : insertAfterLine(block.text, 'binding = "MEDIA_BUCKET"\n', `bucket_name = "${bucketName}"\n`);
+  writeToml(readToml().slice(0, block.start) + newBlockText + readToml().slice(block.end));
 }
 
 // Checks whether BETTER_AUTH_SECRET is already set on the Worker before touching it — re-running
@@ -290,8 +361,10 @@ async function main() {
   await ensureR2();
 
   console.log('Applying database migrations...');
+  // "DB" (the binding, not the database's own name) — stays correct even if ensureD1() above
+  // just settled on a different real database_name to dodge an "already exists" collision.
   runWranglerInherit(
-    ['d1', 'migrations', 'apply', 'kenresoft-cms-db', '--remote', '--config', WRANGLER_TOML_PATH],
+    ['d1', 'migrations', 'apply', 'DB', '--remote', '--config', WRANGLER_TOML_PATH],
     { cwd: API_DIR },
   );
 

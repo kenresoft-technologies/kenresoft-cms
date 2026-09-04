@@ -1426,3 +1426,42 @@ to know current enablement state — a real design correction made during this p
 original plan (which would have made non-admin nav rendering fail against an admin-only
 endpoint). `docs/PLUGINS.md`'s Enablement section was rewritten in place rather than left
 contradicting the new code.
+
+**Fix: `pnpm run setup` crashing outright with "A database with that name already exists"**
+(2026-09-04, direct user report — several people running this open-source template kept hitting
+it) — done. `ensureD1()`/`ensureR2()` hardcoded the literal names `kenresoft-cms-db`/
+`kenresoft-cms-media` for every fork, and `wrangler d1/r2 ... create <name>` unconditionally
+crashed the whole script the moment that name already existed in the target Cloudflare account —
+which D1/R2 names only have to be unique *within*, not globally. Two real, common triggers:
+someone re-running setup after an earlier attempt created the resource but exited before writing
+its id into `wrangler.toml` (a re-clone into a fresh directory instead of reusing the same one is
+enough to lose that), and — more likely the recurring case — one Cloudflare account hosting more
+than one deployment of this same template (an agency running several client sites from a single
+account), where every fork after the first collides on the exact same default name.
+
+Fixed by catching that specific failure (confirmed against real Cloudflare infrastructure, not
+guessed: created a throwaway D1 database and R2 bucket, then tried creating each a second time —
+D1 replies "A database with that name already exists", R2 replies "The bucket you tried to
+create already exists, and you own it. [code: 10004]", both matched by one `/already exists/i`
+check) and asking for a different name instead of crashing, with an auto-generated suggestion
+(the default plus a short random suffix) so accepting it is just pressing Enter. Verified live,
+not just unit-reasoned: the retry path was driven against the real duplicate-name collision above
+and correctly created a second, differently-named database.
+
+The one thing this couldn't safely do is let `database_name`/`bucket_name` silently drift from
+whatever every *other* script assumes. `wrangler d1 info`/`wrangler r2 bucket info` (this file's
+own existence checks) only accept the resource's real name, confirmed via `--help` output ("The
+name of the DB"/"The name of the bucket to retrieve info for") — no binding fallback — so
+`ensureD1()`/`ensureR2()` now always read the *actual* current name back out of wrangler.toml
+(`extractTomlValue()`) instead of assuming the hardcoded default, and always write the real
+chosen name back after a rename, so a later re-run's existence check stays correct. Every other
+consumer that used to hardcode the literal database name as a CLI argument — `scripts/setup.mjs`'s
+own migrations-apply step, `scripts/update.mjs`, `packages/database/package.json`'s four
+`migrate:*` scripts, and `apps/api/scripts/recover-owner.mjs`'s `d1 execute` calls — was switched
+to the binding `"DB"` instead, confirmed safe via `wrangler d1 migrations apply --help`/
+`wrangler d1 execute --help` (both explicitly document accepting "The name or binding of the
+DB"), so all four stay correct regardless of what the database ends up actually named. R2 has no
+such binding-based CLI resolution (`wrangler r2 object get/put` always take the bucket's real
+name), so `apps/api/scripts/backup-media.mjs`'s `BUCKET_NAME` constant stays a documented manual
+override — its existing comment now also calls out this rename scenario, not just the two it
+already covered (an explicitly-named bucket vs. one left to wrangler's own auto-provisioning).

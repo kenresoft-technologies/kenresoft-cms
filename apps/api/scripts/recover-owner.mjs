@@ -30,7 +30,11 @@ import { hashPassword } from 'better-auth/crypto';
 
 const require = createRequire(import.meta.url);
 
-const DB_NAME = 'kenresoft-cms-db';
+// The binding, not the database's own name — `d1 execute` accepts either (confirmed via
+// `wrangler d1 execute --help`), and the binding stays correct even for an install whose real
+// database_name differs from the default (e.g. after setup.mjs's collision-driven rename when
+// an "already exists" conflict came up during provisioning — see scripts/setup.mjs).
+const DB_NAME = 'DB';
 // wrangler.toml lives at the repo root, not apps/api/ (see that file's own top comment) —
 // verified empirically (new URL()'s relative resolution isn't as simple as counting
 // directories by eye): apps/api/scripts/ -> apps/api/ -> apps/ -> repo root needs three "../".
