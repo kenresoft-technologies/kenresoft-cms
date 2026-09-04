@@ -1386,3 +1386,43 @@ unreachable host), real media upload/sniffing — all passing, plus a clean `pnp
 itself (OS command injection in `wrangler pages deploy`) — unchanged from the already-documented
 reasoning: this transitive copy is never invoked with that subcommand by anything in this
 codebase, and actually replacing it is the same rejected 0.22.0 migration.
+
+**Plugin enablement: DB-backed and live-toggleable, superseding part of Phase 1's design**
+(2026-09-04, on `feature/plugin-enablement` off `develop`) — done. Prompted by a direct question
+mid-way through planning Commerce: shouldn't a self-hosted operator see which plugins are
+bundled and toggle them on/off in the admin UI, rather than editing a file and redeploying? The
+honest constraint is unchanged (Cloudflare Workers still bundle plugin *code* at build time — no
+Dynamic Worker Loader, no runtime remote-code loading, per the source spec's own non-goals), but
+*whether* an already-bundled plugin is switched on no longer has to be. `apps/api/src/plugins/
+plugins.config.ts` (a static file, edit-and-redeploy to toggle) is deleted, replaced by a new
+Core-owned `plugin_enablement` table (`packages/database/schema/plugin-enablement.ts`, no row
+for a plugin id means enabled by default) and a new `GET`/`PATCH /api/v1/admin/plugins` route
+pair backing a new admin "Plugins" page (`apps/admin/src/pages/PluginsPage.tsx`) — toggling takes
+effect immediately, no redeploy; adding a genuinely new plugin still requires a code change (the
+package + one line in `registered-plugins.ts`) and a redeploy, which doesn't change.
+
+The real architectural shift this forced: Phase 1's `ENABLED_PLUGINS` was resolved once,
+synchronously, at Worker module-load — before any request (and therefore any D1 binding) exists.
+Making enablement DB-backed meant that decision had to move to per-request time.
+`apps/api/src/plugins/registry.ts`'s `resolvePlugins()`/`ENABLED_PLUGINS` became
+`validatePlugins()`/`VALIDATED_PLUGINS`, narrowed to only what cold-start actually can decide
+(manifest shape, `sdkVersion`, duplicate ids); a new `apps/api/src/plugins/enablement.ts`'s
+`requirePluginEnabled(pluginId)` — applied at the top-level app *before* `requireSession` for
+every plugin's mount point — does the live check instead, 404ing unconditionally regardless of
+auth state (matching this codebase's existing "disabled/unconfigured ⇒ indistinguishable from
+not installed" convention) and re-checking that the plugin's declared dependencies are
+*currently* enabled too, not just installed. Hono's route composition itself is unchanged — every
+validated plugin still mounts unconditionally at cold start; only request handling is now gated.
+One extra D1 read per plugin-route request is an accepted, documented cost, not solved
+speculatively with cross-request caching a stateless Workers request can't safely do anyway.
+
+Completing the feature meant the admin nav had to become live-aware too, not just the API:
+`apps/admin/src/plugins/registry.ts`'s `PluginNavItem` gained a required `pluginId`, and both
+`AppLayout.tsx` and `command-palette.tsx` now filter `pluginNavItems` against a new
+`usePlugins()` hook before rendering — a disabled plugin's sidebar link and palette entry
+disappear instead of just 404ing when clicked. The list endpoint itself is readable by any
+authenticated role (not admin-gated like `PATCH`), specifically because every role's nav needs
+to know current enablement state — a real design correction made during this pass, not the
+original plan (which would have made non-admin nav rendering fail against an admin-only
+endpoint). `docs/PLUGINS.md`'s Enablement section was rewritten in place rather than left
+contradicting the new code.

@@ -7,6 +7,7 @@ import type { PluginManifest } from '@kenresoft-cms/plugin-sdk';
 export const helloManifest: PluginManifest = {
   id: 'hello',
   name: 'Hello',
+  description: 'The Phase 1 plugin-platform proof-of-concept — greetings, nothing more.',
   version: '0.1.0',
   sdkVersion: PLUGIN_SDK_VERSION,
   capabilities: ['database', 'events'],

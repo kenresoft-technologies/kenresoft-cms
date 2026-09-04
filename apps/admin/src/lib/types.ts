@@ -48,6 +48,7 @@ export type {
   ImportEntriesResult,
   Media,
   MediaContentType,
+  PluginSummary,
   PreviewTokenResponse,
   Session,
   Settings,

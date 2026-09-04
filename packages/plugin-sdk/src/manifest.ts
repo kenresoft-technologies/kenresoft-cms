@@ -27,6 +27,9 @@ export const pluginManifestSchema = z.object({
     .min(1)
     .regex(/^[a-z][a-z0-9-]*$/, 'Plugin id must be lowercase, start with a letter, and use only letters/digits/hyphens'),
   name: z.string().min(1),
+  // Shown on the admin Plugins page (apps/admin/src/pages/PluginsPage.tsx) — optional since it's
+  // purely descriptive, never checked against anything.
+  description: z.string().min(1).optional(),
   version: z.string().min(1),
   sdkVersion: z.string().min(1),
   // Other plugin ids this plugin requires to already be enabled — validated by the registry

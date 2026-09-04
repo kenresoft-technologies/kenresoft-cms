@@ -3,7 +3,7 @@ import { SELF, env } from 'cloudflare:test';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { pluginEventBus } from '../src/plugins/events';
-import { ENABLED_PLUGINS } from '../src/plugins/registry';
+import { VALIDATED_PLUGINS } from '../src/plugins/registry';
 import { upsertPluginConfig } from '../src/repositories/plugin-settings';
 
 async function authedCookie(email: string): Promise<string> {
@@ -46,13 +46,14 @@ describe('plugin platform: hello (real D1)', () => {
   beforeEach(async () => {
     await env.DB.exec('DELETE FROM plugin_hello_greetings');
     await env.DB.exec('DELETE FROM plugin_settings');
+    await env.DB.exec('DELETE FROM plugin_enablement');
     await env.DB.exec('DELETE FROM session');
     await env.DB.exec('DELETE FROM account');
     await env.DB.exec('DELETE FROM user');
   });
 
-  it('discovers and validates the hello plugin at registry resolution time', () => {
-    expect(ENABLED_PLUGINS.map((p) => p.manifest.id)).toContain('hello');
+  it('discovers and validates the hello plugin at registry validation time', () => {
+    expect(VALIDATED_PLUGINS.map((p) => p.manifest.id)).toContain('hello');
   });
 
   it('rejects the plugin mount without a session', async () => {

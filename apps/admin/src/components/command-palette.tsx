@@ -1,11 +1,12 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router';
-import { ClipboardList, FileText, Images, Inbox, LayoutDashboard, LayoutList, ScrollText, Settings, Users } from 'lucide-react';
+import { ClipboardList, FileText, Images, Inbox, LayoutDashboard, LayoutList, Puzzle, ScrollText, Settings, Users } from 'lucide-react';
 
 import { authClient } from '@/lib/auth-client';
 import { useContentTypes } from '@/lib/queries/content-types';
 import { useDashboardStats } from '@/lib/queries/dashboard';
 import { useForms } from '@/lib/queries/forms';
+import { usePlugins } from '@/lib/queries/plugins';
 import { roleAtLeast, type UserRole } from '@/lib/types';
 import { pluginNavItems } from '@/plugins/registry';
 import { Command, CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
@@ -23,7 +24,11 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const { data: contentTypes } = useContentTypes();
   const { data: forms } = useForms();
   const { data: stats } = useDashboardStats();
+  const { data: plugins } = usePlugins();
   const isAdmin = roleAtLeast((session?.user.role ?? 'viewer') as UserRole, 'admin');
+  const visiblePluginNavItems = pluginNavItems.filter(
+    (item) => (plugins?.find((plugin) => plugin.id === item.pluginId)?.enabled ?? true),
+  );
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -88,10 +93,16 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
                 Audit log
               </CommandItem>
             ) : null}
+            {isAdmin ? (
+              <CommandItem value="Installed Plugins" onSelect={() => go('/plugins')}>
+                <Puzzle />
+                Installed Plugins
+              </CommandItem>
+            ) : null}
           </CommandGroup>
-          {pluginNavItems.length > 0 ? (
+          {visiblePluginNavItems.length > 0 ? (
             <CommandGroup heading="Plugins">
-              {pluginNavItems.map((item) => (
+              {visiblePluginNavItems.map((item) => (
                 <CommandItem key={item.to} value={item.label} onSelect={() => go(item.to)}>
                   <item.icon />
                   {item.label}
