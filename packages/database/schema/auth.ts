@@ -124,6 +124,19 @@ export const twoFactor = sqliteTable(
     userId: text("user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
+    // Added by better-auth 1.7's two-factor plugin (not present when this table was first
+    // generated against the 1.4.x line — @better-auth/cli's schema generator still bundles its
+    // own internal 1.4.x copy, so this drift was never caught at generate time; see auth.ts's
+    // own comment on the exact-pinned `better-auth` version for the same class of gap already
+    // hit once with account.issuer). Confirmed against the installed package's own
+    // dist/plugins/two-factor/schema.mjs rather than guessed: verified defaults true (an
+    // enrollment created with skipVerificationOnEnable, which this app doesn't use, would start
+    // unverified — this app's two-step enable() -> verifyTotp() flow only ever creates a row
+    // once already confirmed); failedVerificationCount/lockedUntil back a brute-force lockout on
+    // verifyTotp() this app's UI doesn't surface explicitly but the plugin enforces regardless.
+    verified: integer("verified", { mode: "boolean" }).default(true).notNull(),
+    failedVerificationCount: integer("failed_verification_count").default(0).notNull(),
+    lockedUntil: integer("locked_until", { mode: "timestamp_ms" }),
   },
   (table) => [index("two_factor_userId_idx").on(table.userId), index("two_factor_secret_idx").on(table.secret)],
 );

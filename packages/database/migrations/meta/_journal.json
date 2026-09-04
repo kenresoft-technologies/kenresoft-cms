@@ -148,6 +148,13 @@
       "when": 1788448057306,
       "tag": "0020_slim_swarm",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "6",
+      "when": 1788494012624,
+      "tag": "0021_bitter_jubilee",
+      "breakpoints": true
     }
   ]
 }
