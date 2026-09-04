@@ -11,5 +11,7 @@ export * from './global-variables';
 export * from './audit-log';
 export * from './recovery-codes';
 export * from './webhooks';
+export * from './plugin-settings';
+export * from './plugins/hello';
 export * from './relations';
 export * from './auth';
