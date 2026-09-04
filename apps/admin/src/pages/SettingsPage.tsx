@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useSearchParams } from 'react-router';
 
 import { authClient } from '@/lib/auth-client';
 import { useSettings } from '@/lib/queries/settings';
@@ -15,7 +16,15 @@ export function SettingsPage() {
   const { data: session } = authClient.useSession();
   const isAdmin = roleAtLeast((session?.user.role ?? 'viewer') as UserRole, 'admin');
   const { data: settings, isPending } = useSettings();
-  const [activeSectionId, setActiveSectionId] = useState<SettingsSectionId>('general');
+  // Deep-linkable via ?section=api — e.g. the Entry Editor's Live Preview button links here
+  // when nothing's configured yet, landing directly on the right card instead of just naming it.
+  const [searchParams] = useSearchParams();
+  const [activeSectionId, setActiveSectionId] = useState<SettingsSectionId>(() => {
+    const requested = searchParams.get('section');
+    return SETTINGS_SECTIONS.some((section) => section.id === requested)
+      ? (requested as SettingsSectionId)
+      : 'general';
+  });
 
   const activeSection = SETTINGS_SECTIONS.find((section) => section.id === activeSectionId)!;
 

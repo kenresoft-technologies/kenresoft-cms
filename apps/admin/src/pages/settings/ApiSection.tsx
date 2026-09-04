@@ -9,6 +9,7 @@ import type { Settings } from '@/lib/types';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import { SettingsSaveBar, SettingsSection, toSettingsInput } from './shared';
 
@@ -94,7 +95,7 @@ function DeveloperExperienceSection({ settings, readOnly }: SectionProps) {
 // here closes the gap where an owner enables password reset in their head but never actually
 // sets EMAIL_PROVIDER, then gets a support request wondering why reset emails never arrive.
 function EmailDeliverySection() {
-  const { data: status } = useSystemStatus();
+  const { data: status, isPending } = useSystemStatus();
 
   return (
     <SettingsSection
@@ -102,22 +103,99 @@ function EmailDeliverySection() {
       description="Whether this deployment can actually send password-reset emails."
     >
       <div className="flex items-center justify-between gap-4">
-        <p className="max-w-md text-sm text-muted-foreground">
-          {status?.emailConfigured
-            ? 'A real email provider is configured — password-reset requests deliver normally.'
-            : "No EMAIL_PROVIDER is set for this deployment. Password-reset requests still succeed, but no email is actually sent — set EMAIL_PROVIDER in wrangler.toml (see docs/DEPLOYMENT.md) to enable delivery."}
-        </p>
-        <Badge
-          variant="outline"
-          className={
-            status?.emailConfigured
-              ? 'shrink-0 border-success/30 bg-success/10 text-success'
-              : 'shrink-0 border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400'
-          }
-        >
-          {status?.emailConfigured ? 'Configured' : 'Not configured'}
-        </Badge>
+        {isPending ? (
+          <>
+            <Skeleton className="h-4 w-72" />
+            <Skeleton className="h-5 w-24 shrink-0 rounded-full" />
+          </>
+        ) : (
+          <>
+            <p className="max-w-md text-sm text-muted-foreground">
+              {status?.emailConfigured
+                ? 'A real email provider is configured — password-reset requests deliver normally.'
+                : "No EMAIL_PROVIDER is set for this deployment. Password-reset requests still succeed, but no email is actually sent — set EMAIL_PROVIDER in wrangler.toml (see docs/DEPLOYMENT.md) to enable delivery."}
+            </p>
+            <Badge
+              variant="outline"
+              className={
+                status?.emailConfigured
+                  ? 'shrink-0 border-success/30 bg-success/10 text-success'
+                  : 'shrink-0 border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400'
+              }
+            >
+              {status?.emailConfigured ? 'Configured' : 'Not configured'}
+            </Badge>
+          </>
+        )}
       </div>
+    </SettingsSection>
+  );
+}
+
+// Same mechanism/UI shape as DeveloperExperienceSection above (a dedicated card over one
+// Settings.featureFlags key), for the same reason: recordAudit() (apps/api/src/lib/audit.ts)
+// has no retention/pruning, so this table grows forever unless an owner opts out here.
+function AuditLoggingSection({ settings, readOnly }: SectionProps) {
+  const updateSettings = useUpdateSettings();
+  const initial = settings?.featureFlags?.auditLoggingEnabled !== false;
+  const [enabled, setEnabled] = useState(initial);
+  const [saved, setSaved] = useState(initial);
+  const [error, setError] = useState<string | null>(null);
+
+  const dirty = enabled !== saved;
+
+  async function handleSave() {
+    setError(null);
+    try {
+      await updateSettings.mutateAsync({
+        ...toSettingsInput(settings),
+        featureFlags: { ...(settings?.featureFlags ?? {}), auditLoggingEnabled: enabled },
+      });
+      setSaved(enabled);
+      toast.success('Settings saved');
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to save settings';
+      setError(message);
+      toast.error(message);
+    }
+  }
+
+  return (
+    <SettingsSection
+      title="Audit logging"
+      description="Records every role change, structural write, and auth event to a permanent log."
+      footer={
+        <SettingsSaveBar
+          dirty={dirty}
+          pending={updateSettings.isPending}
+          readOnly={readOnly}
+          onSave={() => void handleSave()}
+          onDiscard={() => {
+            setEnabled(saved);
+            setError(null);
+          }}
+        />
+      }
+    >
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex flex-col gap-1">
+          <Label htmlFor="settings-audit-logging">Audit logging</Label>
+          <p className="max-w-md text-sm text-muted-foreground">
+            The audit log has no automatic pruning — every recorded event stays in the database
+            forever, which is exactly what you want for accountability, but does mean it grows
+            without bound over time. Turning this off stops new events from being recorded; it
+            doesn't delete what's already there.
+          </p>
+        </div>
+        <Switch
+          id="settings-audit-logging"
+          checked={enabled}
+          disabled={readOnly}
+          onCheckedChange={setEnabled}
+        />
+      </div>
+
+      {error ? <p className="text-sm text-destructive">{error}</p> : null}
     </SettingsSection>
   );
 }
@@ -171,6 +249,18 @@ function LivePreviewSection({ settings, readOnly }: SectionProps) {
         />
       }
     >
+      <div className="rounded-md bg-muted/50 p-3 text-sm text-muted-foreground">
+        <p className="font-medium text-foreground">How this works</p>
+        <p className="mt-1">
+          Live Preview lets you view a draft (or any unpublished change) exactly as it'll look on
+          your real site, before you publish it. It needs your frontend to have a page for
+          rendering one entry, and for that page to check for a <code className="rounded bg-muted px-1 py-0.5 text-xs">preview_token</code>{' '}
+          link parameter — when present, it fetches the entry through the preview endpoint
+          instead of the normal public one, which is the only way this works for a draft that
+          isn't published yet. Below, tell us the URL pattern that page uses on your site.
+        </p>
+      </div>
+
       <div className="flex flex-col gap-2">
         <Label htmlFor="settings-preview-url">Preview URL template</Label>
         <Input
@@ -232,12 +322,6 @@ export function ApiSection({ settings, readOnly }: SectionProps) {
 
   return (
     <div className="flex flex-col gap-6">
-      <DeveloperExperienceSection settings={settings} readOnly={readOnly} />
-
-      <EmailDeliverySection />
-
-      <LivePreviewSection settings={settings} readOnly={readOnly} />
-
       <SettingsSection
         title="API access"
         description="Controls how external origins are allowed to call this deployment's API."
@@ -255,7 +339,7 @@ export function ApiSection({ settings, readOnly }: SectionProps) {
           <Label htmlFor="settings-cors-origin">CORS origin</Label>
           <Input
             id="settings-cors-origin"
-            placeholder="https://pathvera.com"
+            placeholder="https://cms.example.com"
             disabled={readOnly}
             value={corsOrigin}
             onChange={(event) => setCorsOrigin(event.target.value)}
@@ -291,6 +375,16 @@ export function ApiSection({ settings, readOnly }: SectionProps) {
           </a>
         </div>
       </SettingsSection>
+
+      <EmailDeliverySection />
+
+      <LivePreviewSection settings={settings} readOnly={readOnly} />
+
+      {/* The two most delicate, "don't toggle casually" controls in this section go last,
+          deliberately de-prioritized below the more expected/benign API settings above. */}
+      <AuditLoggingSection settings={settings} readOnly={readOnly} />
+
+      <DeveloperExperienceSection settings={settings} readOnly={readOnly} />
     </div>
   );
 }

@@ -15,7 +15,7 @@ async function authedCookie(email: string): Promise<string> {
 let cookieCounter = 0;
 async function freshCookie(): Promise<string> {
   cookieCounter += 1;
-  return authedCookie(`audit-log-${cookieCounter}@pathvera.test`);
+  return authedCookie(`audit-log-${cookieCounter}@example.test`);
 }
 
 function pngBytes(width: number, height: number): Uint8Array {
@@ -80,7 +80,7 @@ describe('audit log (real D1)', () => {
   // security-elevate — auth.sign_in_failed logging itself is covered by the real live-instance
   // pass instead, not by this file.
   it('records auth.sign_up, auth.sign_in, and auth.sign_out', async () => {
-    const email = 'audit-auth@pathvera.test';
+    const email = 'audit-auth@example.test';
     const cookie = await authedCookie(email);
 
     await SELF.fetch('https://example.com/api/v1/auth/sign-in/email', {
@@ -231,5 +231,38 @@ describe('audit log (real D1)', () => {
 
     const noMatch = await fetchAuditLog(cookie, '?action=nonexistent.action');
     expect(noMatch).toEqual([]);
+  });
+
+  it('stops recording once Settings.featureFlags.auditLoggingEnabled is set to false', async () => {
+    const cookie = await freshCookie();
+    const headers = { Cookie: cookie, 'Content-Type': 'application/json' };
+
+    await SELF.fetch('https://example.com/api/v1/admin/settings', {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify({ name: 'Test Deployment', featureFlags: { auditLoggingEnabled: false } }),
+    });
+
+    await SELF.fetch('https://example.com/api/v1/admin/content-types', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ name: 'Blog Post', slug: 'blog-post' }),
+    });
+    const whileDisabled = await fetchAuditLog(cookie, '?action=content_type.created');
+    expect(whileDisabled).toEqual([]);
+
+    await SELF.fetch('https://example.com/api/v1/admin/settings', {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify({ name: 'Test Deployment', featureFlags: { auditLoggingEnabled: true } }),
+    });
+    await SELF.fetch('https://example.com/api/v1/admin/content-types', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ name: 'Page', slug: 'page' }),
+    });
+    const afterReenabled = await fetchAuditLog(cookie, '?action=content_type.created');
+    expect(afterReenabled).toHaveLength(1);
+    expect(afterReenabled[0]!.targetType).toBe('content_type');
   });
 });
