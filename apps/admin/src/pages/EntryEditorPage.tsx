@@ -3,6 +3,7 @@ import { ExternalLink } from 'lucide-react';
 import { useBlocker, useNavigate, useParams } from 'react-router';
 import { toast } from 'sonner';
 
+import { ContentTypeBadge } from '@/components/content-type-badge';
 import { EntryDeveloperPanel } from '@/components/developer-panel/entry-developer-panel';
 import { EntryRevisionHistory } from '@/components/entry-revision-history';
 import { FieldInput } from '@/components/field-input';
@@ -454,11 +455,16 @@ export function EntryEditorPage() {
       <PageHeader
         title={isNew ? 'New entry' : (entry?.slug ?? 'Edit entry')}
         description={
-          contentType
-            ? `${isNew ? 'Creating a new' : 'Editing an'} instance of ${contentType.name}.`
-            : isNew
-              ? 'Creating a new entry.'
-              : 'Editing an entry.'
+          contentType && contentTypeId ? (
+            <span className="flex items-center gap-1.5">
+              {isNew ? 'Creating a new instance of' : 'Editing an instance of'}
+              <ContentTypeBadge id={contentTypeId} name={contentType.name} />
+            </span>
+          ) : isNew ? (
+            'Creating a new entry.'
+          ) : (
+            'Editing an entry.'
+          )
         }
         actions={
           developerMode && !isNew && contentType && entry ? (
