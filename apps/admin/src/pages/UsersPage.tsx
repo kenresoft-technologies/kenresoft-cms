@@ -17,6 +17,7 @@ import type { ColumnDef } from '@tanstack/react-table';
 
 import { ApiError } from '@/lib/api-client';
 import { authClient } from '@/lib/auth-client';
+import { cn } from '@/lib/utils';
 import {
   useCreateUser,
   useDeleteUser,
@@ -115,6 +116,21 @@ function exportUsersToCsv(users: AdminUser[]) {
 // an option avoids a confusing "why did that fail" for anyone who tries.
 const ASSIGNABLE_ROLES = USER_ROLES.filter((role) => role !== 'owner');
 
+// Distinct colors below Owner (which keeps its own primary tint above) — gives the Users page
+// the same at-a-glance role scan as Strapi's role badges. Viewer stays unaccented, matching its
+// standing as this deployment's lowest-privilege, nothing-granted tier.
+const ROLE_BADGE_TONE: Partial<Record<UserRole, string>> = {
+  admin: 'border-swatch-3/30 bg-swatch-3/14 text-swatch-3',
+  editor: 'border-swatch-2/30 bg-swatch-2/14 text-swatch-2',
+  author: 'border-swatch-4/30 bg-swatch-4/14 text-swatch-4',
+};
+
+const ROLE_SELECT_TONE: Partial<Record<UserRole, string>> = {
+  admin: 'text-swatch-3',
+  editor: 'text-swatch-2',
+  author: 'text-swatch-4',
+};
+
 function RoleCell({ user, canEdit }: { user: AdminUser; canEdit: boolean }) {
   const updateRole = useUpdateUserRole();
 
@@ -130,7 +146,7 @@ function RoleCell({ user, canEdit }: { user: AdminUser; canEdit: boolean }) {
 
   if (!canEdit) {
     return (
-      <Badge variant="secondary" className="capitalize">
+      <Badge variant="outline" className={cn('capitalize', ROLE_BADGE_TONE[user.role])}>
         {user.role}
       </Badge>
     );
@@ -151,7 +167,7 @@ function RoleCell({ user, canEdit }: { user: AdminUser; canEdit: boolean }) {
         );
       }}
     >
-      <SelectTrigger size="sm" className="w-28 capitalize">
+      <SelectTrigger size="sm" className={cn('w-28 capitalize', ROLE_SELECT_TONE[user.role])}>
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
