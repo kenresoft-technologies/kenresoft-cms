@@ -162,6 +162,13 @@
       "when": 1788535873950,
       "tag": "0022_first_jack_flag",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "6",
+      "when": 1788556429086,
+      "tag": "0023_parallel_stark_industries",
+      "breakpoints": true
     }
   ]
 }
