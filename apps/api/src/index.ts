@@ -22,6 +22,7 @@ import { entriesRoute } from './routes/admin/entries';
 import { formsRoute } from './routes/admin/forms';
 import { globalVariablesRoute } from './routes/admin/global-variables';
 import { mediaRoute } from './routes/admin/media';
+import { pluginsRoute } from './routes/admin/plugins';
 import { securityRoute } from './routes/admin/security';
 import { settingsRoute } from './routes/admin/settings';
 import { submissionsRoute } from './routes/admin/submissions';
@@ -84,6 +85,7 @@ app.route('/api/v1/admin/settings', settingsRoute);
 app.route('/api/v1/admin/users', usersRoute);
 app.route('/api/v1/admin/security', securityRoute);
 app.route('/api/v1/admin/webhooks', webhooksRoute);
+app.route('/api/v1/admin/plugins', pluginsRoute);
 
 // Every enabled plugin (docs/PLUGINS.md), mounted at /api/plugins/<id>/v1/* — the registry/
 // enablement config live under ./plugins/, never imported by this file directly (only
