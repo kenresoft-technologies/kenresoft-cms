@@ -9,13 +9,19 @@ import type { LucideIcon } from 'lucide-react';
 // property, and its published-semver @kenresoft-cms/contracts dependency, intact — no plugin
 // package ever becomes a required workspace:* dependency of this app).
 export interface PluginNavItem {
+  // Matches the plugin's manifest id (packages/plugin-<id>/src/manifest.ts) — AppLayout/
+  // command-palette check this against the live GET /api/v1/admin/plugins list before
+  // rendering, so a disabled plugin's link disappears instead of just 404ing when clicked.
+  pluginId: string;
   to: string;
   label: string;
   end: boolean;
   icon: LucideIcon;
 }
 
-export const pluginNavItems: PluginNavItem[] = [{ to: '/plugins/hello', label: 'Hello', end: false, icon: Puzzle }];
+export const pluginNavItems: PluginNavItem[] = [
+  { pluginId: 'hello', to: '/plugins/hello', label: 'Hello', end: false, icon: Puzzle },
+];
 
 export const pluginRoutes = [
   {

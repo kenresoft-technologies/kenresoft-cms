@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   LayoutList,
   LogOut,
+  Puzzle,
   ScrollText,
   Search,
   Settings,
@@ -17,6 +18,7 @@ import {
 import { Link, Navigate, NavLink, Outlet, useLocation } from 'react-router';
 
 import { authClient } from '@/lib/auth-client';
+import { usePlugins } from '@/lib/queries/plugins';
 import { roleAtLeast, type UserRole } from '@/lib/types';
 import { pluginNavItems } from '@/plugins/registry';
 import { CommandPalette } from '@/components/command-palette';
@@ -72,6 +74,12 @@ const adminItems = [
 // would just be a dead end for editor/author/viewer.
 const auditLogItem = { to: '/audit-log', label: 'Audit log', end: false, icon: ScrollText };
 
+// Same reasoning as auditLogItem — only admin can toggle a plugin (routes/admin/plugins.ts),
+// so there's nothing a lower role could do with this page. Labeled "Installed Plugins" rather
+// than bare "Plugins" so it doesn't collide with the "Plugins" SidebarGroupLabel below (the
+// group of per-plugin nav entries) in either the rendered DOM or test queries.
+const pluginsItem = { to: '/plugins', label: 'Installed Plugins', end: false, icon: Puzzle };
+
 function initials(label: string) {
   const parts = label.trim().split(/\s+/);
   if (parts.length > 1) return `${parts[0]![0]}${parts[parts.length - 1]![0]}`.toUpperCase();
@@ -104,6 +112,7 @@ export function AppLayout() {
   const { data: session, isPending } = authClient.useSession();
   const location = useLocation();
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const { data: plugins } = usePlugins();
 
   if (isPending) {
     return <div className="flex min-h-svh items-center justify-center">Loading…</div>;
@@ -114,8 +123,15 @@ export function AppLayout() {
   }
 
   const visibleAdminItems = roleAtLeast(session.user.role as UserRole, 'admin')
-    ? [...adminItems, auditLogItem]
+    ? [...adminItems, auditLogItem, pluginsItem]
     : adminItems;
+
+  // Defaults to visible while the list is still loading (isPending), then corrects itself once
+  // real data arrives — matches the rest of this app's "don't gate on load state, just fix up
+  // once resolved" idiom rather than flashing every plugin link hidden on first paint.
+  const visiblePluginNavItems = pluginNavItems.filter(
+    (item) => (plugins?.find((plugin) => plugin.id === item.pluginId)?.enabled ?? true),
+  );
 
   return (
     <SidebarProvider>
@@ -149,11 +165,11 @@ export function AppLayout() {
               <NavItems items={visibleAdminItems} pathname={location.pathname} />
             </SidebarGroupContent>
           </SidebarGroup>
-          {pluginNavItems.length > 0 ? (
+          {visiblePluginNavItems.length > 0 ? (
             <SidebarGroup>
               <SidebarGroupLabel>Plugins</SidebarGroupLabel>
               <SidebarGroupContent>
-                <NavItems items={pluginNavItems} pathname={location.pathname} />
+                <NavItems items={visiblePluginNavItems} pathname={location.pathname} />
               </SidebarGroupContent>
             </SidebarGroup>
           ) : null}

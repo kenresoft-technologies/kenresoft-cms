@@ -52,17 +52,23 @@ describe('AppLayout', () => {
     useSessionMock.mockReset();
     signOutMock.mockReset();
     getMock.mockReset();
-    getMock.mockImplementation((path: string) =>
-      path.startsWith('/api/v1/admin/dashboard')
-        ? Promise.resolve({
-            contentTypeCount: 0,
-            entryCounts: { draft: 0, published: 0 },
-            mediaCount: 0,
-            mediaStorageBytes: 0,
-            recentEntries: [],
-          })
-        : Promise.resolve([]),
-    );
+    getMock.mockImplementation((path: string) => {
+      if (path.startsWith('/api/v1/admin/dashboard')) {
+        return Promise.resolve({
+          contentTypeCount: 0,
+          entryCounts: { draft: 0, published: 0 },
+          mediaCount: 0,
+          mediaStorageBytes: 0,
+          recentEntries: [],
+        });
+      }
+      if (path.startsWith('/api/v1/admin/plugins')) {
+        return Promise.resolve([
+          { id: 'hello', name: 'Hello', description: null, version: '0.1.0', enabled: true },
+        ]);
+      }
+      return Promise.resolve([]);
+    });
   });
 
   it('shows a loading state while the session check is pending', () => {
@@ -108,7 +114,7 @@ describe('AppLayout', () => {
     await waitFor(() => expect(screen.getByText('Content types page')).toBeInTheDocument());
   });
 
-  it('renders the Plugins nav group with the hello plugin entry', () => {
+  it('renders the Plugins nav group with the hello plugin entry, and an admin-only Installed Plugins link', async () => {
     useSessionMock.mockReturnValue({
       data: { user: { email: 'admin@example.test', role: 'admin' } },
       isPending: false,
@@ -117,7 +123,36 @@ describe('AppLayout', () => {
     renderAppLayout();
 
     expect(screen.getByText('Plugins')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Hello' })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('link', { name: 'Hello' })).toBeInTheDocument());
+    expect(screen.getByRole('link', { name: 'Installed Plugins' })).toBeInTheDocument();
+  });
+
+  it('hides a disabled plugin from the sidebar once its live enabled state loads', async () => {
+    useSessionMock.mockReturnValue({
+      data: { user: { email: 'admin@example.test', role: 'admin' } },
+      isPending: false,
+    });
+    getMock.mockImplementation((path: string) => {
+      if (path.startsWith('/api/v1/admin/dashboard')) {
+        return Promise.resolve({
+          contentTypeCount: 0,
+          entryCounts: { draft: 0, published: 0 },
+          mediaCount: 0,
+          mediaStorageBytes: 0,
+          recentEntries: [],
+        });
+      }
+      if (path.startsWith('/api/v1/admin/plugins')) {
+        return Promise.resolve([
+          { id: 'hello', name: 'Hello', description: null, version: '0.1.0', enabled: false },
+        ]);
+      }
+      return Promise.resolve([]);
+    });
+
+    renderAppLayout();
+
+    await waitFor(() => expect(screen.queryByRole('link', { name: 'Hello' })).not.toBeInTheDocument());
   });
 
   it('toggles the command palette with ctrl+k', async () => {

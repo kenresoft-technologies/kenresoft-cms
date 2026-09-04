@@ -95,6 +95,12 @@ export const router = createBrowserRouter([
         lazy: async () => ({ Component: (await import('@/pages/AuditLogPage')).AuditLogPage }),
       },
       {
+        // Core's own plugin-registry page (docs/PLUGINS.md) — distinct from an individual
+        // plugin's own page at 'plugins/:id' (spread in via ...pluginRoutes below).
+        path: 'plugins',
+        lazy: async () => ({ Component: (await import('@/pages/PluginsPage')).PluginsPage }),
+      },
+      {
         path: 'profile',
         lazy: async () => ({ Component: (await import('@/pages/ProfilePage')).ProfilePage }),
       },
