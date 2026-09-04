@@ -76,7 +76,20 @@ async function attemptDelivery(
     // real non-2xx response the endpoint actually returned.
   }
 
-  await recordWebhookDelivery(db, { webhookId: webhook.id, event, payload, responseStatus, success, attempt });
+  try {
+    await recordWebhookDelivery(db, { webhookId: webhook.id, event, payload, responseStatus, success, attempt });
+  } catch (error) {
+    // Recording the attempt must never throw out of here either. Confirmed live against a real
+    // deployment: a webhook pointed at a URL that doesn't handle POST the way a normal receiver
+    // would (here, the admin Worker's own static-assets-served /settings page) triggered
+    // "A stalled HTTP response was canceled to prevent deadlock" and this insert then failed —
+    // and because nothing caught it, the one write that would ever advance `attempt` kept
+    // failing, so listDeliveriesToRetry found the exact same row again on every subsequent
+    // 5-minute cron tick, forever, rather than the bounded MAX_DELIVERY_ATTEMPTS retries this
+    // is supposed to be. Logged (visible via `wrangler tail`) rather than silently swallowed,
+    // so a genuinely persistent D1 problem is still discoverable.
+    console.error('Failed to record webhook delivery attempt:', error);
+  }
 }
 
 // Called from routes/admin/entries.ts after a create/update/delete/status-change commits —
