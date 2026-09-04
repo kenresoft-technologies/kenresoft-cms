@@ -1,6 +1,7 @@
 import { createBrowserRouter } from 'react-router';
 
 import { AppLayout } from '@/layouts/AppLayout';
+import { pluginRoutes } from '@/plugins/registry';
 
 // Every page is a separate chunk, downloaded only when its route is actually visited —
 // apps/admin's bundle had grown to ~1.9MB as one chunk (Vite's 500kB warning threshold),
@@ -113,6 +114,9 @@ export const router = createBrowserRouter([
           Component: (await import('@/pages/EntryEditorPage')).EntryEditorPage,
         }),
       },
+      // Every enabled plugin's admin route (docs/PLUGINS.md) — apps/admin/src/plugins/registry.ts
+      // is the one place both this router and AppLayout's sidebar read plugin entries from.
+      ...pluginRoutes,
     ],
   },
 ]);
