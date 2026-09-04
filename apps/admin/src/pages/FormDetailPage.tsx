@@ -12,6 +12,7 @@ import { FORM_FIELD_TYPES, roleAtLeast, type FormField, type FormFieldType, type
 import { EmptyState } from '@/components/empty-state';
 import { FormDeveloperPanel } from '@/components/developer-panel/form-developer-panel';
 import { FieldTypeBadge, fieldTypeIcon } from '@/components/field-type-badge';
+import { FormBadge } from '@/components/form-badge';
 import { OptionListEditor } from '@/components/option-list-editor';
 import { PageBreadcrumb } from '@/components/page-breadcrumb';
 import { PageHeader } from '@/components/page-header';
@@ -26,7 +27,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -310,6 +313,20 @@ export function FormDetailPage() {
         }
       />
 
+      {form && formId ? (
+        <Card>
+          <CardContent className="flex flex-wrap items-center gap-3">
+            <FormBadge id={formId} name={form.name} />
+            <Badge variant="outline" className="font-mono font-normal text-muted-foreground">
+              {form.slug}
+            </Badge>
+            <span className="ml-auto text-sm text-muted-foreground">
+              {fields?.length ?? 0} {fields?.length === 1 ? 'field' : 'fields'}
+            </span>
+          </CardContent>
+        </Card>
+      ) : null}
+
       {error ? <p className="text-destructive">{error.message}</p> : null}
 
       {isPending ? (
@@ -353,7 +370,15 @@ export function FormDetailPage() {
                   <TableCell>
                     <FieldTypeBadge fieldType={field.fieldType} />
                   </TableCell>
-                  <TableCell className="text-muted-foreground">{field.required ? 'Yes' : 'No'}</TableCell>
+                  <TableCell>
+                    {field.required ? (
+                      <Badge variant="secondary" className="font-normal">
+                        Required
+                      </Badge>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">Optional</span>
+                    )}
+                  </TableCell>
                   <TableCell className="w-20 text-right">
                     {canManageFields ? (
                       <div className="flex justify-end gap-1">
