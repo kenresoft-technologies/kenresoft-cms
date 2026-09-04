@@ -13,7 +13,13 @@ export const authRateLimit: MiddlewareHandler<{ Bindings: Bindings }> = async (c
   const rateLimitKey = c.req.header('CF-Connecting-IP') ?? 'local-dev';
   const { success } = await c.env.AUTH_RATE_LIMITER.limit({ key: rateLimitKey });
   if (!success) {
-    return c.json({ error: 'Too many requests, please try again later' }, 429);
+    // Every caller of a POST /api/v1/auth/* route goes through better-auth's own client
+    // (authClient.signIn/signUp/twoFactor.*/changePassword/...), which parses a non-2xx JSON
+    // body and surfaces its top-level `message` field as `error.message` — a plain
+    // `{ error: "..." }` string body left `.message` undefined everywhere, so every caller's
+    // `authError?.message ?? '<action-specific fallback>'` silently showed the wrong fallback
+    // (e.g. two-factor enrollment's "check your password") on an actual 429, not the real cause.
+    return c.json({ code: 'TOO_MANY_REQUESTS', message: 'Too many requests, please try again later' }, 429);
   }
 
   return next();

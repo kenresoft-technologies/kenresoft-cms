@@ -227,7 +227,14 @@ async function maybeSetUpEmail() {
 
   const emailFrom = await ask('Send from which address?', 'noreply@yourdomain.example');
   let toml = readToml();
-  toml = toml.includes('EMAIL_PROVIDER =')
+  // Must anchor to line-start and reject a leading "#" — a plain toml.includes('EMAIL_PROVIDER
+  // =') also matched the template's own commented-out example line
+  // ("#   EMAIL_PROVIDER = \"cloudflare\"   # or \"resend\""), silently skipping this insertion
+  // on every run: EMAIL_PROVIDER/EMAIL_FROM were never written, RESEND_API_KEY got set as a
+  // secret regardless, and the app kept using the noop email sender since EMAIL_PROVIDER was
+  // still unset — password-reset (and any other) email silently never sent despite a correctly
+  // configured Resend key.
+  toml = /^EMAIL_PROVIDER\s*=/m.test(toml)
     ? toml
     : replaceLine(toml, 'BETTER_AUTH_URL =', `BETTER_AUTH_URL = "https://REPLACE_AFTER_FIRST_DEPLOY.workers.dev"\nEMAIL_PROVIDER = "${choice}"\nEMAIL_FROM = "${emailFrom}"`);
   writeToml(toml);
