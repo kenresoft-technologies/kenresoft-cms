@@ -11,6 +11,7 @@ import { requireSession } from './middleware/require-session';
 import { securityHeaders } from './middleware/security-headers';
 import { invalidatePublicEntryCache } from './lib/public-cache';
 import { dispatchWebhookEvent, retryFailedWebhookDeliveries } from './lib/webhooks';
+import { mountPlugins } from './plugins/mount';
 import { getContentTypeById } from './repositories/content-types';
 import { publishDueEntries } from './repositories/entries';
 import { auditLogRoute } from './routes/admin/audit-log';
@@ -83,6 +84,12 @@ app.route('/api/v1/admin/settings', settingsRoute);
 app.route('/api/v1/admin/users', usersRoute);
 app.route('/api/v1/admin/security', securityRoute);
 app.route('/api/v1/admin/webhooks', webhooksRoute);
+
+// Every enabled plugin (docs/PLUGINS.md), mounted at /api/plugins/<id>/v1/* — the registry/
+// enablement config live under ./plugins/, never imported by this file directly (only
+// mountPlugins() itself is), so Core never accumulates a hard-coded dependency on any specific
+// plugin's business logic.
+mountPlugins(app);
 
 // Aggregates every route registered via .openapi() across the top-level app and its mounted
 // OpenAPIHono sub-apps — routes not yet migrated off plain Hono (§ commit sequence) simply

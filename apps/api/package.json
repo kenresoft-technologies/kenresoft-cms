@@ -21,6 +21,8 @@
     "@hono/zod-openapi": "^1.6.1",
     "@kenresoft-cms/contracts": "workspace:*",
     "@kenresoft-cms/database": "workspace:*",
+    "@kenresoft-cms/plugin-hello": "workspace:*",
+    "@kenresoft-cms/plugin-sdk": "workspace:*",
     "@scalar/hono-api-reference": "^0.11.16",
     "better-auth": "1.7.2",
     "drizzle-orm": "^0.45.2",

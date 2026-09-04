@@ -18,6 +18,7 @@ import { Link, Navigate, NavLink, Outlet, useLocation } from 'react-router';
 
 import { authClient } from '@/lib/auth-client';
 import { roleAtLeast, type UserRole } from '@/lib/types';
+import { pluginNavItems } from '@/plugins/registry';
 import { CommandPalette } from '@/components/command-palette';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -148,6 +149,14 @@ export function AppLayout() {
               <NavItems items={visibleAdminItems} pathname={location.pathname} />
             </SidebarGroupContent>
           </SidebarGroup>
+          {pluginNavItems.length > 0 ? (
+            <SidebarGroup>
+              <SidebarGroupLabel>Plugins</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <NavItems items={pluginNavItems} pathname={location.pathname} />
+              </SidebarGroupContent>
+            </SidebarGroup>
+          ) : null}
         </SidebarContent>
         <SidebarFooter>
           <DropdownMenu>

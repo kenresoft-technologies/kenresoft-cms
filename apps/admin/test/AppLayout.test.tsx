@@ -108,6 +108,18 @@ describe('AppLayout', () => {
     await waitFor(() => expect(screen.getByText('Content types page')).toBeInTheDocument());
   });
 
+  it('renders the Plugins nav group with the hello plugin entry', () => {
+    useSessionMock.mockReturnValue({
+      data: { user: { email: 'admin@example.test', role: 'admin' } },
+      isPending: false,
+    });
+
+    renderAppLayout();
+
+    expect(screen.getByText('Plugins')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Hello' })).toBeInTheDocument();
+  });
+
   it('toggles the command palette with ctrl+k', async () => {
     useSessionMock.mockReturnValue({
       data: { user: { email: 'admin@example.test', role: 'admin' } },

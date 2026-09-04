@@ -217,6 +217,12 @@ importers:
       '@kenresoft-cms/database':
         specifier: workspace:*
         version: link:../../packages/database
+      '@kenresoft-cms/plugin-hello':
+        specifier: workspace:*
+        version: link:../../packages/plugin-hello
+      '@kenresoft-cms/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../packages/plugin-sdk
       '@scalar/hono-api-reference':
         specifier: ^0.11.16
         version: 0.11.16(hono@4.13.5)
@@ -368,6 +374,71 @@ importers:
       wrangler:
         specifier: ^4.128.0
         version: 4.128.0(@cloudflare/workers-types@5.20260903.1)
+
+  packages/plugin-hello:
+    dependencies:
+      '@hono/zod-openapi':
+        specifier: ^1.6.1
+        version: 1.6.1(hono@4.13.5)(zod@4.5.4)
+      '@kenresoft-cms/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@kenresoft-cms/database':
+        specifier: workspace:*
+        version: link:../database
+      '@kenresoft-cms/plugin-sdk':
+        specifier: workspace:*
+        version: link:../plugin-sdk
+      hono:
+        specifier: ^4.10.7
+        version: 4.13.5
+      zod:
+        specifier: ^4.4.3
+        version: 4.5.4
+    devDependencies:
+      '@cloudflare/workers-types':
+        specifier: ^5.20260903.1
+        version: 5.20260903.1
+      '@kenresoft-cms/config':
+        specifier: workspace:*
+        version: link:../config
+      eslint:
+        specifier: ^10.9.1
+        version: 10.9.1(jiti@2.7.0)
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  packages/plugin-sdk:
+    dependencies:
+      '@hono/zod-openapi':
+        specifier: ^1.6.1
+        version: 1.6.1(hono@4.13.5)(zod@4.5.4)
+      '@kenresoft-cms/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@kenresoft-cms/database':
+        specifier: workspace:*
+        version: link:../database
+      hono:
+        specifier: ^4.10.7
+        version: 4.13.5
+      zod:
+        specifier: ^4.4.3
+        version: 4.5.4
+    devDependencies:
+      '@cloudflare/workers-types':
+        specifier: ^5.20260903.1
+        version: 5.20260903.1
+      '@kenresoft-cms/config':
+        specifier: workspace:*
+        version: link:../config
+      eslint:
+        specifier: ^10.9.1
+        version: 10.9.1(jiti@2.7.0)
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
 
   packages/types:
     devDependencies:
@@ -7019,6 +7090,11 @@ snapshots:
       openapi3-ts: 4.6.1
       zod: 4.4.3
 
+  '@asteasolutions/zod-to-openapi@9.1.0(zod@4.5.4)':
+    dependencies:
+      openapi3-ts: 4.6.1
+      zod: 4.5.4
+
   '@astrojs/check@0.9.10(prettier@3.9.6)(typescript@5.9.3)':
     dependencies:
       '@astrojs/language-server': 2.16.15(prettier@3.9.6)(typescript@5.9.3)
@@ -7894,10 +7970,23 @@ snapshots:
       openapi3-ts: 4.6.1
       zod: 4.4.3
 
+  '@hono/zod-openapi@1.6.1(hono@4.13.5)(zod@4.5.4)':
+    dependencies:
+      '@asteasolutions/zod-to-openapi': 9.1.0(zod@4.5.4)
+      '@hono/zod-validator': 0.9.0(hono@4.13.5)(zod@4.5.4)
+      hono: 4.13.5
+      openapi3-ts: 4.6.1
+      zod: 4.5.4
+
   '@hono/zod-validator@0.9.0(hono@4.13.5)(zod@4.4.3)':
     dependencies:
       hono: 4.13.5
       zod: 4.4.3
+
+  '@hono/zod-validator@0.9.0(hono@4.13.5)(zod@4.5.4)':
+    dependencies:
+      hono: 4.13.5
+      zod: 4.5.4
 
   '@humanfs/core@0.19.2':
     dependencies:

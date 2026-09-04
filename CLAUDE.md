@@ -1307,3 +1307,52 @@ All five fixed, committed, and pushed to `develop` individually (not batched —
 root-caused, and verified independently in the course of walking through the user's real install),
 and `real-test` was brought fully current with every fix via the now-fixed `pnpm run update` path
 itself, closing the loop on finding #4 using the very fix it produced.
+
+**Plugin platform, Phase 1** (2026-09-04, on `feature/plugin-platform` off `develop` — an
+externally-authored architecture spec asked for Kenresoft CMS to evolve into a plugin-extensible
+platform, Commerce eventually as the first real vertical plugin; Phase 1 explicitly required
+zero Commerce logic, proven only via a trivial `packages/plugin-hello` package first) — done,
+see `docs/PLUGINS.md` for the full design. New `@kenresoft-cms/plugin-sdk` (`packages/plugin-sdk`,
+internal-only, modeled on `packages/database`'s no-build-step template) is the one package both
+`apps/api` and every plugin depend on symmetrically: `PluginManifest`/`pluginManifestSchema`,
+`PluginContext` (db/user/hasRole/media/config/events/logger), `PluginRegistration`,
+`requirePluginRole()` (rebuilt from the same `roleAtLeast()`/`UserRole` primitives
+`requireRole()` already uses — Phase 1 permission enforcement reuses Core's existing 5-role
+hierarchy wholesale, `manifest.permissions` stays discovery metadata only), and
+`createPluginOpenApiApp()` (mirrors `apps/api/src/lib/openapi.ts`'s validation-error shape).
+`packages/plugin-hello` is the Phase 1 acceptance proof: one migration
+(`plugin_hello_greetings`), one API route mounted at `/api/plugins/hello/v1/*`
+(`apps/api/src/plugins/mount.ts`, the one new composition point `index.ts` calls — `index.ts`
+itself never imports a specific plugin, only `apps/api/src/plugins/registered-plugins.ts` does),
+one admin nav entry + page, one editor-gated permission, one configurable greeting, and one
+in-process event.
+
+The one real architectural tension the source spec itself asked to be surfaced rather than
+silently resolved: this deployment has exactly one D1 database and one `drizzle-kit generate`
+pipeline, so a plugin's table is physically defined in `packages/database/schema/plugins/<id>.ts`
+(prefixed `plugin_<id>_`), not inside the plugin package itself — "ownership" here is a naming
+convention plus "only that plugin's own repository file ever queries it," not a physically
+separate migration history. `PluginContext.db` is likewise the same singular `Database` type
+Core repositories use, an explicitly temporary, convention-enforced (not mechanical) boundary.
+Admin UI is deliberately split rather than colocated (confirmed with the user during planning):
+a plugin's nav entry/page live in `apps/admin/src/plugins/<id>/`, registered in a small static
+array mirroring `apps/admin/src/pages/settings/sections.tsx`'s existing registry pattern — not
+inside the plugin package — specifically so `apps/admin` keeps its documented standalone-clone
+property (`@kenresoft-cms/contracts` via a published npm version, not `workspace:*`) intact for
+every deployment, at the cost of a plugin's admin contribution being split across two locations.
+Events (`apps/api/src/plugins/events.ts`) are explicitly in-process/best-effort/synchronous only,
+documented plainly as not a substitute for the existing DB-backed, Cron-retried webhook mechanism
+for anything that actually needs durability. `plugin_settings` (new Core-owned generic table,
+`packages/database/schema/plugin-settings.ts`) holds only non-secret plugin config, gained a
+`configVersion` column for future config-shape migrations, and documents the same "secrets go
+through `wrangler secret put`, never a database column" rule the rest of this file already
+follows. One existing Core file got a behavior-preserving touch: `routes/admin/media.ts`'s inline
+R2 upload/delete logic was extracted into `apps/api/src/lib/media-service.ts` so the SDK's
+`MediaService` genuinely wraps the same code path — verified against the existing
+`media-routes.test.ts` assertions, zero behavior change. New tests:
+`apps/api/test/plugin-registry.test.ts` (registry validation: duplicate ids, malformed manifest,
+unsupported `sdkVersion`, unresolved dependencies — against a fabricated plugin list, never the
+real import) and `apps/api/test/plugin-hello.test.ts` (real D1: the health-check route, the
+editor-role gate, the configured-greeting-prefix path, the event firing on create); admin gained
+`HelloPage.test.tsx` and an `AppLayout.test.tsx` case for the new "Plugins" nav group. Commerce
+(Phase 2) is explicitly not started — no Commerce schema, route, or admin page exists anywhere.
