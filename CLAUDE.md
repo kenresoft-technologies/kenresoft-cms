@@ -1233,3 +1233,77 @@ one existed) — build succeeded immediately after, no further changes needed. N
 present in `astro check`'s typecheck-only coverage; both needed an actual `build`/`dev` run to
 surface, which is exactly why this feature's own verification insisted on one rather than stopping
 at typecheck/lint/unit-test green.
+
+**Real-deployment shakedown: five genuine bugs found via live `wrangler tail`, not by reading code**
+(2026-09-03/04, prompted by the user doing a real first-time install — `npm create
+@kenresoft-cms@latest real-test` — and reporting exactly what they hit) — done. None of these were
+hypothetical: every one was root-caused against `real-test`'s actual deployed Worker, several only
+after tailing live logs while the user reproduced the failure in their own browser.
+
+1. **Every `/api/v1/auth/*` 429 showed the wrong error message everywhere.**
+   `apps/api/src/middleware/auth-rate-limit.ts` returned a plain `{ error: "Too many requests..." }`
+   string body. better-auth's client surfaces a JSON error body's top-level `message` field as
+   `error.message`; a bare string left `.message` undefined, so every caller's own
+   `authError?.message ?? '<fallback>'` silently showed its hardcoded fallback instead — reported
+   by the user as two-factor enrollment saying "check your password" on a correct password. Fixed
+   to `{ code, message }`, matching better-auth's own shape.
+2. **`pnpm run setup`'s Resend email step silently never activated.** `maybeSetUpEmail()` guarded
+   its `EMAIL_PROVIDER`/`EMAIL_FROM` insertion with `toml.includes('EMAIL_PROVIDER =')` — which
+   also matched `wrangler.toml`'s own committed, commented-out example line
+   (`#   EMAIL_PROVIDER = "cloudflare"   # or "resend"`), so the check was always true and the
+   insertion always skipped. `RESEND_API_KEY` still got set as a secret regardless (that part had
+   no such guard), so a deployment looked fully configured — the key was there — while
+   `EMAIL_PROVIDER` stayed unset and the app kept using the no-op sender. Fixed by anchoring to an
+   actual, non-commented line (`/^EMAIL_PROVIDER\s*=/m`).
+3. **The `two_factor` table was missing three columns better-auth 1.7's plugin now requires.**
+   The rate-limit fix above didn't actually fix 2FA enrollment — confirmed by tailing the live
+   Worker while the user retried and catching the real error: `BetterAuthError: The field
+   "verified" does not exist in the "twoFactor" Drizzle schema`. Exactly the same class of gap as
+   the `account.issuer` fix from the earlier dependency-security pass — `@better-auth/cli`'s
+   schema generator still bundles its own internal ~1.4.x better-auth copy, so this table was
+   never regenerated against the 1.7.x runtime's actual expectations, and nobody re-ran the 2FA
+   flow live after that version bump to notice. Confirmed the exact required shape against the
+   installed package's own `dist/plugins/two-factor/schema.mjs` rather than guessing: added
+   `verified` (boolean, default `true` — this app's two-step `enable()` → `verifyTotp()` flow
+   never creates an unconfirmed row), `failedVerificationCount`, and `lockedUntil` (migration
+   `0021_bitter_jubilee.sql`). Re-verified live afterward: the same enrollment attempt that
+   previously threw now completed with no error.
+4. **The documented git-based update path was broken for every `npm create` install, not just a
+   rough edge.** The user asked, reasonably, why an update needed three commands instead of one.
+   Tracing that surfaced a real architectural bug: `packages/create` scaffolded via a GitHub
+   tarball download plus a fresh `git init` + one throwaway commit, which shares zero commit
+   ancestry with the real upstream repo. `git merge upstream/<branch>` refuses outright
+   ("refusing to merge unrelated histories") — and forcing it through with
+   `--allow-unrelated-histories` alone still turned *every* file any upstream commit had touched
+   since scaffold time into a spurious "add/add" conflict, confirmed by hand against `real-test`
+   (23 conflicted files), even where the content hadn't actually diverged, because there was no
+   common ancestor for git to 3-way-diff against. Fixed at the root: `packages/create` now does a
+   real `git clone` (`--origin upstream`, real shared history, no `tar` dependency needed anymore)
+   instead of tarball+init, so every future scaffold merges cleanly forever after. `pnpm run
+   update` also now pulls the code itself as its first step (new `scripts/lib/git-cli.mjs`) rather
+   than assuming the user already ran `git fetch`/`git merge` by hand — it's now genuinely the one
+   command the docs already claimed it was. An install scaffolded *before* this fix (like
+   `real-test`) still needs one one-time, explicitly-confirmed reconciliation merge
+   (`--allow-unrelated-histories -X theirs` — safe specifically because a scaffolded install has
+   no real local code edits to lose, only config, which is stashed/restored separately) the first
+   time it updates; `pullLatestCode()` detects this case, explains it, and asks before proceeding.
+   Verified for real end-to-end against `real-test`, twice: once hitting the unrelated-histories
+   wall and resolving it, once confirming the *next* update after that is a normal, silent,
+   conflict-free merge.
+5. **A single misconfigured webhook could retry the same failed delivery forever, throwing on
+   every 5-minute cron tick.** Found via the same live `wrangler tail` session: a webhook pointed
+   at `https://kenresoft-cms-admin.kenresoft.workers.dev/settings` (the admin Worker's own
+   static-assets page — not a real receiver, leftover from trying out the Webhooks feature)
+   triggered "A stalled HTTP response was canceled to prevent deadlock" on POST, and the
+   `recordWebhookDelivery()` insert that followed threw — uncaught, since unlike the `fetch()`
+   call right above it, that insert had no try/catch. Since that write is the only thing that ever
+   advances a delivery's `attempt` counter, the failure meant `listDeliveriesToRetry` found the
+   exact same row again every cycle, forever, instead of the bounded `MAX_DELIVERY_ATTEMPTS`
+   retries this is supposed to have. Fixed by catching and logging instead of throwing (still
+   visible via `wrangler tail`, just not an uncaught exception); the stale webhook and its stuck
+   delivery rows were also deleted from `real-test`'s D1 directly.
+
+All five fixed, committed, and pushed to `develop` individually (not batched — each was found,
+root-caused, and verified independently in the course of walking through the user's real install),
+and `real-test` was brought fully current with every fix via the now-fixed `pnpm run update` path
+itself, closing the loop on finding #4 using the very fix it produced.

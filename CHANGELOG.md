@@ -27,6 +27,24 @@ landed on `develop`.
 
 ### Fixed
 
+- `pnpm run update` now pulls the latest code itself (from the `upstream` git remote) as its
+  first step, instead of assuming you'd already run `git fetch`/`git merge` by hand — it's a
+  genuine single command now. `npm create @kenresoft-cms@latest` also now scaffolds via a real
+  `git clone` (keeping actual commit history) instead of a tarball download, so future updates
+  merge cleanly; an install scaffolded before this change gets a one-time, explicitly-confirmed
+  reconciliation the first time it updates.
+- Two-factor enrollment failed for everyone on a fresh install (`BetterAuthError: The field
+  "verified" does not exist...`) — the `two_factor` table was missing three columns better-auth
+  1.7's plugin requires. Requires the new database migration (`0021_bitter_jubilee.sql`) via
+  `pnpm run update`.
+- A rate-limited request to any `/api/v1/auth/*` action (sign-in, sign-up, two-factor, password
+  change) showed a misleading, action-specific error message (e.g. two-factor enrollment saying
+  "check your password") instead of "too many requests" — the rate limiter's error response
+  didn't match the shape better-auth's client expects.
+- `pnpm run setup`'s Resend email setup silently never activated `EMAIL_PROVIDER` — your API key
+  got saved, but the app kept using the no-op sender regardless.
+- A webhook whose endpoint doesn't handle POST requests properly could get stuck retrying the
+  same failed delivery forever (throwing every 5 minutes) instead of giving up after 5 attempts.
 - Dependency security updates: `better-auth` 1.4.21 → 1.7.2, `astro`/`@astrojs/cloudflare`
   (example site) to their current majors, `wrangler` and `@cloudflare/workers-types` bumped
   everywhere, plus `qs`/`esbuild` pinned to safe versions via `pnpm` overrides where an
