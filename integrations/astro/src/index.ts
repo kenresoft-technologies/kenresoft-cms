@@ -120,6 +120,15 @@ export interface KenresoftClient {
      */
     submit(options: SubmitFormOptions): Promise<FormSubmission>;
   };
+  globalVariables: {
+    /**
+     * Every global variable as a flat key/value map — matches
+     * GET /api/v1/public/global-variables exactly (edge-cached, same as entries/media). An
+     * empty object if none have been created, never null; there's no per-key sub-resource to
+     * 404 on, unlike entries/media.
+     */
+    list(): Promise<Record<string, string>>;
+  };
 }
 
 export function createKenresoftClient(config: KenresoftClientConfig): KenresoftClient {
@@ -184,6 +193,12 @@ export function createKenresoftClient(config: KenresoftClientConfig): KenresoftC
         }
 
         return (await response.json()) as FormSubmission;
+      },
+    },
+    globalVariables: {
+      async list() {
+        const variables = await request<Record<string, string>>('/api/v1/public/global-variables');
+        return variables ?? {};
       },
     },
   };
