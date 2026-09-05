@@ -1,4 +1,4 @@
-import { Puzzle } from 'lucide-react';
+import { FolderTree, Package, Puzzle, Settings } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 // The one place both AppLayout's sidebar and command-palette read plugin nav entries from —
@@ -17,15 +17,60 @@ export interface PluginNavItem {
   label: string;
   end: boolean;
   icon: LucideIcon;
+  // Groups related nav items under one SidebarGroupLabel (AppLayout.tsx renders one group per
+  // distinct value) — defaults to "Plugins" when omitted, so a single-page plugin like Hello
+  // doesn't need one, but a multi-page plugin (Commerce) can have its own labeled group instead
+  // of piling up in the shared one.
+  group?: string;
 }
 
 export const pluginNavItems: PluginNavItem[] = [
   { pluginId: 'hello', to: '/plugins/hello', label: 'Hello', end: false, icon: Puzzle },
+  {
+    pluginId: 'commerce',
+    to: '/plugins/commerce/products',
+    label: 'Products',
+    end: false,
+    icon: Package,
+    group: 'Commerce',
+  },
+  {
+    pluginId: 'commerce',
+    to: '/plugins/commerce/categories',
+    label: 'Categories',
+    end: false,
+    icon: FolderTree,
+    group: 'Commerce',
+  },
+  {
+    pluginId: 'commerce',
+    to: '/plugins/commerce/settings',
+    label: 'Settings',
+    end: false,
+    icon: Settings,
+    group: 'Commerce',
+  },
 ];
 
 export const pluginRoutes = [
   {
     path: 'plugins/hello',
     lazy: async () => ({ Component: (await import('./hello/HelloPage')).HelloPage }),
+  },
+  {
+    path: 'plugins/commerce/products',
+    lazy: async () => ({ Component: (await import('./commerce/ProductsPage')).ProductsPage }),
+  },
+  {
+    path: 'plugins/commerce/products/:productId',
+    lazy: async () => ({ Component: (await import('./commerce/ProductDetailPage')).ProductDetailPage }),
+  },
+  {
+    path: 'plugins/commerce/categories',
+    lazy: async () => ({ Component: (await import('./commerce/CategoriesPage')).CategoriesPage }),
+  },
+  {
+    path: 'plugins/commerce/settings',
+    lazy: async () => ({ Component: (await import('./commerce/SettingsPage')).CommerceSettingsPage }),
   },
 ];

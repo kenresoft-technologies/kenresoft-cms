@@ -6,11 +6,11 @@ import { useEntries } from '@/lib/queries/entries';
 import { mediaFileUrl, useMediaList } from '@/lib/queries/media';
 import { cn } from '@/lib/utils';
 import type { FieldDefinition } from '@/lib/types';
+import { MediaPickerDialog } from '@/components/media-picker-dialog';
 import { RichTextEditor } from '@/components/rich-text-editor';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -186,46 +186,17 @@ function MediaField({ field, value, onChange }: FieldInputProps) {
         <div className="flex flex-col gap-2">
           {selected ? <p className="text-sm text-muted-foreground">{selected.filename}</p> : null}
           <div className="flex gap-2">
-            <Dialog open={open} onOpenChange={setOpen}>
-              <DialogTrigger asChild>
+            <MediaPickerDialog
+              open={open}
+              onOpenChange={setOpen}
+              selectedId={selectedId}
+              onSelect={onChange}
+              trigger={
                 <Button type="button" variant="outline" size="sm">
                   {selected ? 'Change media' : 'Choose media'}
                 </Button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-lg">
-                <DialogHeader>
-                  <DialogTitle>Choose media</DialogTitle>
-                </DialogHeader>
-                {mediaItems && mediaItems.length > 0 ? (
-                  <div className="grid max-h-96 grid-cols-3 gap-3 overflow-y-auto">
-                    {mediaItems.map((item) => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => {
-                          onChange(item.id);
-                          setOpen(false);
-                        }}
-                        className={cn(
-                          'aspect-square overflow-hidden rounded-md ring-2 ring-transparent hover:ring-primary',
-                          item.id === selectedId && 'ring-primary',
-                        )}
-                      >
-                        {item.width && item.height ? (
-                          <img src={mediaFileUrl(item.id)} alt={item.altText ?? item.filename} className="size-full object-cover" />
-                        ) : (
-                          <div className="flex size-full items-center justify-center bg-muted">
-                            <ImageOff className="size-5 text-muted-foreground" />
-                          </div>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground">No media uploaded yet.</p>
-                )}
-              </DialogContent>
-            </Dialog>
+              }
+            />
             {selected ? (
               <Button type="button" variant="ghost" size="sm" onClick={() => onChange(null)}>
                 <X />
