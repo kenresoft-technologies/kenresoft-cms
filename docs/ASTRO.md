@@ -226,14 +226,23 @@ the same order Astro's own default handler uses internally:
 // src/fetch.ts
 import { FetchState, middleware, actions, astro } from 'astro/fetch';
 
-export default async function fetch(request: Request): Promise<Response> {
-  const state = new FetchState(request);
-  return middleware(state, async (state) => {
-    const actionResponse = await actions(state);
-    return actionResponse ?? astro(state);
-  });
-}
+export default {
+  async fetch(request: Request): Promise<Response> {
+    const state = new FetchState(request);
+    return middleware(state, async (state) => {
+      const actionResponse = await actions(state);
+      return actionResponse ?? astro(state);
+    });
+  },
+};
 ```
+
+The default export must be an **object with a `fetch` method** — matching the standard
+Cloudflare Workers module-worker shape (`export default { fetch, scheduled?, ... }`), since
+that's exactly what `@astrojs/cloudflare` bridges to. Astro calls it as
+`fetchHandler.fetch(request)` (confirmed in `astro/dist/core/app/base.js`), not as a bare
+function — a plain `export default async function fetch(request) {...}` throws at runtime
+(`fetch is not a function`) once Astro actually tries to invoke it.
 
 ## Future work
 

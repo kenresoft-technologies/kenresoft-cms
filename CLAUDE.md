@@ -1555,3 +1555,14 @@ through Astro's public `astro/fetch` API correctly. Documented as a troubleshoot
 `docs/ASTRO.md` (with the correct forwarding pattern, sourced from reading Astro's own default
 handler implementation) in case a future user extending the example hits the same confusion —
 nothing in this repo needed to change.
+
+**Correction to the above**: the first version of that troubleshooting snippet had the export
+shape wrong — `export default async function fetch(request) {...}` (a bare function). Astro
+calls the handler as `fetchHandler.fetch(request)` (confirmed in `astro/dist/core/app/base.js`,
+line ~270), a *method* call, not a direct invocation — so the default export must be an object
+with a `fetch` method, matching the standard Cloudflare Workers module-worker shape
+(`export default { fetch, scheduled?, ... }`) that `@astrojs/cloudflare` bridges to. The
+original wrong shape would have thrown `fetch is not a function` at runtime the moment Astro
+actually tried to invoke it. Caught and reported by the user who'd hit the original warning
+(their own `src/fetch.ts` mistake, not this project's) before anyone copy-pasted the wrong
+snippet from here. Fixed in `docs/ASTRO.md`.
