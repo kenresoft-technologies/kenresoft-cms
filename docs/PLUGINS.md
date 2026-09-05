@@ -2,8 +2,11 @@
 
 **Status: Phase 1 (generic plugin platform + `plugin-hello` proof) complete, 2026-09-04.
 Plugin enablement moved from a static file to a DB-backed, live-toggleable model (also
-2026-09-04) — see Enablement below, which supersedes Phase 1's original design. Phase 2
-(Commerce, the first real vertical plugin) not started — see the end of this document.**
+2026-09-04) — see Enablement below, which supersedes Phase 1's original design. Phase 2a
+(Commerce catalog domain — products, variants, categories, images) complete, 2026-09-05 — see
+the end of this document. It needed two generic platform extensions, both documented below:
+unauthenticated public plugin routes, and grouped admin-nav entries. Cart, checkout/orders, and
+payments/Paystack (2b–2d) remain not started.
 
 ## What this is
 
@@ -100,6 +103,41 @@ Disabling a plugin never deletes its own data — a destructive uninstall/data-d
 remains a deliberately separate, not-yet-built concern. Adding a *genuinely new* plugin — one not
 yet bundled into this deployment at all — still requires a real code change (the package + one
 line in `registered-plugins.ts`) and a redeploy; only toggling something already bundled is live.
+
+## Public (unauthenticated) plugin routes
+
+Every plugin mount was session-gated through Phase 1 — fine for Hello, but a storefront-facing
+catalog needs a real, unauthenticated read API, the first need of this shape. Commerce's catalog
+(Phase 2a) is the plugin that needed it, so the extension was built generically rather than as a
+one-off, mirroring Core's own `/api/v1/public/*` vs `/api/v1/admin/*` split:
+
+- `PluginRegistration.publicRoutes?` — an optional second Hono sub-app, alongside the existing
+  (always session-gated) `routes`.
+- `PluginPublicContext` (`packages/plugin-sdk/src/context.ts`) — deliberately smaller than
+  `PluginContext`: `pluginId`, `db`, `media`, a **read-only** `config` (`Pick<PluginConfigService,
+  'get'>`), `logger`. No `user`, `hasRole()`, or `events` — there is no session to scope them to,
+  and a public route has no business emitting an authenticated-actor event.
+- `apps/api/src/plugins/mount.ts` mounts `plugin.publicRoutes` (when present) at
+  `/api/plugins/<id>/public/v1/*`, gated by the **same live `requirePluginEnabled` check** the
+  admin mount uses — a disabled plugin's storefront API 404s too, not just its admin API — plus
+  Core's existing `publicContentRateLimit` middleware (reused as-is, no new rate-limiter
+  binding), but **never** `requireSession`.
+
+A public route still enforces its own read-only security convention by hand, the same way Core's
+own public content API does: `plugin-ecommerce`'s public routes filter to
+`active`/`published` at the query layer and 404 a draft product by slug exactly like a
+nonexistent one (see `packages/plugin-ecommerce/src/routes/public.ts`) — this isn't automatic,
+a plugin author has to apply it, matching how Core's own `entries.ts` does it.
+
+## Grouped admin-nav entries
+
+`PluginNavItem` (`apps/admin/src/plugins/registry.ts`) gained an optional `group?: string`,
+defaulting to `"Plugins"` when omitted. `AppLayout.tsx` renders one `SidebarGroup` per distinct
+group value instead of always one shared group. Hello (one page) needed nothing here; Commerce
+(three pages — Products/Categories/Settings) registers all three under its own `"Commerce"`
+group instead of piling into the shared one. `pluginId` still gates visibility per entry (not
+per group), so all of a disabled plugin's entries disappear together regardless of how many
+groups they're split across.
 
 ## Migrations: how a plugin owns a table here
 
@@ -234,10 +272,18 @@ out of scope for now.
 - No granular permission enforcement engine — Core's existing role hierarchy is the enforcement
   mechanism; `manifest.permissions` is discovery metadata.
 
-## Commerce (Phase 2) — not started
+## Commerce (Phase 2a: catalog domain) — done, 2026-09-05
 
-A later phase is expected to use this platform to build Commerce (products, carts, orders,
-payments) as `packages/plugin-ecommerce`, the first real vertical plugin. **No Commerce code,
-schema, route, or admin page exists anywhere in this repository as of this document.** Phase 1's
-entire purpose was proving the platform itself works, end to end, before any real vertical
-plugin is attempted.
+`packages/plugin-ecommerce` is the first real vertical plugin built on this platform — Phase 2a
+covers only the product catalog: categories (self-referencing hierarchy), products, variants
+(flat `attributes` JSON blob, deliberately no normalized option/value model), and product images
+(associating Core's own `media` rows, never managing R2 objects independently). Full admin CRUD
+(`requirePluginRole('editor')` on writes) plus the public, unauthenticated storefront read API
+described above. Money is modeled as integer minor units + a currency code column — the first
+monetary convention in this codebase, established here since nothing else had modeled money
+before; never floating point.
+
+Cart & customer (2b), checkout & orders (2c), payments/Paystack (2d), and storefront integration
+into `@kenresoft-cms/astro`/`examples/astro-site` (2e) remain **not started** — each is a
+separate future pass, payments especially, given real money and webhook-signature verification
+are involved.
