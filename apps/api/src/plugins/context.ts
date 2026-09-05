@@ -6,6 +6,8 @@ import type {
   PluginContext,
   PluginLogger,
   PluginMediaService,
+  PluginPublicContext,
+  PluginPublicVariables,
   PluginRegistration,
   PluginVariables,
 } from '@kenresoft-cms/plugin-sdk';
@@ -102,6 +104,26 @@ export function createPluginContextMiddleware(
       media: createPluginMediaService(db, c.env.MEDIA_BUCKET),
       config: createPluginConfigService(db, plugin),
       events: pluginEventBus,
+      logger: createPluginLogger(plugin.manifest.id),
+    };
+    c.set('pluginContext', ctx);
+    await next();
+  };
+}
+
+// The unauthenticated counterpart, for a plugin's optional publicRoutes mount
+// (apps/api/src/plugins/mount.ts) — same media-service/config-service wiring, no user/hasRole/
+// events, since there's no session to scope them to.
+export function createPluginPublicContextMiddleware(
+  plugin: PluginRegistration,
+): MiddlewareHandler<{ Bindings: PluginBindings; Variables: PluginPublicVariables }> {
+  return async (c, next) => {
+    const db = createDb(c.env.DB);
+    const ctx: PluginPublicContext = {
+      pluginId: plugin.manifest.id,
+      db,
+      media: createPluginMediaService(db, c.env.MEDIA_BUCKET),
+      config: createPluginConfigService(db, plugin),
       logger: createPluginLogger(plugin.manifest.id),
     };
     c.set('pluginContext', ctx);
