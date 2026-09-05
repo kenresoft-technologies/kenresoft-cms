@@ -1598,3 +1598,61 @@ own admin-facing identity, not site content). `docs/ASTRO.md` gained a "Where pu
 lives" section making this the documented, intended answer going forward, and `CHANGELOG.md`
 flags it as a breaking change with the exact migration behavior spelled out, since an existing
 deployment's admin-entered contact/social data is affected.
+
+**Commerce, Phase 2a: the catalog domain** (2026-09-05, on `feature/commerce-catalog` off
+`develop` — picking the plugin platform's Commerce vertical back up after the Plugin Management
+pass above; the full domain (catalog, cart, checkout/orders, payments) is too large for one pass,
+so this covers only products/variants/categories/images with full admin CRUD and a public
+read-only storefront API — cart, checkout, and Paystack payments are separate future passes, see
+`docs/PLUGINS.md`'s Commerce section) — done. New package `@kenresoft-cms/plugin-ecommerce`
+(`packages/plugin-ecommerce`), the first real vertical plugin built on Phase 1's platform, not
+just a proof-of-concept like `plugin-hello`.
+
+This pass needed two generic platform extensions first, both benefiting any future plugin, not
+just Commerce (`docs/PLUGINS.md` has the full design for each): unauthenticated **public plugin
+routes** (`PluginRegistration.publicRoutes?`, a new smaller `PluginPublicContext` with no
+`user`/`hasRole`/`events`, mounted at `/api/plugins/<id>/public/v1/*` gated by the same live
+`requirePluginEnabled` check as the admin mount plus Core's existing `publicContentRateLimit` —
+never `requireSession`); and grouped admin-nav entries (`PluginNavItem` gained an optional
+`group?: string`, defaulting to `"Plugins"`, so `AppLayout.tsx` renders one `SidebarGroup` per
+distinct value instead of always one shared group — Commerce's three pages register under their
+own `"Commerce"` group rather than piling into Hello's).
+
+Schema (`packages/database/schema/plugins/commerce.ts`, migration `0025_green_rictor.sql`): four
+`plugin_commerce_`-prefixed tables — `categories` (self-referencing hierarchy, `onDelete: 'set
+null'` so deleting a parent orphans children to top-level rather than cascading), `products`,
+`product_variants` (deliberately flat, a free-form `attributes` JSON blob rather than a
+normalized option/value system — the spec explicitly warned against over-engineering this), and
+`product_images` (associates Core's own `media` rows by id, never manages R2 objects
+independently). Money is integer minor units + a currency code column — the first monetary
+convention anywhere in this codebase, established here since nothing preceded it, never floating
+point. One real Drizzle gotcha hit and fixed: the self-referencing FK's `.references()` callback
+must return `AnySQLiteColumn` (from `drizzle-orm/sqlite-core`), not `typeof table.column` — the
+latter creates a circular type reference that silently collapses the whole table's inferred type
+to `any`.
+
+Admin routes (`/api/plugins/commerce/v1/*`, session-gated, `requirePluginRole('editor')` on every
+write) cover categories/products/variants/images CRUD plus a `settings.ts` route
+(`GET`/`PUT` wrapping `PluginContext.config`) — a small, deliberate addition beyond the plugin-sdk
+platform's existing surface, since Hello's own config demo never exposed `config.get()/.set()`
+over HTTP at all and the planned Settings admin page needed somewhere to call. Public routes
+(`/api/plugins/commerce/public/v1/*`) reuse Core's own "draft 404s exactly like nonexistent"
+security convention by hand: `getPublishedProductBySlug` filters at the query layer, not after
+the fact. `apps/admin/src/plugins/commerce/` gained four pages (Products list with status/category
+filters, a two-column Product detail page modeled on `EntryEditorPage.tsx`'s layout with a
+variants table and an images grid, a flat Categories list+dialog page, and a Settings page) plus
+one extraction the plan called for explicitly: the inline media-picker dialog living inside
+`field-input.tsx`'s `MediaField` became a standalone `apps/admin/src/components/
+media-picker-dialog.tsx` so the new product-image picker and the existing content-entry media
+field share one implementation instead of two copies drifting apart.
+
+Verified in full: `pnpm typecheck`/`pnpm lint` clean across every touched package; three new
+`apps/api` test files (`commerce-categories`/`commerce-products`/`commerce-public-catalog`.test.ts,
+26 tests total against real D1 — role gates, category/product CRUD, cross-product variant/image
+404s, public listing/filtering, the draft-vs-nonexistent 404-parity check, and a disabled-plugin
+assertion proving the enablement gate covers the *public* mount too, not just the admin one) plus
+four new `apps/admin` page test files, all passing; the full pre-existing `apps/api` (38 files)
+and `apps/admin` (29 files) suites re-run clean afterward with zero regressions (individually/in
+small batches per this file's own standing Windows/workerd-flakiness practice — several batches
+did hit the documented module-fallback resource-exhaustion flakiness on first attempt, confirmed
+non-code by re-running clean immediately after).

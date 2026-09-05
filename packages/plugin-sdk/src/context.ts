@@ -84,3 +84,21 @@ export interface PluginVariables {
   session: { id: string };
   pluginContext: PluginContext;
 }
+
+// The unauthenticated counterpart to PluginContext — for a plugin's optional public,
+// storefront-facing routes (PluginRegistration.publicRoutes), mounted with no session at all
+// (apps/api/src/plugins/mount.ts). No `user`/`hasRole`/`events`: there's no session to scope a
+// permission check to, and a public route emitting a user-scoped event wouldn't mean anything.
+// `config` is read-only here — public routes read a plugin's settings (e.g. a store name), they
+// never change them.
+export interface PluginPublicContext {
+  pluginId: string;
+  db: Database;
+  media: PluginMediaService;
+  config: Pick<PluginConfigService, 'get'>;
+  logger: PluginLogger;
+}
+
+export interface PluginPublicVariables {
+  pluginContext: PluginPublicContext;
+}

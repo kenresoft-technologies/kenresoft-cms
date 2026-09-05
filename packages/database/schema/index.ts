@@ -14,5 +14,6 @@ export * from './webhooks';
 export * from './plugin-settings';
 export * from './plugin-enablement';
 export * from './plugins/hello';
+export * from './plugins/commerce';
 export * from './relations';
 export * from './auth';

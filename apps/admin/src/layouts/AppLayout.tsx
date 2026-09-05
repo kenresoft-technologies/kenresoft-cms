@@ -21,6 +21,7 @@ import { authClient } from '@/lib/auth-client';
 import { usePlugins } from '@/lib/queries/plugins';
 import { roleAtLeast, type UserRole } from '@/lib/types';
 import { pluginNavItems } from '@/plugins/registry';
+import type { PluginNavItem } from '@/plugins/registry';
 import { CommandPalette } from '@/components/command-palette';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -132,6 +133,16 @@ export function AppLayout() {
   const visiblePluginNavItems = pluginNavItems.filter(
     (item) => (plugins?.find((plugin) => plugin.id === item.pluginId)?.enabled ?? true),
   );
+  // Grouped by PluginNavItem.group (default "Plugins") so a multi-page plugin like Commerce
+  // gets its own labeled SidebarGroup instead of piling into one shared "Plugins" group with
+  // single-page plugins like Hello.
+  const pluginNavGroups = new Map<string, PluginNavItem[]>();
+  for (const item of visiblePluginNavItems) {
+    const label = item.group ?? 'Plugins';
+    const items = pluginNavGroups.get(label);
+    if (items) items.push(item);
+    else pluginNavGroups.set(label, [item]);
+  }
 
   return (
     <SidebarProvider>
@@ -165,14 +176,14 @@ export function AppLayout() {
               <NavItems items={visibleAdminItems} pathname={location.pathname} />
             </SidebarGroupContent>
           </SidebarGroup>
-          {visiblePluginNavItems.length > 0 ? (
-            <SidebarGroup>
-              <SidebarGroupLabel>Plugins</SidebarGroupLabel>
+          {Array.from(pluginNavGroups.entries()).map(([label, items]) => (
+            <SidebarGroup key={label}>
+              <SidebarGroupLabel>{label}</SidebarGroupLabel>
               <SidebarGroupContent>
-                <NavItems items={visiblePluginNavItems} pathname={location.pathname} />
+                <NavItems items={items} pathname={location.pathname} />
               </SidebarGroupContent>
             </SidebarGroup>
-          ) : null}
+          ))}
         </SidebarContent>
         <SidebarFooter>
           <DropdownMenu>
