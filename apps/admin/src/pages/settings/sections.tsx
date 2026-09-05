@@ -97,10 +97,10 @@ export const SETTINGS_SECTIONS: SettingsSectionMeta[] = [
   },
   {
     id: 'social',
-    label: 'Social',
+    label: 'Social & contact',
     icon: Share2,
     available: true,
-    render: ({ settings, readOnly }) => <SocialSection settings={settings} readOnly={readOnly} />,
+    render: () => <SocialSection />,
   },
   {
     id: 'storage',

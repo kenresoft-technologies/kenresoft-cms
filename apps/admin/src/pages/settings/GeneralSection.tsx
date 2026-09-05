@@ -18,11 +18,9 @@ export function GeneralSection({ settings, readOnly }: SectionProps) {
 
   const [name, setName] = useState(settings?.name ?? '');
   const [savedName, setSavedName] = useState(settings?.name ?? '');
-  const [contactEmail, setContactEmail] = useState(settings?.contactEmail ?? '');
-  const [savedContactEmail, setSavedContactEmail] = useState(settings?.contactEmail ?? '');
   const [error, setError] = useState<string | null>(null);
 
-  const dirty = name !== savedName || contactEmail !== savedContactEmail;
+  const dirty = name !== savedName;
 
   async function handleSave() {
     setError(null);
@@ -31,17 +29,13 @@ export function GeneralSection({ settings, readOnly }: SectionProps) {
       return;
     }
 
-    const trimmedEmail = contactEmail.trim();
     try {
       await updateSettings.mutateAsync({
         ...toSettingsInput(settings),
         name: name.trim(),
-        contactEmail: trimmedEmail || null,
       });
       setSavedName(name.trim());
-      setSavedContactEmail(trimmedEmail);
       setName(name.trim());
-      setContactEmail(trimmedEmail);
       toast.success('Settings saved');
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to save settings';
@@ -52,7 +46,6 @@ export function GeneralSection({ settings, readOnly }: SectionProps) {
 
   function handleDiscard() {
     setName(savedName);
-    setContactEmail(savedContactEmail);
     setError(null);
   }
 
@@ -80,18 +73,6 @@ export function GeneralSection({ settings, readOnly }: SectionProps) {
           onChange={(event) => setName(event.target.value)}
         />
         <p className="text-sm text-muted-foreground">Shown in the admin sidebar and browser tab.</p>
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="settings-contact-email">Contact email</Label>
-        <Input
-          id="settings-contact-email"
-          type="email"
-          disabled={readOnly}
-          value={contactEmail}
-          onChange={(event) => setContactEmail(event.target.value)}
-        />
-        <p className="text-sm text-muted-foreground">A general point of contact for this deployment.</p>
       </div>
 
       {error ? <p className="text-sm text-destructive">{error}</p> : null}

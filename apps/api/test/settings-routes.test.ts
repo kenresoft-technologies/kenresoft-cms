@@ -59,8 +59,6 @@ describe('settings routes (real D1)', () => {
         headers: { Cookie: cookie, 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: 'Acme Corp',
-          contactEmail: 'hello@example.test',
-          socialLinks: { twitter: 'https://x.com/acmecorp' },
           featureFlags: { newsletter: true },
         }),
       })
@@ -87,7 +85,7 @@ describe('settings routes (real D1)', () => {
     const response = await SELF.fetch('https://example.com/api/v1/admin/settings', {
       method: 'PUT',
       headers: { Cookie: cookie, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: '', contactEmail: 'not-an-email' }),
+      body: JSON.stringify({ name: '' }),
     });
     expect(response.status).toBe(400);
   });

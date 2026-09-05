@@ -14,8 +14,6 @@ export function useSettings() {
 
 export type SettingsInput = {
   name: string;
-  contactEmail: string | null;
-  socialLinks: Record<string, string> | null;
   corsOrigin: string | null;
   featureFlags: Record<string, boolean> | null;
   previewUrl: string | null;

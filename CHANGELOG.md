@@ -25,6 +25,21 @@ landed on `develop`.
   independently published — pull this repo's changes to pick it up) gained a matching
   `entries.preview()` method, and `examples/astro-site`'s blog page shows how to wire it up.
 
+### Changed
+
+- **Breaking, has a migration**: `Settings.contactEmail`/`Settings.socialLinks` are removed —
+  they had no public route of their own and fully duplicated what Global Variables already does
+  (public, edge-cached, arbitrary keys, and a "Site Info" template covering exactly this). The
+  new migration (`0024_volatile_spiral.sql`, applied via `pnpm run update`) migrates any existing
+  value automatically rather than dropping it: a non-null `contactEmail` becomes a
+  `contact_email` Global Variable, and each key in `socialLinks` becomes `social_<key>` — skipped
+  if you already have a variable with that exact key, so nothing you'd already set gets
+  overwritten. Settings → Social in the admin now points at Global Variables instead of
+  duplicating it. If a frontend was reading these fields directly from `GET
+  /api/v1/admin/settings`, switch it to `GET /api/v1/public/global-variables`
+  (`globalVariables.list()` on the `@kenresoft-cms/astro` client) instead — see
+  `docs/ASTRO.md`'s "Where public site config lives".
+
 ### Fixed
 
 - `pnpm run update` now pulls the latest code itself (from the `upstream` git remote) as its

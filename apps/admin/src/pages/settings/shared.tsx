@@ -19,8 +19,6 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 export function toSettingsInput(settings: Settings | null): SettingsInput {
   return {
     name: settings?.name ?? 'My deployment',
-    contactEmail: settings?.contactEmail ?? null,
-    socialLinks: settings?.socialLinks ?? null,
     corsOrigin: settings?.corsOrigin ?? null,
     featureFlags: settings?.featureFlags ?? null,
     previewUrl: settings?.previewUrl ?? null,

@@ -9,7 +9,7 @@ export function getSettings(db: Database): Promise<Settings | undefined> {
 // constraint: update the one existing row if there is one, otherwise create it.
 export async function upsertSettings(
   db: Database,
-  input: Pick<NewSettings, 'name' | 'contactEmail' | 'socialLinks' | 'corsOrigin' | 'featureFlags' | 'previewUrl'>,
+  input: Pick<NewSettings, 'name' | 'corsOrigin' | 'featureFlags' | 'previewUrl'>,
 ): Promise<Settings> {
   const existing = await getSettings(db);
 

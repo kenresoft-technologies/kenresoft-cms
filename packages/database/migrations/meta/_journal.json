@@ -169,6 +169,13 @@
       "when": 1788556429086,
       "tag": "0023_parallel_stark_industries",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1788594094270,
+      "tag": "0024_volatile_spiral",
+      "breakpoints": true
     }
   ]
 }

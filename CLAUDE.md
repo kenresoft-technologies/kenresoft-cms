@@ -1566,3 +1566,35 @@ original wrong shape would have thrown `fetch is not a function` at runtime the 
 actually tried to invoke it. Caught and reported by the user who'd hit the original warning
 (their own `src/fetch.ts` mistake, not this project's) before anyone copy-pasted the wrong
 snippet from here. Fixed in `docs/ASTRO.md`.
+
+**`globalVariables.list()` added to `@kenresoft-cms/astro`, and Settings.contactEmail/socialLinks
+removed in favor of Global Variables** (2026-09-05, reported while migrating kenresoft.com's own
+Astro site onto this CMS) — done, two related gaps closed together. First, a straightforward
+addition: `GET /api/v1/public/global-variables` existed and worked but had no client wrapper,
+so `integrations/astro/src/index.ts` gained `globalVariables.list()` (mirrors the existing
+entries/media thin-wrapper style — throws `KenresoftApiError` on non-2xx, `{}` never `null` for
+an empty map, since there's no per-key sub-resource to 404 on).
+
+Second, a real architectural decision the report asked for directly: Settings had
+`contactEmail`/`socialLinks` fields that looked purpose-built for public site metadata, but —
+confirmed by grepping every consumer — had zero functional consumers anywhere in the codebase
+and no public route of their own (unlike `corsOrigin`/`featureFlags`/`previewUrl`, which are
+genuinely CMS-internal and gate real behavior). Global Variables already covered this exact use
+case better: public, edge-cached, arbitrary key names instead of a fixed schema, and an existing
+"Site Info" template. Decided in favor of Global Variables as the one home for this kind of data
+and removed the Settings fields entirely, rather than leaving two overlapping mechanisms around
+— which is exactly the duplication the report was written to flag (a real migration project had
+already started hand-copying contact/social info into Global Variables as a stopgap).
+
+Removal used a real migration (`0024_volatile_spiral.sql`), not just a schema change: verified
+live against a real local D1 instance (pre-existing `contact_email` + `social_links` data
+seeded, plus a *pre-existing* `social_twitter` Global Variable to prove the migration doesn't
+clobber it) that the migration correctly copies any non-null `contactEmail` into a
+`contact_email` Global Variable and each `socialLinks` key into `social_<key>`, skipping any key
+that already exists, before dropping both columns. `apps/admin`'s Settings → Social section
+(`SocialSection.tsx`) now explains the move and links to Global Variables instead of duplicating
+the old fields; General lost its Contact Email field (Site name stays — it's the deployment's
+own admin-facing identity, not site content). `docs/ASTRO.md` gained a "Where public site config
+lives" section making this the documented, intended answer going forward, and `CHANGELOG.md`
+flags it as a breaking change with the exact migration behavior spelled out, since an existing
+deployment's admin-entered contact/social data is affected.

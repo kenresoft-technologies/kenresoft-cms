@@ -50,8 +50,6 @@ describe('SettingsPage', () => {
     putMock.mockResolvedValue({
       id: 's-1',
       name: 'Acme Corp',
-      contactEmail: null,
-      socialLinks: null,
       corsOrigin: null,
       featureFlags: null,
       updatedAt: '2026-01-01T00:00:00.000Z',
@@ -66,9 +64,7 @@ describe('SettingsPage', () => {
     await waitFor(() =>
       expect(putMock).toHaveBeenCalledWith('/api/v1/admin/settings', {
         name: 'Acme Corp',
-        contactEmail: null,
         corsOrigin: null,
-        socialLinks: null,
         featureFlags: null,
         previewUrl: null,
       }),
@@ -106,9 +102,9 @@ describe('SettingsPage', () => {
     renderPage();
     await waitFor(() => expect(screen.getByLabelText('Site name')).toBeInTheDocument());
 
-    expect(screen.queryByLabelText('Website')).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Social' }));
-    expect(screen.getByLabelText('Website')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Go to Global Variables' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Social & contact' }));
+    expect(screen.getByRole('button', { name: 'Go to Global Variables' })).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'API' }));
     expect(screen.getByLabelText('CORS origin')).toBeInTheDocument();
@@ -127,8 +123,6 @@ describe('SettingsPage', () => {
     getMock.mockResolvedValue({
       id: 's-1',
       name: 'Acme Corp',
-      contactEmail: 'hello@example.test',
-      socialLinks: null,
       corsOrigin: null,
       featureFlags: null,
       updatedAt: '2026-01-01T00:00:00.000Z',
