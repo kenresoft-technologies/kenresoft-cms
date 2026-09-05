@@ -176,6 +176,13 @@
       "when": 1788594094270,
       "tag": "0024_volatile_spiral",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "6",
+      "when": 1788599362791,
+      "tag": "0025_green_rictor",
+      "breakpoints": true
     }
   ]
 }
