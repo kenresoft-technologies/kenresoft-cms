@@ -1541,3 +1541,17 @@ an admin rename), then asks whether to delete the now-orphaned old Worker. The o
 (Cloudflare's workers.dev subdomain is fixed per account) rather than a second network round
 trip. `ask()`/`confirm()` moved out of `scripts/setup.mjs` into a new `scripts/lib/prompt.mjs`
 so this script didn't need a second, drifting copy.
+
+**Investigated, not a Kenresoft CMS issue: a user's Astro site logging "your custom src/fetch.ts
+does not call the actions()/middleware() handler"** (2026-09-05) — traced to source, not
+guessed: read Astro 7.x's own `astro/dist/core/fetch/vite-plugin.js` (the warning only fires when
+a project has its *own* `src/fetch.ts`, which Astro's `virtual:astro:fetchable` feature resolves
+as a custom low-level fetch handler replacing the default one) and confirmed by actually running
+`examples/astro-site` live — it has never had a `src/fetch.ts` at any point in its git history
+and doesn't trigger the warning. `@kenresoft-cms/astro` is a plain fetch-wrapper client with zero
+Astro integration hooks, so it can't be the source either. Conclusion: the affected user added
+their own `src/fetch.ts` (for reasons outside this project's docs/template) that doesn't forward
+through Astro's public `astro/fetch` API correctly. Documented as a troubleshooting entry in
+`docs/ASTRO.md` (with the correct forwarding pattern, sourced from reading Astro's own default
+handler implementation) in case a future user extending the example hits the same confusion —
+nothing in this repo needed to change.

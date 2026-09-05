@@ -204,6 +204,37 @@ distinct next phase, not a small extension of this one.
   the CMS integration or its output — but if `astro build` ever reports a non-zero exit here,
   check `dist/` before assuming the build actually failed.
 
+### Troubleshooting: "your custom src/fetch.ts does not call the actions()/middleware() handler"
+
+Not a Kenresoft CMS or `@kenresoft-cms/astro` issue — confirmed by reading Astro 7.x's own
+source (`astro/dist/core/fetch/vite-plugin.js`) and by reproducing (or rather, failing to
+reproduce) it against `examples/astro-site` itself, which has never had a `src/fetch.ts` at any
+point in its history and doesn't trigger this warning when actually run. `@kenresoft-cms/astro`
+is a plain fetch-wrapper client with zero Astro integration hooks (no middleware, no actions) and
+can't be the source either.
+
+This is a real Astro 7.x feature (`virtual:astro:fetchable`): it fires only when your **own**
+project has a `src/fetch.ts` (or `.js`/`.mjs`) file — Astro resolves it as a custom low-level
+fetch handler, replacing its own default one, and warns once your project uses Actions or
+middleware if that file doesn't forward through them. If you've added one yourself (most
+Kenresoft-CMS-backed Astro sites don't need to — every page here is a stateless per-request
+fetch from the public API, no Actions or middleware of the CMS's own), either remove it if it's
+not actually needed, or make sure it calls through Astro's public `astro/fetch` API, matching
+the same order Astro's own default handler uses internally:
+
+```ts
+// src/fetch.ts
+import { FetchState, middleware, actions, astro } from 'astro/fetch';
+
+export default async function fetch(request: Request): Promise<Response> {
+  const state = new FetchState(request);
+  return middleware(state, async (state) => {
+    const actionResponse = await actions(state);
+    return actionResponse ?? astro(state);
+  });
+}
+```
+
 ## Future work
 
 Not implemented, deliberately (see `docs/ARCHITECTURE.md` §20's phase boundaries and this
