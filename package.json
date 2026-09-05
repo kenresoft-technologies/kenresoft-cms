@@ -16,7 +16,8 @@
     "typecheck": "pnpm -r typecheck",
     "clean": "pnpm -r clean",
     "setup": "node scripts/setup.mjs",
-    "update": "node scripts/update.mjs"
+    "update": "node scripts/update.mjs",
+    "rename-worker": "node scripts/rename-worker.mjs"
   },
   "devDependencies": {
     "wrangler": "^4.128.0"

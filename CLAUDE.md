@@ -1522,3 +1522,22 @@ their match to a wrangler.toml's *preamble* (before the first `[section]`), conf
 by testing against the real files: a naive first-line-starting-with-`name = "` match would have
 been ambiguous against the *different* `name = "..."` fields inside `[[ratelimits]]` blocks
 further down the same file.
+
+**`pnpm run rename-worker`, for changing a Worker's `*.workers.dev` URL after the fact** (2026-09-05,
+direct user question — "is there a script for that?") — done. Cloudflare has no in-place Worker
+rename: changing `wrangler.toml`'s `name` and redeploying creates a *new* Worker at the new URL,
+the old one keeps running unmodified at its old URL, and every cross-reference the old URL was
+stored in needs fixing up by hand otherwise — the API Worker's own URL is baked into the admin
+build (`VITE_API_URL`) and stored in `BETTER_AUTH_URL`; the admin Worker's URL lives in the API's
+`CORS_ORIGINS` and `ADMIN_URL`. `scripts/rename-worker.mjs` (`--target api|admin --name <new>`)
+does the whole sequence: checks the new name isn't already taken by an unrelated Worker (reusing
+`checkWorkerOwnership()` from the fix above — for the admin Worker, which has no bindings to
+verify ownership *by*, it degrades to a plain existence check via an impossible sentinel
+database id, same trick `ensureWorkerNamesAreOurs()` already uses), asks for confirmation before
+doing anything, deploys the new Worker and updates every cross-reference (rebuilding+redeploying
+the admin app for an API rename; updating `CORS_ORIGINS`/`ADMIN_URL` and redeploying the API for
+an admin rename), then asks whether to delete the now-orphaned old Worker. The old admin URL
+`replaceCorsOrigin()` needs to retire is derived from the *new* deploy's own URL suffix
+(Cloudflare's workers.dev subdomain is fixed per account) rather than a second network round
+trip. `ask()`/`confirm()` moved out of `scripts/setup.mjs` into a new `scripts/lib/prompt.mjs`
+so this script didn't need a second, drifting copy.

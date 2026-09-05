@@ -353,6 +353,26 @@ redeploy would silently overwrite the other deployment's live Worker. If you hit
 unique name for both Workers (pairing the admin Worker's rename to the API Worker's) rather than
 just refusing.
 
+## Renaming a Worker (changing its `*.workers.dev` URL)
+
+Cloudflare has no in-place Worker rename — changing `wrangler.toml`'s `name` and redeploying
+creates a **new** Worker at the new URL; the old one keeps running, unmodified, at its old URL
+until you delete it. Renaming also cascades: the API Worker's URL is baked into the admin app's
+build (`VITE_API_URL`) and stored in `BETTER_AUTH_URL`; the admin Worker's URL is stored in the
+API's `CORS_ORIGINS` allow-list and `ADMIN_URL` (used to build password-reset email links).
+`pnpm run rename-worker` handles all of that for you:
+
+```bash
+pnpm run rename-worker -- --target api --name my-new-api-name
+pnpm run rename-worker -- --target admin --name my-new-admin-name
+```
+
+It checks the new name isn't already taken by an unrelated Worker in your account first (same
+`checkWorkerOwnership()` check `update`/`setup` use above), asks you to confirm before doing
+anything, deploys the new Worker and updates every cross-reference, then asks whether to delete
+the now-unused old Worker — left in place by default if you say no, deletable later yourself with
+`wrangler delete <old-name>`.
+
 ## Backups and recovery
 
 **D1 also has a free, automatic, zero-setup safety net independent of anything below**:

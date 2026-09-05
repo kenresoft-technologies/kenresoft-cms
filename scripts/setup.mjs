@@ -19,13 +19,13 @@
 //
 // Usage: pnpm run setup
 
-import { createInterface } from 'node:readline/promises';
 import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 import { runWrangler, runWranglerInherit } from './lib/wrangler-cli.mjs';
 import { buildAndDeployAdmin, checkWorkerOwnership, deployApi } from './lib/deploy-helpers.mjs';
+import { ask, closePrompt, confirm } from './lib/prompt.mjs';
 import {
   extractTomlValue,
   findTopLevelBlock,
@@ -44,19 +44,6 @@ const ADMIN_DIR = join(REPO_ROOT, 'apps', 'admin');
 // "Deploy to Cloudflare" button only detects a config there.
 const WRANGLER_TOML_PATH = join(REPO_ROOT, 'wrangler.toml');
 const ADMIN_WRANGLER_TOML_PATH = join(ADMIN_DIR, 'wrangler.toml');
-
-const rl = createInterface({ input: process.stdin, output: process.stdout });
-async function ask(question, defaultValue) {
-  const suffix = defaultValue ? ` (${defaultValue})` : '';
-  const answer = (await rl.question(`${question}${suffix}: `)).trim();
-  return answer || defaultValue || '';
-}
-async function confirm(question, defaultYes) {
-  const suffix = defaultYes ? 'Y/n' : 'y/N';
-  const answer = (await rl.question(`${question} [${suffix}] `)).trim().toLowerCase();
-  if (!answer) return defaultYes;
-  return answer === 'y' || answer === 'yes';
-}
 
 // Thin, path-bound wrappers — every call site below already assumes a single implicit target
 // file (the API's wrangler.toml); readTomlFile/writeTomlFile (scripts/lib/wrangler-toml.mjs) are
@@ -418,11 +405,11 @@ async function main() {
   console.log('\n✓ CMS installed — sign up at the admin URL below (the first account becomes owner):');
   console.log(`  API:   ${finalUrl}`);
   console.log(`  Admin: ${adminUrl}`);
-  rl.close();
+  closePrompt();
 }
 
 main().catch((error) => {
   console.error(error instanceof Error ? error.message : error);
-  rl.close();
+  closePrompt();
   process.exit(1);
 });
