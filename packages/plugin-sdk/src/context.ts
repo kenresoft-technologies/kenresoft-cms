@@ -46,6 +46,14 @@ export interface PluginConfigService<T = unknown> {
   set(value: T): Promise<void>;
 }
 
+// Wraps Core's existing pluggable email layer (apps/api/src/lib/email/*, selected via
+// EMAIL_PROVIDER — cloudflare/resend/noop) — a plugin never picks a provider or touches provider
+// credentials itself. Matches apps/api/src/lib/email/types.ts's EmailMessage/EmailSender shape
+// exactly, so the wrapper that constructs this is a pure pass-through with no translation logic.
+export interface PluginEmailService {
+  send(message: { to: string; subject: string; text: string; html?: string }): Promise<void>;
+}
+
 // In-process, best-effort, synchronous only — not a durable queue. A handler runs synchronously
 // within the same request that called emit(); there is no persistence, no retry, and no
 // cross-request delivery guarantee. No critical business state transition may depend solely on
@@ -76,6 +84,7 @@ export interface PluginContext {
   media: PluginMediaService;
   config: PluginConfigService;
   events: PluginEventBus;
+  email: PluginEmailService;
   logger: PluginLogger;
 }
 
@@ -96,6 +105,7 @@ export interface PluginPublicContext {
   db: Database;
   media: PluginMediaService;
   config: Pick<PluginConfigService, 'get'>;
+  email: PluginEmailService;
   logger: PluginLogger;
 }
 
