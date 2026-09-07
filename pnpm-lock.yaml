@@ -10,6 +10,8 @@ overrides:
   undici: ^7.29.0
   sharp: ^0.35.0
   ws: ^8.21.0
+  '@better-auth/core>zod': 4.4.3
+  better-call>zod: 4.4.3
 
 importers:
 
@@ -383,9 +385,12 @@ importers:
 
   packages/plugin-ecommerce:
     dependencies:
+      '@better-auth/utils':
+        specifier: 0.4.2
+        version: 0.4.2
       '@hono/zod-openapi':
         specifier: ^1.6.1
-        version: 1.6.1(hono@4.13.5)(zod@4.5.4)
+        version: 1.6.1(hono@4.13.5)(zod@4.4.3)
       '@kenresoft-cms/contracts':
         specifier: workspace:*
         version: link:../contracts
@@ -400,7 +405,7 @@ importers:
         version: 4.13.5
       zod:
         specifier: ^4.4.3
-        version: 4.5.4
+        version: 4.4.3
     devDependencies:
       '@cloudflare/workers-types':
         specifier: ^5.20260903.1
@@ -419,7 +424,7 @@ importers:
     dependencies:
       '@hono/zod-openapi':
         specifier: ^1.6.1
-        version: 1.6.1(hono@4.13.5)(zod@4.5.4)
+        version: 1.6.1(hono@4.13.5)(zod@4.4.3)
       '@kenresoft-cms/contracts':
         specifier: workspace:*
         version: link:../contracts
@@ -434,7 +439,7 @@ importers:
         version: 4.13.5
       zod:
         specifier: ^4.4.3
-        version: 4.5.4
+        version: 4.4.3
     devDependencies:
       '@cloudflare/workers-types':
         specifier: ^5.20260903.1
@@ -453,7 +458,7 @@ importers:
     dependencies:
       '@hono/zod-openapi':
         specifier: ^1.6.1
-        version: 1.6.1(hono@4.13.5)(zod@4.5.4)
+        version: 1.6.1(hono@4.13.5)(zod@4.4.3)
       '@kenresoft-cms/contracts':
         specifier: workspace:*
         version: link:../contracts
@@ -465,7 +470,7 @@ importers:
         version: 4.13.5
       zod:
         specifier: ^4.4.3
-        version: 4.5.4
+        version: 4.4.3
     devDependencies:
       '@cloudflare/workers-types':
         specifier: ^5.20260903.1
@@ -3698,7 +3703,7 @@ packages:
   better-call@1.4.0:
     resolution: {integrity: sha512-bBKOT4vv1kZLDgxVePdilk/Jwkn+dtRRsmi3DzHcDP+WnswyVl6dR59l2HEeP/0cB+bDoopASAesWDPIdd/zZA==}
     peerDependencies:
-      zod: ^4.0.0
+      zod: 4.4.3
     peerDependenciesMeta:
       zod:
         optional: true
@@ -6988,11 +6993,6 @@ snapshots:
       openapi3-ts: 4.6.1
       zod: 4.4.3
 
-  '@asteasolutions/zod-to-openapi@9.1.0(zod@4.5.4)':
-    dependencies:
-      openapi3-ts: 4.6.1
-      zod: 4.5.4
-
   '@astrojs/check@0.9.10(prettier@3.9.6)(typescript@5.9.3)':
     dependencies:
       '@astrojs/language-server': 2.16.15(prettier@3.9.6)(typescript@5.9.3)
@@ -7343,7 +7343,7 @@ snapshots:
       jose: 6.2.10
       kysely: 0.29.5
       nanostores: 1.5.2
-      zod: 4.5.4
+      zod: 4.4.3
     optionalDependencies:
       '@cloudflare/workers-types': 5.20260903.1
 
@@ -7869,23 +7869,10 @@ snapshots:
       openapi3-ts: 4.6.1
       zod: 4.4.3
 
-  '@hono/zod-openapi@1.6.1(hono@4.13.5)(zod@4.5.4)':
-    dependencies:
-      '@asteasolutions/zod-to-openapi': 9.1.0(zod@4.5.4)
-      '@hono/zod-validator': 0.9.0(hono@4.13.5)(zod@4.5.4)
-      hono: 4.13.5
-      openapi3-ts: 4.6.1
-      zod: 4.5.4
-
   '@hono/zod-validator@0.9.0(hono@4.13.5)(zod@4.4.3)':
     dependencies:
       hono: 4.13.5
       zod: 4.4.3
-
-  '@hono/zod-validator@0.9.0(hono@4.13.5)(zod@4.5.4)':
-    dependencies:
-      hono: 4.13.5
-      zod: 4.5.4
 
   '@humanfs/core@0.19.2':
     dependencies:
@@ -9116,7 +9103,7 @@ snapshots:
       '@scalar/helpers': 0.11.1
       nanoid: 5.1.16
       type-fest: 5.8.0
-      zod: 4.5.4
+      zod: 4.4.3
 
   '@scalar/validation@0.6.3': {}
 

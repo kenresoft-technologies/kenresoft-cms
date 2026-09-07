@@ -6,12 +6,12 @@ import type { PluginCommerceCategory, PluginCommerceProduct } from '@kenresoft-c
 import { listCategories } from '../repository/categories';
 import { getPublishedProductBySlug, listProducts } from '../repository/products';
 
-// Unauthenticated, storefront-facing (mounted at /api/plugins/commerce/public/v1/* via
-// PluginRegistration.publicRoutes — the first plugin needing this platform extension,
-// docs/PLUGINS.md). Deliberately its own, separate schema shapes from the admin routes: no
-// internal metadata/timestamps, and a published product 404s exactly like a nonexistent slug —
-// the same security convention Core's own public content API already uses.
-export const publicCommerceRoutes = createPluginOpenApiApp<{ Bindings: PluginBindings; Variables: PluginPublicVariables }>();
+// Unauthenticated, storefront-facing catalog reads — mounted at the root of the full public
+// mount (src/index.ts composes this alongside customer-auth/customer/cart). Deliberately its own,
+// separate schema shapes from the admin routes: no internal metadata/timestamps, and a published
+// product 404s exactly like a nonexistent slug — the same security convention Core's own public
+// content API already uses.
+export const catalogPublicRoutes = createPluginOpenApiApp<{ Bindings: PluginBindings; Variables: PluginPublicVariables }>();
 
 const notFoundSchema = z.object({ error: z.string() });
 
@@ -53,7 +53,7 @@ function toPublicProduct(row: PluginCommerceProduct): z.infer<typeof publicProdu
   };
 }
 
-publicCommerceRoutes.openapi(
+catalogPublicRoutes.openapi(
   createRoute({
     method: 'get',
     path: '/categories',
@@ -70,7 +70,7 @@ publicCommerceRoutes.openapi(
   },
 );
 
-publicCommerceRoutes.openapi(
+catalogPublicRoutes.openapi(
   createRoute({
     method: 'get',
     path: '/products',
@@ -89,7 +89,7 @@ publicCommerceRoutes.openapi(
   },
 );
 
-publicCommerceRoutes.openapi(
+catalogPublicRoutes.openapi(
   createRoute({
     method: 'get',
     path: '/products/{slug}',
