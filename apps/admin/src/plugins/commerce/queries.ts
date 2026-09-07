@@ -293,3 +293,72 @@ export function useUpdateCommerceSettings() {
     },
   });
 }
+
+// Phase 2b — Cart & Customer. Customer PII (email/address/phone) is admin-role-gated on the API
+// side (stricter than catalog's editor floor); these hooks call the same routes, gating is
+// enforced server-side regardless of what the UI shows.
+
+export interface CommerceCustomerSummary {
+  id: string;
+  email: string;
+  name: string;
+  phone: string | null;
+  emailVerified: boolean;
+  disabled: boolean;
+  createdAt: string;
+}
+
+export interface CommerceCustomerAddress {
+  id: string;
+  label: string | null;
+  recipientName: string;
+  line1: string;
+  line2: string | null;
+  city: string;
+  region: string | null;
+  postalCode: string;
+  country: string;
+  phone: string | null;
+  isDefault: boolean;
+}
+
+export interface CommerceCustomerDetail extends CommerceCustomerSummary {
+  addresses: CommerceCustomerAddress[];
+}
+
+const customersKey = ['plugins', 'commerce', 'customers'] as const;
+
+function customerByIdKey(customerId: string) {
+  return ['plugins', 'commerce', 'customers', 'by-id', customerId] as const;
+}
+
+export function useCommerceCustomers(search?: string) {
+  return useQuery({
+    queryKey: [...customersKey, search ?? ''],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (search) params.set('search', search);
+      return apiClient.get<CommerceCustomerSummary[]>(`${BASE}/customers?${params.toString()}`);
+    },
+  });
+}
+
+export function useCommerceCustomer(customerId: string) {
+  return useQuery({
+    queryKey: customerByIdKey(customerId),
+    queryFn: () => apiClient.get<CommerceCustomerDetail>(`${BASE}/customers/${customerId}`),
+    enabled: Boolean(customerId),
+  });
+}
+
+export function useUpdateCommerceCustomerDisabled(customerId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (disabled: boolean) =>
+      apiClient.patch<CommerceCustomerSummary>(`${BASE}/customers/${customerId}`, { disabled }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: customersKey });
+      void queryClient.invalidateQueries({ queryKey: customerByIdKey(customerId) });
+    },
+  });
+}

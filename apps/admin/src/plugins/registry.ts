@@ -1,4 +1,4 @@
-import { FolderTree, Package, Puzzle, Settings } from 'lucide-react';
+import { FolderTree, Package, Puzzle, Settings, Users } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 // The one place both AppLayout's sidebar and command-palette read plugin nav entries from —
@@ -44,6 +44,14 @@ export const pluginNavItems: PluginNavItem[] = [
   },
   {
     pluginId: 'commerce',
+    to: '/plugins/commerce/customers',
+    label: 'Customers',
+    end: false,
+    icon: Users,
+    group: 'Commerce',
+  },
+  {
+    pluginId: 'commerce',
     to: '/plugins/commerce/settings',
     label: 'Settings',
     end: false,
@@ -68,6 +76,14 @@ export const pluginRoutes = [
   {
     path: 'plugins/commerce/categories',
     lazy: async () => ({ Component: (await import('./commerce/CategoriesPage')).CategoriesPage }),
+  },
+  {
+    path: 'plugins/commerce/customers',
+    lazy: async () => ({ Component: (await import('./commerce/CustomersPage')).CustomersPage }),
+  },
+  {
+    path: 'plugins/commerce/customers/:customerId',
+    lazy: async () => ({ Component: (await import('./commerce/CustomerDetailPage')).CustomerDetailPage }),
   },
   {
     path: 'plugins/commerce/settings',
