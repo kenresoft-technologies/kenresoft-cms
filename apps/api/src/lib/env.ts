@@ -5,6 +5,12 @@ export interface Bindings {
   AUTH_RATE_LIMITER: RateLimit;
   RECOVERY_RATE_LIMITER: RateLimit;
   PUBLIC_CONTENT_RATE_LIMITER: RateLimit;
+  // Commerce's customer-auth sub-path (register/login/logout/password-reset/verify-email) —
+  // declared via PluginRegistration.publicRateLimits, applied generically by
+  // apps/api/src/plugins/mount.ts (docs/PLUGINS.md), not hardcoded to Commerce there. Lives here
+  // in Bindings (not PluginBindings) since the plugin itself never reads this binding directly —
+  // only Core's mount.ts does, before the plugin's own router ever runs.
+  COMMERCE_CUSTOMER_AUTH_RATE_LIMITER: RateLimit;
   API_VERSION: string;
   CORS_ORIGINS: string;
   BETTER_AUTH_SECRET: string;

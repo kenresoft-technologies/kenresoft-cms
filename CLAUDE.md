@@ -1656,3 +1656,89 @@ and `apps/admin` (29 files) suites re-run clean afterward with zero regressions 
 small batches per this file's own standing Windows/workerd-flakiness practice — several batches
 did hit the documented module-fallback resource-exhaustion flakiness on first attempt, confirmed
 non-code by re-running clean immediately after).
+
+**Commerce, Phase 2b: cart & customer accounts** (2026-09-07, on `feature/commerce-cart-customer`
+off `develop`) — done, after a plan review that sent the original draft back with 11 required
+changes before any code was written: a persistent token table (the draft had password-reset/
+verification flows but nowhere to store their tokens), real CSRF/CORS reasoning, real
+authentication rate limiting, explicit account-enumeration behavior, an atomic cart-merge
+guarantee, explicit cart-stock/guest-cart-security/lifecycle semantics, and a verified (not
+assumed) FK-cascade decision. Every one of those eleven points is addressed explicitly in
+`docs/PLUGINS.md`'s Commerce section rather than folded in silently — see there for the full
+reasoning on each.
+
+Two new generic platform extensions, both used only by Commerce so far but built plugin-agnostic
+on purpose (docs/PLUGINS.md has the full design for each): a `PluginContext.email`/
+`PluginPublicContext.email` capability wrapping Core's existing pluggable email layer (a plugin
+previously had no way to send mail at all — password-reset/verification needed one); and
+`PluginRegistration.publicRateLimits`, letting a plugin declare a tighter rate limit on one
+sub-path of its own public mount without Core's `mount.ts` ever hardcoding a plugin by name — a
+new `COMMERCE_CUSTOMER_AUTH_RATE_LIMITER` binding (10/60s per IP, mirroring `AUTH_RATE_LIMITER`)
+covers Commerce's own `/customer-auth/*`.
+
+Customer identity is deliberately separate from better-auth (CMS staff only) — hand-rolled on
+`@better-auth/utils`'s standalone hashing primitives, never on better-auth's own identity/
+session/database-adapter system. This distinction mattered in practice, not just on paper:
+`plugin-ecommerce` initially depended on the *full* `better-auth` package (matching how
+`apps/api`'s own recovery-codes.ts/password-reset.ts already import `generateRandomString`/
+`constantTimeEqual` from `better-auth/crypto`), and adding that dependency shifted pnpm's shared
+peer-resolution for `zod` across every *other* better-auth consumer in the workspace — including
+`apps/admin`'s own, completely unrelated CMS-staff auth client — from `4.4.3` onto `4.5.4`,
+breaking `apps/admin`'s typecheck (`TS2742`, an inferred type not portably nameable) despite zero
+lines of `apps/admin` code having changed. Root-caused by bisecting with `git stash` against a
+clean baseline (confirmed the error genuinely didn't exist there) and cross-referencing `pnpm why
+zod -r`, not guessed. Switching `plugin-ecommerce` to depend on `@better-auth/utils` directly
+(the actual home of `hashPassword`/`verifyPassword`/`createRandomStringGenerator`, with zero
+dependency beyond `@noble/hashes`) didn't fix it — the real fix was a scoped `pnpm.overrides`
+entry (`"@better-auth/core>zod": "4.4.3"`, `"better-call>zod": "4.4.3"`, `package.json`'s `pnpm`
+key, matching this project's own existing `qs`/`esbuild`/`undici`/`sharp`/`ws` overrides
+precedent) — narrow enough that `examples/astro-site`'s own independent, newer zod resolution
+(needed by Astro 7) and `@cloudflare/vitest-pool-workers`' bundled `miniflare` (which broke
+outright under a first, over-broad *global* `zod` override — confirmed by reproducing the
+`z.ostring is not a function` failure directly, then narrowing the override's scope) were both
+left untouched. `@better-auth/utils` was kept anyway despite not being what fixed this — it's
+still the more honest, minimal dependency for what's actually used.
+
+Schema: six new `plugin_commerce_`-prefixed tables (`customers`, `customer_sessions`,
+`customer_tokens`, `customer_addresses`, `carts`, `cart_items`), one migration
+(`0026_shocking_iron_fist.sql`) — regenerated once after an initial pass left a redundant plain
+index sitting alongside a unique one on `customers.email`, caught by re-reading the generated SQL
+before committing rather than after. `carts.customerId` uses a partial unique index (`WHERE
+customer_id IS NOT NULL`) so a customer has at most one cart while guest carts, which can be
+many, are unconstrained. Cart-item dedup on `(cartId, productId, variantId)` is deliberately
+application logic, not a DB constraint — SQLite doesn't collapse `variantId IS NULL` rows the way
+that would need, the same reasoning `entries-export-import`'s upsert-by-slug already established.
+
+New `packages/plugin-ecommerce` routes: `customer-auth.ts` (register/login/logout/password-reset/
+verify-email, public, unauthenticated by definition), `customer.ts` (profile/password/addresses,
+session-required — gained its own `.use('*', ...)` auth-checking middleware registered *before*
+any `.openapi()` route, after a test caught a real ordering bug: `@hono/zod-openapi`'s per-route
+body validation otherwise ran before a handler-body-only session check ever got a chance to,
+so an unauthenticated request with a malformed body 400'd instead of 401'd — fixed to match every
+other session-gated route's actual behavior, confirmed by probing an existing `requireSession`-
+gated route the same way first rather than assuming), `cart.ts` (guest-cookie-or-customer-session,
+`GET /cart` intentionally creates nothing — a cart is only ever created inside `POST /cart/items`),
+and `admin-customers.ts` (CMS-staff, `requirePluginRole('admin')` — stricter than catalog's
+`editor` floor, since customer PII is closer to this codebase's own webhooks/Users-management
+sensitivity than day-to-day catalog editing).
+
+Tests: six new `apps/api` files, 27 tests total against real D1, split deliberately smaller than
+one-file-per-domain would suggest — `COMMERCE_CUSTOMER_AUTH_RATE_LIMITER`'s bucket persists
+across every `it()` block within one test file (confirmed empirically: a throwaway debug test
+hammering `/register` in a loop showed exactly 10 successes then 429s from the 11th call on,
+cumulative for the whole file), so `commerce-customer-auth.test.ts` (identity: register/login/
+logout, 3 tests) and `commerce-customer-recovery.test.ts` (password-reset/verify-email/disabled,
+3 tests) are separate files, and both create setup customers directly via the repository rather
+than through the rate-limited HTTP endpoint wherever the test isn't actually exercising that
+endpoint. The rate limiter itself is tested as a pure unit test (`plugin-rate-limit.test.ts`,
+mocked `.limit()`) mirroring `auth-rate-limit.test.ts`'s own existing pattern, rather than another
+real-D1 integration test competing for the same budget. `commerce-cart.test.ts` (8 tests) covers
+the atomic merge end-to-end: a guest cart and a pre-existing customer cart each holding 2 of a
+3-stock variant, merged on login, asserted to land on exactly 3 (summed then capped) with the
+guest cart row gone afterward. `commerce-customer-profile.test.ts` (5 tests) and
+`commerce-admin-customers.test.ts` (4 tests) round out addresses/password-change/admin-disable.
+Two new `apps/admin` page test files. Full pre-existing suites re-run clean afterward: all 38
+`apps/api` files (individually/in small batches per the standing Windows/workerd-flakiness
+practice — several again hit the documented module-fallback resource-exhaustion pattern on first
+attempt, confirmed non-code by retrying clean) and all 31 `apps/admin` files (162 tests) in one
+clean run.

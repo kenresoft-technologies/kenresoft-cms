@@ -183,6 +183,13 @@
       "when": 1788599362791,
       "tag": "0025_green_rictor",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "6",
+      "when": 1788776381655,
+      "tag": "0026_shocking_iron_fist",
+      "breakpoints": true
     }
   ]
 }

@@ -3,10 +3,12 @@
 **Status: Phase 1 (generic plugin platform + `plugin-hello` proof) complete, 2026-09-04.
 Plugin enablement moved from a static file to a DB-backed, live-toggleable model (also
 2026-09-04) — see Enablement below, which supersedes Phase 1's original design. Phase 2a
-(Commerce catalog domain — products, variants, categories, images) complete, 2026-09-05 — see
-the end of this document. It needed two generic platform extensions, both documented below:
-unauthenticated public plugin routes, and grouped admin-nav entries. Cart, checkout/orders, and
-payments/Paystack (2b–2d) remain not started.
+(Commerce catalog domain — products, variants, categories, images) complete, 2026-09-05. Phase 2b
+(Commerce cart & customer accounts) complete, 2026-09-07 — see the end of this document. Together
+these two Commerce passes needed four generic platform extensions, all documented below:
+unauthenticated public plugin routes, grouped admin-nav entries, a plugin email capability, and a
+generic per-plugin public rate-limit declaration. Checkout/orders and payments/Paystack (2c–2d)
+remain not started.
 
 ## What this is
 
@@ -33,7 +35,7 @@ plugin package depend on — neither ever depends on the other's internals. It e
   `sdkVersion`), an optional human-readable `description` (shown on the admin Plugins page), its
   declared `dependencies` (other plugin ids), `capabilities`, and `permissions`.
 - `PluginContext` — the one object a plugin's route handlers ever receive to reach Core: `db`,
-  `user`, `hasRole()`, `media`, `config`, `events`, `logger`.
+  `user`, `hasRole()`, `media`, `config`, `events`, `email`, `logger`.
 - `PluginRegistration` — the code-level object (manifest + the plugin's actual Hono sub-app +
   optional config schema/lifecycle hooks) that `apps/api/src/plugins/registered-plugins.ts`
   imports per plugin.
@@ -138,6 +140,52 @@ group value instead of always one shared group. Hello (one page) needed nothing 
 group instead of piling into the shared one. `pluginId` still gates visibility per entry (not
 per group), so all of a disabled plugin's entries disappear together regardless of how many
 groups they're split across.
+
+## Plugin email
+
+A plugin previously had no way to send mail at all. Commerce's cart & customer domain (Phase 2b)
+needed one for password-reset/verification email, so this wraps Core's existing pluggable email
+layer generically rather than as a one-off:
+
+- `PluginEmailService` (`packages/plugin-sdk/src/context.ts`) — one method, `send({ to, subject,
+  text, html? })`, matching `apps/api/src/lib/email/types.ts`'s `EmailMessage`/`EmailSender`
+  shape exactly. Exposed as `PluginContext.email` **and** `PluginPublicContext.email` — a
+  password-reset-request route is itself unauthenticated.
+- `apps/api/src/plugins/context.ts` constructs it via `getEmailSender(c.env as unknown as
+  Bindings)`, reusing `apps/api/src/lib/email/*`'s existing provider selection
+  (`EMAIL_PROVIDER` — cloudflare/resend/noop) as-is. The cast is deliberate: `PluginBindings`
+  (the plugin-facing type contract) stays `{ DB, MEDIA_BUCKET }` only — email-provider bindings
+  never become part of a plugin's visible type surface, exactly like `PluginContext.media`
+  already hides R2/D1 specifics behind a curated interface. No new env vars, no plugin ever picks
+  a provider or sees its credentials.
+- A plugin sending mail should fire-and-forget via `c.executionCtx.waitUntil(ctx.email.send(...))`
+  — mirrors `apps/api/src/routes/public/password-reset.ts`'s existing pattern exactly.
+
+## Generic per-plugin public rate-limit declaration
+
+The generic `publicContentRateLimit` every public mount already gets (300/60s per IP) is
+deliberately loose — fine for reads, not tight enough for a login/registration surface. Rather
+than hardcode a Commerce-specific limiter into Core's `mount.ts` (which would violate "Core never
+contains plugin business logic"), a plugin can declare its own tighter rule on one sub-path of
+its own public mount:
+
+- `PluginRegistration.publicRateLimits?: { pathPrefix: string; bindingName: string }[]`
+  (`packages/plugin-sdk/src/registration.ts`) — `pathPrefix` is relative to the plugin's own
+  public mount (e.g. `/customer-auth`), `bindingName` is the exact `wrangler.toml [[ratelimits]]`
+  binding name to enforce against that sub-path.
+- `apps/api/src/plugins/mount.ts` applies a new `createPluginRateLimitMiddleware(bindingName)`
+  (`apps/api/src/plugins/plugin-rate-limit.ts`) at `${publicBase}${pathPrefix}/*` for each
+  declared rule — registered on the outer app, in addition to (not instead of) the generic
+  limiter, same ordering precedent as `requirePluginEnabled`/`publicContentRateLimit`. Nothing
+  about this mechanism names any specific plugin.
+- If the named binding is genuinely missing from a deployment's `wrangler.toml`, the middleware
+  **fails open** with a loud `console.warn` (visible in `wrangler tail`) rather than hard-failing
+  every request on that sub-path — a forgotten deployment step shouldn't take down login
+  entirely, but the gap must stay loud, not silent.
+- Commerce declares one rule: `{ pathPrefix: '/customer-auth', bindingName:
+  'COMMERCE_CUSTOMER_AUTH_RATE_LIMITER' }` (10/60s per IP, mirroring `AUTH_RATE_LIMITER`'s own
+  posture), covering register/login/logout/password-reset/verify-email as one sub-path. Cart/
+  customer-profile routes rely on the generic limiter only.
 
 ## Migrations: how a plugin owns a table here
 
@@ -283,7 +331,58 @@ described above. Money is modeled as integer minor units + a currency code colum
 monetary convention in this codebase, established here since nothing else had modeled money
 before; never floating point.
 
-Cart & customer (2b), checkout & orders (2c), payments/Paystack (2d), and storefront integration
-into `@kenresoft-cms/astro`/`examples/astro-site` (2e) remain **not started** — each is a
-separate future pass, payments especially, given real money and webhook-signature verification
-are involved.
+## Commerce (Phase 2b: cart & customer accounts) — done, 2026-09-07
+
+Real, hand-rolled customer accounts — deliberately separate from better-auth (reserved for CMS
+staff): register/login/logout, password reset, email verification, profile, addresses, and a
+guest-or-authenticated shopping cart with merge-on-login. Depends only on `@better-auth/utils`'s
+standalone hashing primitives (`hashPassword`/`verifyPassword` from `@better-auth/utils/password`,
+`createRandomStringGenerator` from `@better-auth/utils/random`) — never on better-auth's own
+identity/session/database-adapter system or a `betterAuth({...})` instance. Chosen over depending
+on the full `better-auth` package specifically because doing so once shifted pnpm's shared
+peer-resolution for zod across every *other* better-auth consumer in the workspace (including
+apps/admin's own, unrelated CMS-staff auth client) onto a different version and broke its
+typecheck — `@better-auth/utils` has no dependency beyond `@noble/hashes`, so it can't do that.
+
+Six new `plugin_commerce_`-prefixed tables: `customers`, `customer_sessions` (hashed session
+tokens, 30-day fixed TTL), `customer_tokens` (password-reset/email-verification, hashed,
+single-use via delete-on-consume — the same mechanism recovery-codes/CMS password-reset already
+use), `customer_addresses`, `carts` (`customerId` nullable = a guest cart, identified purely by
+possessing its own unguessable id via a cookie — never accepted as identity for any
+customer-scoped route), `cart_items` (cascades on product/variant delete, unlike a future Order,
+which must snapshot catalog data independent of the live row).
+
+Security posture, reviewed and revised before implementation (not assumed correct on the first
+pass): password-reset always returns an identical generic response regardless of whether the
+email matches an account; login returns one generic "invalid credentials" message for both a
+wrong password and a nonexistent email; registration *does* distinguish "already registered" — a
+deliberate usability-over-enumeration-resistance tradeoff at that one endpoint only. CSRF defense
+for the customer/cart cookies (`sameSite: 'none'`, since a storefront isn't guaranteed same-site
+with the API) comes from the *existing* global `corsMiddleware` (`apps/api/src/middleware/
+cors.ts`, already `credentials: true` with an explicit allow-list, never a wildcard) plus every
+mutation requiring `application/json` — not from `SameSite` itself, and not a new mechanism. A
+storefront needing credentialed browser-JS calls to `/customer/*`/`/cart/*` must have its real
+origin added to the deployment's existing `CORS_ORIGINS`. Cart-time stock capping against a
+variant's `stockQty` is advisory only, never a reservation — real atomic stock enforcement is
+Phase 2c's job at order creation. Login/register/logout/password-reset/verify-email share one
+`COMMERCE_CUSTOMER_AUTH_RATE_LIMITER` bucket (10/60s per IP) via the generic per-plugin
+rate-limit mechanism above; this bucket's state persists across every test in one vitest file
+(confirmed empirically, not assumed), which shaped how the test suite is split.
+
+Guest-cart-to-customer-cart merge on login/register sums matching `(productId, variantId)` line
+quantities (capped at current tracked stock) and moves any guest-only lines over, all as one
+`db.batch()` call — the same atomic-multi-write idiom `routes/admin/security.ts`'s
+ownership-transfer fix established, so a partial merge can never leave inconsistent state.
+`GET /cart` is side-effect-free by design: a cart is only ever created inside `POST /cart/items`,
+the first add-to-cart call.
+
+Customer account deletion/anonymization is explicitly deferred — there's nothing yet (no orders)
+a deletion could conflict with. Flagged for 2c/2d: once Orders exist, deleting a customer must not
+corrupt order/payment records, which need their own snapshot of customer-identifying info
+independent of the live row, for the same reason Order will snapshot product/price data (see the
+`cart_items` cascade note above).
+
+Checkout & orders (2c), payments/Paystack (2d), and storefront integration into
+`@kenresoft-cms/astro`/`examples/astro-site` (2e) remain **not started** — each is a separate
+future pass, payments especially, given real money and webhook-signature verification are
+involved.
