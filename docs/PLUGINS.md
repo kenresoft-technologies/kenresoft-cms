@@ -594,3 +594,54 @@ this environment doesn't have.
 
 Storefront integration into `@kenresoft-cms/astro`/`examples/astro-site` (2e) — wiring the whole
 cart → checkout → pay → verify flow into a real rendered storefront — remains **not started**.
+
+## Commerce (Phase 2d review fixes) — done, 2026-09-08
+
+A direct code review of the merged 2d work (not a fresh phase) found six real gaps, all closed
+before 2e could start:
+
+1. **Paystack status mapping.** `toTransactionStatus` and the routes consuming it originally
+   collapsed every non-`success` status straight to `failed` — but Paystack has genuinely
+   non-terminal statuses (`pending`/`ongoing`/`processing`/`queued`) and a `reversed` status for a
+   charge reversed after the fact. `PaymentTransactionStatus` now carries Paystack's full
+   vocabulary 1:1; `routes/payments.ts`'s verify handler only calls `settlePayment` for the two
+   genuinely terminal outcomes (`success`, `failed`/`abandoned`) and leaves a payment attempt
+   `pending` in the ledger for anything else, logging it as informational rather than guessing.
+2. **Duplicate payment initialization.** A repeated `POST /orders/{id}/initialize` previously
+   called Paystack again every time, creating a new chargeable reference each call. It now checks
+   `getPendingPaymentAttemptForOrder` first and re-verifies that attempt's real status with
+   Paystack: still in flight → reuse the same stored `authorizationUrl` (a new column on
+   `plugin_commerce_order_payments`, set once at initialize time); genuinely failed → resolve it
+   and issue a real fresh reference; already succeeded → reject (the order is no longer pending).
+3. **Stale idempotency-claim recovery.** `claimIdempotencyKey` could leave a key permanently
+   `in_progress` (409 forever) if the Worker crashed after claiming it but before
+   `completeIdempotencyKey` ran. A claim older than `STALE_CLAIM_MS` (30s — generous for an I/O-
+   bound checkout, and a false "still in progress" is harmless where reclaiming too early is not)
+   is now reclaimable via the same conditional-update-plus-check-returned-rows idiom used
+   throughout this codebase: bumping `createdAt` is simultaneously "I now own this key" and the
+   guard against a second concurrent reclaimer also succeeding.
+4. **`refunded` was never real.** The pre-fix `paid`/`fulfilled -> refunded` transition changed
+   the CMS status and restocked inventory without ever calling a Paystack refund API — an order
+   could read "refunded" while no money had moved. No transition reaches `refunded` now (the
+   status value itself stays defined, for a future pass that implements real provider-backed
+   refunds); the admin Order detail page no longer offers it as an option.
+5. **Cancellation-vs-payment race, given an explicit policy.** If an order is cancelled while its
+   Paystack transaction is still pending, and Paystack later reports `charge.success` for it, the
+   order's CMS status must never be silently overwritten — `resolvePaymentAttempt`'s own
+   conditional `UPDATE ... WHERE status = 'pending'` already made this safe at the DB level (the
+   order stays cancelled); `settlePayment` (`routes/payments.ts`) now explicitly detects this case
+   (`orderTransitionedToPaid: false` on an otherwise-successful resolution) and logs it loudly for
+   manual reconciliation, since real money moved for an order this deployment no longer considers
+   open and provider-backed refunds aren't implemented yet (see point 4). The payment is still
+   recorded as a genuine success in the ledger — never silently dropped.
+6. Tests for all of the above: `paystack-provider.test.ts` gained full coverage of Paystack's
+   status vocabulary (was 8 tests, still 8 — the existing status test was extended, not
+   duplicated); `commerce-payments.test.ts` grew from 12 to 22 tests (non-terminal statuses via
+   `it.each`, terminal failures via `it.each`, three duplicate-initialization tests, and the
+   cancellation-race test asserting the order stays cancelled, the payment still resolves to
+   `success` in the ledger, and `logger.error` fires with the right detail); `commerce-checkout
+   .test.ts` grew from 11 to 13 (stale-claim reclaim, and a fresh-claim-is-NOT-reclaimed control
+   test); `commerce-orders.test.ts` grew from 7 to 8 (both `fulfilled -> refunded` and
+   `paid -> refunded` directly rejected). Full re-verification: clean `pnpm typecheck`/`pnpm lint`
+   workspace-wide, all commerce/payments test files passing individually, the full `apps/admin`
+   suite (162 tests) clean in one run.

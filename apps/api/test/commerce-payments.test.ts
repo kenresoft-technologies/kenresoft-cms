@@ -1,10 +1,10 @@
 import { createDb } from '@kenresoft-cms/database';
 import { paymentsRoutes } from '@kenresoft-cms/plugin-ecommerce/src/routes/payments';
 import { getPaymentAttempt, listPaymentAttemptsForOrder } from '@kenresoft-cms/plugin-ecommerce/src/repository/payments';
-import type { InitializePaymentInput, PluginBindings, PluginPaymentsService, PluginPublicContext, PluginPublicVariables } from '@kenresoft-cms/plugin-sdk';
+import type { InitializePaymentInput, PluginBindings, PluginLogger, PluginPaymentsService, PluginPublicContext, PluginPublicVariables } from '@kenresoft-cms/plugin-sdk';
 import { Hono } from 'hono';
 import { SELF, env } from 'cloudflare:test';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // payments.ts's own logic (idempotent resolution, amount/currency validation, reference-ownership
 // checks, callbackUrl origin validation) is tested here against a hand-injected fake
@@ -21,11 +21,11 @@ const CART_BASE = 'https://example.com/api/plugins/commerce/public/v1/cart';
 const CHECKOUT_BASE = 'https://example.com/api/plugins/commerce/public/v1/checkout';
 const ALLOWED_CALLBACK = 'http://localhost:5173/thank-you';
 
-function fakeLogger() {
+function fakeLogger(): PluginLogger {
   return { info: () => {}, warn: () => {}, error: () => {} };
 }
 
-function buildTestApp(payments: PluginPaymentsService) {
+function buildTestApp(payments: PluginPaymentsService, logger: PluginLogger = fakeLogger()) {
   const app = new Hono<{ Bindings: PluginBindings; Variables: PluginPublicVariables }>();
   app.use('*', async (c, next) => {
     const ctx: PluginPublicContext = {
@@ -35,7 +35,7 @@ function buildTestApp(payments: PluginPaymentsService) {
       config: { get: async () => ({}) },
       email: { send: async () => {} },
       payments,
-      logger: fakeLogger(),
+      logger,
     };
     c.set('pluginContext', ctx);
     await next();
@@ -187,6 +187,100 @@ describe('commerce plugin: payments (real D1)', () => {
     expect(res.status).toBe(400);
   });
 
+  it('a repeated initialize call while the prior attempt is still pending at Paystack reuses the same reference instead of creating a second one', async () => {
+    const order = await createPendingOrder();
+    let initializeCalls = 0;
+    const provider: PluginPaymentsService = {
+      ...neverProvider,
+      initializeTransaction: async (input) => {
+        initializeCalls += 1;
+        return { authorizationUrl: 'https://checkout.paystack.com/first', accessCode: 'first', reference: input.reference };
+      },
+      verifyTransaction: async (ref) => ({ status: 'pending', reference: ref, amount: 0, currency: '', raw: {} }),
+    };
+    const app = buildTestApp(provider);
+    const requestInit = {
+      method: 'POST' as const,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ callbackUrl: ALLOWED_CALLBACK }),
+    };
+
+    const first = await app.request(`/orders/${order.id}/initialize`, requestInit, env);
+    expect(first.status).toBe(200);
+    const firstBody = await first.json<{ authorizationUrl: string; reference: string }>();
+
+    const second = await app.request(`/orders/${order.id}/initialize`, requestInit, env);
+    expect(second.status).toBe(200);
+    const secondBody = await second.json<{ authorizationUrl: string; reference: string }>();
+
+    expect(secondBody).toEqual(firstBody);
+    // Paystack's own initialize-transaction endpoint was only ever actually called once — the
+    // second call re-checked the existing reference's status (still pending) and reused it.
+    expect(initializeCalls).toBe(1);
+
+    const db = createDb(env.DB);
+    const attempts = await listPaymentAttemptsForOrder(db, order.id);
+    expect(attempts).toHaveLength(1);
+  });
+
+  it('a repeated initialize call after the prior attempt genuinely failed at Paystack issues a fresh reference', async () => {
+    const order = await createPendingOrder();
+    let initializeCalls = 0;
+    const provider: PluginPaymentsService = {
+      ...neverProvider,
+      initializeTransaction: async (input) => {
+        initializeCalls += 1;
+        return { authorizationUrl: `https://checkout.paystack.com/${initializeCalls}`, accessCode: `code-${initializeCalls}`, reference: input.reference };
+      },
+      verifyTransaction: async (ref) => ({ status: 'failed', reference: ref, amount: 0, currency: '', raw: {} }),
+    };
+    const app = buildTestApp(provider);
+    const requestInit = {
+      method: 'POST' as const,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ callbackUrl: ALLOWED_CALLBACK }),
+    };
+
+    const first = await app.request(`/orders/${order.id}/initialize`, requestInit, env);
+    const firstBody = await first.json<{ reference: string }>();
+
+    const second = await app.request(`/orders/${order.id}/initialize`, requestInit, env);
+    expect(second.status).toBe(200);
+    const secondBody = await second.json<{ reference: string }>();
+
+    expect(secondBody.reference).not.toBe(firstBody.reference);
+    expect(initializeCalls).toBe(2);
+
+    const db = createDb(env.DB);
+    const attempts = await listPaymentAttemptsForOrder(db, order.id);
+    expect(attempts).toHaveLength(2);
+    expect(attempts.find((a) => a.reference === firstBody.reference)?.status).toBe('failed');
+    expect(attempts.find((a) => a.reference === secondBody.reference)?.status).toBe('pending');
+  });
+
+  it('a repeated initialize call after the prior attempt already succeeded is rejected (the order is no longer pending)', async () => {
+    const order = await createPendingOrder();
+    const provider: PluginPaymentsService = {
+      ...neverProvider,
+      initializeTransaction: async (input) => ({ authorizationUrl: 'https://x', accessCode: 'x', reference: input.reference }),
+      verifyTransaction: async (ref) => ({ status: 'success', reference: ref, amount: order.totalAmount, currency: order.currency, raw: {} }),
+    };
+    const app = buildTestApp(provider);
+    const requestInit = {
+      method: 'POST' as const,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ callbackUrl: ALLOWED_CALLBACK }),
+    };
+
+    await app.request(`/orders/${order.id}/initialize`, requestInit, env);
+    const second = await app.request(`/orders/${order.id}/initialize`, requestInit, env);
+    expect(second.status).toBe(400);
+
+    const db = createDb(env.DB);
+    const orderRow = await db.query.pluginCommerceOrders.findFirst({ where: (o, { eq }) => eq(o.id, order.id) });
+    expect(orderRow?.status).toBe('paid');
+  });
+
   async function initialize(order: { id: string }, reference: string) {
     const provider: PluginPaymentsService = { ...neverProvider, initializeTransaction: async () => ({ authorizationUrl: 'https://x', accessCode: 'x', reference }) };
     const app = buildTestApp(provider);
@@ -265,6 +359,88 @@ describe('commerce plugin: payments (real D1)', () => {
     const db = createDb(env.DB);
     const attempts = await listPaymentAttemptsForOrder(db, order.id);
     expect(attempts).toHaveLength(1);
+  });
+
+  it.each(['pending', 'ongoing', 'processing', 'queued'] as const)(
+    'verify leaves the attempt pending and the order unpaid for Paystack status %s, rather than treating it as a failure',
+    async (paystackStatus) => {
+      const order = await createPendingOrder();
+      const reference = crypto.randomUUID();
+      await initialize(order, reference);
+
+      const provider: PluginPaymentsService = {
+        ...neverProvider,
+        verifyTransaction: async (ref) => ({ status: paystackStatus, reference: ref, amount: order.totalAmount, currency: order.currency, raw: {} }),
+      };
+      const app = buildTestApp(provider);
+      const res = await app.request(`/orders/${order.id}/verify?reference=${reference}`, {}, env);
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ orderStatus: 'pending', paid: false });
+
+      const db = createDb(env.DB);
+      const attempt = await getPaymentAttempt(db, reference);
+      expect(attempt?.status).toBe('pending');
+    },
+  );
+
+  it.each(['failed', 'abandoned'] as const)(
+    'verify resolves the attempt as failed for Paystack status %s, without touching the order (it stays pending, so the customer can retry)',
+    async (paystackStatus) => {
+      const order = await createPendingOrder();
+      const reference = crypto.randomUUID();
+      await initialize(order, reference);
+
+      const provider: PluginPaymentsService = {
+        ...neverProvider,
+        verifyTransaction: async (ref) => ({ status: paystackStatus, reference: ref, amount: order.totalAmount, currency: order.currency, raw: {} }),
+      };
+      const app = buildTestApp(provider);
+      const res = await app.request(`/orders/${order.id}/verify?reference=${reference}`, {}, env);
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ orderStatus: 'pending', paid: false });
+
+      const db = createDb(env.DB);
+      const attempt = await getPaymentAttempt(db, reference);
+      expect(attempt?.status).toBe('failed');
+    },
+  );
+
+  it('cancellation-vs-payment race: an order cancelled while its payment is still pending is never silently marked paid when Paystack later reports success', async () => {
+    const order = await createPendingOrder();
+    const reference = crypto.randomUUID();
+    await initialize(order, reference);
+
+    // The order is cancelled (e.g. by an admin) while the payment is still in flight at Paystack.
+    const cancel = await SELF.fetch(`${ADMIN_BASE}/orders/${order.id}/status`, {
+      method: 'PATCH',
+      headers: { Cookie: order.adminCookie, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'cancelled' }),
+    });
+    expect(cancel.status).toBe(200);
+
+    // Paystack's charge.success webhook for that same reference arrives after the cancellation.
+    const errorSpy = vi.fn();
+    const payload = JSON.stringify({ event: 'charge.success', data: { reference, amount: order.totalAmount, currency: order.currency, status: 'success' } });
+    const app = buildTestApp({ ...neverProvider, verifyWebhookSignature: async () => true }, { info: () => {}, warn: () => {}, error: errorSpy });
+    const res = await app.request('/webhook', { method: 'POST', headers: { 'x-paystack-signature': 'valid' }, body: payload }, env);
+    expect(res.status).toBe(200);
+
+    // Authoritative policy: the order's CMS status is never silently overwritten by an async
+    // payment confirmation arriving after an explicit cancellation — it stays cancelled, not paid.
+    const db = createDb(env.DB);
+    const orderRow = await db.query.pluginCommerceOrders.findFirst({ where: (o, { eq }) => eq(o.id, order.id) });
+    expect(orderRow?.status).toBe('cancelled');
+
+    // The money genuinely moved, though — the ledger still records it as a real success, not
+    // silently dropped, so there's an actual trail for manual refund/reconciliation.
+    const attempt = await getPaymentAttempt(db, reference);
+    expect(attempt?.status).toBe('success');
+
+    // And it's not a silent conflict — this deployment logs it loudly for a human to act on.
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('no longer pending'),
+      expect.objectContaining({ orderId: order.id, reference, orderStatus: 'cancelled' }),
+    );
   });
 
   it('webhook rejects an invalid signature', async () => {

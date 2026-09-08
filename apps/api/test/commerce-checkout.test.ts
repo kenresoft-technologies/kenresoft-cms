@@ -79,6 +79,7 @@ describe('commerce plugin: checkout (real D1)', () => {
   beforeEach(async () => {
     await env.DB.exec('DELETE FROM plugin_commerce_order_items');
     await env.DB.exec('DELETE FROM plugin_commerce_orders');
+    await env.DB.exec('DELETE FROM plugin_commerce_idempotency_keys');
     await env.DB.exec('DELETE FROM plugin_commerce_cart_items');
     await env.DB.exec('DELETE FROM plugin_commerce_carts');
     await env.DB.exec('DELETE FROM plugin_commerce_customer_sessions');
@@ -353,5 +354,46 @@ describe('commerce plugin: checkout (real D1)', () => {
 
     const orderCount = await env.DB.prepare('SELECT COUNT(*) as count FROM plugin_commerce_orders').first<{ count: number }>();
     expect(orderCount?.count).toBe(1);
+  });
+
+  it('a stale idempotency claim (the original request crashed before completing) is reclaimed rather than blocking the key forever', async () => {
+    const adminCookie = await freshAdminCookie();
+    const product = await createPublishedProduct(adminCookie);
+    const { cookie } = await addToGuestCart(product.id);
+    const idempotencyKey = crypto.randomUUID();
+
+    // Simulates a request that claimed the key but crashed/was killed before ever calling
+    // completeIdempotencyKey — the exact shape claimIdempotencyKey's own INSERT produces, just
+    // with an old createdAt (60s, well past the 30s staleness cutoff).
+    const staleTimestamp = Math.floor((Date.now() - 60_000) / 1000);
+    await env.DB.prepare(
+      `INSERT INTO plugin_commerce_idempotency_keys (id, response_status, response_body, created_at) VALUES (?, NULL, NULL, ?)`,
+    )
+      .bind(`checkout:${idempotencyKey}`, staleTimestamp)
+      .run();
+
+    const res = await SELF.fetch(CHECKOUT_BASE, {
+      method: 'POST',
+      headers: { Cookie: cookie!, 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
+      body: JSON.stringify({ email: 'guest@example.test', name: 'Guest Buyer', shippingAddress: SHIPPING_ADDRESS }),
+    });
+    expect(res.status).toBe(201);
+  });
+
+  it('a genuinely recent in-progress idempotency claim is NOT reclaimed — the caller gets 409, not a second attempt to process it', async () => {
+    const idempotencyKey = crypto.randomUUID();
+    const recentTimestamp = Math.floor(Date.now() / 1000);
+    await env.DB.prepare(
+      `INSERT INTO plugin_commerce_idempotency_keys (id, response_status, response_body, created_at) VALUES (?, NULL, NULL, ?)`,
+    )
+      .bind(`checkout:${idempotencyKey}`, recentTimestamp)
+      .run();
+
+    const res = await SELF.fetch(CHECKOUT_BASE, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
+      body: JSON.stringify({ email: 'nobody@example.test', name: 'Nobody', shippingAddress: SHIPPING_ADDRESS }),
+    });
+    expect(res.status).toBe(409);
   });
 });

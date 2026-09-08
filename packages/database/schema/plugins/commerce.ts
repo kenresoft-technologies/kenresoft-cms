@@ -442,6 +442,10 @@ export const pluginCommerceOrderPayments = sqliteTable(
     status: text('status', { enum: ['pending', 'success', 'failed'] })
       .notNull()
       .default('pending'),
+    // Set once, at initialize time — lets a repeated POST /orders/{id}/initialize call while this
+    // reference is still 'pending' at Paystack return the SAME checkout session instead of
+    // starting a second, duplicate one for the same order (routes/payments.ts).
+    authorizationUrl: text('authorization_url'),
     // Null until resolved — set from the provider's own verified response, never from anything
     // client-supplied, and checked against the order's own totalAmount/currency before this row
     // is ever allowed to move the order to 'paid' (routes/payments.ts).

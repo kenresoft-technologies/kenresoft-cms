@@ -16,19 +16,23 @@ import type { CartItemWithDetail } from './cart-items';
 
 export type OrderStatus = PluginCommerceOrder['status'];
 
-// pending -> paid is Phase 2d's job (a real payment gateway); everything else is manageable by an
-// admin today. cancelled/refunded are both terminal and both restock (see RESTOCKING_STATUSES) —
-// modeling "an order was fulfilled, then returned" as a second, separate refund-after-fulfillment
-// path rather than folding it into cancellation.
+// pending -> paid is Phase 2d's job (a real payment gateway). 'refunded' deliberately has NO
+// transition reaching it — it stays a defined status value (so a future pass can implement real
+// provider-backed refunds without a schema/type migration) but is unreachable through this API
+// today. Before this restriction, paid/fulfilled -> refunded changed the CMS status and restocked
+// inventory WITHOUT ever calling Paystack's refund API — an order could read "refunded" while no
+// money had actually moved back to the customer, which is worse than not offering the transition
+// at all. Re-enable it only alongside real refund handling (initiating and confirming an actual
+// Paystack refund before/as part of this transition) — see docs/PLUGINS.md's Commerce section.
 const VALID_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
   pending: ['paid', 'cancelled'],
-  paid: ['fulfilled', 'cancelled', 'refunded'],
-  fulfilled: ['refunded'],
+  paid: ['fulfilled', 'cancelled'],
+  fulfilled: [],
   cancelled: [],
   refunded: [],
 };
 
-const RESTOCKING_STATUSES: OrderStatus[] = ['cancelled', 'refunded'];
+const RESTOCKING_STATUSES: OrderStatus[] = ['cancelled'];
 
 // `exactOptionalPropertyTypes` (this repo's root tsconfig) needs `| undefined` explicitly on each
 // optional field's value type, not just the key being optional — matching the VariantPatch/

@@ -106,6 +106,27 @@ describe('commerce plugin: order management (real D1)', () => {
     expect(list.status).toBe(401);
   });
 
+  it('admin: rejects paid -> refunded directly (not just fulfilled -> refunded) — no provider-backed refund is issued by this API', async () => {
+    const adminCookie = await freshAdminCookie();
+    const product = await createPublishedProduct(adminCookie);
+    const { cookie: customerCookie } = await registeredCustomer('order-refund-direct@example.test');
+    const order = await placeOrder(customerCookie, product.id);
+
+    const toPaid = await SELF.fetch(`${ADMIN_BASE}/orders/${order.id}/status`, {
+      method: 'PATCH',
+      headers: { Cookie: adminCookie, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'paid' }),
+    });
+    expect(toPaid.status).toBe(200);
+
+    const toRefunded = await SELF.fetch(`${ADMIN_BASE}/orders/${order.id}/status`, {
+      method: 'PATCH',
+      headers: { Cookie: adminCookie, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'refunded' }),
+    });
+    expect(toRefunded.status).toBe(400);
+  });
+
   it('admin: lists orders, filters by status, gets a detail view with items and address, and transitions status validly/invalidly', async () => {
     const adminCookie = await freshAdminCookie();
     const product = await createPublishedProduct(adminCookie);
@@ -152,6 +173,16 @@ describe('commerce plugin: order management (real D1)', () => {
       body: JSON.stringify({ status: 'fulfilled' }),
     });
     expect(toFulfilled.status).toBe(200);
+
+    // 'refunded' has no transition reaching it from any status — no real Paystack refund is
+    // ever issued by this API today, so representing an order as financially refunded would be
+    // false. See repository/orders.ts's own comment for the full reasoning.
+    const toRefunded = await SELF.fetch(`${ADMIN_BASE}/orders/${order.id}/status`, {
+      method: 'PATCH',
+      headers: { Cookie: adminCookie, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'refunded' }),
+    });
+    expect(toRefunded.status).toBe(400);
   });
 
   it('admin: 404s a nonexistent order id', async () => {

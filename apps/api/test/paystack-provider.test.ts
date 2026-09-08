@@ -102,11 +102,16 @@ describe('Paystack provider', () => {
     expect(result).toMatchObject({ status: 'success', reference: 'ref-1', amount: 5000, currency: 'NGN' });
   });
 
-  it('verifyTransaction maps every non-success Paystack status to this provider’s own status vocabulary', async () => {
+  it('verifyTransaction maps every Paystack status 1:1, never collapsing a non-terminal status into failed', async () => {
     for (const [paystackStatus, expected] of [
       ['failed', 'failed'],
       ['abandoned', 'abandoned'],
-      ['reversed', 'other'],
+      ['pending', 'pending'],
+      ['ongoing', 'ongoing'],
+      ['processing', 'processing'],
+      ['queued', 'queued'],
+      ['reversed', 'reversed'],
+      ['some-future-status-paystack-invents', 'other'],
     ] as const) {
       vi.stubGlobal(
         'fetch',

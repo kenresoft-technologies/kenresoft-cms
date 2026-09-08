@@ -17,11 +17,23 @@ interface PaystackVerifyResponse {
   data?: { status: string; reference: string; amount: number; currency: string };
 }
 
+// 1:1 with Paystack's own documented transaction statuses (never collapsed to a coarser
+// success/failed binary here — that decision belongs to the caller, since 'pending'/'ongoing'/
+// 'processing'/'queued' are non-terminal and must not be treated as failures).
+const KNOWN_PAYSTACK_STATUSES: readonly PaymentTransactionStatus[] = [
+  'success',
+  'failed',
+  'abandoned',
+  'pending',
+  'ongoing',
+  'processing',
+  'queued',
+  'reversed',
+];
+
 function toTransactionStatus(paystackStatus: string): PaymentTransactionStatus {
-  if (paystackStatus === 'success') return 'success';
-  if (paystackStatus === 'failed') return 'failed';
-  if (paystackStatus === 'abandoned') return 'abandoned';
-  return 'other';
+  const match = KNOWN_PAYSTACK_STATUSES.find((status) => status === paystackStatus);
+  return match ?? 'other';
 }
 
 async function hmacSha512Hex(secret: string, body: string): Promise<string> {

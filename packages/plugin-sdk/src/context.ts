@@ -59,7 +59,21 @@ export interface PluginEmailService {
   send(message: { to: string; subject: string; text: string; html?: string }): Promise<void>;
 }
 
-export type PaymentTransactionStatus = 'success' | 'failed' | 'abandoned' | 'other';
+// Mirrors apps/api/src/lib/payments/types.ts's own PaymentTransactionStatus exactly — Paystack's
+// real vocabulary is wider than success/failure: 'pending'/'ongoing'/'processing'/'queued' are
+// non-terminal, 'reversed' means a previously successful charge was reversed after the fact. A
+// caller must never collapse any of these into 'failed' — only 'success' and 'failed'/'abandoned'
+// are terminal outcomes.
+export type PaymentTransactionStatus =
+  | 'success'
+  | 'failed'
+  | 'abandoned'
+  | 'pending'
+  | 'ongoing'
+  | 'processing'
+  | 'queued'
+  | 'reversed'
+  | 'other';
 
 export interface InitializePaymentInput {
   amount: number;

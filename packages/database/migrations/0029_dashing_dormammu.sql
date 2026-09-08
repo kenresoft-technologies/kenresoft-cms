@@ -1,0 +1,1 @@
+ALTER TABLE `plugin_commerce_order_payments` ADD `authorization_url` text;
