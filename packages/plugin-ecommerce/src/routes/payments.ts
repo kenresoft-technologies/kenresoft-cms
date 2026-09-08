@@ -203,13 +203,16 @@ paymentsRoutes.openapi(
         return c.json({ error: 'Payment initialization for this order is already in progress — please retry shortly' }, 409);
       }
 
-      // Stale: the claiming request most likely crashed or was killed somewhere between
-      // reserving this row and persisting an authorizationUrl for it — without recovery this
-      // would block the order from ever initializing payment again. Check with Paystack directly
-      // before assuming nothing happened there: authorizationUrl was never persisted, so this
-      // deployment never handed a checkout link to a customer for this exact reference (making a
-      // genuine success here exceedingly unlikely), but the check is cheap and removes any doubt
-      // rather than relying on that reasoning alone.
+      // Stale: the claiming request looks abandoned (a crash, a kill, or simply still running
+      // slowly) — without recovery this would block the order from ever initializing payment
+      // again. Check with Paystack directly before assuming nothing happened there:
+      // authorizationUrl was never persisted, so this deployment never handed a checkout link to
+      // a customer for this exact reference (making a genuine success here exceedingly unlikely),
+      // but the check is cheap and removes any doubt rather than relying on that reasoning alone.
+      // Reclaiming below is non-destructive either way — see reclaimStaleUnauthorizedAttempt's own
+      // comment: it never marks this row 'failed', so if the original request is simply slow
+      // rather than dead and later calls back into resolvePaymentAttempt with a real outcome,
+      // that still resolves correctly regardless of what happens here.
       let recheck;
       try {
         recheck = await ctx.payments.verifyTransaction(existing.reference);

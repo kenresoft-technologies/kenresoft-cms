@@ -322,10 +322,67 @@ describe('commerce plugin: payments (real D1)', () => {
     expect(initializeCalls).toBe(1);
 
     const db = createDb(env.DB);
+    // The stale row's `status` deliberately stays 'pending' — only `reclaimedAt` is set — so
+    // that if the original claiming request is merely slow rather than truly dead and later
+    // calls back with a real Paystack outcome, resolvePaymentAttempt's own `WHERE status =
+    // 'pending'` conditional UPDATE can still resolve it correctly instead of silently losing a
+    // genuine success (see the dedicated test below, and reclaimStaleUnauthorizedAttempt's own
+    // comment in repository/payments.ts).
     const staleAttempt = await getPaymentAttempt(db, staleReference);
-    expect(staleAttempt?.status).toBe('failed');
+    expect(staleAttempt?.status).toBe('pending');
+    expect(staleAttempt?.reclaimedAt).not.toBeNull();
     const attempts = await listPaymentAttemptsForOrder(db, order.id);
     expect(attempts).toHaveLength(2);
+  });
+
+  it('a stale claim is reclaimed for a fresh attempt, but if the ORIGINAL request was merely slow (not dead) and later resolves for real, the order still transitions to paid — not stranded by the reclaim', async () => {
+    const order = await createPendingOrder();
+    const staleReference = crypto.randomUUID();
+    const staleTimestamp = Math.floor((Date.now() - 60_000) / 1000);
+    await env.DB.prepare(
+      `INSERT INTO plugin_commerce_order_payments (id, order_id, provider, reference, status, created_at) VALUES (?, ?, 'paystack', ?, 'pending', ?)`,
+    )
+      .bind(crypto.randomUUID(), order.id, staleReference, staleTimestamp)
+      .run();
+
+    // A second request reclaims the stale slot and starts a fresh attempt, exactly like the test
+    // above — simulating that the original request's own Paystack call simply hadn't returned
+    // yet (a slow network call, a loaded runner), not that it crashed.
+    const reclaimingProvider: PluginPaymentsService = {
+      ...neverProvider,
+      initializeTransaction: async (input) => ({ authorizationUrl: 'https://checkout.paystack.com/fresh', accessCode: 'fresh', reference: input.reference }),
+      verifyTransaction: async () => {
+        throw new Error('unknown reference');
+      },
+    };
+    const reclaimApp = buildTestApp(reclaimingProvider);
+    const reclaimRes = await reclaimApp.request(
+      `/orders/${order.id}/initialize`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ callbackUrl: ALLOWED_CALLBACK }) },
+      env,
+    );
+    expect(reclaimRes.status).toBe(200);
+    const freshReference = (await reclaimRes.json<{ reference: string }>()).reference;
+    expect(freshReference).not.toBe(staleReference);
+
+    // Now the ORIGINAL request "wakes back up" and resolves — via a webhook, exactly as it would
+    // for any other reference — reporting the real outcome for the reference it was issued,
+    // which was never actually failed, just reclaimed.
+    const payload = JSON.stringify({ event: 'charge.success', data: { reference: staleReference, amount: order.totalAmount, currency: order.currency, status: 'success' } });
+    const webhookApp = buildTestApp({ ...neverProvider, verifyWebhookSignature: async () => true });
+    const webhookRes = await webhookApp.request('/webhook', { method: 'POST', headers: { 'x-paystack-signature': 'valid' }, body: payload }, env);
+    expect(webhookRes.status).toBe(200);
+
+    const db = createDb(env.DB);
+    const orderRow = await db.query.pluginCommerceOrders.findFirst({ where: (o, { eq }) => eq(o.id, order.id) });
+    expect(orderRow?.status).toBe('paid');
+
+    const staleAttempt = await getPaymentAttempt(db, staleReference);
+    expect(staleAttempt?.status).toBe('success');
+    // The fresh attempt spawned by the reclaim is left exactly as it was — untouched, still
+    // pending — since the order is now settled via the original reference, not this one.
+    const freshAttempt = await getPaymentAttempt(db, freshReference);
+    expect(freshAttempt?.status).toBe('pending');
   });
 
   it('a stale, unauthorized payment claim that Paystack actually confirms succeeded (a crash after the charge but before the local record) settles the order as paid instead of being discarded', async () => {
