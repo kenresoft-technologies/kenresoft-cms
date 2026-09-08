@@ -469,6 +469,19 @@ export const pluginCommerceOrderPayments = sqliteTable(
       .notNull()
       .default(sql`(unixepoch())`),
     resolvedAt: integer('resolved_at', { mode: 'timestamp' }),
+    // Set only by the stale-unauthorized-claim recovery path (repository/payments.ts's
+    // reclaimStaleUnauthorizedAttempt) — deliberately NOT a status transition. A row this old
+    // with no authorizationUrl looks abandoned, but the request that claimed it may simply still
+    // be running (a slow Paystack call, GC pause, a loaded CI/production runner), and could still
+    // legitimately call back into resolvePaymentAttempt with a real 'success' or 'failed' outcome
+    // after this reclaim happens. Changing `status` away from 'pending' would permanently break
+    // that: resolvePaymentAttempt's own conditional UPDATE only ever matches `status = 'pending'`,
+    // so a late-but-genuine success would silently fail to transition the order to paid — a real
+    // money-was-charged-but-order-still-shows-unpaid bug, not a cosmetic one. Marking reclaimedAt
+    // instead leaves `status` untouched (still 'pending', still resolvable later either way) and
+    // only removes the row from the partial unique index below, freeing the one-open-attempt slot
+    // for a genuinely fresh claim without invalidating the original request's own eventual outcome.
+    reclaimedAt: integer('reclaimed_at', { mode: 'timestamp' }),
   },
   (table) => [
     index('plugin_commerce_order_payments_order_id_idx').on(table.orderId),
@@ -478,11 +491,14 @@ export const pluginCommerceOrderPayments = sqliteTable(
     // conflicts and is detected via .onConflictDoNothing()), which is what makes two genuinely
     // concurrent POST /orders/{id}/initialize calls for the same order safe: only one can ever
     // win the insert, so at most one Paystack transaction is ever created per order at a time.
-    // Partial (WHERE status = 'pending') so an order's own history of resolved (success/failed)
-    // attempts is never constrained — only ever one *open* one at a time.
+    // Partial (WHERE status = 'pending' AND reclaimed_at IS NULL) so an order's own history of
+    // resolved (success/failed) attempts is never constrained — only ever one *open, not reclaimed*
+    // one at a time. The `reclaimed_at IS NULL` half is what lets a fresh claim be inserted after
+    // reclaiming a stale one without touching the old row's `status` (see reclaimedAt's own comment
+    // above for why status itself must stay 'pending').
     uniqueIndex('plugin_commerce_order_payments_one_pending_per_order_idx')
       .on(table.orderId)
-      .where(sql`${table.status} = 'pending'`),
+      .where(sql`${table.status} = 'pending' and ${table.reclaimedAt} is null`),
   ],
 );
 

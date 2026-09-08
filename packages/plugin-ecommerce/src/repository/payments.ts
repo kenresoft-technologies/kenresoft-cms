@@ -65,28 +65,43 @@ export async function abandonPaymentAttempt(db: Database, reference: string): Pr
 // back in a request that returned successfully, which routes/payments.ts's separate
 // re-verify-with-Paystack path (not this function) already covers correctly.
 //
-// Safe to reclaim without asking Paystack first: authorizationUrl is only ever persisted, and
-// only ever returned to a caller, in the same request that set it — if it was never persisted,
-// this deployment never handed a checkout link to anyone, so nobody could have completed payment
-// through this specific reference regardless of what Paystack's own session state for it might
-// be. routes/payments.ts still checks with Paystack directly before calling this, purely as an
-// extra, cheap safety net (not because it's required for correctness here).
+// Deliberately does NOT set `status` to 'failed' — a row this old with no authorizationUrl looks
+// abandoned, but the original claiming request might simply still be running (a slow Paystack
+// call, a GC pause, a loaded runner) and could still legitimately call back into
+// resolvePaymentAttempt with a real 'success' or 'failed' outcome after this function runs.
+// resolvePaymentAttempt's own conditional UPDATE only ever matches `status = 'pending'`, so
+// changing it here would permanently strand a late-but-genuine success: the order would never
+// transition to paid even though the customer really was charged. Only `reclaimedAt` is set
+// (see its own column comment in packages/database/schema/plugins/commerce.ts) — this frees the
+// one-open-attempt-per-order unique index slot for a fresh claim (that index's own WHERE clause
+// now excludes reclaimed rows) without disturbing this row's own future resolvability at all.
+//
+// Safe to reclaim (i.e. free the slot for a new attempt) without asking Paystack first:
+// authorizationUrl is only ever persisted, and only ever returned to a caller, in the same
+// request that set it — if it was never persisted, this deployment never handed a checkout link
+// to anyone, so nobody could have completed payment through this specific reference via the
+// browser regardless of what Paystack's own session state for it might be. routes/payments.ts
+// still checks with Paystack directly before calling this, purely as an extra, cheap safety net
+// (not because it's required for correctness here — that safety net is this function leaving
+// `status` alone).
 //
 // The same conditional-update-plus-check-returned-rows idiom as resolvePaymentAttempt/
 // claimIdempotencyKey — only one of two concurrent reclaim attempts for the same reference can
-// ever succeed.
+// ever succeed (guarded by `reclaimedAt IS NULL`, so a second call against an already-reclaimed
+// row is a safe no-op rather than repeatedly bumping the timestamp).
 const STALE_UNAUTHORIZED_CLAIM_MS = 30_000;
 
 export async function reclaimStaleUnauthorizedAttempt(db: Database, reference: string): Promise<boolean> {
   const cutoff = new Date(Date.now() - STALE_UNAUTHORIZED_CLAIM_MS);
   const [reclaimed] = await db
     .update(pluginCommerceOrderPayments)
-    .set({ status: 'failed', resolvedAt: new Date() })
+    .set({ reclaimedAt: new Date() })
     .where(
       and(
         eq(pluginCommerceOrderPayments.reference, reference),
         eq(pluginCommerceOrderPayments.status, 'pending'),
         isNull(pluginCommerceOrderPayments.authorizationUrl),
+        isNull(pluginCommerceOrderPayments.reclaimedAt),
         lt(pluginCommerceOrderPayments.createdAt, cutoff),
       ),
     )
@@ -98,16 +113,24 @@ export function getPaymentAttempt(db: Database, reference: string): Promise<Plug
   return db.query.pluginCommerceOrderPayments.findFirst({ where: eq(pluginCommerceOrderPayments.reference, reference) });
 }
 
-// The most recent still-open payment attempt for an order, if any — what routes/payments.ts's
-// initialize route checks before ever calling Paystack again, so a repeated
+// The most recent still-open, still-active payment attempt for an order, if any — what
+// routes/payments.ts's initialize route checks before ever calling Paystack again, so a repeated
 // POST /orders/{id}/initialize can't create multiple live references (and therefore multiple
-// chargeable checkout sessions) for the same order. `desc(createdAt)` + a single row is
-// defensive: normal flow only ever has one 'pending' attempt open per order at a time (a prior
-// one is always resolved to success/failed before a fresh one is created), but this stays correct
-// even if that invariant is ever violated.
+// chargeable checkout sessions) for the same order. `reclaimedAt IS NULL` mirrors the partial
+// unique index's own WHERE clause exactly (packages/database/schema/plugins/commerce.ts) — a
+// reclaimed row is still `status = 'pending'` (deliberately, see reclaimStaleUnauthorizedAttempt's
+// own comment) but must never be treated as "the" open attempt for this order once reclaimed, or
+// this function and the index it mirrors would disagree about whether a fresh claim is allowed.
+// `desc(createdAt)` + a single row is defensive: normal flow only ever has one open attempt per
+// order at a time (a prior one is always resolved or reclaimed before a fresh one is created),
+// but this stays correct even if that invariant is ever violated.
 export function getPendingPaymentAttemptForOrder(db: Database, orderId: string): Promise<PluginCommerceOrderPayment | undefined> {
   return db.query.pluginCommerceOrderPayments.findFirst({
-    where: and(eq(pluginCommerceOrderPayments.orderId, orderId), eq(pluginCommerceOrderPayments.status, 'pending')),
+    where: and(
+      eq(pluginCommerceOrderPayments.orderId, orderId),
+      eq(pluginCommerceOrderPayments.status, 'pending'),
+      isNull(pluginCommerceOrderPayments.reclaimedAt),
+    ),
     orderBy: desc(pluginCommerceOrderPayments.createdAt),
   });
 }

@@ -1,0 +1,3 @@
+DROP INDEX `plugin_commerce_order_payments_one_pending_per_order_idx`;--> statement-breakpoint
+ALTER TABLE `plugin_commerce_order_payments` ADD `reclaimed_at` integer;--> statement-breakpoint
+CREATE UNIQUE INDEX `plugin_commerce_order_payments_one_pending_per_order_idx` ON `plugin_commerce_order_payments` (`order_id`) WHERE "plugin_commerce_order_payments"."status" = 'pending' and "plugin_commerce_order_payments"."reclaimed_at" is null;
