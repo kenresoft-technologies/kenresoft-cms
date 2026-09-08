@@ -24,6 +24,13 @@ export default defineWorkersConfig(async () => {
       // per file, just not concurrent), trading CI wall-clock time for determinism — the same
       // trade-off this project's own local verification practice already makes by hand.
       fileParallelism: false,
+      // The default 5000ms is tight for a real D1+Worker-backed request even locally, and CI's
+      // shared runners are measurably slower under load — the same serialization fix above cut
+      // CI failures from 7 files to 2, and the one remaining non-race failure was a plain
+      // `Test timed out in 5000ms` on an otherwise-passing request. Real requests taking longer
+      // under CI resource pressure isn't a bug to chase; give them realistic headroom instead.
+      testTimeout: 20000,
+      hookTimeout: 20000,
       poolOptions: {
         workers: {
           // wrangler.test.toml, not wrangler.toml — see that file's own top comment. The real
