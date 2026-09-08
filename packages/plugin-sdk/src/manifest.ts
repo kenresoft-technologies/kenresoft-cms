@@ -4,7 +4,7 @@ import { z } from 'zod';
 // govern what *users* can do inside an enabled plugin, docs/PLUGINS.md). Phase 1 validates this
 // list for well-formedness only (catches typos); it does not gate what PluginContext exposes at
 // runtime — every enabled plugin gets the full context surface regardless of what it declares.
-export const PLUGIN_CAPABILITIES = ['database', 'media', 'auth', 'rbac', 'events', 'email', 'storage'] as const;
+export const PLUGIN_CAPABILITIES = ['database', 'media', 'auth', 'rbac', 'events', 'email', 'storage', 'payments'] as const;
 
 export type PluginCapability = (typeof PLUGIN_CAPABILITIES)[number];
 

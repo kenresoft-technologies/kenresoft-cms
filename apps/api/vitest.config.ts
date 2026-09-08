@@ -35,6 +35,14 @@ export default defineWorkersConfig(async () => {
               // directly against the route with a bare Bindings object with no property at all
               // (test/owner-recovery-endpoint.test.ts's "not configured" describe block).
               OWNER_RECOVERY_SECRET: 'test-only-owner-recovery-secret-not-used-outside-vitest-pool-workers',
+              // Set here so commerce-payments.test.ts can exercise the "configured" path (webhook
+              // signature verification is pure local HMAC computation against this exact value,
+              // no real network call) via a real SELF.fetch. Tests that need
+              // initializeTransaction/verifyTransaction (which really do call
+              // https://api.paystack.co) mock `fetch` instead of relying on this key being a real
+              // credential — this project's tests stay hermetic, never depending on a real
+              // third-party account or network access to pass.
+              PAYSTACK_SECRET_KEY: 'sk_test_only_paystack_secret_not_used_outside_vitest_pool_workers',
             },
             // Overrides wrangler.toml's real 10/60s AUTH_RATE_LIMITER — several test files
             // sign up 10+ users each (admin-routes.test.ts, forms-routes.test.ts) inside a

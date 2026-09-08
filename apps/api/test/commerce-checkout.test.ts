@@ -94,6 +94,15 @@ describe('commerce plugin: checkout (real D1)', () => {
   it('rejects checking out an empty cart', async () => {
     const res = await SELF.fetch(CHECKOUT_BASE, {
       method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID() },
+      body: JSON.stringify({ email: 'nobody@example.test', name: 'Nobody', shippingAddress: SHIPPING_ADDRESS }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects checkout with no Idempotency-Key header', async () => {
+    const res = await SELF.fetch(CHECKOUT_BASE, {
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: 'nobody@example.test', name: 'Nobody', shippingAddress: SHIPPING_ADDRESS }),
     });
@@ -107,7 +116,7 @@ describe('commerce plugin: checkout (real D1)', () => {
 
     const res = await SELF.fetch(CHECKOUT_BASE, {
       method: 'POST',
-      headers: { Cookie: cookie!, 'Content-Type': 'application/json' },
+      headers: { Cookie: cookie!, 'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID() },
       body: JSON.stringify({ shippingAddress: SHIPPING_ADDRESS }),
     });
     expect(res.status).toBe(400);
@@ -121,7 +130,7 @@ describe('commerce plugin: checkout (real D1)', () => {
 
     const res = await SELF.fetch(CHECKOUT_BASE, {
       method: 'POST',
-      headers: { Cookie: cookie!, 'Content-Type': 'application/json' },
+      headers: { Cookie: cookie!, 'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID() },
       body: JSON.stringify({ email: 'guest@example.test', name: 'Guest Buyer', shippingAddress: SHIPPING_ADDRESS }),
     });
     expect(res.status).toBe(201);
@@ -153,7 +162,7 @@ describe('commerce plugin: checkout (real D1)', () => {
 
     const res = await SELF.fetch(CHECKOUT_BASE, {
       method: 'POST',
-      headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+      headers: { Cookie: cookie, 'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID() },
       body: JSON.stringify({ shippingAddress: SHIPPING_ADDRESS }),
     });
     expect(res.status).toBe(201);
@@ -180,7 +189,7 @@ describe('commerce plugin: checkout (real D1)', () => {
 
     const res = await SELF.fetch(CHECKOUT_BASE, {
       method: 'POST',
-      headers: { Cookie: cookie!, 'Content-Type': 'application/json' },
+      headers: { Cookie: cookie!, 'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID() },
       body: JSON.stringify({ email: 'guest@example.test', name: 'Guest Buyer', shippingAddress: SHIPPING_ADDRESS }),
     });
     expect(res.status).toBe(400);
@@ -200,7 +209,7 @@ describe('commerce plugin: checkout (real D1)', () => {
 
     const res = await SELF.fetch(CHECKOUT_BASE, {
       method: 'POST',
-      headers: { Cookie: cookie!, 'Content-Type': 'application/json' },
+      headers: { Cookie: cookie!, 'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID() },
       body: JSON.stringify({ email: 'guest@example.test', name: 'Guest Buyer', shippingAddress: SHIPPING_ADDRESS }),
     });
     expect(res.status).toBe(400);
@@ -233,7 +242,7 @@ describe('commerce plugin: checkout (real D1)', () => {
 
     const res = await SELF.fetch(CHECKOUT_BASE, {
       method: 'POST',
-      headers: { Cookie: cookie!, 'Content-Type': 'application/json' },
+      headers: { Cookie: cookie!, 'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID() },
       body: JSON.stringify({ email: 'guest@example.test', name: 'Guest Buyer', shippingAddress: SHIPPING_ADDRESS }),
     });
     expect(res.status).toBe(400);
@@ -270,12 +279,12 @@ describe('commerce plugin: checkout (real D1)', () => {
     const [resA, resB] = await Promise.all([
       SELF.fetch(CHECKOUT_BASE, {
         method: 'POST',
-        headers: { Cookie: cookieA, 'Content-Type': 'application/json' },
+        headers: { Cookie: cookieA, 'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID() },
         body: JSON.stringify({ shippingAddress: SHIPPING_ADDRESS }),
       }),
       SELF.fetch(CHECKOUT_BASE, {
         method: 'POST',
-        headers: { Cookie: cookieB, 'Content-Type': 'application/json' },
+        headers: { Cookie: cookieB, 'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID() },
         body: JSON.stringify({ shippingAddress: SHIPPING_ADDRESS }),
       }),
     ]);
@@ -287,6 +296,60 @@ describe('commerce plugin: checkout (real D1)', () => {
       .bind(variant.id)
       .first<{ stock_qty: number }>();
     expect(stockRow?.stock_qty).toBe(0);
+
+    const orderCount = await env.DB.prepare('SELECT COUNT(*) as count FROM plugin_commerce_orders').first<{ count: number }>();
+    expect(orderCount?.count).toBe(1);
+  });
+
+  it('a retried checkout with the same Idempotency-Key returns the same order instead of creating a second one', async () => {
+    const adminCookie = await freshAdminCookie();
+    const product = await createPublishedProduct(adminCookie);
+    const { cookie } = await addToGuestCart(product.id);
+    const idempotencyKey = crypto.randomUUID();
+
+    const first = await SELF.fetch(CHECKOUT_BASE, {
+      method: 'POST',
+      headers: { Cookie: cookie!, 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
+      body: JSON.stringify({ email: 'guest@example.test', name: 'Guest Buyer', shippingAddress: SHIPPING_ADDRESS }),
+    });
+    expect(first.status).toBe(201);
+    const firstOrder = await first.json<{ id: string }>();
+
+    // The cart is already gone after the first success — a naive retry with a fresh key would
+    // 400 "cart is empty" here, which is exactly why this test reuses the SAME key: a real client
+    // retry (e.g. after a lost response) resends the identical key, not a new one.
+    const second = await SELF.fetch(CHECKOUT_BASE, {
+      method: 'POST',
+      headers: { Cookie: cookie!, 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
+      body: JSON.stringify({ email: 'guest@example.test', name: 'Guest Buyer', shippingAddress: SHIPPING_ADDRESS }),
+    });
+    expect(second.status).toBe(201);
+    const secondOrder = await second.json<{ id: string }>();
+    expect(secondOrder.id).toBe(firstOrder.id);
+
+    const orderCount = await env.DB.prepare('SELECT COUNT(*) as count FROM plugin_commerce_orders').first<{ count: number }>();
+    expect(orderCount?.count).toBe(1);
+  });
+
+  it('two concurrent checkouts with the same Idempotency-Key produce exactly one order between them', async () => {
+    const adminCookie = await freshAdminCookie();
+    const product = await createPublishedProduct(adminCookie);
+    const { cookie } = await addToGuestCart(product.id);
+    const idempotencyKey = crypto.randomUUID();
+
+    const requestInit = {
+      method: 'POST',
+      headers: { Cookie: cookie!, 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
+      body: JSON.stringify({ email: 'guest@example.test', name: 'Guest Buyer', shippingAddress: SHIPPING_ADDRESS }),
+    };
+    const [resA, resB] = await Promise.all([SELF.fetch(CHECKOUT_BASE, requestInit), SELF.fetch(CHECKOUT_BASE, requestInit)]);
+
+    // Whichever request loses the claim race either replays the winner's cached 201 or, if it
+    // arrived before the winner had finished, gets a 409 asking it to retry shortly — both are
+    // acceptable outcomes of "never double-process," unlike a second, distinct order existing.
+    const statuses = [resA.status, resB.status].sort();
+    expect([201, 409]).toContain(statuses[0]);
+    expect(statuses[1]).toBe(201);
 
     const orderCount = await env.DB.prepare('SELECT COUNT(*) as count FROM plugin_commerce_orders').first<{ count: number }>();
     expect(orderCount?.count).toBe(1);

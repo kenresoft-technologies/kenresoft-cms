@@ -7,6 +7,7 @@ import type {
   PluginEmailService,
   PluginLogger,
   PluginMediaService,
+  PluginPaymentsService,
   PluginPublicContext,
   PluginPublicVariables,
   PluginRegistration,
@@ -17,6 +18,7 @@ import type { MiddlewareHandler } from 'hono';
 
 import { getEmailSender } from '../lib/email';
 import { deleteMediaFile, getMedia, uploadMedia } from '../lib/media-service';
+import { getPaymentProvider } from '../lib/payments';
 import { getPluginSettingsRow, upsertPluginConfig } from '../repositories/plugin-settings';
 import type { Bindings } from '../lib/env';
 import { pluginEventBus } from './events';
@@ -88,6 +90,15 @@ function createPluginEmailService(env: PluginBindings): PluginEmailService {
   return { send: (message) => sender.send(message) };
 }
 
+// Same bridging cast as createPluginEmailService above, for the same reason — PAYSTACK_SECRET_KEY
+// is deliberately absent from the plugin-facing PluginBindings type, since a plugin never sees
+// gateway credentials directly (docs/PLUGINS.md's Commerce section). PaymentProvider's shape
+// already matches PluginPaymentsService exactly, so this is a pure pass-through, not a
+// translation — mirroring createPluginEmailService's own EmailSender/PluginEmailService pairing.
+function createPluginPaymentsService(env: PluginBindings): PluginPaymentsService {
+  return getPaymentProvider(env as unknown as Bindings);
+}
+
 function createPluginLogger(pluginId: string): PluginLogger {
   const prefix = `[plugin:${pluginId}]`;
   return {
@@ -120,6 +131,7 @@ export function createPluginContextMiddleware(
       config: createPluginConfigService(db, plugin),
       events: pluginEventBus,
       email: createPluginEmailService(c.env),
+      payments: createPluginPaymentsService(c.env),
       logger: createPluginLogger(plugin.manifest.id),
     };
     c.set('pluginContext', ctx);
@@ -141,6 +153,7 @@ export function createPluginPublicContextMiddleware(
       media: createPluginMediaService(db, c.env.MEDIA_BUCKET),
       config: createPluginConfigService(db, plugin),
       email: createPluginEmailService(c.env),
+      payments: createPluginPaymentsService(c.env),
       logger: createPluginLogger(plugin.manifest.id),
     };
     c.set('pluginContext', ctx);

@@ -401,9 +401,21 @@ export interface CommerceOrderAddress {
   phone: string | null;
 }
 
+export interface CommerceOrderPaymentAttempt {
+  id: string;
+  provider: 'paystack';
+  reference: string;
+  status: 'pending' | 'success' | 'failed';
+  amount: number | null;
+  currency: string | null;
+  createdAt: string;
+  resolvedAt: string | null;
+}
+
 export interface CommerceOrderDetail extends CommerceOrderSummary {
   shippingAddress: CommerceOrderAddress;
   items: CommerceOrderItem[];
+  payments: CommerceOrderPaymentAttempt[];
 }
 
 const ordersKey = ['plugins', 'commerce', 'orders'] as const;

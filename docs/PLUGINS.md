@@ -5,13 +5,15 @@ Plugin enablement moved from a static file to a DB-backed, live-toggleable model
 2026-09-04) — see Enablement below, which supersedes Phase 1's original design. Phase 2a
 (Commerce catalog domain — products, variants, categories, images) complete, 2026-09-05. Phase 2b
 (Commerce cart & customer accounts) complete, 2026-09-07. Phase 2c (Commerce checkout & orders,
-with real concurrency-safe stock enforcement) complete, 2026-09-08 — see the end of this document.
-Together these three Commerce passes needed five generic platform extensions, all documented
-below: unauthenticated public plugin routes, grouped admin-nav entries, a plugin email capability,
-a generic per-plugin public rate-limit declaration, and (2b's hardening follow-up) a
-`PluginBindings.CORS_ORIGINS` field backing a per-plugin explicit Origin/CSRF check. Payments/
-Paystack (2d) and storefront integration into `@kenresoft-cms/astro`/`examples/astro-site` (2e)
-remain not started.
+with real concurrency-safe stock enforcement) complete, 2026-09-08. Phase 2d (Commerce payments/
+Paystack, plus checkout idempotency closing a Phase 2c gap) complete, 2026-09-08 — see the end of
+this document. Together these four Commerce passes needed six generic platform extensions, all
+documented below: unauthenticated public plugin routes, grouped admin-nav entries, a plugin email
+capability, a generic per-plugin public rate-limit declaration, (2b's hardening follow-up) a
+`PluginBindings.CORS_ORIGINS` field backing a per-plugin explicit Origin/CSRF check, and (2d) a
+`PluginContext.payments`/`PluginPaymentsService` capability wrapping a pluggable payment-provider
+layer. Storefront integration into `@kenresoft-cms/astro`/`examples/astro-site` (2e) remains not
+started.
 
 ## What this is
 
@@ -483,5 +485,112 @@ line's stock is given back, and the concurrency race test described above) and
 `commerce-orders.test.ts` (7 tests — the editor-floor role gate, list/filter/detail, valid and
 invalid status transitions, restock-on-cancel with a second cancel attempt asserted to 400 since
 cancelled is terminal, and customer order-history scoping including the cross-customer 404).
-Payments/Paystack (2d) and storefront integration into `@kenresoft-cms/astro`/`examples/astro-site`
-(2e) remain **not started**.
+## Commerce (Phase 2d: payments/Paystack) — done, 2026-09-08
+
+Converts a `pending` Order into `paid` via a real payment gateway, closing the last piece of
+Commerce's core purchase flow — everything Phase 2c's checkout produced now has a way to actually
+be paid for. Server-redirect flow only (Paystack's Initialize Transaction → hosted checkout page →
+callback URL), deliberately not Paystack's inline/popup JS widget — this CMS is documented
+frontend-agnostic (docs/ARCHITECTURE.md §15) and has no assumed frontend framework to embed a
+widget into; the backend hands back an `authorization_url` and the storefront just redirects the
+browser there.
+
+**A real provider boundary, not a Paystack-shaped hole in the Commerce domain.** A new
+`PluginContext`/`PluginPublicContext.payments: PluginPaymentsService` (`packages/plugin-sdk`) is
+the interface Commerce's own route/domain code depends on — `initializeTransaction`/
+`verifyTransaction`/`verifyWebhookSignature`, nothing Paystack-shaped in the signature. The actual
+HTTP-calling implementation lives entirely in Core, not the plugin package:
+`apps/api/src/lib/payments/{types,paystack,noop,index}.ts`, mirroring
+`apps/api/src/lib/email`'s own provider-selection precedent exactly (`getPaymentProvider(env)`
+picks Paystack if `PAYSTACK_SECRET_KEY` is set, else a noop provider whose methods throw/return
+"not configured" — the email module's unset-is-fine convention, not OWNER_RECOVERY_SECRET's
+zero-attack-surface 404 convention, since this is a feature-off switch, not a security backdoor).
+`apps/api/src/plugins/context.ts` wires it into a plugin's context the same pass-through way
+`createPluginEmailService` already does — a plugin never sees the secret key or picks a provider.
+Paystack's own secret key doubles as its webhook-signing key (no separate webhook secret exists to
+configure); signature verification is a local HMAC-SHA512 computation (`crypto.subtle`, the same
+primitive `apps/api/src/lib/webhooks.ts`'s own outgoing-webhook signing already uses, just SHA-512
+not SHA-256) compared via `constantTimeEqual` (`better-auth/crypto`, already this codebase's
+standard for every other secret-comparison). `PAYSTACK_SECRET_KEY` is a Worker secret
+(`wrangler secret put`), never a `plugin_settings`/database value or anything committed —
+documented in `wrangler.toml` alongside `RESEND_API_KEY`/`OWNER_RECOVERY_SECRET`'s own entries.
+
+**Server-authoritative, always.** The browser reaching the `callback_url` after Paystack's hosted
+page proves nothing on its own — every order transition to `paid` requires this deployment's own
+server-side call to Paystack's verify API (`GET /orders/{id}/verify`) or a signature-verified
+webhook (`POST /webhook`), never the redirect itself. Both paths independently check the
+provider's own reported `amount`/`currency` against the order's own `totalAmount`/`currency`
+before ever transitioning it — a transaction that genuinely succeeded at Paystack for the wrong
+amount is logged and left `pending` for manual investigation (`409` from the verify route) rather
+than silently accepted or force-marked `failed`, an accepted, documented simplification rather
+than a fourth ledger status invented for something that should never happen if initialize built
+the request correctly.
+
+**A real payment-attempt ledger, and real idempotency, not just a status field on Order.** A new
+`plugin_commerce_order_payments` table (migration `0028_groovy_bullseye.sql`) records every
+Paystack reference this deployment ever issues — starting `pending` the instant `POST
+/orders/{id}/initialize` gets one back, before the customer has even reached Paystack's page — not
+only the ones that succeed. Resolving a reference (`repository/payments.ts`'s
+`resolvePaymentAttempt`) is a single `UPDATE ... WHERE reference = ? AND status = 'pending'
+RETURNING *`, the same conditional-update-plus-check-returned-rows idiom this codebase already
+uses for single-use tokens (`customer-tokens.ts`) and stock reservation (`createOrder`) — a
+retried webhook delivery or a duplicate verify call for an already-resolved reference matches zero
+rows and is a safe no-op, never a second order transition or a second ledger row. Tracking every
+issued reference (not just the order's latest) also means a late webhook for an OLDER, still-
+pending reference — the customer abandoned one attempt, retried, and paid on the second — still
+resolves correctly rather than silently going unmatched. `GET /orders/{id}/verify` further checks
+that the given reference actually belongs to the given order (looked up in the ledger, not merely
+well-formed) before ever calling Paystack, closing off cross-order reference reuse. A genuine
+double-payment for one order (a rare customer error, two separate references both succeeding) is
+still an accepted, flagged gap — both get their own ledger row, but only the first can transition
+an already-`paid` order — matching this codebase's own established practice of naming a small,
+real edge left for a future pass rather than silently risking or over-engineering around it.
+
+**Checkout idempotency (Phase 2c's own deferred gap, closed here first, before payments needed
+it).** `POST /checkout` now requires a client-supplied `Idempotency-Key` header — a new
+`plugin_commerce_idempotency_keys` table backs `repository/idempotency.ts`'s `claimIdempotencyKey`/
+`completeIdempotencyKey`, using `.onConflictDoNothing().returning()` (not a plain INSERT wrapped in
+try/catch — nothing else in this codebase catches a driver-specific constraint-violation error
+shape, and this is deliberately consistent with that) so only one of two truly concurrent
+identical submissions ever claims a given key; the loser sees `in_progress` (409, retry shortly) or
+`completed` (replays the exact stored response) depending on timing. This closes the real race
+Phase 2c left open: two concurrent requests for the same cart could previously both pass the
+"cart still has items" check before either's `createOrder` batch committed, each decrementing
+stock and creating its own order — verified with a real concurrency test (`Promise.all`, same
+key), alongside a same-key sequential-retry test proving the second call replays the first's order
+rather than 400ing on the by-then-already-cleared cart.
+
+Three payments route surfaces, all public (checkout/payment confirmation must work for a guest —
+authorization here is knowledge of the order id, an unguessable UUID, the same bearer-capability
+model Phase 2b's guest cart id already established; `requireTrustedOriginForMutations` — a CSRF
+defense specifically for cookie-authenticated mutations — doesn't apply and isn't used, since none
+of these routes carry cookie-based identity to forge): `POST /orders/{id}/initialize` (validates
+the order is `pending`, validates `callbackUrl` against this deployment's own `CORS_ORIGINS`
+allow-list — closing off an open-redirect-adjacent primitive rather than accepting an arbitrary
+attacker-chosen destination — then calls Paystack and records the pending ledger row);
+`GET /orders/{id}/verify` (the server-authoritative confirmation path a storefront calls after the
+callback redirect); `POST /webhook` (Paystack's own, signature-verified, deliberately outside
+`.openapi()`'s validation like Core's own media-upload/form-submission precedent, since a
+provider-defined payload isn't something this deployment's Zod schema validates — reads the raw
+body text, not parsed-then-reserialized JSON, since signature verification needs the exact bytes
+Paystack signed). Admin order detail (`GET /admin/.../orders/{id}`) now also returns the order's
+full payment-attempt ledger, and the Order detail admin page shows it.
+
+Verified with three new test files, all mocking rather than depending on a real Paystack account
+(none available to this automated suite): `paystack-provider.test.ts` (8 tests, mocks `fetch` —
+request-shaping, response-parsing, and a real HMAC-SHA512 signature computed by hand in the test
+mirroring the provider's own algorithm, confirming both a valid and a tampered signature resolve
+correctly) and `commerce-payments.test.ts` (12 tests, a hand-injected fake `PluginPaymentsService`
+mounted on a standalone Hono app — mirroring `plugin-rate-limit.test.ts`'s own "test this route
+file in isolation from the whole app" pattern — covering unconfigured/CORS-rejection/non-pending-
+order rejection, a real initialize round trip, verify's success/mismatch/idempotent-replay paths,
+and the webhook's signature rejection/idempotent-replay/ignored-event-type/unknown-reference
+paths) plus the checkout-idempotency tests folded into `commerce-checkout.test.ts` (now 11 tests).
+A real end-to-end pass against Paystack's actual test-mode sandbox (rather than a mocked
+`fetch`/injected fake) is intentionally deferred to whenever real Paystack test credentials are
+available to run it with — a manual verification step, not part of this automated suite, matching
+how this project has handled a small number of other passes needing a real third-party credential
+this environment doesn't have.
+
+Storefront integration into `@kenresoft-cms/astro`/`examples/astro-site` (2e) — wiring the whole
+cart → checkout → pay → verify flow into a real rendered storefront — remains **not started**.
