@@ -1,0 +1,81 @@
+---
+interface Props {
+  active: 'dashboard' | 'orders' | 'addresses' | 'settings';
+}
+
+const { active } = Astro.props;
+
+const items = [
+  { key: 'dashboard', href: '/account', label: 'Dashboard' },
+  { key: 'orders', href: '/account/orders', label: 'Orders' },
+  { key: 'addresses', href: '/account/addresses', label: 'Addresses' },
+  { key: 'settings', href: '/account/settings', label: 'Settings' },
+] as const;
+---
+
+<nav class="account-nav" aria-label="Account">
+  {
+    items.map((item) => (
+      <a href={item.href} aria-current={item.key === active ? 'page' : undefined} class={item.key === active ? 'active' : ''}>
+        {item.label}
+      </a>
+    ))
+  }
+  <button type="button" data-account-logout class="link-button">Log out</button>
+</nav>
+
+<script>
+  import { getBrowserClient } from '../../lib/browser-client';
+
+  document.querySelectorAll<HTMLButtonElement>('[data-account-logout]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      button.disabled = true;
+      try {
+        await getBrowserClient().commerce.customerAuth.logout();
+      } finally {
+        window.location.href = '/';
+      }
+    });
+  });
+</script>
+
+<style>
+  .account-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding: 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface-muted);
+  }
+
+  .account-nav a,
+  .account-nav .link-button {
+    display: block;
+    padding: 0.6rem 0.75rem;
+    border-radius: 8px;
+    text-decoration: none;
+    color: var(--ink-muted);
+    font-size: 0.92rem;
+    text-align: left;
+    border: none;
+    background: none;
+    font-family: inherit;
+    cursor: pointer;
+    width: 100%;
+  }
+
+  .account-nav a:hover,
+  .account-nav .link-button:hover {
+    background: var(--border);
+    color: var(--ink);
+  }
+
+  .account-nav a.active {
+    background: var(--surface);
+    color: var(--ink);
+    font-weight: 600;
+    box-shadow: 0 0 0 1px var(--border);
+  }
+</style>

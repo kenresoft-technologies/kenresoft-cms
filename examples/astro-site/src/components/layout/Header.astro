@@ -1,0 +1,110 @@
+---
+import { createServerClient } from '../../lib/site-client';
+
+// SSR: forwards the incoming request's own cookies to the CMS API so the header reflects real
+// signed-in/guest state and the real cart count on first paint — no flash of the wrong state,
+// and no separate client-side round trip just to render a badge. cart-badge.ts still refreshes
+// the count client-side after an add/remove so it stays live without a full reload.
+const cms = createServerClient(Astro.request.headers.get('cookie'));
+
+let cartCount = 0;
+let customerName: string | null = null;
+
+try {
+  const [cart, customer] = await Promise.all([cms.commerce.cart.get(), cms.commerce.customer.get()]);
+  cartCount = cart.items.reduce((sum, item) => sum + item.quantity, 0);
+  customerName = customer?.name ?? null;
+} catch {
+  // Commerce may be disabled/unreachable on some deployments — the header still renders, just
+  // without account/cart state, rather than failing the whole page.
+}
+---
+
+<header class="site-header">
+  <a href="/" class="brand">
+    <span class="brand-mark" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"></path>
+        <path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"></path>
+        <path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"></path>
+      </svg>
+    </span>
+    Kenresoft CMS
+  </a>
+  <nav class="site-nav" aria-label="Primary">
+    <a href="/">Home</a>
+    <a href="/blog">Blog</a>
+    <a href="/shop">Shop</a>
+    <a href="/cart" class="cart-link">
+      Cart
+      <span data-cart-count class="cart-count" hidden={cartCount === 0}>{cartCount}</span>
+    </a>
+    {
+      customerName ? (
+        <>
+          <a href="/account">Account ({customerName.split(' ')[0]})</a>
+          <a href="/account/orders">Orders</a>
+          <button type="button" data-logout-button class="link-button">
+            Log out
+          </button>
+        </>
+      ) : (
+        <a href="/account/login">Log in</a>
+      )
+    }
+  </nav>
+</header>
+
+<script>
+  import { getBrowserClient } from '../../lib/browser-client';
+
+  document.querySelectorAll<HTMLButtonElement>('[data-logout-button]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      button.disabled = true;
+      try {
+        await getBrowserClient().commerce.customerAuth.logout();
+      } finally {
+        window.location.href = '/';
+      }
+    });
+  });
+</script>
+
+<style>
+  .site-nav {
+    align-items: center;
+  }
+
+  .cart-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+
+  .cart-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.35rem;
+    height: 1.35rem;
+    padding: 0 0.3rem;
+    border-radius: 999px;
+    background: var(--brand);
+    color: var(--brand-foreground);
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+
+  .link-button {
+    border: none;
+    background: none;
+    padding: 0;
+    font: inherit;
+    color: var(--ink-muted);
+    cursor: pointer;
+  }
+
+  .link-button:hover {
+    color: var(--ink);
+  }
+</style>

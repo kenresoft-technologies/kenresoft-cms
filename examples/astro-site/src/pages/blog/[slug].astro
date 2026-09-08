@@ -40,9 +40,29 @@ const publishedDate = new Date(entry.createdAt).toLocaleDateString(undefined, {
   month: 'long',
   day: 'numeric',
 });
+
+// "category" is a `reference` field on blog-post pointing at the `category` content type —
+// its stored value is just the referenced entry's id (this codebase's reference-field
+// convention), so rendering a real category link needs a lookup, not a second free-text field.
+const categoryEntryId = typeof entry.data.category === 'string' ? entry.data.category : null;
+const categoryEntries = categoryEntryId ? await cms.entries.list({ contentType: 'category' }) : [];
+const categoryEntry = categoryEntries.find((candidate) => candidate.id === categoryEntryId) ?? null;
+
+const seoTitle = typeof entry.data.metaTitle === 'string' && entry.data.metaTitle ? entry.data.metaTitle : title;
+const seoDescription = typeof entry.data.metaDescription === 'string' && entry.data.metaDescription
+  ? entry.data.metaDescription
+  : typeof entry.data.excerpt === 'string'
+    ? entry.data.excerpt
+    : undefined;
 ---
 
-<BaseLayout title={`${title} — Kenresoft CMS`} description={typeof entry.data.excerpt === 'string' ? entry.data.excerpt : undefined}>
+<BaseLayout
+  title={`${seoTitle} — Kenresoft CMS`}
+  description={seoDescription}
+  canonicalUrl={new URL(`/blog/${entry.slug}`, Astro.site ?? Astro.url).toString()}
+  ogImage={featuredImageUrl ?? undefined}
+  noIndex={Boolean(previewToken)}
+>
   {previewToken ? (
     <div class="preview-banner">
       Preview mode — viewing a {entry.status} entry. This banner never appears without a valid preview link.
@@ -50,6 +70,11 @@ const publishedDate = new Date(entry.createdAt).toLocaleDateString(undefined, {
   ) : null}
   <article class="post">
     <a class="back-link" href="/blog">← Back to blog</a>
+    {categoryEntry ? (
+      <a class="category-pill" href={`/categories/${categoryEntry.slug}`}>
+        {String(categoryEntry.data.title ?? categoryEntry.slug)}
+      </a>
+    ) : null}
     <h1>{title}</h1>
     <p class="post-meta">Published {publishedDate}</p>
     {featuredImageUrl ? (
@@ -91,6 +116,19 @@ const publishedDate = new Date(entry.createdAt).toLocaleDateString(undefined, {
 
   .back-link:hover {
     color: var(--brand);
+  }
+
+  .category-pill {
+    display: inline-block;
+    margin: 0 0 0.75rem;
+    padding: 0.25rem 0.65rem;
+    border-radius: 999px;
+    background: var(--surface-muted);
+    border: 1px solid var(--border);
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--brand);
+    text-decoration: none;
   }
 
   .post h1 {
