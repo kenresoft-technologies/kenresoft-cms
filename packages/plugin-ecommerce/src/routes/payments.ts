@@ -176,8 +176,24 @@ paymentsRoutes.openapi(
       // Recorded the moment Paystack hands back a real session, before the customer has even
       // reached its page — this is what lets a later webhook or verify call for THIS exact
       // reference resolve correctly, even if the customer abandons it and a later call
-      // initializes a second, different reference afterward.
-      await setPaymentAttemptAuthorizationUrl(ctx.db, reference, initialized.authorizationUrl);
+      // initializes a second, different reference afterward. Conditional: if this exact claim
+      // was reclaimed (repository/payments.ts's reclaimStaleUnauthorizedAttempt) while this
+      // request was still waiting on Paystack — a real possibility for a genuinely slow provider
+      // call, not just a crashed request — persisted returns false and this reference must not
+      // be handed to the caller as if it were still the order's active checkout session. The row
+      // itself is untouched otherwise (still 'pending', reclaimedAt set) — if Paystack later
+      // reports a real success for it, resolvePaymentAttempt still resolves the order correctly;
+      // this only ever affects whether THIS response exposes the URL, never whether the money
+      // itself can still be collected.
+      const persisted = await setPaymentAttemptAuthorizationUrl(ctx.db, reference, initialized.authorizationUrl);
+      if (!persisted) {
+        ctx.logger.warn('Paystack initialization completed after this payment claim was reclaimed by a newer attempt — not exposing its authorization URL', {
+          orderId,
+          reference,
+        });
+        return c.json({ error: 'Payment initialization was superseded by a newer attempt — please retry' }, 409);
+      }
+
       return c.json({ authorizationUrl: initialized.authorizationUrl, reference }, 200);
     };
 
