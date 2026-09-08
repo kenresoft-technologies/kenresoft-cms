@@ -347,27 +347,30 @@ describe('commerce plugin: checkout (real D1)', () => {
       body: JSON.stringify({ email: 'guest@example.test', name: 'Guest Buyer', shippingAddress: SHIPPING_ADDRESS }),
     };
     const [resA, resB] = await Promise.all([SELF.fetch(CHECKOUT_BASE, requestInit), SELF.fetch(CHECKOUT_BASE, requestInit)]);
-    let statuses = [resA.status, resB.status].sort();
+    let statuses = [resA.status, resB.status];
 
     // Whichever request loses the claim race either replays the winner's cached 201 or, if it
     // arrived before the winner had finished, gets a 409 asking it to retry shortly — both are
     // acceptable outcomes of "never double-process," unlike a second, distinct order existing.
-    // In the genuinely rare case both land on 409 — observed under CI's more heavily contended
-    // runners, never reproduced in dozens of local stress-test attempts — the claim/reclaim
-    // table itself explicitly documents this exact possibility (repository/idempotency.ts's own
-    // "the winner's own insert may not have become visible to this read yet" comment on the
-    // sibling `createOrder` idempotency check): this table is a fast-path/availability
-    // mechanism, not the actual correctness guarantee (that's `plugin_commerce_orders.
-    // idempotency_key`'s own UNIQUE constraint, verified directly below and by the dedicated
-    // DB-level test after this one). A transient claim-table read-visibility gap resolves
-    // itself almost immediately — retrying with the exact same key proves the system recovers
-    // rather than being genuinely stuck, instead of just weakening this assertion outright.
-    if (statuses[0] === 409 && statuses[1] === 409) {
+    // Checked via `includes`/`every`, NOT `.sort()` position: `[status, status].sort()` sorts as
+    // STRINGS by default (no comparator), and "409" always sorts after "201" lexically — so a
+    // naive `expect(statuses[1]).toBe(201)` after a bare `.sort()` can NEVER pass whenever either
+    // response is genuinely 409, even though this comment already documented that outcome as
+    // acceptable. That was a real, latent bug in this assertion itself (not a product bug):
+    // confirmed by adding temporary debug logging around a "both literally 409" branch on CI,
+    // which never fired — proving the actual pair was the ordinary, documented-fine [201, 409]
+    // the old sort-based comparison simply couldn't express, not a genuine double-409 race.
+    if (!statuses.includes(201)) {
+      // A genuine both-409 outcome (neither request ever saw itself as the claim winner nor as a
+      // completed replay) isn't itself impossible — repository/idempotency.ts's own comment on
+      // the sibling `createOrder` check acknowledges a claim row's own insert may not yet be
+      // visible to a near-simultaneous read — so retry once with the same key rather than assume
+      // the system is permanently stuck.
       const retry = await SELF.fetch(CHECKOUT_BASE, requestInit);
-      statuses = [retry.status, retry.status];
+      statuses = [retry.status];
     }
-    expect([201, 409]).toContain(statuses[0]);
-    expect(statuses[1]).toBe(201);
+    expect(statuses).toContain(201);
+    expect(statuses.every((status) => status === 201 || status === 409)).toBe(true);
 
     const orderCount = await env.DB.prepare('SELECT COUNT(*) as count FROM plugin_commerce_orders').first<{ count: number }>();
     expect(orderCount?.count).toBe(1);
