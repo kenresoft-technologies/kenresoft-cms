@@ -1,0 +1,120 @@
+---
+import { createKenresoftClient } from '@kenresoft-cms/astro';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { formatMoney } from '../../lib/money';
+
+const cms = createKenresoftClient({ url: import.meta.env.PUBLIC_KENRESOFT_CMS_URL });
+
+// The public product-list endpoint deliberately carries no images/variants (packages/
+// plugin-ecommerce/src/routes/public.ts) — fetching every product's images here to build a grid
+// thumbnail would mean an extra query per row for a view one click away from the detail page
+// that already has them. This grid is text-only for now; see cms.commerce.products.get() on the
+// detail page for the real photo.
+let products: Awaited<ReturnType<typeof cms.commerce.products.list>> = [];
+let loadError: string | null = null;
+try {
+  products = await cms.commerce.products.list();
+} catch (err) {
+  // Most likely: the commerce plugin isn't installed/enabled on this deployment at all (every
+  // commerce route 404s identically when disabled — docs/PLUGINS.md's enablement section), which
+  // this client surfaces as a KenresoftApiError rather than an empty list, unlike entries.list()'s
+  // own "empty array for a nonexistent content type" convention (products aren't a content type).
+  loadError = err instanceof Error ? err.message : String(err);
+}
+---
+
+<BaseLayout title="Shop — Kenresoft CMS" description="A storefront rendered from Kenresoft CMS's Commerce plugin.">
+  <div class="page-header">
+    <h1>Shop</h1>
+  </div>
+
+  {
+    loadError ? (
+      <div class="empty-state">
+        <p>Couldn’t load the catalog: {loadError}</p>
+        <p>Is the Commerce plugin installed and enabled on this deployment (Settings → Plugins)?</p>
+      </div>
+    ) : products.length === 0 ? (
+      <div class="empty-state">
+        <p>No published products yet. Create one in the admin (Commerce → Products) and publish it.</p>
+      </div>
+    ) : (
+      <div class="product-grid">
+        {products.map((product) => (
+          <a class="product-card" href={`/shop/${product.slug}`}>
+            <h2>{product.name}</h2>
+            {product.shortDescription ? <p>{product.shortDescription}</p> : null}
+            <p class="price">{formatMoney(product.basePrice, product.currency)}</p>
+          </a>
+        ))}
+      </div>
+    )
+  }
+</BaseLayout>
+
+<style>
+  .page-header {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: 3rem 1.5rem 1rem;
+  }
+
+  .page-header h1 {
+    margin: 0;
+    font-size: 2rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  .empty-state {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: 1rem 1.5rem 5rem;
+    color: var(--ink-muted);
+  }
+
+  .product-grid {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: 1rem 1.5rem 5rem;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 1.25rem;
+  }
+
+  .product-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 1.25rem;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    text-decoration: none;
+    color: var(--ink);
+    transition: border-color 0.15s ease;
+  }
+
+  .product-card:hover {
+    border-color: var(--brand);
+  }
+
+  .product-card h2 {
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 600;
+  }
+
+  .product-card p {
+    margin: 0;
+    color: var(--ink-muted);
+    font-size: 0.9rem;
+    line-height: 1.5;
+  }
+
+  .product-card .price {
+    margin-top: auto;
+    color: var(--ink);
+    font-weight: 600;
+    font-size: 1rem;
+  }
+</style>

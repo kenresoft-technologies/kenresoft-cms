@@ -1,0 +1,66 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+
+const { id } = Astro.params;
+if (!id) {
+  return new Response(null, { status: 404, statusText: 'Not Found' });
+}
+---
+
+<BaseLayout title="Order confirmation — Kenresoft CMS" description="Payment confirmation for your order.">
+  <div class="order-page">
+    <div id="verify-status">Confirming your payment…</div>
+  </div>
+</BaseLayout>
+
+<script>
+  import { createKenresoftClient, KenresoftApiError } from '@kenresoft-cms/astro';
+
+  const cms = createKenresoftClient({ url: import.meta.env.PUBLIC_KENRESOFT_CMS_URL });
+  const statusEl = document.querySelector<HTMLDivElement>('#verify-status')!;
+
+  const pathParts = window.location.pathname.split('/');
+  const orderId = pathParts[pathParts.length - 1] ?? '';
+  // Paystack appends its own `reference` query param to the callbackUrl on redirect (the same
+  // reference payments.initialize() returned, echoed back) — this is what proves the browser
+  // actually came from a real Paystack redirect, not that the redirect itself proves payment;
+  // the verify() call below is the actual, server-authoritative confirmation.
+  const reference = new URLSearchParams(window.location.search).get('reference');
+
+  if (!reference) {
+    statusEl.textContent = 'No payment reference found in the URL — this page is meant to be reached via a Paystack redirect, not visited directly.';
+  } else {
+    cms.commerce.payments
+      .verify({ orderId, reference })
+      .then((result) => {
+        if (result.paid) {
+          statusEl.innerHTML = `<h1>Payment confirmed</h1><p>Your order is now <strong>${result.orderStatus}</strong>. Thank you!</p>`;
+        } else {
+          statusEl.innerHTML = `<h1>Payment not yet confirmed</h1><p>Your order is still <strong>${result.orderStatus}</strong>. If you completed payment, this may just need a moment — refresh to check again.</p>`;
+        }
+      })
+      .catch((err) => {
+        statusEl.textContent = err instanceof KenresoftApiError ? err.message : 'Could not confirm your payment.';
+      });
+  }
+</script>
+
+<style>
+  .order-page {
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 4rem 1.5rem 5rem;
+    text-align: center;
+  }
+
+  .order-page :global(h1) {
+    font-size: 1.75rem;
+    font-weight: 600;
+    margin: 0 0 0.75rem;
+  }
+
+  .order-page :global(p) {
+    color: var(--ink-muted);
+    line-height: 1.6;
+  }
+</style>
