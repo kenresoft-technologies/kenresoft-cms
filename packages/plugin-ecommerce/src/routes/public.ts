@@ -1,10 +1,12 @@
 import { createRoute, z } from '@hono/zod-openapi';
 import { createPluginOpenApiApp } from '@kenresoft-cms/plugin-sdk';
 import type { PluginBindings, PluginPublicVariables } from '@kenresoft-cms/plugin-sdk';
-import type { PluginCommerceCategory, PluginCommerceProduct } from '@kenresoft-cms/database';
+import type { PluginCommerceCategory, PluginCommerceProduct, PluginCommerceProductImage, PluginCommerceProductVariant } from '@kenresoft-cms/database';
 
 import { listCategories } from '../repository/categories';
+import { listImagesForProduct } from '../repository/images';
 import { getPublishedProductBySlug, listProducts } from '../repository/products';
+import { listVariantsForProduct } from '../repository/variants';
 
 // Unauthenticated, storefront-facing catalog reads — mounted at the root of the full public
 // mount (src/index.ts composes this alongside customer-auth/customer/cart). Deliberately its own,
@@ -35,6 +37,37 @@ const publicProductSchema = z.object({
   categoryId: z.string().nullable(),
 });
 
+const publicProductImageSchema = z.object({
+  id: z.string(),
+  mediaId: z.string(),
+  altText: z.string().nullable(),
+  sortOrder: z.number(),
+});
+
+const publicProductVariantSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  sku: z.string().nullable(),
+  // Null = use the parent product's own basePrice — the same convention the admin API and
+  // cart's own serializeCart() already use, so a storefront's price-resolution logic (product
+  // basePrice unless a selected variant overrides it) stays identical on both surfaces.
+  price: z.number().nullable(),
+  compareAtPrice: z.number().nullable(),
+  stockQty: z.number(),
+  attributes: z.record(z.string(), z.string()).nullable(),
+});
+
+// Detail only (not the list route) — a storefront needs a product's own images/variants to
+// render it at all (a photo, a size/color picker), but the list/grid view doesn't, and fetching
+// every product's images/variants there would mean an extra query per row for a view that's
+// already reachable one click away from the detail page that has them. Archived variants are
+// filtered out here the same way cart.ts's own add-to-item check already treats them — never
+// orderable, so never worth showing as a choice on the storefront either.
+const publicProductDetailSchema = publicProductSchema.extend({
+  images: z.array(publicProductImageSchema),
+  variants: z.array(publicProductVariantSchema),
+});
+
 function toPublicCategory(row: PluginCommerceCategory): z.infer<typeof publicCategorySchema> {
   return { id: row.id, name: row.name, slug: row.slug, description: row.description, parentId: row.parentId };
 }
@@ -51,6 +84,14 @@ function toPublicProduct(row: PluginCommerceProduct): z.infer<typeof publicProdu
     currency: row.currency,
     categoryId: row.categoryId,
   };
+}
+
+function toPublicProductImage(row: PluginCommerceProductImage): z.infer<typeof publicProductImageSchema> {
+  return { id: row.id, mediaId: row.mediaId, altText: row.altText, sortOrder: row.sortOrder };
+}
+
+function toPublicProductVariant(row: PluginCommerceProductVariant): z.infer<typeof publicProductVariantSchema> {
+  return { id: row.id, name: row.name, sku: row.sku, price: row.price, compareAtPrice: row.compareAtPrice, stockQty: row.stockQty, attributes: row.attributes };
 }
 
 catalogPublicRoutes.openapi(
@@ -94,10 +135,10 @@ catalogPublicRoutes.openapi(
     method: 'get',
     path: '/products/{slug}',
     tags: ['Commerce (public)'],
-    summary: 'Get one published product by slug',
+    summary: 'Get one published product by slug, with its images and active variants',
     request: { params: z.object({ slug: z.string().min(1) }) },
     responses: {
-      200: { description: 'The published product.', content: { 'application/json': { schema: publicProductSchema } } },
+      200: { description: 'The published product.', content: { 'application/json': { schema: publicProductDetailSchema } } },
       404: {
         description: 'No published product with that slug — indistinguishable from a nonexistent slug.',
         content: { 'application/json': { schema: notFoundSchema } },
@@ -111,6 +152,14 @@ catalogPublicRoutes.openapi(
     if (!row) {
       return c.json({ error: 'Product not found' }, 404);
     }
-    return c.json(toPublicProduct(row), 200);
+    const [images, variants] = await Promise.all([listImagesForProduct(ctx.db, row.id), listVariantsForProduct(ctx.db, row.id)]);
+    return c.json(
+      {
+        ...toPublicProduct(row),
+        images: images.map(toPublicProductImage),
+        variants: variants.filter((variant) => variant.status === 'active').map(toPublicProductVariant),
+      },
+      200,
+    );
   },
 );

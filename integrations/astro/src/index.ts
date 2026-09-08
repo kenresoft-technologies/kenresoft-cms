@@ -13,6 +13,162 @@ export interface KenresoftClientConfig {
   fetch?: typeof fetch;
 }
 
+// Commerce (packages/plugin-ecommerce) types, hand-mirrored from that plugin's own Zod route
+// schemas rather than imported — unlike @kenresoft-cms/contracts, the plugin package isn't
+// published to npm (it lives only inside the monorepo, per docs/PLUGINS.md's own package-
+// boundary reasoning), so there's nothing to import from here. Keep these in sync by hand with
+// packages/plugin-ecommerce/src/routes/{public,cart,checkout,payments}.ts whenever those change.
+export interface CommerceCategory {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  parentId: string | null;
+}
+
+export interface CommerceProduct {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  shortDescription: string | null;
+  productType: 'physical' | 'digital' | 'service';
+  basePrice: number;
+  currency: string;
+  categoryId: string | null;
+}
+
+export interface CommerceProductImage {
+  id: string;
+  mediaId: string;
+  altText: string | null;
+  sortOrder: number;
+}
+
+export interface CommerceProductVariant {
+  id: string;
+  name: string;
+  sku: string | null;
+  /** Null = use the parent product's own basePrice — resolve price the same way cart/order do. */
+  price: number | null;
+  compareAtPrice: number | null;
+  stockQty: number;
+  attributes: Record<string, string> | null;
+}
+
+export interface CommerceProductDetail extends CommerceProduct {
+  images: CommerceProductImage[];
+  variants: CommerceProductVariant[];
+}
+
+export interface CommerceCartItem {
+  id: string;
+  productId: string;
+  variantId: string | null;
+  productName: string;
+  variantName: string | null;
+  quantity: number;
+  unitPrice: number;
+  currency: string;
+  stockQty: number | null;
+}
+
+export interface CommerceCart {
+  /** Null when the caller has no cart yet — nothing has been added, or it was just cleared. */
+  id: string | null;
+  currency: string | null;
+  items: CommerceCartItem[];
+}
+
+export interface AddCommerceCartItemOptions {
+  productId: string;
+  variantId?: string | null;
+  quantity?: number;
+}
+
+export interface UpdateCommerceCartItemOptions {
+  itemId: string;
+  quantity: number;
+}
+
+export interface RemoveCommerceCartItemOptions {
+  itemId: string;
+}
+
+export interface CommerceShippingAddress {
+  recipientName: string;
+  line1: string;
+  line2?: string | null;
+  city: string;
+  region?: string | null;
+  postalCode: string;
+  country: string;
+  phone?: string | null;
+}
+
+export interface CommerceCheckoutOptions {
+  /**
+   * A caller-generated key (e.g. `crypto.randomUUID()`) unique per checkout ATTEMPT — reused
+   * on retry (a lost response, a double-click) to safely replay the same order instead of
+   * creating a second one; a genuinely new attempt (a fixed cart, a new session) needs a fresh
+   * key. See packages/plugin-ecommerce/src/routes/checkout.ts's own Idempotency-Key handling.
+   */
+  idempotencyKey: string;
+  /** Required for a guest checkout; a signed-in customer's own profile supplies it by default. */
+  email?: string;
+  name?: string;
+  shippingAddress: CommerceShippingAddress;
+}
+
+export interface CommerceOrderItem {
+  id: string;
+  productId: string | null;
+  variantId: string | null;
+  productName: string;
+  variantName: string | null;
+  sku: string | null;
+  unitPriceAtPurchase: number;
+  quantity: number;
+}
+
+export interface CommerceOrder {
+  id: string;
+  status: 'pending' | 'paid' | 'fulfilled' | 'cancelled' | 'refunded';
+  currency: string;
+  totalAmount: number;
+  customerEmail: string;
+  customerName: string;
+  createdAt: string;
+  items: CommerceOrderItem[];
+}
+
+export interface InitializeCommercePaymentOptions {
+  orderId: string;
+  /**
+   * Where Paystack redirects the browser after payment — must match one of this deployment's
+   * own configured CORS origins (packages/plugin-ecommerce/src/routes/payments.ts rejects
+   * anything else, closing off an open-redirect-adjacent primitive).
+   */
+  callbackUrl: string;
+}
+
+export interface CommercePaymentSession {
+  /** Redirect the browser here to reach Paystack's hosted checkout page. */
+  authorizationUrl: string;
+  reference: string;
+}
+
+export interface VerifyCommercePaymentOptions {
+  orderId: string;
+  /** The `reference` a prior `payments.initialize()` call returned for this same order. */
+  reference: string;
+}
+
+export interface CommercePaymentStatus {
+  orderStatus: CommerceOrder['status'];
+  paid: boolean;
+}
+
 export interface FormSubmissionIssue {
   path: (string | number)[];
   message: string;
@@ -129,11 +285,119 @@ export interface KenresoftClient {
      */
     list(): Promise<Record<string, string>>;
   };
+  /**
+   * The Commerce plugin's storefront surface (packages/plugin-ecommerce) — catalog, cart,
+   * checkout, and Paystack payment confirmation. Only present/meaningful on a deployment that
+   * has the commerce plugin installed and enabled; calling these against one that doesn't will
+   * 404 the same way any disabled-plugin route does (docs/PLUGINS.md's enablement section).
+   * Deliberately guest-only for now — customer account registration/login/order-history and
+   * saved addresses aren't wired into this client yet (a real, separate follow-up: guest
+   * checkout is already Commerce's own complete, independently-supported purchase path, per
+   * docs/PLUGINS.md's Phase 2b/2c design, not a stopgap).
+   */
+  commerce: {
+    categories: {
+      /** Every active category. */
+      list(): Promise<CommerceCategory[]>;
+    };
+    products: {
+      /** Every published product, optionally scoped to one category. No images/variants — see `products.get()`. */
+      list(options?: { categoryId?: string }): Promise<CommerceProduct[]>;
+      /**
+       * One published product by slug, with its images and active variants — or null if there's
+       * no published product with that slug (including an unpublished/draft one, indistinguishable
+       * from a nonexistent slug, matching entries.get()'s own convention).
+       */
+      get(options: { slug: string }): Promise<CommerceProductDetail | null>;
+    };
+    cart: {
+      /** The caller's current cart (a guest cookie or a customer session, once accounts are wired in) — creates nothing. */
+      get(): Promise<CommerceCart>;
+      /** Adds an item, creating the cart on first use. Throws KenresoftApiError (400) for an unpublished product, an archived/out-of-stock variant, or a currency mismatch with the cart's existing items. */
+      addItem(options: AddCommerceCartItemOptions): Promise<CommerceCart>;
+      /** Throws KenresoftApiError (404) if that item isn't in the caller's own cart. */
+      updateItem(options: UpdateCommerceCartItemOptions): Promise<CommerceCart>;
+      /** Throws KenresoftApiError (404) if that item isn't in the caller's own cart. */
+      removeItem(options: RemoveCommerceCartItemOptions): Promise<CommerceCart>;
+      /** Clears every item — safe to call on an already-empty or nonexistent cart. */
+      clear(): Promise<void>;
+    };
+    checkout: {
+      /**
+       * Converts the caller's own cart into a durable Order — real, atomic stock enforcement
+       * happens here, not at add-to-cart time. Throws KenresoftApiError (400) for an empty cart,
+       * a missing email/name on a guest checkout, an item no longer available, or insufficient
+       * stock; (409) if a request with this exact idempotencyKey is already being processed —
+       * retry shortly with the SAME key, not a new one.
+       */
+      submit(options: CommerceCheckoutOptions): Promise<CommerceOrder>;
+    };
+    payments: {
+      /**
+       * Starts a Paystack transaction for a `pending` order and returns where to redirect the
+       * browser. Idempotent — a repeated call for the same order reuses an already-open attempt
+       * rather than starting a second, duplicate one. Throws KenresoftApiError: 400 (an invalid
+       * callbackUrl, or the order isn't payable), 404 (no such order), 409 (a prior attempt
+       * already succeeded, for a different amount/currency than expected — needs manual
+       * investigation, not a retry), 502 (the provider itself errored), 503 (payments aren't
+       * configured on this deployment).
+       */
+      initialize(options: InitializeCommercePaymentOptions): Promise<CommercePaymentSession>;
+      /**
+       * Server-side verifies a payment reference and returns the order's current, authoritative
+       * status — call this from the page `callbackUrl` points at, after Paystack redirects the
+       * browser back. Never trust the redirect itself as proof of payment; this is what actually
+       * confirms it. Throws KenresoftApiError: 400 (the reference doesn't belong to this order),
+       * 404 (no such order), 409 (the provider confirmed payment for a mismatched amount/
+       * currency), 502 (the provider itself errored), 503 (payments aren't configured).
+       */
+      verify(options: VerifyCommercePaymentOptions): Promise<CommercePaymentStatus>;
+    };
+  };
 }
 
 export function createKenresoftClient(config: KenresoftClientConfig): KenresoftClient {
   const baseUrl = config.url.replace(/\/$/, '');
   const doFetch = config.fetch ?? fetch;
+  const commerceBase = `${baseUrl}/api/plugins/commerce/public/v1`;
+
+  // `credentials: 'include'` is required on every commerce call — cart identity (a guest cookie)
+  // and, once accounts are wired in, a customer session, both travel as cookies that the API's
+  // own CORS config must explicitly allow this storefront's origin to send/receive
+  // (docs/PLUGINS.md's Commerce section: `CORS_ORIGINS` on the deployment). Catalog reads
+  // (categories/products) don't strictly need this — no cookie identity involved — but including
+  // it there too is harmless and keeps every commerce call uniform.
+  async function commerceRequest<T>(path: string, init?: RequestInit): Promise<T> {
+    const response = await doFetch(`${commerceBase}${path}`, {
+      credentials: 'include',
+      ...init,
+      headers: { 'Content-Type': 'application/json', ...init?.headers },
+    });
+
+    if (!response.ok) {
+      const body = (await response.json().catch(() => null)) as { error?: string } | null;
+      throw new KenresoftApiError(
+        response.status,
+        body?.error ?? `Kenresoft CMS API request failed: ${init?.method ?? 'GET'} ${path} -> ${response.status}`,
+      );
+    }
+
+    if (response.status === 204) return undefined as T;
+    return (await response.json()) as T;
+  }
+
+  // Mirrors request()'s own "404 -> null" convention below, for the one commerce read that has
+  // the same "addressed by slug, a draft/nonexistent slug both 404 identically" shape as
+  // entries.get() — products.list()/categories.list() have no such per-item 404 to translate.
+  async function commerceRequestOrNull<T>(path: string): Promise<T | null> {
+    const response = await doFetch(`${commerceBase}${path}`, { credentials: 'include' });
+    if (response.status === 404) return null;
+    if (!response.ok) {
+      const body = (await response.json().catch(() => null)) as { error?: string } | null;
+      throw new KenresoftApiError(response.status, body?.error ?? `Kenresoft CMS API request failed: GET ${path} -> ${response.status}`);
+    }
+    return (await response.json()) as T;
+  }
 
   async function request<T>(path: string): Promise<T | null> {
     const response = await doFetch(`${baseUrl}${path}`);
@@ -199,6 +463,64 @@ export function createKenresoftClient(config: KenresoftClientConfig): KenresoftC
       async list() {
         const variables = await request<Record<string, string>>('/api/v1/public/global-variables');
         return variables ?? {};
+      },
+    },
+    commerce: {
+      categories: {
+        list() {
+          return commerceRequest<CommerceCategory[]>('/categories');
+        },
+      },
+      products: {
+        list({ categoryId } = {}) {
+          const query = categoryId ? `?categoryId=${encodeURIComponent(categoryId)}` : '';
+          return commerceRequest<CommerceProduct[]>(`/products${query}`);
+        },
+        get({ slug }) {
+          return commerceRequestOrNull<CommerceProductDetail>(`/products/${encodeURIComponent(slug)}`);
+        },
+      },
+      cart: {
+        get() {
+          return commerceRequest<CommerceCart>('/cart');
+        },
+        addItem(options) {
+          return commerceRequest<CommerceCart>('/cart/items', { method: 'POST', body: JSON.stringify(options) });
+        },
+        updateItem({ itemId, quantity }) {
+          return commerceRequest<CommerceCart>(`/cart/items/${encodeURIComponent(itemId)}`, {
+            method: 'PATCH',
+            body: JSON.stringify({ quantity }),
+          });
+        },
+        removeItem({ itemId }) {
+          return commerceRequest<CommerceCart>(`/cart/items/${encodeURIComponent(itemId)}`, { method: 'DELETE' });
+        },
+        async clear() {
+          await commerceRequest<undefined>('/cart', { method: 'DELETE' });
+        },
+      },
+      checkout: {
+        submit({ idempotencyKey, ...body }) {
+          return commerceRequest<CommerceOrder>('/checkout', {
+            method: 'POST',
+            headers: { 'Idempotency-Key': idempotencyKey },
+            body: JSON.stringify(body),
+          });
+        },
+      },
+      payments: {
+        initialize({ orderId, callbackUrl }) {
+          return commerceRequest<CommercePaymentSession>(`/payments/orders/${encodeURIComponent(orderId)}/initialize`, {
+            method: 'POST',
+            body: JSON.stringify({ callbackUrl }),
+          });
+        },
+        verify({ orderId, reference }) {
+          return commerceRequest<CommercePaymentStatus>(
+            `/payments/orders/${encodeURIComponent(orderId)}/verify?reference=${encodeURIComponent(reference)}`,
+          );
+        },
       },
     },
   };

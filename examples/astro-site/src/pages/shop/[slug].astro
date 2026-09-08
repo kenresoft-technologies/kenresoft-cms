@@ -1,0 +1,197 @@
+---
+import { createKenresoftClient } from '@kenresoft-cms/astro';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { formatMoney } from '../../lib/money';
+
+const cms = createKenresoftClient({ url: import.meta.env.PUBLIC_KENRESOFT_CMS_URL });
+
+// Fetched per-request, not via getStaticPaths — same SSR reasoning as blog/[slug].astro. An
+// unpublished/nonexistent slug 404s identically (products.get()'s own documented convention).
+const { slug } = Astro.params;
+const product = slug ? await cms.commerce.products.get({ slug }) : null;
+
+if (!product) {
+  return new Response(null, { status: 404, statusText: 'Not Found' });
+}
+
+const primaryImage = product.images[0] ?? null;
+const primaryImageMeta = primaryImage ? await cms.media.get({ id: primaryImage.mediaId }) : null;
+// Cart/checkout mutations happen client-side (see the <script> below), not here in SSR
+// frontmatter — cart identity is a browser cookie the API sets directly on this deployment's own
+// origin (credentials: 'include'), which a server-side fetch from Astro's own runtime has no
+// natural way to receive and hand back to the browser without manually proxying Set-Cookie
+// headers through Astro.cookies. Every add-to-cart/checkout/payment call in this example follows
+// the same client-side pattern for that reason.
+---
+
+<BaseLayout title={`${product.name} — Shop — Kenresoft CMS`} description={product.shortDescription ?? undefined}>
+  <div class="product">
+    <a class="back-link" href="/shop">← Back to shop</a>
+    <div class="product-layout">
+      <div class="product-media">
+        {primaryImage ? (
+          <img src={cms.media.url({ id: primaryImage.mediaId })} alt={primaryImageMeta?.altText ?? primaryImage.altText ?? product.name} />
+        ) : (
+          <div class="product-media-placeholder" aria-hidden="true" />
+        )}
+      </div>
+      <div class="product-info">
+        <h1>{product.name}</h1>
+        <p class="price" id="selected-price">{formatMoney(product.basePrice, product.currency)}</p>
+        {product.description ? <p class="description">{product.description}</p> : null}
+
+        <form id="add-to-cart-form" data-product-id={product.id} data-base-price={product.basePrice} data-currency={product.currency}>
+          {product.variants.length > 0 ? (
+            <label class="field">
+              <span>Options</span>
+              <select id="variant-select" name="variantId">
+                {product.variants.map((variant) => (
+                  <option value={variant.id} data-price={variant.price ?? product.basePrice} disabled={variant.stockQty === 0}>
+                    {variant.name}
+                    {variant.stockQty === 0 ? ' (out of stock)' : ''}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+          <label class="field">
+            <span>Quantity</span>
+            <input type="number" name="quantity" value="1" min="1" />
+          </label>
+          <button type="submit" class="button button-primary">Add to cart</button>
+          <p class="form-status" id="add-to-cart-status" role="status"></p>
+        </form>
+      </div>
+    </div>
+  </div>
+</BaseLayout>
+
+<script>
+  import { createKenresoftClient, KenresoftApiError } from '@kenresoft-cms/astro';
+
+  const cms = createKenresoftClient({ url: import.meta.env.PUBLIC_KENRESOFT_CMS_URL });
+
+  const form = document.querySelector<HTMLFormElement>('#add-to-cart-form');
+  const status = document.querySelector<HTMLParagraphElement>('#add-to-cart-status');
+  const priceEl = document.querySelector<HTMLParagraphElement>('#selected-price');
+  const variantSelect = document.querySelector<HTMLSelectElement>('#variant-select');
+
+  // Reflects the selected variant's own price override, if any — matches the same
+  // basePrice-unless-a-variant-overrides-it resolution the cart/order APIs already use.
+  function updatePriceDisplay() {
+    if (!priceEl || !form) return;
+    const currency = form.dataset.currency!;
+    const selectedOption = variantSelect?.selectedOptions[0];
+    const price = Number(selectedOption?.dataset.price ?? form.dataset.basePrice);
+    priceEl.textContent = new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(price / 100);
+  }
+  variantSelect?.addEventListener('change', updatePriceDisplay);
+
+  form?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!status) return;
+    status.textContent = 'Adding…';
+
+    const formData = new FormData(form);
+    const variantId = (formData.get('variantId') as string | null) || undefined;
+    const quantity = Number(formData.get('quantity') ?? 1);
+
+    try {
+      await cms.commerce.cart.addItem({ productId: form.dataset.productId!, variantId, quantity });
+      status.textContent = 'Added to cart.';
+    } catch (err) {
+      status.textContent = err instanceof KenresoftApiError ? err.message : 'Could not add this item to your cart.';
+    }
+  });
+</script>
+
+<style>
+  .product {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: 3rem 1.5rem 5rem;
+  }
+
+  .back-link {
+    display: inline-block;
+    margin-bottom: 1.5rem;
+    color: var(--ink-muted);
+    text-decoration: none;
+    font-size: 0.9rem;
+  }
+
+  .back-link:hover {
+    color: var(--brand);
+  }
+
+  .product-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 2.5rem;
+  }
+
+  @media (max-width: 720px) {
+    .product-layout {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  .product-media img {
+    width: 100%;
+    border-radius: var(--radius);
+    object-fit: cover;
+    aspect-ratio: 1 / 1;
+  }
+
+  .product-media-placeholder {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    border-radius: var(--radius);
+    background: var(--surface-muted);
+    border: 1px solid var(--border);
+  }
+
+  .product-info h1 {
+    margin: 0 0 0.5rem;
+    font-size: clamp(1.5rem, 3vw, 2rem);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  .price {
+    margin: 0 0 1.25rem;
+    font-size: 1.35rem;
+    font-weight: 600;
+  }
+
+  .description {
+    margin: 0 0 1.5rem;
+    color: var(--ink-muted);
+    line-height: 1.6;
+  }
+
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    margin-bottom: 1rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+  }
+
+  .field select,
+  .field input {
+    padding: 0.6rem 0.75rem;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    font-size: 0.95rem;
+    font-family: inherit;
+  }
+
+  .form-status {
+    margin: 0.75rem 0 0;
+    font-size: 0.9rem;
+    color: var(--ink-muted);
+    min-height: 1.2em;
+  }
+</style>
