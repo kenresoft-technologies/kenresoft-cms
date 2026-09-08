@@ -107,6 +107,7 @@ async function performCheckout(
   c: Context<{ Bindings: PluginBindings; Variables: PluginPublicVariables }>,
   ctx: PluginPublicContext,
   input: CheckoutInput,
+  idempotencyKey: string,
 ): Promise<CheckoutOutcome> {
   const cart = await resolveExistingCart(c, ctx);
   const items = cart ? await listItemsWithDetail(ctx.db, cart.id) : [];
@@ -136,6 +137,7 @@ async function performCheckout(
     currency: cart.currency,
     shippingAddress: input.shippingAddress,
     items,
+    idempotencyKey,
   });
 
   if (!result.ok) {
@@ -190,7 +192,7 @@ checkoutRoutes.openapi(
     }
 
     const input = c.req.valid('json');
-    const outcome = await performCheckout(c, ctx, input);
+    const outcome = await performCheckout(c, ctx, input, idempotencyKey);
     await completeIdempotencyKey(ctx.db, IDEMPOTENCY_SCOPE, idempotencyKey, outcome.status, outcome.body);
     if (outcome.status === 201) return c.json(outcome.body as z.infer<typeof orderSchema>, 201);
     return c.json(outcome.body as z.infer<typeof errorSchema>, 400);

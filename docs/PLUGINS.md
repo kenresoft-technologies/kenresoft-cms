@@ -645,3 +645,50 @@ before 2e could start:
    `paid -> refunded` directly rejected). Full re-verification: clean `pnpm typecheck`/`pnpm lint`
    workspace-wide, all commerce/payments test files passing individually, the full `apps/admin`
    suite (162 tests) clean in one run.
+
+## Commerce (Phase 2d review fixes, round 2 — concurrency) — done, 2026-09-08
+
+A second direct review of the merged review-fix round found the first round's own two remaining
+gaps were still check-then-act races, not durable database guarantees:
+
+1. **Payment initialization race.** `getPendingPaymentAttemptForOrder` followed by a separate
+   insert was still a genuine TOCTOU race — two concurrent `POST /orders/{id}/initialize` calls
+   could both observe no pending attempt before either had inserted one, and both proceed to call
+   Paystack. Fixed with a new `plugin_commerce_order_payments_one_pending_per_order_idx` — a
+   **partial unique index** (`WHERE status = 'pending'`) enforced by SQLite itself, not
+   application logic. `claimPendingPaymentAttempt` (`repository/payments.ts`) now generates the
+   reference and reserves the row via `.onConflictDoNothing().returning()` *before* Paystack is
+   ever called; only one of two truly concurrent claims can win. The loser never calls Paystack —
+   it inspects whatever attempt did win (re-verifying it with Paystack) and either reuses it,
+   waits, or (if that one just resolved as failed) claims a genuinely fresh slot itself. A
+   provider error after a successful claim is handled by `abandonPaymentAttempt`, freeing the slot
+   rather than leaving a dead `'pending'` row blocking the order forever.
+2. **Checkout idempotency's stale-claim recovery wasn't sufficient on its own.** The first
+   round's 30s stale-claim reclaim (`repository/idempotency.ts`) is itself atomic — but atomicity
+   of *reassigning* a claim does nothing to stop the *original* request (merely slow, not
+   crashed) from continuing to run. Two executions could therefore both reach `createOrder` for
+   the same key. Fixed with a durable, DB-enforced invariant one level down, independent of that
+   table's own timing entirely: a new `idempotencyKey` column on `plugin_commerce_orders`,
+   UNIQUE, populated from `POST /checkout`'s own required header. `createOrder`
+   (`repository/orders.ts`) now inserts the order row itself via
+   `.onConflictDoNothing().returning()` against this constraint, as its own standalone step
+   *before* inserting items or deleting the cart — deliberately not folded into the same batch,
+   since a conflicting order insert combined with item inserts referencing it would trip the
+   items' own FK constraint and abort the whole batch instead of behaving predictably. A losing
+   execution gives back whatever stock it speculatively reserved and returns the **winner's**
+   order (looked up by `idempotencyKey`) instead of creating a second one — so even the two
+   executions the stale-claim reclaim doc explicitly permits can never produce two orders. The
+   claim/reclaim table is kept exactly as-is: an availability mechanism (nothing gets stuck
+   forever) and a response-caching fast path, not the correctness guarantee — that job now belongs
+   entirely to the database constraint.
+3. Two new, genuine concurrency tests (both using real `Promise.all`, not simulated): `commerce-
+   payments.test.ts` gained a test asserting Paystack's `initializeTransaction` is called exactly
+   once across two simultaneous `POST /orders/{id}/initialize` calls for the same order (22 → 23
+   tests); `commerce-checkout.test.ts` gained a test calling `createOrder` directly, twice
+   concurrently with the same `idempotencyKey` but two independent carts — deliberately bypassing
+   the claim-table entirely to isolate and prove the new DB-level invariant specifically — asserting
+   exactly one order results, both callers receive the identical order, and the losing cart's
+   speculative stock reservation is correctly given back (13 → 14 tests).
+
+Full re-verification: clean `pnpm typecheck`/`pnpm lint` workspace-wide, every commerce/payments
+test file passing individually, the full `apps/admin` suite (162 tests) clean in one run.

@@ -1,0 +1,3 @@
+ALTER TABLE `plugin_commerce_orders` ADD `idempotency_key` text;--> statement-breakpoint
+CREATE UNIQUE INDEX `plugin_commerce_orders_idempotency_key_unique` ON `plugin_commerce_orders` (`idempotency_key`);--> statement-breakpoint
+CREATE UNIQUE INDEX `plugin_commerce_order_payments_one_pending_per_order_idx` ON `plugin_commerce_order_payments` (`order_id`) WHERE "plugin_commerce_order_payments"."status" = 'pending';

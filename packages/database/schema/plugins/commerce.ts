@@ -367,6 +367,19 @@ export const pluginCommerceOrders = sqliteTable(
       country: string;
       phone: string | null;
     }>().notNull(),
+    // The durable, DB-enforced half of checkout idempotency — POST /checkout's client-supplied
+    // Idempotency-Key header, stored raw (not the "checkout:<key>" compound id
+    // plugin_commerce_idempotency_keys uses internally). This UNIQUE constraint is what actually
+    // guarantees at most one order per checkout attempt, independent of
+    // plugin_commerce_idempotency_keys' own claim/reclaim timing: that table's 30s stale-claim
+    // recovery deliberately allows a claim to be reassigned away from a request that's merely
+    // slow, not crashed — which does NOT stop the original, still-running request from continuing
+    // to execute. Two executions can therefore both reach repository/orders.ts's createOrder for
+    // the same key; this constraint is what ensures only one of them can ever actually insert an
+    // order — the loser detects the conflict, gives back any stock it speculatively reserved, and
+    // returns the winner's order instead of creating a second one. Nullable (not every hypothetical
+    // future order-creation path need supply one) but always set by checkout today.
+    idempotencyKey: text('idempotency_key').unique(),
     createdAt: integer('created_at', { mode: 'timestamp' })
       .notNull()
       .default(sql`(unixepoch())`),
@@ -457,7 +470,20 @@ export const pluginCommerceOrderPayments = sqliteTable(
       .default(sql`(unixepoch())`),
     resolvedAt: integer('resolved_at', { mode: 'timestamp' }),
   },
-  (table) => [index('plugin_commerce_order_payments_order_id_idx').on(table.orderId)],
+  (table) => [
+    index('plugin_commerce_order_payments_order_id_idx').on(table.orderId),
+    // Enforces "at most one open payment attempt per order" as a real DB constraint, not just
+    // application-level checking — repository/payments.ts's claimPendingPaymentAttempt relies on
+    // this directly (an INSERT racing against an existing 'pending' row for the same order
+    // conflicts and is detected via .onConflictDoNothing()), which is what makes two genuinely
+    // concurrent POST /orders/{id}/initialize calls for the same order safe: only one can ever
+    // win the insert, so at most one Paystack transaction is ever created per order at a time.
+    // Partial (WHERE status = 'pending') so an order's own history of resolved (success/failed)
+    // attempts is never constrained — only ever one *open* one at a time.
+    uniqueIndex('plugin_commerce_order_payments_one_pending_per_order_idx')
+      .on(table.orderId)
+      .where(sql`${table.status} = 'pending'`),
+  ],
 );
 
 // Backs Idempotency-Key enforcement on POST /checkout (docs/PLUGINS.md's Commerce section) — a

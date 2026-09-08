@@ -1939,3 +1939,34 @@ from 11 to 13, `commerce-orders.test.ts` from 7 to 8, plus an extended status-vo
 `paystack-provider.test.ts`. Full re-verification: clean `pnpm typecheck`/`pnpm lint`
 workspace-wide, every commerce/payments test file passing individually, the full `apps/admin`
 suite (162 tests) clean in one run.
+
+**Commerce Phase 2d review fixes, round 2 — concurrency** (2026-09-08, a second direct review of
+the just-fixed payments work, finding both of the first round's own remaining gaps were still
+check-then-act races rather than durable database guarantees) — done. (1) Payment initialization:
+`getPendingPaymentAttemptForOrder` followed by a separate insert was still a genuine TOCTOU race —
+two concurrent `POST /orders/{id}/initialize` calls could both see no pending attempt before
+either inserted one, both calling Paystack. Fixed with a real partial unique index
+(`plugin_commerce_order_payments_one_pending_per_order_idx`, `WHERE status = 'pending'`) enforced
+by SQLite itself — `claimPendingPaymentAttempt` now reserves the row via
+`.onConflictDoNothing().returning()` *before* Paystack is ever called, so only one of two truly
+concurrent claims can win; the loser never calls Paystack itself. (2) Checkout idempotency: the
+prior 30s stale-claim reclaim is itself atomic, but atomicity of *reassigning* a claim does
+nothing to stop the *original*, merely-slow (not crashed) request from continuing to run — two
+executions could still both reach `createOrder` for the same key. Fixed one level down with a
+durable, DB-enforced invariant independent of that table's timing entirely: a new UNIQUE
+`idempotencyKey` column on `plugin_commerce_orders`, with `createOrder` inserting the order row as
+its own standalone `.onConflictDoNothing().returning()` step *before* items/cart-delete
+(deliberately not folded into the same batch — a conflicting order combined with item inserts
+referencing it would trip the items' own FK constraint and abort unpredictably instead of
+behaving predictably). A losing execution gives back its speculative stock reservation and returns
+the winner's real order instead of creating a second one. The claim/reclaim table stays exactly as
+an availability/response-caching mechanism — the correctness guarantee now belongs entirely to the
+database constraint, as directed. (3) Two new genuine `Promise.all` concurrency tests prove both
+fixes directly: one asserting Paystack's `initializeTransaction` is called exactly once across two
+simultaneous initialize calls for the same order (`commerce-payments.test.ts`, 22 → 23 tests), and
+one calling `createOrder` directly twice concurrently with the same `idempotencyKey` but two
+independent carts — deliberately bypassing the claim-table to isolate the DB-level invariant
+specifically — asserting exactly one order results and the losing cart's stock is given back
+(`commerce-checkout.test.ts`, 13 → 14 tests). Full re-verification: clean `pnpm typecheck`/
+`pnpm lint` workspace-wide, every commerce/payments test file passing individually, the full
+`apps/admin` suite (162 tests) clean in one run.
