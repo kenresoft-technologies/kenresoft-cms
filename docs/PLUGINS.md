@@ -4,10 +4,13 @@
 Plugin enablement moved from a static file to a DB-backed, live-toggleable model (also
 2026-09-04) — see Enablement below, which supersedes Phase 1's original design. Phase 2a
 (Commerce catalog domain — products, variants, categories, images) complete, 2026-09-05. Phase 2b
-(Commerce cart & customer accounts) complete, 2026-09-07 — see the end of this document. Together
-these two Commerce passes needed four generic platform extensions, all documented below:
-unauthenticated public plugin routes, grouped admin-nav entries, a plugin email capability, and a
-generic per-plugin public rate-limit declaration. Checkout/orders and payments/Paystack (2c–2d)
+(Commerce cart & customer accounts) complete, 2026-09-07. Phase 2c (Commerce checkout & orders,
+with real concurrency-safe stock enforcement) complete, 2026-09-08 — see the end of this document.
+Together these three Commerce passes needed five generic platform extensions, all documented
+below: unauthenticated public plugin routes, grouped admin-nav entries, a plugin email capability,
+a generic per-plugin public rate-limit declaration, and (2b's hardening follow-up) a
+`PluginBindings.CORS_ORIGINS` field backing a per-plugin explicit Origin/CSRF check. Payments/
+Paystack (2d) and storefront integration into `@kenresoft-cms/astro`/`examples/astro-site` (2e)
 remain not started.
 
 ## What this is
@@ -410,7 +413,75 @@ corrupt order/payment records, which need their own snapshot of customer-identif
 independent of the live row, for the same reason Order will snapshot product/price data (see the
 `cart_items` cascade note above).
 
-Checkout & orders (2c), payments/Paystack (2d), and storefront integration into
-`@kenresoft-cms/astro`/`examples/astro-site` (2e) remain **not started** — each is a separate
-future pass, payments especially, given real money and webhook-signature verification are
-involved.
+## Commerce (Phase 2c: checkout & orders) — done, 2026-09-08
+
+Converts a cart (guest or customer) into a durable `Order`, with real, concurrency-safe stock
+enforcement — closing the "cart-time stock capping is advisory only; real atomic stock enforcement
+is Phase 2c's job at order creation" promise made in the 2b section above. Two new tables:
+`plugin_commerce_orders` and `plugin_commerce_order_items` (migration `0027_thin_lily_hollister.sql`).
+Money, address, and every line item are **snapshotted onto the order at checkout time** — never
+joined live from the product/variant/customer/address rows — for exactly the reason flagged as
+deferred in 2b: a customer can edit their name, delete an address, or (once implemented) be
+deleted entirely, and a product's price/name can change, and none of that may ever alter what a
+past order legally recorded. `customerId` is nullable and `customerEmail`/`customerName` are
+always populated directly, because **guest checkout is supported** — requiring an account to buy
+anything would be a real product regression given guest carts already exist, not a security
+necessity, since the order never depends on a live customer row to know who it's for.
+
+**Real stock enforcement, not just capping.** `createOrder` (`repository/orders.ts`) runs a
+two-phase reserve-then-create sequence rather than a single write, because D1 has no
+`SELECT ... FOR UPDATE`: phase one conditionally decrements every tracked-stock line in one
+`db.batch()` (`UPDATE ... SET stock_qty = stock_qty - ? WHERE stock_qty >= ? RETURNING id` — a
+`.returning()` per statement is how an insufficient-stock line becomes visible at all, since a
+`WHERE` matching zero rows is not a SQL error D1's own batch atomicity would catch); if any line
+failed, the lines that DID succeed are given back in a compensating batch before returning
+failure, so a checkout that can't be fully satisfied never leaves other customers short on stock
+it reserved but couldn't use. Only then does phase two insert the order, its items, and clear the
+cart in a second batch. Verified with a real concurrency test, not just reasoned about: two
+customers checking out the last unit of the same variant at the same time via `Promise.all`
+resolves to exactly one 201 and one 400, and the variant's stock lands at exactly 0, never
+negative. Known, accepted gap, documented in code rather than silently risked: a crash between
+the two phases would leave stock decremented with no order to show for it — D1 has no
+cross-request saga/compensation log, and building one is out of scope for this pass.
+
+Checkout (`POST /checkout`, public, guest-or-customer cookie) re-verifies every cart line's
+product/variant status live at checkout time (never trusting whatever was true when it was added
+to the cart) and rejects the whole checkout — naming which item — if anything is no longer
+published/active, rather than silently dropping it and charging for less than the cart showed.
+Order status is a five-state machine (`pending -> paid -> fulfilled`, with `cancelled`/`refunded`
+reachable from more than one state and both terminal) enforced in `updateOrderStatus`, not left to
+the caller — an invalid transition 400s. Cancelling or refunding an order **restocks** every
+line whose variant still exists (a deleted variant has nothing left to restock, and is skipped),
+closing the other half of "real" stock enforcement: a cancellation must give back what it reserved
+or every cancellation permanently shrinks available stock.
+
+Three route surfaces: `POST /checkout` (public); `GET /customer/orders` +
+`GET /customer/orders/{id}` (`routes/customer.ts`, session-required, 404s another customer's or a
+guest order's id identically to a nonexistent one — the same draft-vs-nonexistent-slug convention
+Core's own public API already establishes); and `GET`/`GET :id`/`PATCH :id/status` under
+`/orders` (`routes/admin-orders.ts`, CMS-staff). Admin order routes are gated at `editor`, matching
+catalog — not admin-customers.ts's stricter `admin` floor — since fulfilling orders (seeing what
+was bought, where it ships, moving pending → paid → fulfilled) is core day-to-day operational work
+for an editor, not customer-PII browsing. `checkout`/`customer`/`cart` all share one small
+extraction, `lib/cart-resolution.ts`'s `resolveExistingCart` (pulled out of `routes/cart.ts`,
+which used to define it locally), so checkout never duplicates cart.ts's own customer-vs-guest
+cart resolution.
+
+`apps/admin` gained an Orders page (list with a status filter, `DataTable`) and an Order detail
+page (line items, shipping address, a status-change `Select` that lets the API's own transition
+validation be authoritative rather than mirroring the state machine in the UI) — both under a new
+`/plugins/commerce/orders` route pair, registered in `apps/admin/src/plugins/registry.ts` the same
+way every other Commerce page already is. `StatusBadge` gained tone entries for all five order
+statuses.
+
+Verified with two new real-D1 test files: `commerce-checkout.test.ts` (8 tests — empty-cart/
+missing-guest-contact-info rejection, a full guest checkout with stock decrement and cart-clear
+assertions, a customer checkout defaulting email/name from the profile, rejection of a since-
+unpublished item, rejection when stock dropped below the cart quantity in the meantime with the
+stock level asserted unchanged, a failed multi-item checkout proving the successfully-reserved
+line's stock is given back, and the concurrency race test described above) and
+`commerce-orders.test.ts` (7 tests — the editor-floor role gate, list/filter/detail, valid and
+invalid status transitions, restock-on-cancel with a second cancel attempt asserted to 400 since
+cancelled is terminal, and customer order-history scoping including the cross-customer 404).
+Payments/Paystack (2d) and storefront integration into `@kenresoft-cms/astro`/`examples/astro-site`
+(2e) remain **not started**.

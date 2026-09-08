@@ -320,6 +320,96 @@ export const pluginCommerceCartItems = sqliteTable(
   ],
 );
 
+// Phase 2c: Checkout & Orders. An Order is a durable financial record, unlike a cart — every line
+// snapshots the product/variant's name, sku, and unit price *at purchase time* directly onto
+// pluginCommerceOrderItems (never re-read live), and the order itself snapshots the buyer's
+// email/name and shipping address inline rather than joining out to the live customer/address
+// rows. This is deliberate, not an oversight: a customer can edit their name, delete an address,
+// or (once implemented) be deleted entirely, and a product's price/name can change — none of that
+// may ever alter what a past order legally recorded. `customerId` is nullable specifically because
+// checkout supports guest orders (mirroring the guest-cart support already established in Phase
+// 2b) — a guest order has no customer row to snapshot from in the first place, only what was
+// typed into the checkout form.
+export const pluginCommerceOrders = sqliteTable(
+  'plugin_commerce_orders',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    // Set-null, not cascade: deleting a customer must never delete their order history (a
+    // financial/legal record) — see the deferred customer-deletion note in docs/PLUGINS.md's
+    // Commerce section. The order's own customerEmail/customerName below are the durable record
+    // once this is null, whether from a guest order or a since-deleted customer.
+    customerId: text('customer_id').references(() => pluginCommerceCustomers.id, { onDelete: 'set null' }),
+    customerEmail: text('customer_email').notNull(),
+    customerName: text('customer_name').notNull(),
+    // pending: just created, awaiting payment (Phase 2d wires a real gateway to this transition).
+    // paid -> fulfilled is the normal path; cancelled/refunded both restock every line's tracked
+    // variant (repository/orders.ts) and are terminal — see the status-transition table there.
+    status: text('status', { enum: ['pending', 'paid', 'fulfilled', 'cancelled', 'refunded'] })
+      .notNull()
+      .default('pending'),
+    currency: text('currency').notNull(),
+    // No tax/shipping-cost computation this pass — totalAmount is exactly the sum of each line's
+    // unitPriceAtPurchase * quantity. Flagged as a deliberate simplification, not an oversight.
+    totalAmount: integer('total_amount').notNull(),
+    // A snapshot of the destination address, embedded rather than a FK to
+    // pluginCommerceCustomerAddresses — that table doesn't exist at all for a guest order, and
+    // even for a customer order the same "never let a later edit alter a past order" reasoning
+    // above applies to the shipping address exactly as it does to price/name.
+    shippingAddress: text('shipping_address', { mode: 'json' }).$type<{
+      recipientName: string;
+      line1: string;
+      line2: string | null;
+      city: string;
+      region: string | null;
+      postalCode: string;
+      country: string;
+      phone: string | null;
+    }>().notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .default(sql`(unixepoch())`),
+    updatedAt: integer('updated_at', { mode: 'timestamp' })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => [
+    index('plugin_commerce_orders_customer_id_idx').on(table.customerId),
+    index('plugin_commerce_orders_status_idx').on(table.status),
+  ],
+);
+
+// Set-null on product/variant delete (not cascade, unlike cart items) — precisely because an
+// order line must survive the deletion of the catalog row it was purchased from; productName/
+// variantName/sku/unitPriceAtPurchase are the durable record once productId/variantId go null.
+export const pluginCommerceOrderItems = sqliteTable(
+  'plugin_commerce_order_items',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    orderId: text('order_id')
+      .notNull()
+      .references(() => pluginCommerceOrders.id, { onDelete: 'cascade' }),
+    productId: text('product_id').references(() => pluginCommerceProducts.id, { onDelete: 'set null' }),
+    variantId: text('variant_id').references(() => pluginCommerceProductVariants.id, { onDelete: 'set null' }),
+    productName: text('product_name').notNull(),
+    variantName: text('variant_name'),
+    sku: text('sku'),
+    unitPriceAtPurchase: integer('unit_price_at_purchase').notNull(),
+    quantity: integer('quantity').notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => [
+    index('plugin_commerce_order_items_order_id_idx').on(table.orderId),
+    index('plugin_commerce_order_items_product_id_idx').on(table.productId),
+    index('plugin_commerce_order_items_variant_id_idx').on(table.variantId),
+  ],
+);
+
 export type PluginCommerceCategory = typeof pluginCommerceCategories.$inferSelect;
 export type NewPluginCommerceCategory = typeof pluginCommerceCategories.$inferInsert;
 export type PluginCommerceProduct = typeof pluginCommerceProducts.$inferSelect;
@@ -340,3 +430,7 @@ export type PluginCommerceCart = typeof pluginCommerceCarts.$inferSelect;
 export type NewPluginCommerceCart = typeof pluginCommerceCarts.$inferInsert;
 export type PluginCommerceCartItem = typeof pluginCommerceCartItems.$inferSelect;
 export type NewPluginCommerceCartItem = typeof pluginCommerceCartItems.$inferInsert;
+export type PluginCommerceOrder = typeof pluginCommerceOrders.$inferSelect;
+export type NewPluginCommerceOrder = typeof pluginCommerceOrders.$inferInsert;
+export type PluginCommerceOrderItem = typeof pluginCommerceOrderItems.$inferSelect;
+export type NewPluginCommerceOrderItem = typeof pluginCommerceOrderItems.$inferInsert;

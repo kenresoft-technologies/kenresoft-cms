@@ -1,13 +1,13 @@
 import { createRoute, z } from '@hono/zod-openapi';
 import { createPluginOpenApiApp } from '@kenresoft-cms/plugin-sdk';
 import type { PluginBindings, PluginPublicContext, PluginPublicVariables } from '@kenresoft-cms/plugin-sdk';
-import type { Context } from 'hono';
 import type { PluginCommerceCart } from '@kenresoft-cms/database';
 
 import type { CommerceConfig } from '../config-schema';
-import { getCustomerFromRequest, getGuestCartId, setGuestCartCookie, clearGuestCartCookie } from '../lib/customer-session';
+import { resolveExistingCart } from '../lib/cart-resolution';
+import { getCustomerFromRequest, setGuestCartCookie, clearGuestCartCookie } from '../lib/customer-session';
 import { requireTrustedOriginForMutations } from '../lib/origin-check';
-import { getCustomerCart, getGuestCart, createGuestCart, getOrCreateCartForCustomer, clearCart } from '../repository/carts';
+import { createGuestCart, getOrCreateCartForCustomer, clearCart } from '../repository/carts';
 import { listItemsWithDetail, addOrIncrementItem, updateItemQuantity, removeItem } from '../repository/cart-items';
 import { getProductById } from '../repository/products';
 import { getVariantById } from '../repository/variants';
@@ -41,20 +41,6 @@ const cartSchema = z.object({
 });
 
 const emptyCart = { id: null, currency: null, items: [] };
-
-// Resolves the caller's own cart (customer's or guest's) without creating anything — used by
-// every route here except POST /items, which is the one place a cart may be created.
-async function resolveExistingCart(c: Context, ctx: PluginPublicContext): Promise<PluginCommerceCart | null> {
-  const customer = await getCustomerFromRequest(c, ctx.db);
-  if (customer) {
-    const cart = await getCustomerCart(ctx.db, customer.id);
-    return cart ?? null;
-  }
-  const guestCartId = getGuestCartId(c);
-  if (!guestCartId) return null;
-  const cart = await getGuestCart(ctx.db, guestCartId);
-  return cart ?? null;
-}
 
 async function serializeCart(ctx: PluginPublicContext, cart: PluginCommerceCart | null) {
   if (!cart) return emptyCart;

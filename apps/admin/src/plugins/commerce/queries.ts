@@ -362,3 +362,82 @@ export function useUpdateCommerceCustomerDisabled(customerId: string) {
     },
   });
 }
+
+// Phase 2c — Checkout & Orders. Editor-gated on the API side (matching catalog, not
+// admin-customers.ts's stricter admin floor — see routes/admin-orders.ts's own comment).
+
+export type CommerceOrderStatus = 'pending' | 'paid' | 'fulfilled' | 'cancelled' | 'refunded';
+
+export interface CommerceOrderSummary {
+  id: string;
+  customerId: string | null;
+  customerEmail: string;
+  customerName: string;
+  status: CommerceOrderStatus;
+  currency: string;
+  totalAmount: number;
+  createdAt: string;
+}
+
+export interface CommerceOrderItem {
+  id: string;
+  productId: string | null;
+  variantId: string | null;
+  productName: string;
+  variantName: string | null;
+  sku: string | null;
+  unitPriceAtPurchase: number;
+  quantity: number;
+}
+
+export interface CommerceOrderAddress {
+  recipientName: string;
+  line1: string;
+  line2: string | null;
+  city: string;
+  region: string | null;
+  postalCode: string;
+  country: string;
+  phone: string | null;
+}
+
+export interface CommerceOrderDetail extends CommerceOrderSummary {
+  shippingAddress: CommerceOrderAddress;
+  items: CommerceOrderItem[];
+}
+
+const ordersKey = ['plugins', 'commerce', 'orders'] as const;
+
+function orderByIdKey(orderId: string) {
+  return ['plugins', 'commerce', 'orders', 'by-id', orderId] as const;
+}
+
+export function useCommerceOrders(status?: CommerceOrderStatus) {
+  return useQuery({
+    queryKey: [...ordersKey, status ?? ''],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (status) params.set('status', status);
+      return apiClient.get<CommerceOrderSummary[]>(`${BASE}/orders?${params.toString()}`);
+    },
+  });
+}
+
+export function useCommerceOrder(orderId: string) {
+  return useQuery({
+    queryKey: orderByIdKey(orderId),
+    queryFn: () => apiClient.get<CommerceOrderDetail>(`${BASE}/orders/${orderId}`),
+    enabled: Boolean(orderId),
+  });
+}
+
+export function useUpdateCommerceOrderStatus(orderId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (status: CommerceOrderStatus) => apiClient.patch<CommerceOrderSummary>(`${BASE}/orders/${orderId}/status`, { status }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ordersKey });
+      void queryClient.invalidateQueries({ queryKey: orderByIdKey(orderId) });
+    },
+  });
+}

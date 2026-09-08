@@ -15,6 +15,12 @@ const STATUS_CONFIG: Record<string, { label: string; tone: StatusTone }> = {
   // User activity status (UsersPage) — derived from lastActiveAt, not a stored field.
   active: { label: 'Active', tone: 'success' },
   'never-active': { label: 'Never signed in', tone: 'muted' },
+  // Commerce order status (Phase 2c).
+  pending: { label: 'Pending', tone: 'info' },
+  paid: { label: 'Paid', tone: 'success' },
+  fulfilled: { label: 'Fulfilled', tone: 'success' },
+  cancelled: { label: 'Cancelled', tone: 'muted' },
+  refunded: { label: 'Refunded', tone: 'muted' },
 };
 
 const TONE_CLASSES: Record<StatusTone, string> = {
