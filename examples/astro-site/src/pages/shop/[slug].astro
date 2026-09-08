@@ -1,6 +1,7 @@
 ---
 import { createKenresoftClient } from '@kenresoft-cms/astro';
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import Alert from '../../components/ui/Alert.astro';
 import { formatMoney } from '../../lib/money';
 
 const cms = createKenresoftClient({ url: import.meta.env.PUBLIC_KENRESOFT_CMS_URL });
@@ -14,8 +15,15 @@ if (!product) {
   return new Response(null, { status: 404, statusText: 'Not Found' });
 }
 
-const primaryImage = product.images[0] ?? null;
-const primaryImageMeta = primaryImage ? await cms.media.get({ id: primaryImage.mediaId }) : null;
+const images = [...product.images].sort((a, b) => a.sortOrder - b.sortOrder);
+const primaryImage = images[0] ?? null;
+const imageMetaById = new Map(
+  await Promise.all(images.map(async (image) => [image.mediaId, await cms.media.get({ id: image.mediaId })] as const)),
+);
+
+const hasVariants = product.variants.length > 0;
+const allOutOfStock = hasVariants && product.variants.every((variant) => variant.stockQty === 0);
+
 // Cart/checkout mutations happen client-side (see the <script> below), not here in SSR
 // frontmatter — cart identity is a browser cookie the API sets directly on this deployment's own
 // origin (credentials: 'include'), which a server-side fetch from Astro's own runtime has no
@@ -24,57 +32,97 @@ const primaryImageMeta = primaryImage ? await cms.media.get({ id: primaryImage.m
 // the same client-side pattern for that reason.
 ---
 
-<BaseLayout title={`${product.name} — Shop — Kenresoft CMS`} description={product.shortDescription ?? undefined}>
+<BaseLayout
+  title={`${product.name} — Shop — Kenresoft CMS`}
+  description={product.shortDescription ?? undefined}
+  canonicalUrl={new URL(`/shop/${product.slug}`, Astro.site ?? Astro.url).toString()}
+  ogImage={primaryImage ? cms.media.url({ id: primaryImage.mediaId }) : undefined}
+>
   <div class="product">
     <a class="back-link" href="/shop">← Back to shop</a>
     <div class="product-layout">
       <div class="product-media">
-        {primaryImage ? (
-          <img src={cms.media.url({ id: primaryImage.mediaId })} alt={primaryImageMeta?.altText ?? primaryImage.altText ?? product.name} />
-        ) : (
-          <div class="product-media-placeholder" aria-hidden="true" />
-        )}
+        <div class="product-media-main">
+          {primaryImage ? (
+            <img
+              id="main-product-image"
+              src={cms.media.url({ id: primaryImage.mediaId })}
+              alt={imageMetaById.get(primaryImage.mediaId)?.altText ?? primaryImage.altText ?? product.name}
+            />
+          ) : (
+            <div class="product-media-placeholder" aria-hidden="true" />
+          )}
+        </div>
+        {images.length > 1 ? (
+          <div class="product-thumbs" role="tablist" aria-label="Product images">
+            {images.map((image, index) => (
+              <button
+                type="button"
+                class="product-thumb"
+                data-thumb-src={cms.media.url({ id: image.mediaId })}
+                aria-current={index === 0 ? 'true' : undefined}
+              >
+                <img src={cms.media.url({ id: image.mediaId })} alt={imageMetaById.get(image.mediaId)?.altText ?? `${product.name} photo ${index + 1}`} />
+              </button>
+            ))}
+          </div>
+        ) : null}
       </div>
       <div class="product-info">
         <h1>{product.name}</h1>
         <p class="price" id="selected-price">{formatMoney(product.basePrice, product.currency)}</p>
         {product.description ? <p class="description">{product.description}</p> : null}
 
-        <form id="add-to-cart-form" data-product-id={product.id} data-base-price={product.basePrice} data-currency={product.currency}>
-          {product.variants.length > 0 ? (
+        {allOutOfStock ? (
+          <Alert tone="error">This product is currently out of stock.</Alert>
+        ) : (
+          <form id="add-to-cart-form" data-product-id={product.id} data-base-price={product.basePrice} data-currency={product.currency}>
+            {hasVariants ? (
+              <label class="field">
+                <span>Options</span>
+                <select id="variant-select" name="variantId" required>
+                  {product.variants.map((variant) => (
+                    <option value={variant.id} data-price={variant.price ?? product.basePrice} data-stock={variant.stockQty} disabled={variant.stockQty === 0}>
+                      {variant.name}
+                      {variant.stockQty === 0 ? ' (out of stock)' : 5 >= variant.stockQty ? ` (${variant.stockQty} left)` : ''}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
             <label class="field">
-              <span>Options</span>
-              <select id="variant-select" name="variantId">
-                {product.variants.map((variant) => (
-                  <option value={variant.id} data-price={variant.price ?? product.basePrice} disabled={variant.stockQty === 0}>
-                    {variant.name}
-                    {variant.stockQty === 0 ? ' (out of stock)' : ''}
-                  </option>
-                ))}
-              </select>
+              <span>Quantity</span>
+              <input type="number" name="quantity" value="1" min="1" />
             </label>
-          ) : null}
-          <label class="field">
-            <span>Quantity</span>
-            <input type="number" name="quantity" value="1" min="1" />
-          </label>
-          <button type="submit" class="button button-primary">Add to cart</button>
-          <p class="form-status" id="add-to-cart-status" role="status"></p>
-        </form>
+            <button type="submit" class="button button-primary" id="add-to-cart-button">Add to cart</button>
+            <div id="add-to-cart-alert" role="status"></div>
+          </form>
+        )}
       </div>
     </div>
   </div>
 </BaseLayout>
 
 <script>
-  import { createKenresoftClient, KenresoftApiError } from '@kenresoft-cms/astro';
-
-  const cms = createKenresoftClient({ url: import.meta.env.PUBLIC_KENRESOFT_CMS_URL });
+  import { getBrowserClient, KenresoftApiError } from '../../lib/browser-client';
+  import { refreshCartBadge } from '../../lib/cart-badge';
 
   const form = document.querySelector<HTMLFormElement>('#add-to-cart-form');
-  const status = document.querySelector<HTMLParagraphElement>('#add-to-cart-status');
+  const alertEl = document.querySelector<HTMLDivElement>('#add-to-cart-alert');
+  const submitButton = document.querySelector<HTMLButtonElement>('#add-to-cart-button');
   const priceEl = document.querySelector<HTMLParagraphElement>('#selected-price');
   const variantSelect = document.querySelector<HTMLSelectElement>('#variant-select');
+  const mainImage = document.querySelector<HTMLImageElement>('#main-product-image');
+
+  function showAlert(message: string, tone: 'success' | 'error') {
+    if (!alertEl) return;
+    alertEl.textContent = message;
+    alertEl.className = `alert alert-${tone}`;
+    alertEl.style.marginTop = '0.75rem';
+    alertEl.style.padding = '0.6rem 0.85rem';
+    alertEl.style.borderRadius = '10px';
+    alertEl.style.fontSize = '0.9rem';
+  }
 
   // Reflects the selected variant's own price override, if any — matches the same
   // basePrice-unless-a-variant-overrides-it resolution the cart/order APIs already use.
@@ -87,20 +135,34 @@ const primaryImageMeta = primaryImage ? await cms.media.get({ id: primaryImage.m
   }
   variantSelect?.addEventListener('change', updatePriceDisplay);
 
+  document.querySelectorAll<HTMLButtonElement>('.product-thumb').forEach((thumb) => {
+    thumb.addEventListener('click', () => {
+      const src = thumb.dataset.thumbSrc;
+      if (src && mainImage) mainImage.src = src;
+      document.querySelectorAll('.product-thumb').forEach((el) => el.removeAttribute('aria-current'));
+      thumb.setAttribute('aria-current', 'true');
+    });
+  });
+
   form?.addEventListener('submit', async (event) => {
     event.preventDefault();
-    if (!status) return;
-    status.textContent = 'Adding…';
+    if (!submitButton) return;
+    submitButton.disabled = true;
+    submitButton.textContent = 'Adding…';
 
     const formData = new FormData(form);
     const variantId = (formData.get('variantId') as string | null) || undefined;
     const quantity = Number(formData.get('quantity') ?? 1);
 
     try {
-      await cms.commerce.cart.addItem({ productId: form.dataset.productId!, variantId, quantity });
-      status.textContent = 'Added to cart.';
+      await getBrowserClient().commerce.cart.addItem({ productId: form.dataset.productId!, variantId, quantity });
+      showAlert('Added to cart.', 'success');
+      await refreshCartBadge();
     } catch (err) {
-      status.textContent = err instanceof KenresoftApiError ? err.message : 'Could not add this item to your cart.';
+      showAlert(err instanceof KenresoftApiError ? err.message : 'Could not add this item to your cart.', 'error');
+    } finally {
+      submitButton.disabled = false;
+      submitButton.textContent = 'Add to cart';
     }
   });
 </script>
@@ -136,7 +198,7 @@ const primaryImageMeta = primaryImage ? await cms.media.get({ id: primaryImage.m
     }
   }
 
-  .product-media img {
+  .product-media-main img {
     width: 100%;
     border-radius: var(--radius);
     object-fit: cover;
@@ -149,6 +211,33 @@ const primaryImageMeta = primaryImage ? await cms.media.get({ id: primaryImage.m
     border-radius: var(--radius);
     background: var(--surface-muted);
     border: 1px solid var(--border);
+  }
+
+  .product-thumbs {
+    display: flex;
+    gap: 0.6rem;
+    margin-top: 0.75rem;
+  }
+
+  .product-thumb {
+    padding: 0;
+    border: 2px solid transparent;
+    border-radius: 8px;
+    background: none;
+    cursor: pointer;
+    width: 64px;
+    height: 64px;
+    overflow: hidden;
+  }
+
+  .product-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .product-thumb[aria-current='true'] {
+    border-color: var(--brand);
   }
 
   .product-info h1 {
@@ -188,10 +277,8 @@ const primaryImageMeta = primaryImage ? await cms.media.get({ id: primaryImage.m
     font-family: inherit;
   }
 
-  .form-status {
-    margin: 0.75rem 0 0;
-    font-size: 0.9rem;
-    color: var(--ink-muted);
-    min-height: 1.2em;
+  #add-to-cart-button:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
   }
 </style>

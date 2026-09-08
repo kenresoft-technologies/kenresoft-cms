@@ -1,52 +1,92 @@
 ---
 import { createKenresoftClient } from '@kenresoft-cms/astro';
 import BaseLayout from '../../layouts/BaseLayout.astro';
-import { formatMoney } from '../../lib/money';
+import ProductCard from '../../components/commerce/ProductCard.astro';
 
 const cms = createKenresoftClient({ url: import.meta.env.PUBLIC_KENRESOFT_CMS_URL });
 
-// The public product-list endpoint deliberately carries no images/variants (packages/
-// plugin-ecommerce/src/routes/public.ts) — fetching every product's images here to build a grid
-// thumbnail would mean an extra query per row for a view one click away from the detail page
-// that already has them. This grid is text-only for now; see cms.commerce.products.get() on the
-// detail page for the real photo.
+const categoryId = Astro.url.searchParams.get('category') ?? undefined;
+
 let products: Awaited<ReturnType<typeof cms.commerce.products.list>> = [];
+let categories: Awaited<ReturnType<typeof cms.commerce.categories.list>> = [];
 let loadError: string | null = null;
+
 try {
-  products = await cms.commerce.products.list();
+  [products, categories] = await Promise.all([cms.commerce.products.list({ categoryId }), cms.commerce.categories.list()]);
 } catch (err) {
-  // Most likely: the commerce plugin isn't installed/enabled on this deployment at all (every
-  // commerce route 404s identically when disabled — docs/PLUGINS.md's enablement section), which
-  // this client surfaces as a KenresoftApiError rather than an empty list, unlike entries.list()'s
-  // own "empty array for a nonexistent content type" convention (products aren't a content type).
+  // Most likely: the commerce plugin isn't installed/enabled on this deployment (every commerce
+  // route 404s identically when disabled — docs/PLUGINS.md's enablement section), which this
+  // client surfaces as a KenresoftApiError rather than an empty list.
   loadError = err instanceof Error ? err.message : String(err);
+}
+
+// The list endpoint deliberately carries no images/variants (packages/plugin-ecommerce/src/
+// routes/public.ts) — a real product grid still wants a thumbnail and an at-a-glance
+// availability/variant signal, so this fetches each listed product's own detail (the same real
+// endpoint the product page uses) in parallel. Fine for a reference catalog's size; a very large
+// one would want the list endpoint itself extended with a thumbnail field instead — flagged in
+// the final report as a possible backend improvement, not silently worked around with fake data.
+const details = loadError
+  ? []
+  : await Promise.all(
+      products.map((product) =>
+        cms.commerce.products.get({ slug: product.slug }).catch(() => null),
+      ),
+    );
+const detailBySlug = new Map(details.filter((detail) => detail !== null).map((detail) => [detail!.slug, detail!]));
+
+function availabilityFor(product: (typeof products)[number]) {
+  const detail = detailBySlug.get(product.slug);
+  if (!detail) return { label: 'Unknown', inStock: true };
+  if (detail.variants.length === 0) return { label: 'In stock', inStock: true };
+  const totalStock = detail.variants.reduce((sum, variant) => sum + variant.stockQty, 0);
+  return totalStock > 0 ? { label: `${detail.variants.length} option${detail.variants.length > 1 ? 's' : ''}`, inStock: true } : { label: 'Out of stock', inStock: false };
 }
 ---
 
-<BaseLayout title="Shop — Kenresoft CMS" description="A storefront rendered from Kenresoft CMS's Commerce plugin.">
+<BaseLayout title="Shop — Kenresoft CMS" description="A storefront rendered from Kenresoft CMS's Commerce plugin." canonicalUrl={new URL('/shop', Astro.site ?? Astro.url).toString()}>
   <div class="page-header">
     <h1>Shop</h1>
+    {
+      categories.length > 0 ? (
+        <div class="category-filters">
+          <a href="/shop" aria-current={!categoryId ? 'page' : undefined}>
+            All
+          </a>
+          {categories.map((category) => (
+            <a href={`/shop?category=${category.id}`} aria-current={categoryId === category.id ? 'page' : undefined}>
+              {category.name}
+            </a>
+          ))}
+        </div>
+      ) : null
+    }
   </div>
 
   {
     loadError ? (
-      <div class="empty-state">
+      <div class="empty-state" role="alert">
         <p>Couldn’t load the catalog: {loadError}</p>
         <p>Is the Commerce plugin installed and enabled on this deployment (Settings → Plugins)?</p>
       </div>
     ) : products.length === 0 ? (
       <div class="empty-state">
-        <p>No published products yet. Create one in the admin (Commerce → Products) and publish it.</p>
+        <p>No published products yet{categoryId ? ' in this category' : ''}. Create one in the admin (Commerce → Products) and publish it.</p>
       </div>
     ) : (
       <div class="product-grid">
-        {products.map((product) => (
-          <a class="product-card" href={`/shop/${product.slug}`}>
-            <h2>{product.name}</h2>
-            {product.shortDescription ? <p>{product.shortDescription}</p> : null}
-            <p class="price">{formatMoney(product.basePrice, product.currency)}</p>
-          </a>
-        ))}
+        {products.map((product) => {
+          const detail = detailBySlug.get(product.slug);
+          const image = detail?.images[0];
+          const imageUrl = image ? cms.media.url({ id: image.mediaId }) : null;
+          const availability = availabilityFor(product);
+          return (
+            <div class="product-slot">
+              <ProductCard product={product} imageUrl={imageUrl} />
+              <p class={`availability ${availability.inStock ? 'in-stock' : 'out-of-stock'}`}>{availability.label}</p>
+            </div>
+          );
+        })}
       </div>
     )
   }
@@ -57,6 +97,11 @@ try {
     max-width: var(--max-width);
     margin: 0 auto;
     padding: 3rem 1.5rem 1rem;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
   }
 
   .page-header h1 {
@@ -64,6 +109,27 @@ try {
     font-size: 2rem;
     font-weight: 600;
     letter-spacing: -0.01em;
+  }
+
+  .category-filters {
+    display: flex;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+  }
+
+  .category-filters a {
+    padding: 0.35rem 0.8rem;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    text-decoration: none;
+    color: var(--ink-muted);
+    font-size: 0.85rem;
+  }
+
+  .category-filters a[aria-current='page'] {
+    background: var(--brand);
+    border-color: var(--brand);
+    color: var(--brand-foreground);
   }
 
   .empty-state {
@@ -82,39 +148,24 @@ try {
     gap: 1.25rem;
   }
 
-  .product-card {
+  .product-slot {
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
-    padding: 1.25rem;
-    border-radius: var(--radius);
-    border: 1px solid var(--border);
-    text-decoration: none;
-    color: var(--ink);
-    transition: border-color 0.15s ease;
   }
 
-  .product-card:hover {
-    border-color: var(--brand);
-  }
-
-  .product-card h2 {
+  .availability {
     margin: 0;
-    font-size: 1.1rem;
+    padding: 0 0.2rem;
+    font-size: 0.82rem;
     font-weight: 600;
   }
 
-  .product-card p {
-    margin: 0;
+  .availability.in-stock {
+    color: color-mix(in oklch, oklch(0.55 0.15 145) 80%, var(--ink));
+  }
+
+  .availability.out-of-stock {
     color: var(--ink-muted);
-    font-size: 0.9rem;
-    line-height: 1.5;
-  }
-
-  .product-card .price {
-    margin-top: auto;
-    color: var(--ink);
-    font-weight: 600;
-    font-size: 1rem;
   }
 </style>
