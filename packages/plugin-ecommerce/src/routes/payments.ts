@@ -1,10 +1,10 @@
 import { createRoute, z } from '@hono/zod-openapi';
 import { createPluginOpenApiApp } from '@kenresoft-cms/plugin-sdk';
 import type { PluginBindings, PluginPublicContext, PluginPublicVariables, VerifyPaymentResult } from '@kenresoft-cms/plugin-sdk';
-import type { PluginCommerceOrder } from '@kenresoft-cms/database';
+import type { PluginCommerceOrder, PluginCommerceOrderPayment } from '@kenresoft-cms/database';
 
 import { getOrderById } from '../repository/orders';
-import { getPaymentAttempt, getPendingPaymentAttemptForOrder, initializePaymentAttempt, resolvePaymentAttempt } from '../repository/payments';
+import { abandonPaymentAttempt, claimPendingPaymentAttempt, getPaymentAttempt, resolvePaymentAttempt, setPaymentAttemptAuthorizationUrl } from '../repository/payments';
 
 // Public: checkout/payment confirmation must work for a guest with no session at all. Unlike
 // cart/customer/customer-auth, these routes carry no cookie-based identity to forge in the first
@@ -36,7 +36,6 @@ function isAllowedCallbackOrigin(corsOrigins: string, callbackUrl: string): bool
 // resolves automatically) and must never be treated as a failure — see
 // apps/api/src/lib/payments/types.ts's own comment on why this distinction exists at all.
 const TERMINAL_FAILURE_STATUSES: ReadonlySet<VerifyPaymentResult['status']> = new Set(['failed', 'abandoned']);
-const NON_TERMINAL_STATUSES: ReadonlySet<VerifyPaymentResult['status']> = new Set(['pending', 'ongoing', 'processing', 'queued']);
 
 type SettleOutcome = 'success' | 'failed' | 'mismatch' | 'already_resolved' | 'unknown_reference' | 'succeeded_but_order_not_pending';
 
@@ -139,74 +138,102 @@ paymentsRoutes.openapi(
       return c.json({ error: `Cannot initialize payment for an order with status '${order.status}'` }, 400);
     }
 
-    // Idempotency guard: a repeated call (accidental double-click, a client retry) must not
-    // create a second, independently-chargeable Paystack transaction for the same order. If an
-    // attempt is already open, re-check its real status with Paystack rather than trusting our
-    // own possibly-stale 'pending' record, then decide what a fresh call should actually do.
-    const existingPending = await getPendingPaymentAttemptForOrder(ctx.db, orderId);
-    if (existingPending) {
-      let recheck;
+    // Calls Paystack for an ALREADY-CLAIMED reference (claimPendingPaymentAttempt must have
+    // succeeded before this is ever called) and records the result. Split out from the claim
+    // itself so both "this is the first attempt" and "the prior attempt just failed, claim a
+    // fresh one" can share the exact same call-and-record logic.
+    const initializeWithClaimedReference = async (reference: string) => {
+      let initialized;
       try {
-        recheck = await ctx.payments.verifyTransaction(existingPending.reference);
-      } catch (err) {
-        // A transient provider error while merely re-checking must not force this deployment to
-        // create ANOTHER duplicate reference just because one status check failed — reuse the
-        // session we already know about instead.
-        ctx.logger.warn('Paystack re-verify failed while checking for a duplicate payment initialization; reusing the existing attempt', {
-          orderId,
-          reference: existingPending.reference,
-          error: err instanceof Error ? err.message : String(err),
+        initialized = await ctx.payments.initializeTransaction({
+          amount: order.totalAmount,
+          currency: order.currency,
+          email: order.customerEmail,
+          reference,
+          callbackUrl,
         });
-        if (existingPending.authorizationUrl) {
-          return c.json({ authorizationUrl: existingPending.authorizationUrl, reference: existingPending.reference }, 200);
-        }
+      } catch (err) {
+        ctx.logger.error('Paystack initialize-transaction failed', { orderId, error: err instanceof Error ? err.message : String(err) });
+        // Free the claimed slot — a transient provider error must not permanently block this
+        // order from ever initializing payment again (repository/payments.ts's own comment).
+        await abandonPaymentAttempt(ctx.db, reference);
         return c.json({ error: 'The payment provider returned an error — please try again' }, 502);
       }
 
-      if (recheck.status === 'success') {
-        const outcome = await settlePayment(ctx, order, { reference: existingPending.reference, status: 'success', amount: recheck.amount, currency: recheck.currency, raw: recheck.raw });
-        if (outcome === 'mismatch') {
-          return c.json({ error: 'A prior payment attempt for this order succeeded, but for an amount/currency that does not match' }, 409);
-        }
-        return c.json({ error: 'This order has already been paid' }, 400);
-      }
+      // Recorded the moment Paystack hands back a real session, before the customer has even
+      // reached its page — this is what lets a later webhook or verify call for THIS exact
+      // reference resolve correctly, even if the customer abandons it and a later call
+      // initializes a second, different reference afterward.
+      await setPaymentAttemptAuthorizationUrl(ctx.db, reference, initialized.authorizationUrl);
+      return c.json({ authorizationUrl: initialized.authorizationUrl, reference }, 200);
+    };
 
-      if (TERMINAL_FAILURE_STATUSES.has(recheck.status)) {
-        // The prior attempt is genuinely done and didn't succeed — resolve it, then fall through
-        // to issue a real, fresh reference below rather than handing back a dead session.
-        await settlePayment(ctx, order, { reference: existingPending.reference, status: 'failed', amount: recheck.amount, currency: recheck.currency, raw: recheck.raw });
-      } else if (NON_TERMINAL_STATUSES.has(recheck.status) && existingPending.authorizationUrl) {
-        // Still in flight at Paystack (or an ambiguous status this deployment doesn't act on
-        // automatically) — reuse the existing, still-potentially-payable session.
-        return c.json({ authorizationUrl: existingPending.authorizationUrl, reference: existingPending.reference }, 200);
-      }
-      // No stored authorizationUrl to fall back on (shouldn't happen — it's always set at
-      // initialize time) — fall through to issue a fresh transaction rather than a dead end.
+    // The atomic claim-then-call-Paystack sequence (issue 1 of the Phase 2d payments review): the
+    // reference is generated and reserved in the DB via claimPendingPaymentAttempt — which can
+    // only ever let ONE of two truly concurrent callers win, enforced by a real partial unique
+    // index (packages/database/schema/plugins/commerce.ts) — BEFORE Paystack is ever called. A
+    // plain "check for an existing attempt, then insert one" has a genuine TOCTOU race: two
+    // concurrent requests can both observe no pending attempt before either has inserted one.
+    const firstClaim = await claimPendingPaymentAttempt(ctx.db, orderId);
+    if (firstClaim.claimed) {
+      return initializeWithClaimedReference(firstClaim.reference);
     }
 
-    const reference = crypto.randomUUID();
-    let initialized;
+    // Lost the claim — an attempt already exists, either from this same buyer's own recent retry
+    // or a genuinely concurrent request. Inspect it with Paystack rather than assuming anything.
+    const existing: PluginCommerceOrderPayment = firstClaim.existing;
+    if (!existing.authorizationUrl) {
+      // A concurrent request has claimed the slot and is still talking to Paystack right now —
+      // there's nothing usable to hand back yet.
+      return c.json({ error: 'Payment initialization for this order is already in progress — please retry shortly' }, 409);
+    }
+
+    let recheck;
     try {
-      initialized = await ctx.payments.initializeTransaction({
-        amount: order.totalAmount,
-        currency: order.currency,
-        email: order.customerEmail,
-        reference,
-        callbackUrl,
-      });
+      recheck = await ctx.payments.verifyTransaction(existing.reference);
     } catch (err) {
-      ctx.logger.error('Paystack initialize-transaction failed', { orderId, error: err instanceof Error ? err.message : String(err) });
-      return c.json({ error: 'The payment provider returned an error — please try again' }, 502);
+      // A transient provider error while merely re-checking must not force a second, duplicate
+      // reference just because one status check failed — reuse the session already on file.
+      ctx.logger.warn('Paystack re-verify failed while checking for a duplicate payment initialization; reusing the existing attempt', {
+        orderId,
+        reference: existing.reference,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return c.json({ authorizationUrl: existing.authorizationUrl, reference: existing.reference }, 200);
     }
 
-    // Recorded as 'pending' the moment Paystack hands back a reference, before the customer has
-    // even reached its page — this is what lets a later webhook or verify call for THIS exact
-    // reference resolve correctly, even if the customer abandons it and initializes a second,
-    // different reference afterward (repository/payments.ts's own comment has the full reasoning
-    // for tracking every issued reference rather than only the order's latest).
-    await initializePaymentAttempt(ctx.db, { orderId, reference: initialized.reference, authorizationUrl: initialized.authorizationUrl });
+    if (recheck.status === 'success') {
+      const outcome = await settlePayment(ctx, order, { reference: existing.reference, status: 'success', amount: recheck.amount, currency: recheck.currency, raw: recheck.raw });
+      if (outcome === 'mismatch') {
+        return c.json({ error: 'A prior payment attempt for this order succeeded, but for an amount/currency that does not match' }, 409);
+      }
+      return c.json({ error: 'This order has already been paid' }, 400);
+    }
 
-    return c.json({ authorizationUrl: initialized.authorizationUrl, reference: initialized.reference }, 200);
+    if (TERMINAL_FAILURE_STATUSES.has(recheck.status)) {
+      const result = await resolvePaymentAttempt(ctx.db, { reference: existing.reference, status: 'failed', amount: recheck.amount, currency: recheck.currency, raw: recheck.raw });
+      if (result.ok && !result.alreadyResolved) {
+        // This request won the resolve race — the one-pending-per-order slot is now free, so
+        // it's safe to claim and issue a real, fresh reference in the same round trip. The claim
+        // here goes through the exact same atomic path as the first attempt above; if a THIRD
+        // concurrent request somehow also reaches this point and wins ITS OWN resolve race
+        // first, this claim would lose to it — the response below already covers "lost the
+        // claim" as a 409 retry-shortly.
+        const freshClaim = await claimPendingPaymentAttempt(ctx.db, orderId);
+        if (!freshClaim.claimed) {
+          return c.json({ error: 'Payment initialization for this order is already in progress — please retry shortly' }, 409);
+        }
+        return initializeWithClaimedReference(freshClaim.reference);
+      }
+      // Someone else already resolved it a moment ago (or it's already gone) — don't also race
+      // to claim a new slot; ask the client to retry, by which point the winner's fresh
+      // reference (if any) will already exist to be found on the next call.
+      return c.json({ error: 'The previous payment attempt for this order just failed — please retry' }, 409);
+    }
+
+    // Still non-terminal at Paystack (or an ambiguous status this deployment doesn't act on
+    // automatically) — reuse the existing, still-potentially-payable session.
+    return c.json({ authorizationUrl: existing.authorizationUrl, reference: existing.reference }, 200);
   },
 );
 

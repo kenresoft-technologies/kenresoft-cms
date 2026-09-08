@@ -281,20 +281,77 @@ describe('commerce plugin: payments (real D1)', () => {
     expect(orderRow?.status).toBe('paid');
   });
 
-  async function initialize(order: { id: string }, reference: string) {
-    const provider: PluginPaymentsService = { ...neverProvider, initializeTransaction: async () => ({ authorizationUrl: 'https://x', accessCode: 'x', reference }) };
+  it('two genuinely concurrent initialize calls for the same order result in exactly one Paystack initialization (issue 1 of the payments concurrency review)', async () => {
+    const order = await createPendingOrder();
+    let initializeCalls = 0;
+    const provider: PluginPaymentsService = {
+      ...neverProvider,
+      initializeTransaction: async (input) => {
+        initializeCalls += 1;
+        return { authorizationUrl: `https://checkout.paystack.com/${input.reference}`, accessCode: 'x', reference: input.reference };
+      },
+      // In case the loser of the atomic claim race instead lands on the "existing attempt found,
+      // re-verify it" path (a legitimate alternative interleaving) rather than a 409 — a
+      // non-terminal status means it just reuses the winner's session, still without ever calling
+      // initializeTransaction a second time.
+      verifyTransaction: async (ref) => ({ status: 'pending', reference: ref, amount: 0, currency: '', raw: {} }),
+    };
     const app = buildTestApp(provider);
-    await app.request(
+    const requestInit = {
+      method: 'POST' as const,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ callbackUrl: ALLOWED_CALLBACK }),
+    };
+
+    const [resA, resB] = await Promise.all([
+      app.request(`/orders/${order.id}/initialize`, requestInit, env),
+      app.request(`/orders/${order.id}/initialize`, requestInit, env),
+    ]);
+
+    // The actual assertion: Paystack's own initialize-transaction endpoint was called exactly
+    // once, no matter which of the two requests "won" — the atomic claim (a real partial unique
+    // index, not just application-level checking) guarantees this regardless of timing.
+    expect(initializeCalls).toBe(1);
+
+    const statuses = [resA.status, resB.status].sort();
+    // The loser either gets a 409 (the winner hadn't stored an authorizationUrl yet when it
+    // looked) or a 200 reusing the winner's session (the winner had already finished) — both are
+    // legitimate outcomes of "never call Paystack twice," unlike a second distinct reference.
+    expect([200, 409]).toContain(statuses[0]);
+    expect(statuses[1]).toBe(200);
+
+    if (resA.status === 200 && resB.status === 200) {
+      const [bodyA, bodyB] = await Promise.all([resA.json<{ reference: string }>(), resB.json<{ reference: string }>()]);
+      expect(bodyA.reference).toBe(bodyB.reference);
+    }
+
+    const db = createDb(env.DB);
+    const attempts = await listPaymentAttemptsForOrder(db, order.id);
+    expect(attempts).toHaveLength(1);
+  });
+
+  // The reference is now generated internally by claimPendingPaymentAttempt (an atomic DB
+  // reservation, made BEFORE Paystack is ever called — see repository/payments.ts), not chosen
+  // by the caller — so this returns whatever reference the endpoint actually used, matching a
+  // real Paystack provider's contract of echoing back the exact reference it was given.
+  async function initialize(order: { id: string }): Promise<string> {
+    const provider: PluginPaymentsService = {
+      ...neverProvider,
+      initializeTransaction: async (input) => ({ authorizationUrl: 'https://x', accessCode: 'x', reference: input.reference }),
+    };
+    const app = buildTestApp(provider);
+    const res = await app.request(
       `/orders/${order.id}/initialize`,
       { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ callbackUrl: ALLOWED_CALLBACK }) },
       env,
     );
+    const body = await res.json<{ reference: string }>();
+    return body.reference;
   }
 
   it('verify transitions a pending order to paid when the provider confirms success with matching amount/currency', async () => {
     const order = await createPendingOrder();
-    const reference = crypto.randomUUID();
-    await initialize(order, reference);
+    const reference = await initialize(order);
 
     const provider: PluginPaymentsService = {
       ...neverProvider,
@@ -315,8 +372,7 @@ describe('commerce plugin: payments (real D1)', () => {
 
   it('verify 409s and does not transition the order when the provider’s amount does not match', async () => {
     const order = await createPendingOrder();
-    const reference = crypto.randomUUID();
-    await initialize(order, reference);
+    const reference = await initialize(order);
 
     const provider: PluginPaymentsService = {
       ...neverProvider,
@@ -333,8 +389,7 @@ describe('commerce plugin: payments (real D1)', () => {
 
   it('verify is idempotent: a second call for an already-resolved reference does not re-call the provider or double-process', async () => {
     const order = await createPendingOrder();
-    const reference = crypto.randomUUID();
-    await initialize(order, reference);
+    const reference = await initialize(order);
 
     let verifyCalls = 0;
     const provider: PluginPaymentsService = {
@@ -365,8 +420,7 @@ describe('commerce plugin: payments (real D1)', () => {
     'verify leaves the attempt pending and the order unpaid for Paystack status %s, rather than treating it as a failure',
     async (paystackStatus) => {
       const order = await createPendingOrder();
-      const reference = crypto.randomUUID();
-      await initialize(order, reference);
+      const reference = await initialize(order);
 
       const provider: PluginPaymentsService = {
         ...neverProvider,
@@ -387,8 +441,7 @@ describe('commerce plugin: payments (real D1)', () => {
     'verify resolves the attempt as failed for Paystack status %s, without touching the order (it stays pending, so the customer can retry)',
     async (paystackStatus) => {
       const order = await createPendingOrder();
-      const reference = crypto.randomUUID();
-      await initialize(order, reference);
+      const reference = await initialize(order);
 
       const provider: PluginPaymentsService = {
         ...neverProvider,
@@ -407,8 +460,7 @@ describe('commerce plugin: payments (real D1)', () => {
 
   it('cancellation-vs-payment race: an order cancelled while its payment is still pending is never silently marked paid when Paystack later reports success', async () => {
     const order = await createPendingOrder();
-    const reference = crypto.randomUUID();
-    await initialize(order, reference);
+    const reference = await initialize(order);
 
     // The order is cancelled (e.g. by an admin) while the payment is still in flight at Paystack.
     const cancel = await SELF.fetch(`${ADMIN_BASE}/orders/${order.id}/status`, {
@@ -451,8 +503,7 @@ describe('commerce plugin: payments (real D1)', () => {
 
   it('webhook resolves a pending reference to paid, and a retried delivery is a safe no-op', async () => {
     const order = await createPendingOrder();
-    const reference = crypto.randomUUID();
-    await initialize(order, reference);
+    const reference = await initialize(order);
 
     const payload = JSON.stringify({ event: 'charge.success', data: { reference, amount: order.totalAmount, currency: order.currency, status: 'success' } });
     const app = buildTestApp({ ...neverProvider, verifyWebhookSignature: async () => true });

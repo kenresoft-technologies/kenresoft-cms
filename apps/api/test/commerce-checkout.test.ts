@@ -1,6 +1,9 @@
 import { createDb } from '@kenresoft-cms/database';
+import { listItemsWithDetail } from '@kenresoft-cms/plugin-ecommerce/src/repository/cart-items';
+import { getGuestCart } from '@kenresoft-cms/plugin-ecommerce/src/repository/carts';
 import { createCustomerSession } from '@kenresoft-cms/plugin-ecommerce/src/repository/customer-sessions';
 import { createCustomer } from '@kenresoft-cms/plugin-ecommerce/src/repository/customers';
+import { createOrder } from '@kenresoft-cms/plugin-ecommerce/src/repository/orders';
 import { SELF, env } from 'cloudflare:test';
 import { beforeEach, describe, expect, it } from 'vitest';
 
@@ -395,5 +398,81 @@ describe('commerce plugin: checkout (real D1)', () => {
       body: JSON.stringify({ email: 'nobody@example.test', name: 'Nobody', shippingAddress: SHIPPING_ADDRESS }),
     });
     expect(res.status).toBe(409);
+  });
+
+  it('createOrder enforces one order per idempotency key even when two calls run concurrently, bypassing the claim-table entirely (issue 2 of the payments concurrency review)', async () => {
+    // Deliberately calls the repository function directly rather than through POST /checkout —
+    // the plugin_commerce_idempotency_keys claim/reclaim table (above) already prevents two
+    // ordinary HTTP requests with the same key from both reaching this point under normal
+    // circumstances; what this proves is the DURABLE, DB-enforced invariant that's supposed to
+    // hold even if that table's own 30s stale-claim recovery ever lets two executions run
+    // concurrently anyway (its reclaim step only ever reassigns which request is considered "the
+    // owner" — it does nothing to actually stop the original, still-running request from
+    // continuing to execute). Two independent guest carts (rather than one shared cart) isolate
+    // this assertion from cart-consumption/stock-race behavior, which the other concurrency tests
+    // in this file already cover.
+    const adminCookie = await freshAdminCookie();
+    const productA = await createPublishedProduct(adminCookie);
+    const variantA = await createVariant(adminCookie, productA.id, { stockQty: 5 });
+    const productB = await createPublishedProduct(adminCookie);
+    const variantB = await createVariant(adminCookie, productB.id, { stockQty: 5 });
+
+    const addA = await addToGuestCart(productA.id, variantA.id, 2);
+    const addB = await addToGuestCart(productB.id, variantB.id, 3);
+    const cartIdA = addA.cookie!.split('=')[1]!;
+    const cartIdB = addB.cookie!.split('=')[1]!;
+
+    const db = createDb(env.DB);
+    const [cartA, itemsA, cartB, itemsB] = await Promise.all([
+      getGuestCart(db, cartIdA),
+      listItemsWithDetail(db, cartIdA),
+      getGuestCart(db, cartIdB),
+      listItemsWithDetail(db, cartIdB),
+    ]);
+
+    const idempotencyKey = crypto.randomUUID();
+    const [resultA, resultB] = await Promise.all([
+      createOrder(db, {
+        cartId: cartA!.id,
+        customerId: null,
+        customerEmail: 'a@example.test',
+        customerName: 'Buyer A',
+        currency: cartA!.currency,
+        shippingAddress: SHIPPING_ADDRESS,
+        items: itemsA,
+        idempotencyKey,
+      }),
+      createOrder(db, {
+        cartId: cartB!.id,
+        customerId: null,
+        customerEmail: 'b@example.test',
+        customerName: 'Buyer B',
+        currency: cartB!.currency,
+        shippingAddress: SHIPPING_ADDRESS,
+        items: itemsB,
+        idempotencyKey,
+      }),
+    ]);
+
+    expect(resultA.ok).toBe(true);
+    expect(resultB.ok).toBe(true);
+    if (resultA.ok && resultB.ok) {
+      // Both callers get back the SAME order — exactly one was ever actually created for this key.
+      expect(resultA.order.id).toBe(resultB.order.id);
+    }
+
+    const orderCount = await env.DB.prepare('SELECT COUNT(*) as count FROM plugin_commerce_orders').first<{ count: number }>();
+    expect(orderCount?.count).toBe(1);
+
+    // Whichever cart's speculative stock reservation "lost" the idempotency-key race was given
+    // back in full — exactly one of the two variants shows its original stock untouched, the
+    // other decremented by its own order line's quantity (2 or 3, matching whichever cart's
+    // order actually won).
+    const stockA = await env.DB.prepare('SELECT stock_qty FROM plugin_commerce_product_variants WHERE id = ?').bind(variantA.id).first<{ stock_qty: number }>();
+    const stockB = await env.DB.prepare('SELECT stock_qty FROM plugin_commerce_product_variants WHERE id = ?').bind(variantB.id).first<{ stock_qty: number }>();
+    const decrementedCount = [stockA?.stock_qty === 3, stockB?.stock_qty === 2].filter(Boolean).length;
+    expect(decrementedCount).toBe(1);
+    const untouchedCount = [stockA?.stock_qty === 5, stockB?.stock_qty === 5].filter(Boolean).length;
+    expect(untouchedCount).toBe(1);
   });
 });

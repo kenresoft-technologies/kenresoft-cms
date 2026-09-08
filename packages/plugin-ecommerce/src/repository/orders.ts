@@ -57,6 +57,11 @@ export interface CreateOrderInput {
   currency: string;
   shippingAddress: ShippingAddressInput;
   items: CartItemWithDetail[];
+  // POST /checkout's client-supplied Idempotency-Key header, always required from that route.
+  // See orders.idempotencyKey's own schema comment for why this is the actual, DB-enforced
+  // correctness guarantee — the separate plugin_commerce_idempotency_keys claim/reclaim table
+  // (routes/checkout.ts) is a fast-path/availability mechanism only, not sufficient on its own.
+  idempotencyKey: string;
 }
 
 export type CreateOrderResult =
@@ -71,17 +76,36 @@ type BatchStatement = Parameters<Database['batch']>[0][number];
 
 // Real, concurrency-safe stock enforcement — the "advisory only" capping in cart-items.ts/carts.ts
 // is deliberately just UX; this is the actual reservation. D1 has no SELECT ... FOR UPDATE, so
-// this runs as two phases instead of relying on row locks: phase one conditionally decrements
-// every tracked-stock line in one batch (`WHERE stock_qty >= quantity`, `.returning()` so a
-// non-match — insufficient stock — is visible per statement, not just "0 rows" silently ignored);
-// if any line failed, the lines that DID succeed are given back in a compensating batch before
-// returning failure, so a checkout that can't be fully satisfied never partially decrements stock
-// out from under other customers. D1's own batch atomicity (all-or-nothing on a genuine SQL
-// error) is necessary but not sufficient here, since a WHERE clause matching zero rows is not a
-// SQL error — hence the explicit two-phase reserve-then-compensate design rather than leaning on
-// batch rollback alone. Known, accepted gap: a crash between the reservation batch and the
-// order-creation batch below would leave stock decremented with no order to show for it — D1 has
-// no cross-request saga/compensation log, and adding one is out of scope for this pass.
+// this runs as three phases instead of relying on row locks:
+//
+// Phase 1 conditionally decrements every tracked-stock line in one batch (`WHERE stock_qty >=
+// quantity`, `.returning()` so a non-match — insufficient stock — is visible per statement, not
+// just "0 rows" silently ignored); if any line failed, the lines that DID succeed are given back
+// in a compensating batch before returning failure, so a checkout that can't be fully satisfied
+// never partially decrements stock out from under other customers.
+//
+// Phase 2 is the actual, durable idempotency guarantee (closing a gap flagged in the Phase 2d
+// payments review): a STANDALONE insert of the order row itself, with `.onConflictDoNothing()`
+// against `idempotencyKey`'s own UNIQUE constraint. This is deliberately NOT folded into the same
+// batch as phase 3's item inserts/cart delete — the checkout route's own
+// plugin_commerce_idempotency_keys claim/reclaim table (routes/checkout.ts) exists purely for
+// fast-path response caching and availability (its 30s stale-claim recovery deliberately allows a
+// claim to be reassigned away from a request that's merely slow, not crashed — which does NOT
+// stop that original request from continuing to run). Two executions can therefore both reach
+// this function for the same idempotencyKey; this insert's UNIQUE constraint is what guarantees
+// only ONE of them can ever actually create an order, independent of that other table's timing.
+//
+// Phase 3 (items + cart delete) only ever runs for whichever execution's phase 2 insert actually
+// won — the loser gives back its phase-1 stock reservation and returns the WINNER's order instead
+// (found by idempotencyKey), never attempting phase 3 for an order it doesn't own.
+//
+// D1's own batch atomicity (all-or-nothing on a genuine SQL error) is necessary but not
+// sufficient for phase 1 alone, since a WHERE clause matching zero rows is not a SQL error —
+// hence phase 1's own explicit reserve-then-compensate design. Known, accepted gap: a crash
+// between any of these phases would leave partial state (stock decremented with no order, or an
+// order with no items) — D1 has no cross-request saga/compensation log, and adding one is out of
+// scope for this pass; the idempotency-key mechanism means a client retry is always safe
+// regardless (repository/idempotency.ts).
 export async function createOrder(db: Database, input: CreateOrderInput): Promise<CreateOrderResult> {
   const trackedItems = input.items.filter(
     (entry): entry is CartItemWithDetail & { variant: NonNullable<CartItemWithDetail['variant']> } => entry.variant !== null,
@@ -129,8 +153,9 @@ export async function createOrder(db: Database, input: CreateOrderInput): Promis
     0,
   );
 
-  const statements: BatchStatement[] = [
-    db.insert(pluginCommerceOrders).values({
+  const [insertedOrder] = await db
+    .insert(pluginCommerceOrders)
+    .values({
       id: orderId,
       customerId: input.customerId,
       customerEmail: input.customerEmail,
@@ -147,7 +172,37 @@ export async function createOrder(db: Database, input: CreateOrderInput): Promis
         country: input.shippingAddress.country,
         phone: input.shippingAddress.phone ?? null,
       },
-    }),
+      idempotencyKey: input.idempotencyKey,
+    })
+    .onConflictDoNothing()
+    .returning();
+
+  if (!insertedOrder) {
+    // Lost the durable idempotency-key race — another execution already created (or is
+    // concurrently creating) the order for this exact checkout attempt. Give back the stock this
+    // execution speculatively reserved in phase 1; it will never be consumed by an order this
+    // execution actually owns.
+    if (trackedItems.length > 0) {
+      const giveBackStatements: BatchStatement[] = trackedItems.map((entry) =>
+        db
+          .update(pluginCommerceProductVariants)
+          .set({ stockQty: sql`${pluginCommerceProductVariants.stockQty} + ${entry.item.quantity}`, updatedAt: new Date() })
+          .where(eq(pluginCommerceProductVariants.id, entry.variant.id)),
+      );
+      await db.batch(giveBackStatements as [BatchStatement, ...BatchStatement[]]);
+    }
+
+    const existing = await db.query.pluginCommerceOrders.findFirst({ where: eq(pluginCommerceOrders.idempotencyKey, input.idempotencyKey) });
+    if (existing) {
+      return { ok: true, order: existing };
+    }
+    // Extremely unlikely (the conflict implies a row exists) — the winner's own insert may not
+    // have become visible to this read yet. Surface as a retryable failure rather than silently
+    // losing the request; the client's own idempotency-key retry will find the real order.
+    return { ok: false, error: 'out_of_stock', unavailable: [] };
+  }
+
+  const statements: BatchStatement[] = [
     ...input.items.map((entry) =>
       db.insert(pluginCommerceOrderItems).values({
         orderId,
@@ -167,8 +222,7 @@ export async function createOrder(db: Database, input: CreateOrderInput): Promis
 
   await db.batch(statements as [BatchStatement, ...BatchStatement[]]);
 
-  const order = await db.query.pluginCommerceOrders.findFirst({ where: eq(pluginCommerceOrders.id, orderId) });
-  return { ok: true, order: order! };
+  return { ok: true, order: insertedOrder };
 }
 
 export interface OrderFilters {
