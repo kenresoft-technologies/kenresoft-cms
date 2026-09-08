@@ -9,9 +9,14 @@ const GUEST_CART_COOKIE = 'commerce_guest_cart';
 
 // sameSite: 'none' mirrors apps/api/src/lib/auth-options.ts's own admin/API cookie reasoning —
 // Commerce is frontend-agnostic, so a storefront is not guaranteed same-site with the API. CSRF
-// protection for the routes that read these cookies comes from the existing global CORS
-// allow-list (apps/api/src/middleware/cors.ts) plus requiring application/json bodies on every
-// mutation, not from SameSite itself — see docs/PLUGINS.md's Commerce section.
+// protection for the routes that read these cookies comes from a combination of the existing
+// global CORS allow-list (apps/api/src/middleware/cors.ts), requiring application/json bodies on
+// most mutations (which forces a CORS preflight browsers won't let an untrusted origin pass), and
+// an explicit per-request Origin check (../lib/origin-check.ts) applied to every mutating route on
+// cart/customer/customer-auth — added specifically to close the gap CORS/preflight alone leaves
+// open for a body-less mutation like POST /customer-auth/logout, a "simple" cross-origin request
+// under the Fetch spec that a browser sends with no preflight at all. Not from SameSite itself —
+// see docs/PLUGINS.md's Commerce section.
 const COOKIE_OPTS = {
   httpOnly: true,
   secure: true,

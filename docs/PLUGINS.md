@@ -358,11 +358,23 @@ email matches an account; login returns one generic "invalid credentials" messag
 wrong password and a nonexistent email; registration *does* distinguish "already registered" — a
 deliberate usability-over-enumeration-resistance tradeoff at that one endpoint only. CSRF defense
 for the customer/cart cookies (`sameSite: 'none'`, since a storefront isn't guaranteed same-site
-with the API) comes from the *existing* global `corsMiddleware` (`apps/api/src/middleware/
-cors.ts`, already `credentials: true` with an explicit allow-list, never a wildcard) plus every
-mutation requiring `application/json` — not from `SameSite` itself, and not a new mechanism. A
-storefront needing credentialed browser-JS calls to `/customer/*`/`/cart/*` must have its real
-origin added to the deployment's existing `CORS_ORIGINS`. Cart-time stock capping against a
+with the API) comes from three layers, not `SameSite` itself: the *existing* global
+`corsMiddleware` (`apps/api/src/middleware/cors.ts`, already `credentials: true` with an explicit
+allow-list, never a wildcard); every mutation requiring `application/json`, which forces a
+non-simple, preflighted CORS request a browser won't send to an untrusted origin's page; and (a
+hardening-pass addition, 2026-09-08) an explicit, server-side per-request Origin check
+(`requireTrustedOriginForMutations`, `packages/plugin-ecommerce/src/lib/origin-check.ts`, reading
+a new `PluginBindings.CORS_ORIGINS` field the SDK now exposes) applied to every mutating route on
+cart/customer/customer-auth — added specifically because a body-less mutation like
+`POST /customer-auth/logout` is a "simple" cross-origin request under the Fetch spec, sent by a
+browser with no preflight and therefore no CORS check ever consulted server-side; only the JSON
+*response* would be blocked from an attacker page's own JS, not the logout side effect that
+already fired. The check rejects a mutating request whose `Origin` header is present but not in
+the allow-list; a genuinely missing `Origin` (non-browser clients, and this project's own
+`SELF.fetch` test harness, which sends none) is passed through, mirroring the same asymmetry this
+file's better-auth entries already documented for `/api/v1/auth/*`. A storefront needing
+credentialed browser-JS calls to `/customer/*`/`/cart/*` must have its real origin added to the
+deployment's existing `CORS_ORIGINS`. Cart-time stock capping against a
 variant's `stockQty` is advisory only, never a reservation — real atomic stock enforcement is
 Phase 2c's job at order creation. Login/register/logout/password-reset/verify-email share one
 `COMMERCE_CUSTOMER_AUTH_RATE_LIMITER` bucket (10/60s per IP) via the generic per-plugin
@@ -375,6 +387,22 @@ quantities (capped at current tracked stock) and moves any guest-only lines over
 ownership-transfer fix established, so a partial merge can never leave inconsistent state.
 `GET /cart` is side-effect-free by design: a cart is only ever created inside `POST /cart/items`,
 the first add-to-cart call.
+
+A short hardening pass (2026-09-08) closed four smaller gaps found on review, alongside the CSRF
+check documented above. `consumeCustomerToken` (password-reset/email-verification) was a
+find-then-delete pair with a real race window — two concurrent requests presenting the same
+still-valid token could both pass the SELECT before either DELETE ran; it's now a single
+`DELETE ... WHERE ... RETURNING`, so only one concurrent caller can ever actually consume a given
+token. `mergeGuestCartIntoCustomerCart` trusted its `guestCartId` argument outright — since a
+guest cart's id is the *only* proof of ownership (read straight from a cookie), a forged or
+guessed id naming a different customer's real cart would have been silently deleted and its items
+moved onto the logging-in customer's own cart; it now re-resolves the id through `getGuestCart`
+(which already filters `customerId IS NULL`) and no-ops if that fails. Adding an out-of-stock
+(`stockQty === 0`) variant to a cart, and merging one across login, previously produced a
+quantity-0 line instead of failing or being dropped — `addOrIncrementItem` now returns `null`
+(the route turns that into a 400) and the merge loop now skips such a line entirely rather than
+writing it. `POST /cart/items` also now rejects a variant whose `status` is `archived`, which
+wasn't checked before at all.
 
 Customer account deletion/anonymization is explicitly deferred — there's nothing yet (no orders)
 a deletion could conflict with. Flagged for 2c/2d: once Orders exist, deleting a customer must not

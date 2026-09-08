@@ -5,6 +5,7 @@ import type { Context } from 'hono';
 import type { Database, PluginCommerceCustomer, PluginCommerceCustomerAddress } from '@kenresoft-cms/database';
 
 import { getCustomerFromRequest, setCustomerSessionCookie } from '../lib/customer-session';
+import { requireTrustedOriginForMutations } from '../lib/origin-check';
 import {
   listAddressesForCustomer,
   getAddressById,
@@ -18,6 +19,8 @@ import { createCustomerSession, deleteAllSessionsForCustomer } from '../reposito
 // The session-required counterpart to customer-auth.ts — every route here 401s without a valid
 // customer session (getCustomerFromRequest), reusing the same cookie customer-auth.ts sets.
 export const customerRoutes = createPluginOpenApiApp<{ Bindings: PluginBindings; Variables: PluginPublicVariables }>();
+
+customerRoutes.use('*', requireTrustedOriginForMutations());
 
 // Registered before any .openapi() route below, so it runs before that route's own zod body
 // validation — matching every session-gated Core/admin route's ordering (auth before validation,

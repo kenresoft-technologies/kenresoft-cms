@@ -43,21 +43,29 @@ export async function createCustomerToken(
 // and the CMS's own password-reset tokens already use, not a separate usedAt/status column.
 // Returns the customerId on success, null on any invalid/expired/wrong-purpose token (the caller
 // never learns which — see the account-enumeration section of the plan).
+//
+// The delete-with-matching-WHERE IS the consumption check — a single atomic statement, not a
+// find-then-delete pair. A find-then-delete has a race window: two concurrent requests presenting
+// the same still-valid token could both pass the SELECT before either DELETE runs, both treating
+// the token as valid (e.g. both resetting the password, or double-firing whatever the
+// verification unlocks). Deleting directly with the same predicate means only one caller's
+// statement can ever actually delete the row; a second, concurrent caller's DELETE with the same
+// WHERE affects zero rows and correctly gets back null.
 export async function consumeCustomerToken(
   db: Database,
   rawToken: string,
   purpose: CustomerTokenPurpose,
 ): Promise<string | null> {
   const tokenHash = await hashToken(rawToken);
-  const row = await db.query.pluginCommerceCustomerTokens.findFirst({
-    where: and(
-      eq(pluginCommerceCustomerTokens.tokenHash, tokenHash),
-      eq(pluginCommerceCustomerTokens.purpose, purpose),
-      gt(pluginCommerceCustomerTokens.expiresAt, new Date()),
-    ),
-  });
-  if (!row) return null;
-
-  await db.delete(pluginCommerceCustomerTokens).where(eq(pluginCommerceCustomerTokens.id, row.id));
-  return row.customerId;
+  const [row] = await db
+    .delete(pluginCommerceCustomerTokens)
+    .where(
+      and(
+        eq(pluginCommerceCustomerTokens.tokenHash, tokenHash),
+        eq(pluginCommerceCustomerTokens.purpose, purpose),
+        gt(pluginCommerceCustomerTokens.expiresAt, new Date()),
+      ),
+    )
+    .returning();
+  return row?.customerId ?? null;
 }

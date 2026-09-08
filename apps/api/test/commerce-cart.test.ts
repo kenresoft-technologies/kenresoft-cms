@@ -277,4 +277,70 @@ describe('commerce plugin: cart (real D1)', () => {
     const guestGone = await env.DB.prepare('SELECT id FROM plugin_commerce_carts WHERE id = ?').bind(guestCartId).first();
     expect(guestGone).toBeNull();
   });
+
+  it('rejects adding an out-of-stock (stockQty 0) variant, rather than adding a quantity-0 line', async () => {
+    const adminCookie = await freshAdminCookie();
+    const product = await createPublishedProduct(adminCookie);
+    const variant = await createVariant(adminCookie, product.id, { stockQty: 0 });
+
+    const res = await SELF.fetch(`${CART_BASE}/items`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ productId: product.id, variantId: variant.id, quantity: 1 }),
+    });
+    expect(res.status).toBe(400);
+
+    const itemCount = await env.DB.prepare('SELECT COUNT(*) as count FROM plugin_commerce_cart_items').first<{ count: number }>();
+    expect(itemCount?.count).toBe(0);
+  });
+
+  it('rejects adding an archived variant', async () => {
+    const adminCookie = await freshAdminCookie();
+    const product = await createPublishedProduct(adminCookie);
+    const variant = await createVariant(adminCookie, product.id, { status: 'archived' });
+
+    const res = await SELF.fetch(`${CART_BASE}/items`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ productId: product.id, variantId: variant.id, quantity: 1 }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('a forged guest-cart cookie naming another customer’s real cart cannot hijack it on login', async () => {
+    const adminCookie = await freshAdminCookie();
+    const product = await createPublishedProduct(adminCookie);
+
+    // Victim: a genuine customer with their own real (non-guest) cart holding an item.
+    const { cookie: victimCookie } = await registeredCustomer('cart-hijack-victim@example.test');
+    const victimAdd = await SELF.fetch(`${CART_BASE}/items`, {
+      method: 'POST',
+      headers: { Cookie: victimCookie, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ productId: product.id, quantity: 1 }),
+    });
+    const victimCart = await victimAdd.json<{ id: string }>();
+
+    // A second customer logs in while presenting the victim's own cart id as their OWN
+    // "guest cart" cookie — forged/guessed, never actually issued to them by this deployment.
+    // Without mergeGuestCartIntoCustomerCart independently re-verifying customerId IS NULL, this
+    // would delete the victim's real cart and move its item onto the attacker's own cart.
+    const { cookie: attackerCookie } = await registeredCustomer('cart-hijack-attacker@example.test');
+    const login = await SELF.fetch('https://example.com/api/plugins/commerce/public/v1/customer-auth/login', {
+      method: 'POST',
+      headers: { Cookie: `commerce_guest_cart=${victimCart.id}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'cart-hijack-attacker@example.test', password: 'correct horse battery staple' }),
+    });
+    expect(login.status).toBe(200);
+
+    // The victim's cart is untouched: still exists, still has its own item.
+    const victimAfter = await SELF.fetch(CART_BASE, { headers: { Cookie: victimCookie } });
+    const victimAfterBody = await victimAfter.json<{ id: string | null; items: unknown[] }>();
+    expect(victimAfterBody.id).toBe(victimCart.id);
+    expect(victimAfterBody.items).toHaveLength(1);
+
+    // The attacker's own cart gained nothing from the victim's.
+    const attackerAfter = await SELF.fetch(CART_BASE, { headers: { Cookie: attackerCookie } });
+    const attackerAfterBody = await attackerAfter.json<{ items: unknown[] }>();
+    expect(attackerAfterBody.items).toHaveLength(0);
+  });
 });

@@ -44,16 +44,19 @@ function stockCap(variant: PluginCommerceProductVariant | null | undefined): num
 // insert-vs-update — SQLite unique indexes don't collapse `variantId IS NULL` rows the way this
 // needs, so this is deliberate application logic (matching the entries-export-import
 // upsert-by-slug precedent), not a DB constraint. The stock cap here is advisory UX only, never
-// a reservation — see docs/PLUGINS.md.
+// a reservation — see docs/PLUGINS.md. Returns null, rather than writing/leaving a quantity-0
+// row, when the variant's tracked stock is exactly 0 — a caller should treat that as a rejected
+// addition (an out-of-stock error), not a silent success with nothing actually added.
 export async function addOrIncrementItem(
   db: Database,
   cartId: string,
   input: { productId: string; variantId: string | null; quantity: number },
-): Promise<PluginCommerceCartItem> {
+): Promise<PluginCommerceCartItem | null> {
   const variant = input.variantId
     ? await db.query.pluginCommerceProductVariants.findFirst({ where: eq(pluginCommerceProductVariants.id, input.variantId) })
     : null;
   const cap = stockCap(variant);
+  if (cap === 0) return null;
 
   // The no-variant branch must explicitly require variantId IS NULL — without it, a product
   // that already has a *different* variant row in this cart would wrongly match here too, since
