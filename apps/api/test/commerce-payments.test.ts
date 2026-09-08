@@ -1,4 +1,5 @@
 import { createDb } from '@kenresoft-cms/database';
+import type { PluginCommerceOrderPayment } from '@kenresoft-cms/database';
 import { paymentsRoutes } from '@kenresoft-cms/plugin-ecommerce/src/routes/payments';
 import { getPaymentAttempt, listPaymentAttemptsForOrder } from '@kenresoft-cms/plugin-ecommerce/src/repository/payments';
 import type { InitializePaymentInput, PluginBindings, PluginLogger, PluginPaymentsService, PluginPublicContext, PluginPublicVariables } from '@kenresoft-cms/plugin-sdk';
@@ -702,5 +703,83 @@ describe('commerce plugin: payments (real D1)', () => {
       env,
     );
     expect(res.status).toBe(200);
+  });
+
+  it('does not expose the original authorization URL when its claim is reclaimed while Paystack initialization is still in flight', async () => {
+    const order = await createPendingOrder();
+
+    let releaseOriginalInitialize!: () => void;
+    const originalInitializeBlocked = new Promise<void>((resolve) => {
+      releaseOriginalInitialize = resolve;
+    });
+
+    let initializeCalls = 0;
+    const provider: PluginPaymentsService = {
+      ...neverProvider,
+      initializeTransaction: async (input) => {
+        initializeCalls += 1;
+        if (initializeCalls === 1) {
+          // Hold the original request inside "Paystack" long enough for a second request to
+          // reclaim its stale claim before this one ever returns.
+          await originalInitializeBlocked;
+          return { authorizationUrl: 'https://checkout.paystack.com/original', accessCode: 'original', reference: input.reference };
+        }
+        return { authorizationUrl: 'https://checkout.paystack.com/fresh', accessCode: 'fresh', reference: input.reference };
+      },
+      verifyTransaction: async () => {
+        throw new Error('unknown reference');
+      },
+    };
+    const app = buildTestApp(provider);
+    const requestInit = {
+      method: 'POST' as const,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ callbackUrl: ALLOWED_CALLBACK }),
+    };
+
+    // Request A claims its reference, then blocks inside initializeTransaction().
+    const requestA = app.request(`/orders/${order.id}/initialize`, requestInit, env);
+
+    // Wait until A has actually created its payment claim — polls the DB rather than an
+    // arbitrary sleep, since A is deliberately still blocked at this point.
+    const db = createDb(env.DB);
+    let originalAttempt: PluginCommerceOrderPayment | undefined;
+    for (let i = 0; i < 50; i++) {
+      originalAttempt = await db.query.pluginCommerceOrderPayments.findFirst({ where: (payments, { eq }) => eq(payments.orderId, order.id) });
+      if (originalAttempt) break;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect(originalAttempt).toBeDefined();
+
+    // Make A's claim stale (the same shape claimPendingPaymentAttempt's own INSERT produces,
+    // just backdated past the 30s staleness cutoff — mirrors the sibling stale-claim tests above).
+    const staleTimestamp = Math.floor((Date.now() - 60_000) / 1000);
+    await env.DB.prepare('UPDATE plugin_commerce_order_payments SET created_at = ? WHERE id = ?').bind(staleTimestamp, originalAttempt!.id).run();
+
+    // Request B reclaims A's stale slot and claims a fresh attempt of its own.
+    const responseB = await app.request(`/orders/${order.id}/initialize`, requestInit, env);
+    expect(responseB.status).toBe(200);
+    const bodyB = await responseB.json<{ authorizationUrl: string; reference: string }>();
+    expect(bodyB.authorizationUrl).toBe('https://checkout.paystack.com/fresh');
+    expect(bodyB.reference).not.toBe(originalAttempt!.reference);
+
+    // Now let A's original "Paystack" call finally return.
+    releaseOriginalInitialize();
+    const responseA = await requestA;
+
+    // A must NOT expose its authorization URL — its claim was already reclaimed by B.
+    expect(responseA.status).toBe(409);
+    const bodyA = await responseA.json<{ error: string }>();
+    expect(bodyA.error).toContain('superseded');
+
+    const attempts = await listPaymentAttemptsForOrder(db, order.id);
+    expect(attempts).toHaveLength(2);
+    const staleAttempt = attempts.find((attempt) => attempt.reference === originalAttempt!.reference);
+    const freshAttempt = attempts.find((attempt) => attempt.reference === bodyB.reference);
+    expect(staleAttempt?.reclaimedAt).not.toBeNull();
+    // Crucially: A's late response must not have written its authorization URL to the ledger.
+    expect(staleAttempt?.authorizationUrl).toBeNull();
+    // B owns the customer-visible session.
+    expect(freshAttempt?.authorizationUrl).toBe('https://checkout.paystack.com/fresh');
   });
 });

@@ -37,11 +37,31 @@ export async function claimPendingPaymentAttempt(db: Database, orderId: string):
   return { claimed: false, existing };
 }
 
-// Called once the claimed reference has actually been initialized with Paystack — a plain UPDATE
-// by reference is safe here (no conflict possible): the caller that claimed this exact reference
-// via claimPendingPaymentAttempt is its only owner until it resolves.
-export async function setPaymentAttemptAuthorizationUrl(db: Database, reference: string, authorizationUrl: string): Promise<void> {
-  await db.update(pluginCommerceOrderPayments).set({ authorizationUrl }).where(eq(pluginCommerceOrderPayments.reference, reference));
+// Called once the claimed reference has actually been initialized with Paystack — persists the
+// URL only while THIS reference is still the order's active, unreclaimed attempt. A plain,
+// unconditional UPDATE by reference alone (this function's original shape) assumed the claiming
+// caller stays "its only owner until it resolves" — no longer true once stale-claim reclaim
+// exists (reclaimStaleUnauthorizedAttempt below): a genuinely slow (not crashed) Paystack call
+// can still return successfully after another request has already reclaimed this exact row and
+// started a fresh attempt of its own. Returning `false` tells routes/payments.ts that happened,
+// so it can avoid handing the caller a URL for a session that's no longer the order's active one.
+// Deliberately does NOT touch `status` or `reclaimedAt` on failure — the row itself is left
+// exactly as reclaimStaleUnauthorizedAttempt set it, still resolvable later by a real webhook/
+// verify call if Paystack genuinely did charge the customer through this reference; only whether
+// THIS caller may expose the URL is affected, never whether the money can still be collected.
+export async function setPaymentAttemptAuthorizationUrl(db: Database, reference: string, authorizationUrl: string): Promise<boolean> {
+  const [updated] = await db
+    .update(pluginCommerceOrderPayments)
+    .set({ authorizationUrl })
+    .where(
+      and(
+        eq(pluginCommerceOrderPayments.reference, reference),
+        eq(pluginCommerceOrderPayments.status, 'pending'),
+        isNull(pluginCommerceOrderPayments.reclaimedAt),
+      ),
+    )
+    .returning({ id: pluginCommerceOrderPayments.id });
+  return Boolean(updated);
 }
 
 // Frees up the one-pending-attempt-per-order slot after a provider error during initialize (the
