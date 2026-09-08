@@ -1,0 +1,41 @@
+---
+interface Props {
+  tone?: 'info' | 'success' | 'error';
+  id?: string;
+  hidden?: boolean;
+}
+
+const { tone = 'info', id, hidden = false } = Astro.props;
+---
+
+<div class={`alert alert-${tone}`} id={id} role={tone === 'error' ? 'alert' : 'status'} hidden={hidden}>
+  <slot />
+</div>
+
+<style>
+  .alert {
+    padding: 0.85rem 1rem;
+    border-radius: var(--radius);
+    font-size: 0.9rem;
+    line-height: 1.5;
+    border: 1px solid transparent;
+  }
+
+  .alert-info {
+    background: var(--surface-muted);
+    border-color: var(--border);
+    color: var(--ink-muted);
+  }
+
+  .alert-success {
+    background: color-mix(in oklch, oklch(0.6 0.15 145) 14%, transparent);
+    border-color: color-mix(in oklch, oklch(0.6 0.15 145) 40%, transparent);
+    color: oklch(0.35 0.1 145);
+  }
+
+  .alert-error {
+    background: color-mix(in oklch, oklch(0.55 0.2 25) 12%, transparent);
+    border-color: color-mix(in oklch, oklch(0.55 0.2 25) 35%, transparent);
+    color: oklch(0.4 0.18 25);
+  }
+</style>

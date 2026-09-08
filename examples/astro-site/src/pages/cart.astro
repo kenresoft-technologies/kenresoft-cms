@@ -1,136 +1,53 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
+import { createServerClient } from '../lib/site-client';
+
+// SSR only to know guest-vs-signed-in for the banner text below — the cart's own contents are
+// still rendered/managed entirely client-side (see the <script>), since every cart mutation
+// needs the browser's own cookie jar (see site-client.ts's comment on why).
+const cms = createServerClient(Astro.request.headers.get('cookie'));
+const customer = await cms.commerce.customer.get().catch(() => null);
 ---
 
-<BaseLayout title="Cart — Kenresoft CMS" description="Your shopping cart.">
+<BaseLayout title="Cart — Kenresoft CMS" description="Your shopping cart." noIndex>
   <div class="cart-page">
     <h1>Cart</h1>
+    <p class="identity-note">
+      {customer ? <>Shopping as <strong>{customer.email}</strong>.</> : <>Shopping as a guest — <a href={`/account/login?redirect=${encodeURIComponent('/cart')}`}>sign in</a> to save this cart to your account.</>}
+    </p>
 
     <div id="cart-loading">Loading your cart…</div>
     <div id="cart-empty" hidden>
       <p>Your cart is empty. <a href="/shop">Browse the shop →</a></p>
     </div>
+    <div id="cart-error" hidden></div>
 
     <ul id="cart-items" class="cart-items" hidden></ul>
-    <p id="cart-total" class="cart-total" hidden></p>
-
-    <form id="checkout-form" class="checkout-form" hidden>
-      <h2>Checkout</h2>
-      <p class="checkout-note">Guest checkout — no account needed.</p>
-
-      <label class="field">
-        <span>Email</span>
-        <input type="email" name="email" required />
-      </label>
-      <label class="field">
-        <span>Full name</span>
-        <input type="text" name="name" required />
-      </label>
-      <label class="field">
-        <span>Address line 1</span>
-        <input type="text" name="line1" required />
-      </label>
-      <label class="field">
-        <span>Address line 2 (optional)</span>
-        <input type="text" name="line2" />
-      </label>
-      <div class="field-row">
-        <label class="field">
-          <span>City</span>
-          <input type="text" name="city" required />
-        </label>
-        <label class="field">
-          <span>Postal code</span>
-          <input type="text" name="postalCode" required />
-        </label>
+    <div id="cart-footer" hidden class="cart-footer">
+      <p id="cart-total" class="cart-total"></p>
+      <div class="cart-actions">
+        <button type="button" id="clear-cart-button" class="button button-secondary">Clear cart</button>
+        <a href="/checkout" class="button button-primary" id="checkout-cta">Checkout</a>
       </div>
-      <label class="field">
-        <span>Country</span>
-        <input type="text" name="country" required placeholder="e.g. NG" />
-      </label>
-      <label class="field">
-        <span>Phone (optional)</span>
-        <input type="tel" name="phone" />
-      </label>
-
-      <button type="submit" class="button button-primary">Place order</button>
-      <p class="form-status" id="checkout-status" role="status"></p>
-    </form>
-
-    <div id="order-confirmation" class="order-confirmation" hidden></div>
+    </div>
   </div>
 </BaseLayout>
 
 <script>
-  import { createKenresoftClient, KenresoftApiError, type CommerceCart } from '@kenresoft-cms/astro';
+  import { getBrowserClient, KenresoftApiError } from '../lib/browser-client';
+  import { formatMoney } from '../lib/money';
+  import { refreshCartBadge } from '../lib/cart-badge';
+  import type { CommerceCart } from '@kenresoft-cms/astro';
 
-  const cms = createKenresoftClient({ url: import.meta.env.PUBLIC_KENRESOFT_CMS_URL });
+  const cms = getBrowserClient();
 
   const loadingEl = document.querySelector<HTMLDivElement>('#cart-loading')!;
   const emptyEl = document.querySelector<HTMLDivElement>('#cart-empty')!;
+  const errorEl = document.querySelector<HTMLDivElement>('#cart-error')!;
   const itemsEl = document.querySelector<HTMLUListElement>('#cart-items')!;
+  const footerEl = document.querySelector<HTMLDivElement>('#cart-footer')!;
   const totalEl = document.querySelector<HTMLParagraphElement>('#cart-total')!;
-  const formEl = document.querySelector<HTMLFormElement>('#checkout-form')!;
-  const statusEl = document.querySelector<HTMLParagraphElement>('#checkout-status')!;
-  const confirmationEl = document.querySelector<HTMLDivElement>('#order-confirmation')!;
-
-  function formatMoney(amountMinorUnits: number, currency: string): string {
-    return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(amountMinorUnits / 100);
-  }
-
-  function renderCart(cart: CommerceCart) {
-    loadingEl.hidden = true;
-
-    if (cart.items.length === 0) {
-      emptyEl.hidden = false;
-      itemsEl.hidden = true;
-      totalEl.hidden = true;
-      formEl.hidden = true;
-      return;
-    }
-
-    emptyEl.hidden = true;
-    itemsEl.hidden = false;
-    totalEl.hidden = false;
-    formEl.hidden = false;
-
-    itemsEl.innerHTML = '';
-    let total = 0;
-    for (const item of cart.items) {
-      total += item.unitPrice * item.quantity;
-      const li = document.createElement('li');
-      li.className = 'cart-item';
-      li.innerHTML = `
-        <div class="cart-item-info">
-          <strong>${escapeHtml(item.productName)}</strong>
-          ${item.variantName ? `<span class="variant-name">${escapeHtml(item.variantName)}</span>` : ''}
-          <span class="unit-price">${formatMoney(item.unitPrice, item.currency)} each</span>
-        </div>
-        <div class="cart-item-controls">
-          <input type="number" min="1" value="${item.quantity}" data-item-id="${item.id}" class="quantity-input" />
-          <button type="button" data-remove-id="${item.id}" class="remove-button" aria-label="Remove ${escapeHtml(item.productName)}">Remove</button>
-        </div>
-      `;
-      itemsEl.appendChild(li);
-    }
-    totalEl.textContent = `Total: ${formatMoney(total, cart.items[0]!.currency)}`;
-
-    itemsEl.querySelectorAll<HTMLInputElement>('.quantity-input').forEach((input) => {
-      input.addEventListener('change', async () => {
-        const itemId = input.dataset.itemId!;
-        const quantity = Math.max(1, Number(input.value) || 1);
-        const updated = await cms.commerce.cart.updateItem({ itemId, quantity });
-        renderCart(updated);
-      });
-    });
-    itemsEl.querySelectorAll<HTMLButtonElement>('.remove-button').forEach((button) => {
-      button.addEventListener('click', async () => {
-        const itemId = button.dataset.removeId!;
-        const updated = await cms.commerce.cart.removeItem({ itemId });
-        renderCart(updated);
-      });
-    });
-  }
+  const clearButton = document.querySelector<HTMLButtonElement>('#clear-cart-button')!;
 
   function escapeHtml(value: string): string {
     const div = document.createElement('div');
@@ -138,77 +55,120 @@ import BaseLayout from '../layouts/BaseLayout.astro';
     return div.innerHTML;
   }
 
-  cms.commerce.cart.get().then(renderCart).catch(() => {
-    loadingEl.textContent = 'Could not load your cart.';
-  });
+  function renderCart(cart: CommerceCart) {
+    loadingEl.hidden = true;
+    errorEl.hidden = true;
 
-  formEl.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    statusEl.textContent = 'Placing your order…';
-
-    const data = new FormData(formEl);
-    try {
-      const order = await cms.commerce.checkout.submit({
-        // A fresh key per submit attempt, kept for the lifetime of this form so a network retry
-        // (not a deliberate resubmit) replays the same order instead of creating a second one —
-        // see CommerceCheckoutOptions.idempotencyKey's own doc comment.
-        idempotencyKey: crypto.randomUUID(),
-        email: String(data.get('email')),
-        name: String(data.get('name')),
-        shippingAddress: {
-          recipientName: String(data.get('name')),
-          line1: String(data.get('line1')),
-          line2: (data.get('line2') as string) || null,
-          city: String(data.get('city')),
-          postalCode: String(data.get('postalCode')),
-          country: String(data.get('country')),
-          phone: (data.get('phone') as string) || null,
-        },
-      });
-
-      formEl.hidden = true;
+    if (cart.items.length === 0) {
+      emptyEl.hidden = false;
       itemsEl.hidden = true;
-      totalEl.hidden = true;
+      footerEl.hidden = true;
+      return;
+    }
 
-      try {
-        const session = await cms.commerce.payments.initialize({
-          orderId: order.id,
-          callbackUrl: `${window.location.origin}/order/${order.id}`,
-        });
-        window.location.href = session.authorizationUrl;
-      } catch (err) {
-        if (err instanceof KenresoftApiError && err.status === 503) {
-          // No payment provider configured on this deployment — nothing to redirect to. Show the
-          // order confirmation directly using the checkout response already in hand, rather than
-          // a broken redirect (there's no public "get order by id" endpoint to re-fetch it from
-          // for a guest, by design — see docs/PLUGINS.md's guest-order bearer-capability note).
-          confirmationEl.hidden = false;
-          confirmationEl.innerHTML = `<h2>Order placed</h2><p>Order #${order.id} — ${formatMoney(order.totalAmount, order.currency)}.</p><p>Payments aren't configured on this deployment, so there's nothing further to pay.</p>`;
-        } else {
-          statusEl.textContent = 'Order placed, but payment could not be started. Please contact support.';
+    emptyEl.hidden = true;
+    itemsEl.hidden = false;
+    footerEl.hidden = false;
+
+    itemsEl.innerHTML = '';
+    let total = 0;
+    for (const item of cart.items) {
+      total += item.unitPrice * item.quantity;
+      const li = document.createElement('li');
+      li.className = 'cart-item';
+      const overStock = item.stockQty !== null && item.quantity > item.stockQty;
+      li.innerHTML = `
+        <div class="cart-item-info">
+          <strong>${escapeHtml(item.productName)}</strong>
+          ${item.variantName ? `<span class="variant-name">${escapeHtml(item.variantName)}</span>` : ''}
+          <span class="unit-price">${formatMoney(item.unitPrice, item.currency)} each</span>
+          ${overStock ? `<span class="stock-warning">Only ${item.stockQty} left in stock — reduce quantity before checking out.</span>` : ''}
+        </div>
+        <div class="cart-item-controls">
+          <input type="number" min="1" ${item.stockQty !== null ? `max="${item.stockQty}"` : ''} value="${item.quantity}" data-item-id="${item.id}" class="quantity-input" aria-label="Quantity for ${escapeHtml(item.productName)}" />
+          <span class="line-total">${formatMoney(item.unitPrice * item.quantity, item.currency)}</span>
+          <button type="button" data-remove-id="${item.id}" class="remove-button" aria-label="Remove ${escapeHtml(item.productName)}">Remove</button>
+        </div>
+      `;
+      itemsEl.appendChild(li);
+    }
+    totalEl.textContent = `Subtotal: ${formatMoney(total, cart.items[0]!.currency)}`;
+
+    itemsEl.querySelectorAll<HTMLInputElement>('.quantity-input').forEach((input) => {
+      input.addEventListener('change', async () => {
+        const itemId = input.dataset.itemId!;
+        const quantity = Math.max(1, Number(input.value) || 1);
+        try {
+          const updated = await cms.commerce.cart.updateItem({ itemId, quantity });
+          renderCart(updated);
+          await refreshCartBadge();
+        } catch (err) {
+          errorEl.hidden = false;
+          errorEl.textContent = err instanceof KenresoftApiError ? err.message : 'Could not update that item.';
         }
-      }
-    } catch (err) {
-      statusEl.textContent = err instanceof KenresoftApiError ? err.message : 'Could not place your order.';
-      formEl.hidden = false;
-      itemsEl.hidden = false;
-      totalEl.hidden = false;
+      });
+    });
+    itemsEl.querySelectorAll<HTMLButtonElement>('.remove-button').forEach((button) => {
+      button.addEventListener('click', async () => {
+        const itemId = button.dataset.removeId!;
+        try {
+          const updated = await cms.commerce.cart.removeItem({ itemId });
+          renderCart(updated);
+          await refreshCartBadge();
+        } catch (err) {
+          errorEl.hidden = false;
+          errorEl.textContent = err instanceof KenresoftApiError ? err.message : 'Could not remove that item.';
+        }
+      });
+    });
+  }
+
+  cms.commerce.cart
+    .get()
+    .then(renderCart)
+    .catch((err) => {
+      loadingEl.hidden = true;
+      errorEl.hidden = false;
+      errorEl.textContent = err instanceof KenresoftApiError ? err.message : 'Could not load your cart.';
+    });
+
+  clearButton.addEventListener('click', async () => {
+    clearButton.disabled = true;
+    try {
+      await cms.commerce.cart.clear();
+      renderCart({ id: null, currency: null, items: [] });
+      await refreshCartBadge();
+    } finally {
+      clearButton.disabled = false;
     }
   });
 </script>
 
 <style>
   .cart-page {
-    max-width: 640px;
+    max-width: 720px;
     margin: 0 auto;
     padding: 3rem 1.5rem 5rem;
   }
 
   .cart-page h1 {
-    margin: 0 0 1.5rem;
+    margin: 0 0 0.5rem;
     font-size: 2rem;
     font-weight: 600;
-    letter-spacing: -0.01em;
+  }
+
+  .identity-note {
+    margin: 0 0 1.75rem;
+    color: var(--ink-muted);
+    font-size: 0.9rem;
+  }
+
+  #cart-error {
+    padding: 0.85rem 1rem;
+    border-radius: var(--radius);
+    background: color-mix(in oklch, oklch(0.55 0.2 25) 12%, transparent);
+    color: oklch(0.4 0.18 25);
+    margin-bottom: 1.5rem;
   }
 
   .cart-items {
@@ -242,10 +202,16 @@ import BaseLayout from '../layouts/BaseLayout.astro';
     font-size: 0.85rem;
   }
 
+  .stock-warning {
+    color: oklch(0.5 0.18 40);
+    font-size: 0.82rem;
+    font-weight: 600;
+  }
+
   .cart-item-controls {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.75rem;
   }
 
   .quantity-input {
@@ -254,6 +220,12 @@ import BaseLayout from '../layouts/BaseLayout.astro';
     border-radius: 6px;
     border: 1px solid var(--border);
     font-family: inherit;
+  }
+
+  .line-total {
+    font-weight: 600;
+    min-width: 5rem;
+    text-align: right;
   }
 
   .remove-button {
@@ -269,62 +241,24 @@ import BaseLayout from '../layouts/BaseLayout.astro';
     color: var(--ink);
   }
 
+  .cart-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+  }
+
   .cart-total {
     font-weight: 600;
     font-size: 1.1rem;
-    margin: 0 0 2rem;
+    margin: 0;
   }
 
-  .checkout-form h2 {
-    margin: 0 0 0.25rem;
-    font-size: 1.25rem;
-    font-weight: 600;
-  }
-
-  .checkout-note {
-    margin: 0 0 1.25rem;
-    color: var(--ink-muted);
-    font-size: 0.9rem;
-  }
-
-  .field {
+  .cart-actions {
     display: flex;
-    flex-direction: column;
-    gap: 0.35rem;
-    margin-bottom: 1rem;
-    font-size: 0.9rem;
-    font-weight: 600;
-  }
-
-  .field-row {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1rem;
-  }
-
-  .field input {
-    padding: 0.6rem 0.75rem;
-    border-radius: 8px;
-    border: 1px solid var(--border);
-    font-size: 0.95rem;
-    font-family: inherit;
-  }
-
-  .form-status {
-    margin: 0.75rem 0 0;
-    font-size: 0.9rem;
-    color: var(--ink-muted);
-    min-height: 1.2em;
-  }
-
-  .order-confirmation {
-    padding: 1.5rem;
-    border-radius: var(--radius);
-    border: 1px solid var(--border);
-    background: var(--surface-muted);
-  }
-
-  .order-confirmation h2 {
-    margin: 0 0 0.5rem;
+    gap: 0.75rem;
   }
 </style>
