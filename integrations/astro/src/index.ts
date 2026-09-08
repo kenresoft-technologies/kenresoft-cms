@@ -169,6 +169,88 @@ export interface CommercePaymentStatus {
   paid: boolean;
 }
 
+export interface CommerceCustomer {
+  id: string;
+  email: string;
+  name: string;
+  phone: string | null;
+  emailVerified: boolean;
+}
+
+export interface RegisterCustomerOptions {
+  email: string;
+  password: string;
+  name: string;
+  phone?: string | null;
+}
+
+export interface LoginCustomerOptions {
+  email: string;
+  password: string;
+}
+
+export interface RequestCustomerPasswordResetOptions {
+  email: string;
+}
+
+export interface ConfirmCustomerPasswordResetOptions {
+  token: string;
+  newPassword: string;
+}
+
+export interface VerifyCustomerEmailOptions {
+  token: string;
+}
+
+export interface UpdateCustomerProfileOptions {
+  name?: string;
+  phone?: string | null;
+}
+
+export interface ChangeCustomerPasswordOptions {
+  currentPassword: string;
+  newPassword: string;
+}
+
+export interface CommerceCustomerAddress {
+  id: string;
+  label: string | null;
+  recipientName: string;
+  line1: string;
+  line2: string | null;
+  city: string;
+  region: string | null;
+  postalCode: string;
+  country: string;
+  phone: string | null;
+  isDefault: boolean;
+}
+
+export interface WritableCustomerAddress {
+  label?: string | null;
+  recipientName: string;
+  line1: string;
+  line2?: string | null;
+  city: string;
+  region?: string | null;
+  postalCode: string;
+  country: string;
+  phone?: string | null;
+  isDefault?: boolean;
+}
+
+export interface CommerceOrderSummary {
+  id: string;
+  status: CommerceOrder['status'];
+  currency: string;
+  totalAmount: number;
+  createdAt: string;
+}
+
+export interface CommerceOrderDetail extends CommerceOrderSummary {
+  items: CommerceOrderItem[];
+}
+
 export interface FormSubmissionIssue {
   path: (string | number)[];
   message: string;
@@ -296,6 +378,50 @@ export interface KenresoftClient {
    * docs/PLUGINS.md's Phase 2b/2c design, not a stopgap).
    */
   commerce: {
+    /**
+     * Customer account registration/login/logout/password-reset/email-verification — the
+     * genuinely unauthenticated auth surface itself (packages/plugin-ecommerce/src/routes/
+     * customer-auth.ts). Separate from Core's own better-auth staff accounts entirely; a
+     * storefront customer and a CMS staff member are different identity systems.
+     */
+    customerAuth: {
+      /** Throws KenresoftApiError (409) if that email is already registered. Signs the browser in on success. */
+      register(options: RegisterCustomerOptions): Promise<CommerceCustomer>;
+      /** Throws KenresoftApiError (401) for any invalid-credentials reason — deliberately identical whether the email exists, the password is wrong, or the account is disabled. */
+      login(options: LoginCustomerOptions): Promise<CommerceCustomer>;
+      /** Idempotent — safe to call with no session. */
+      logout(): Promise<void>;
+      /** Always resolves with the same generic message regardless of whether the email matches an account — never reveals account existence. */
+      requestPasswordReset(options: RequestCustomerPasswordResetOptions): Promise<{ message: string }>;
+      /** Throws KenresoftApiError (400) for an invalid/expired token. */
+      confirmPasswordReset(options: ConfirmCustomerPasswordResetOptions): Promise<{ message: string }>;
+      /** Throws KenresoftApiError (400) for an invalid/expired token. */
+      verifyEmail(options: VerifyCustomerEmailOptions): Promise<{ message: string }>;
+    };
+    /**
+     * The signed-in customer's own profile/addresses/order-history — every method throws
+     * KenresoftApiError (401) with no valid customer session.
+     */
+    customer: {
+      /** The current customer, or null with no valid session (never throws for that specific case). */
+      get(): Promise<CommerceCustomer | null>;
+      update(options: UpdateCustomerProfileOptions): Promise<CommerceCustomer>;
+      /** Throws KenresoftApiError (400) for an incorrect currentPassword. Revokes every other session. */
+      changePassword(options: ChangeCustomerPasswordOptions): Promise<{ message: string }>;
+      addresses: {
+        list(): Promise<CommerceCustomerAddress[]>;
+        create(options: WritableCustomerAddress): Promise<CommerceCustomerAddress>;
+        update(id: string, options: Partial<WritableCustomerAddress>): Promise<CommerceCustomerAddress>;
+        /** Throws KenresoftApiError (404) if that id isn't one of the caller's own addresses. */
+        remove(id: string): Promise<void>;
+      };
+      orders: {
+        /** Newest first. */
+        list(): Promise<CommerceOrderSummary[]>;
+        /** Throws KenresoftApiError (404) if that id doesn't belong to the caller — identical to a nonexistent id, never distinguishable. */
+        get(id: string): Promise<CommerceOrderDetail>;
+      };
+    };
     categories: {
       /** Every active category. */
       list(): Promise<CommerceCategory[]>;
@@ -466,6 +592,68 @@ export function createKenresoftClient(config: KenresoftClientConfig): KenresoftC
       },
     },
     commerce: {
+      customerAuth: {
+        register(options) {
+          return commerceRequest<CommerceCustomer>('/customer-auth/register', { method: 'POST', body: JSON.stringify(options) });
+        },
+        login(options) {
+          return commerceRequest<CommerceCustomer>('/customer-auth/login', { method: 'POST', body: JSON.stringify(options) });
+        },
+        async logout() {
+          await commerceRequest<undefined>('/customer-auth/logout', { method: 'POST' });
+        },
+        requestPasswordReset(options) {
+          return commerceRequest<{ message: string }>('/customer-auth/password-reset/request', { method: 'POST', body: JSON.stringify(options) });
+        },
+        confirmPasswordReset(options) {
+          return commerceRequest<{ message: string }>('/customer-auth/password-reset/confirm', { method: 'POST', body: JSON.stringify(options) });
+        },
+        verifyEmail({ token }) {
+          return commerceRequest<{ message: string }>(`/customer-auth/verify-email?token=${encodeURIComponent(token)}`);
+        },
+      },
+      customer: {
+        async get() {
+          const response = await doFetch(`${commerceBase}/customer`, { credentials: 'include' });
+          if (response.status === 401) return null;
+          if (!response.ok) {
+            const body = (await response.json().catch(() => null)) as { error?: string } | null;
+            throw new KenresoftApiError(response.status, body?.error ?? `Kenresoft CMS API request failed: GET /customer -> ${response.status}`);
+          }
+          return (await response.json()) as CommerceCustomer;
+        },
+        update(options) {
+          return commerceRequest<CommerceCustomer>('/customer', { method: 'PATCH', body: JSON.stringify(options) });
+        },
+        changePassword(options) {
+          return commerceRequest<{ message: string }>('/customer/password', { method: 'PATCH', body: JSON.stringify(options) });
+        },
+        addresses: {
+          list() {
+            return commerceRequest<CommerceCustomerAddress[]>('/customer/addresses');
+          },
+          create(options) {
+            return commerceRequest<CommerceCustomerAddress>('/customer/addresses', { method: 'POST', body: JSON.stringify(options) });
+          },
+          update(id, options) {
+            return commerceRequest<CommerceCustomerAddress>(`/customer/addresses/${encodeURIComponent(id)}`, {
+              method: 'PATCH',
+              body: JSON.stringify(options),
+            });
+          },
+          async remove(id) {
+            await commerceRequest<undefined>(`/customer/addresses/${encodeURIComponent(id)}`, { method: 'DELETE' });
+          },
+        },
+        orders: {
+          list() {
+            return commerceRequest<CommerceOrderSummary[]>('/customer/orders');
+          },
+          get(id) {
+            return commerceRequest<CommerceOrderDetail>(`/customer/orders/${encodeURIComponent(id)}`);
+          },
+        },
+      },
       categories: {
         list() {
           return commerceRequest<CommerceCategory[]>('/categories');
