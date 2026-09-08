@@ -12,6 +12,25 @@ export default defineWorkersConfig(async () => {
   return {
     test: {
       setupFiles: ['./test/apply-migrations.ts'],
+      // Each test file gets its own isolated Miniflare/workerd runtime (a real D1 + R2 + Worker
+      // simulation, not a lightweight mock) — running all ~39 of them concurrently, as vitest
+      // does by default, contends hard enough for CPU/memory on a constrained runner (GitHub
+      // Actions' standard 2-vCPU runners; this project's own Windows dev machines hit the same
+      // wall, documented repeatedly throughout CLAUDE.md as "run individually/in small batches").
+      // CI ran the full suite as one unbatched `vitest run` and started seeing real, non-code
+      // failures from it — timeouts and spurious 500s from tests that pass cleanly alone —
+      // confirmed by re-running every failing file individually with zero code changes and
+      // getting 100% pass. `fileParallelism: false` serializes file execution (still isolated
+      // per file, just not concurrent), trading CI wall-clock time for determinism — the same
+      // trade-off this project's own local verification practice already makes by hand.
+      fileParallelism: false,
+      // The default 5000ms is tight for a real D1+Worker-backed request even locally, and CI's
+      // shared runners are measurably slower under load — the same serialization fix above cut
+      // CI failures from 7 files to 2, and the one remaining non-race failure was a plain
+      // `Test timed out in 5000ms` on an otherwise-passing request. Real requests taking longer
+      // under CI resource pressure isn't a bug to chase; give them realistic headroom instead.
+      testTimeout: 20000,
+      hookTimeout: 20000,
       poolOptions: {
         workers: {
           // wrangler.test.toml, not wrangler.toml — see that file's own top comment. The real
