@@ -5,8 +5,10 @@ import { commerceConfigSchema } from './config-schema';
 import type { CommerceConfig } from './config-schema';
 import { commerceManifest } from './manifest';
 import { adminCustomersRoutes } from './routes/admin-customers';
+import { adminOrdersRoutes } from './routes/admin-orders';
 import { cartRoutes } from './routes/cart';
 import { categoriesRoutes } from './routes/categories';
+import { checkoutRoutes } from './routes/checkout';
 import { customerRoutes } from './routes/customer';
 import { customerAuthRoutes } from './routes/customer-auth';
 import { productsRoutes } from './routes/products';
@@ -20,16 +22,19 @@ routes.route('/categories', categoriesRoutes);
 routes.route('/products', productsRoutes);
 routes.route('/settings', settingsRoutes);
 routes.route('/customers', adminCustomersRoutes);
+routes.route('/orders', adminOrdersRoutes);
 
 // The public (unauthenticated) route tree — catalog reads at root (unchanged URLs from Phase
-// 2a), plus Phase 2b's customer-auth/customer/cart sub-trees. customer-auth gets its own,
-// tighter rate limit declared below (publicRateLimits); customer/cart rely on the generic
-// public-content limiter plus their own session/cookie-based authorization.
+// 2a), plus Phase 2b's customer-auth/customer/cart sub-trees and Phase 2c's checkout.
+// customer-auth gets its own, tighter rate limit declared below (publicRateLimits);
+// customer/cart/checkout rely on the generic public-content limiter plus their own
+// session/cookie-based authorization.
 const publicRoutes = createPluginOpenApiApp<{ Bindings: PluginBindings; Variables: PluginPublicVariables }>();
 publicRoutes.route('/', catalogPublicRoutes);
 publicRoutes.route('/customer-auth', customerAuthRoutes);
 publicRoutes.route('/customer', customerRoutes);
 publicRoutes.route('/cart', cartRoutes);
+publicRoutes.route('/checkout', checkoutRoutes);
 
 export const commercePlugin: PluginRegistration<CommerceConfig> = {
   manifest: commerceManifest,

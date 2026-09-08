@@ -15,6 +15,8 @@ import {
 } from '../repository/customer-addresses';
 import { updateCustomer, updateCustomerPassword, verifyCustomerPassword } from '../repository/customers';
 import { createCustomerSession, deleteAllSessionsForCustomer } from '../repository/customer-sessions';
+import { getOrderById, listOrderItems, listOrdersForCustomer } from '../repository/orders';
+import type { PluginCommerceOrder, PluginCommerceOrderItem } from '@kenresoft-cms/database';
 
 // The session-required counterpart to customer-auth.ts — every route here 401s without a valid
 // customer session (getCustomerFromRequest), reusing the same cookie customer-auth.ts sets.
@@ -294,5 +296,97 @@ customerRoutes.openapi(
 
     await deleteAddress(ctx.db, id);
     return c.body(null, 204);
+  },
+);
+
+const orderSummarySchema = z.object({
+  id: z.string(),
+  status: z.enum(['pending', 'paid', 'fulfilled', 'cancelled', 'refunded']),
+  currency: z.string(),
+  totalAmount: z.number(),
+  createdAt: z.string(),
+});
+
+const orderItemSchema = z.object({
+  id: z.string(),
+  productId: z.string().nullable(),
+  variantId: z.string().nullable(),
+  productName: z.string(),
+  variantName: z.string().nullable(),
+  sku: z.string().nullable(),
+  unitPriceAtPurchase: z.number(),
+  quantity: z.number(),
+});
+
+const orderDetailSchema = orderSummarySchema.extend({ items: z.array(orderItemSchema) });
+
+function toOrderSummary(order: PluginCommerceOrder): z.infer<typeof orderSummarySchema> {
+  return { id: order.id, status: order.status, currency: order.currency, totalAmount: order.totalAmount, createdAt: order.createdAt.toISOString() };
+}
+
+function toOrderItem(item: PluginCommerceOrderItem): z.infer<typeof orderItemSchema> {
+  return {
+    id: item.id,
+    productId: item.productId,
+    variantId: item.variantId,
+    productName: item.productName,
+    variantName: item.variantName,
+    sku: item.sku,
+    unitPriceAtPurchase: item.unitPriceAtPurchase,
+    quantity: item.quantity,
+  };
+}
+
+customerRoutes.openapi(
+  createRoute({
+    method: 'get',
+    path: '/orders',
+    tags: ['Commerce Customer'],
+    summary: 'List the signed-in customer’s own order history, newest first',
+    responses: {
+      200: { description: 'Every order placed by this customer.', content: { 'application/json': { schema: z.array(orderSummarySchema) } } },
+      401: { description: 'No valid customer session.', content: { 'application/json': { schema: errorSchema } } },
+    },
+  }),
+  async (c) => {
+    const ctx = c.get('pluginContext');
+    const customer = await requireCustomer(c, ctx.db);
+    if (!customer) return c.json({ error: 'Not signed in' }, 401);
+    const orders = await listOrdersForCustomer(ctx.db, customer.id);
+    return c.json(orders.map(toOrderSummary), 200);
+  },
+);
+
+const orderIdParamSchema = z.object({ id: z.string().min(1) });
+
+customerRoutes.openapi(
+  createRoute({
+    method: 'get',
+    path: '/orders/{id}',
+    tags: ['Commerce Customer'],
+    summary: 'Get one of the signed-in customer’s own orders, with its line items',
+    request: { params: orderIdParamSchema },
+    responses: {
+      200: { description: 'The order and its items.', content: { 'application/json': { schema: orderDetailSchema } } },
+      401: { description: 'No valid customer session.', content: { 'application/json': { schema: errorSchema } } },
+      404: { description: 'No order with that id belonging to this customer.', content: { 'application/json': { schema: errorSchema } } },
+    },
+  }),
+  async (c) => {
+    const ctx = c.get('pluginContext');
+    const customer = await requireCustomer(c, ctx.db);
+    if (!customer) return c.json({ error: 'Not signed in' }, 401);
+
+    const { id } = c.req.valid('param');
+    const order = await getOrderById(ctx.db, id);
+    // A guest order (customerId null) or another customer's order must 404 identically to a
+    // nonexistent id — never distinguishable from the outside, matching this codebase's own
+    // draft-vs-nonexistent-slug convention elsewhere.
+    if (!order || order.customerId !== customer.id) {
+      return c.json({ error: 'Order not found' }, 404);
+    }
+
+    const items = await listOrderItems(ctx.db, id);
+    return c.json({ ...toOrderSummary(order), items: items.map(toOrderItem) }, 200);
   },
 );

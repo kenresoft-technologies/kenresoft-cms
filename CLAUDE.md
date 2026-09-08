@@ -1779,3 +1779,48 @@ allowed). Full re-verification after: clean `pnpm typecheck`/`pnpm lint` workspa
 commerce test files (46 tests) together, and all 39 `apps/api` files plus all 31 `apps/admin`
 files (162 tests) individually/in small batches per this file's own standing Windows/workerd-
 flakiness practice — zero regressions.
+
+**Commerce Phase 2c: checkout & orders** (2026-09-08, on `feature/commerce-cart-customer`,
+continuing straight from the hardening pass above per direct instruction to skip a plan-review
+step this time) — done. Two new tables, `plugin_commerce_orders`/`plugin_commerce_order_items`
+(migration `0027_thin_lily_hollister.sql`) — every order snapshots the buyer's email/name/shipping
+address and every line's product/variant name/sku/price inline, never joined live, for the same
+reason flagged as deferred back in the Phase 2b entry above: none of that may ever change once a
+past order recorded it. `customerId` is nullable — guest checkout is supported deliberately,
+since guest carts already exist and requiring an account to buy anything would be a real product
+regression. The core of this pass is real, concurrency-safe stock enforcement (closing 2b's own
+"cart-time capping is advisory only; real enforcement is 2c's job" promise):
+`createOrder` (`packages/plugin-ecommerce/src/repository/orders.ts`) runs a two-phase
+reserve-then-create sequence, since D1 has no `SELECT ... FOR UPDATE` — phase one conditionally
+decrements every tracked-stock line in one batch (`WHERE stock_qty >= quantity`, `.returning()`
+per statement, since a zero-row-match isn't a SQL error D1's batch atomicity would otherwise
+catch), compensating (giving back) any lines that DID succeed if any line failed, before phase two
+inserts the order/items and clears the cart. Verified with a real concurrency test: two customers
+checking out the last unit of the same variant via `Promise.all` resolves to exactly one 201 and
+one 400, stock lands at exactly 0, never negative — not just reasoned about. Order status is a
+five-state machine (`pending -> paid -> fulfilled`, `cancelled`/`refunded` both terminal and both
+reachable from more than one state) enforced server-side, not left to the caller; cancelling/
+refunding restocks every line whose variant still exists. Checkout itself
+(`POST /checkout`, public) re-verifies every cart line's product/variant status live rather than
+trusting whatever was true when it was added, rejecting the whole checkout by name rather than
+silently dropping an item and undercharging. Three route surfaces: the public checkout route;
+`GET /customer/orders` + `GET /customer/orders/:id` (session-required, 404ing another customer's
+or a guest order's id identically to a nonexistent one); and admin `GET`/`GET :id`/
+`PATCH :id/status` under `/orders`, gated at `editor` like catalog rather than admin-customers.ts's
+stricter `admin` floor, since fulfilling orders is core day-to-day operational work, not
+customer-PII browsing. `routes/cart.ts`'s own `resolveExistingCart` was extracted into a new
+`lib/cart-resolution.ts` so checkout doesn't duplicate cart.ts's customer-vs-guest resolution
+logic. `apps/admin` gained an Orders list page (status filter) and an Order detail page (line
+items, shipping address, a status-change `Select` that lets the API's own transition validation be
+authoritative rather than mirroring the state machine client-side), registered in
+`apps/admin/src/plugins/registry.ts` the same way every other Commerce page already is;
+`StatusBadge` gained tone entries for all five order statuses. Verified with two new real-D1 test
+files: `commerce-checkout.test.ts` (8 tests, including the concurrency race test) and
+`commerce-orders.test.ts` (7 tests — role gate, list/filter/detail, valid/invalid transitions,
+restock-on-cancel with a second cancel attempt correctly 400ing since cancelled is terminal, and
+customer order-history scoping). Full re-verification after: clean `pnpm typecheck`/`pnpm lint`
+workspace-wide, all 11 commerce test files individually (the full-batch run hit this file's own
+documented Windows/workerd module-fallback resource-exhaustion flakiness — confirmed non-code by
+re-running each file alone, all clean), and the full `apps/admin` suite (31 files, 162 tests) in
+one clean run. Payments/Paystack (2d) and storefront integration into
+`@kenresoft-cms/astro`/`examples/astro-site` (2e) remain not started.
