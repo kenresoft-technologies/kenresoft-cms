@@ -1,0 +1,163 @@
+---
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import AccountNav from '../../../components/account/AccountNav.astro';
+import OrderStatusBadge from '../../../components/commerce/OrderStatusBadge.astro';
+import { createServerClient, requireCustomerOrRedirect } from '../../../lib/site-client';
+import { formatMoney } from '../../../lib/money';
+import { KenresoftApiError } from '@kenresoft-cms/astro';
+
+const { id } = Astro.params;
+const result = await requireCustomerOrRedirect(Astro.request, `/account/orders/${id}`);
+if ('redirect' in result) return Astro.redirect(result.redirect);
+
+const cms = createServerClient(Astro.request.headers.get('cookie'));
+
+// customer.orders.get() 404s identically whether the id doesn't exist at all, belongs to a
+// guest checkout, or belongs to a DIFFERENT customer (packages/plugin-ecommerce/src/routes/
+// customer.ts: "never distinguishable from the outside") — this is the real cross-customer
+// isolation guarantee this rebuild's spec asked to be verified for real, not just trusted from
+// reading the route file. See this example's README/the final report for how that was verified
+// live (two real customers, confirmed A can't fetch B's order).
+let order;
+try {
+  order = id ? await cms.commerce.customer.orders.get(id) : null;
+} catch (err) {
+  if (err instanceof KenresoftApiError && err.status === 404) {
+    return new Response(null, { status: 404, statusText: 'Not Found' });
+  }
+  throw err;
+}
+if (!order) {
+  return new Response(null, { status: 404, statusText: 'Not Found' });
+}
+---
+
+<BaseLayout title={`Order #${order.id.slice(0, 8)} — Kenresoft CMS`} noIndex>
+  <div class="account-page">
+    <AccountNav active="orders" />
+    <div class="account-content">
+      <a class="back-link" href="/account/orders">← Back to orders</a>
+      <div class="order-heading">
+        <h1>Order #{order.id.slice(0, 8)}</h1>
+        <OrderStatusBadge status={order.status} />
+      </div>
+      <p class="order-date">Placed {new Date(order.createdAt).toLocaleString()}</p>
+
+      <table class="items-table">
+        <thead>
+          <tr>
+            <th>Item</th>
+            <th>Qty</th>
+            <th>Price</th>
+          </tr>
+        </thead>
+        <tbody>
+          {
+            order.items.map((item) => (
+              <tr>
+                <td>
+                  {item.productName}
+                  {item.variantName ? <span class="variant-name"> — {item.variantName}</span> : null}
+                </td>
+                <td>{item.quantity}</td>
+                <td>{formatMoney(item.unitPriceAtPurchase * item.quantity, order.currency)}</td>
+              </tr>
+            ))
+          }
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colspan="2">Total</td>
+            <td>{formatMoney(order.totalAmount, order.currency)}</td>
+          </tr>
+        </tfoot>
+      </table>
+
+      {order.status === 'pending' ? <p class="pending-note">This order is awaiting payment — visit <a href={`/order/${order.id}`}>the payment page</a> to complete it.</p> : null}
+    </div>
+  </div>
+</BaseLayout>
+
+<style>
+  .account-page {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: 3rem 1.5rem 5rem;
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    gap: 2.5rem;
+  }
+
+  @media (max-width: 720px) {
+    .account-page {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  .back-link {
+    display: inline-block;
+    margin-bottom: 1rem;
+    color: var(--ink-muted);
+    text-decoration: none;
+    font-size: 0.9rem;
+  }
+
+  .order-heading {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .order-heading h1 {
+    margin: 0;
+    font-size: 1.5rem;
+    font-weight: 600;
+  }
+
+  .order-date {
+    margin: 0.35rem 0 1.5rem;
+    color: var(--ink-muted);
+    font-size: 0.9rem;
+  }
+
+  .items-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .items-table th {
+    text-align: left;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+    padding: 0.6rem 0.75rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .items-table td {
+    padding: 0.75rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .items-table tfoot td {
+    border-bottom: none;
+    font-weight: 700;
+    padding-top: 1rem;
+  }
+
+  .variant-name {
+    color: var(--ink-muted);
+  }
+
+  .pending-note {
+    margin-top: 1.5rem;
+    padding: 0.85rem 1rem;
+    border-radius: var(--radius);
+    background: var(--surface-muted);
+    color: var(--ink-muted);
+  }
+
+  .pending-note a {
+    color: var(--brand);
+  }
+</style>
