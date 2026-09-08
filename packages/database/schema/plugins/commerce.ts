@@ -410,6 +410,69 @@ export const pluginCommerceOrderItems = sqliteTable(
   ],
 );
 
+// Phase 2d: Payments. A full ledger of every payment ATTEMPT against an order, not just
+// successful ones — a row is created with status 'pending' the moment a Paystack transaction is
+// initialized (before the customer has even reached Paystack's page), and later flipped to
+// 'success'/'failed' by whichever of the verify-callback route or the webhook route resolves it
+// first. This is the actual idempotency mechanism for payment confirmation (routes/payments.ts):
+// resolving a reference is a single `UPDATE ... WHERE reference = ? AND status = 'pending'
+// RETURNING *` — the same conditional-update-plus-check-returned-rows idiom this codebase already
+// uses for single-use tokens and stock reservation — so a retried webhook delivery or a duplicate
+// verify call for an already-resolved reference matches zero rows and is a safe no-op, never a
+// second order-status transition. Tracking every issued reference (not just the order's latest)
+// also means a late-arriving webhook for an OLDER, still-pending reference (the customer
+// abandoned one payment attempt, retried, and paid on the second) still resolves correctly,
+// rather than being silently unmatched once the order moved on to a newer reference.
+export const pluginCommerceOrderPayments = sqliteTable(
+  'plugin_commerce_order_payments',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    orderId: text('order_id')
+      .notNull()
+      .references(() => pluginCommerceOrders.id, { onDelete: 'cascade' }),
+    // Only Paystack today — kept as an enum (not a bare string) so the payments module's
+    // provider-selection logic stays exhaustively checkable if a second provider is ever added,
+    // without implying more multi-provider support exists yet than actually does.
+    provider: text('provider', { enum: ['paystack'] })
+      .notNull()
+      .default('paystack'),
+    reference: text('reference').notNull().unique(),
+    status: text('status', { enum: ['pending', 'success', 'failed'] })
+      .notNull()
+      .default('pending'),
+    // Null until resolved — set from the provider's own verified response, never from anything
+    // client-supplied, and checked against the order's own totalAmount/currency before this row
+    // is ever allowed to move the order to 'paid' (routes/payments.ts).
+    amount: integer('amount'),
+    currency: text('currency'),
+    rawPayload: text('raw_payload', { mode: 'json' }).$type<Record<string, unknown>>(),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .default(sql`(unixepoch())`),
+    resolvedAt: integer('resolved_at', { mode: 'timestamp' }),
+  },
+  (table) => [index('plugin_commerce_order_payments_order_id_idx').on(table.orderId)],
+);
+
+// Backs Idempotency-Key enforcement on POST /checkout (docs/PLUGINS.md's Commerce section) — a
+// client-supplied key, namespaced by scope at the repository layer (e.g. `checkout:<uuid>`, so a
+// future second idempotent endpoint can't collide with this one over the same raw key) rather
+// than a separate scope column, since exactly one endpoint uses this table today. `responseStatus`/
+// `responseBody` stay null while a request is still being processed — a concurrent duplicate
+// submission sees null and is told to retry shortly (409) rather than being served a half-written
+// response or double-processed. No expiry/cleanup job this pass — an accepted, documented
+// simplification, not an oversight; this table only grows as fast as real checkout attempts do.
+export const pluginCommerceIdempotencyKeys = sqliteTable('plugin_commerce_idempotency_keys', {
+  id: text('id').primaryKey(),
+  responseStatus: integer('response_status'),
+  responseBody: text('response_body', { mode: 'json' }).$type<unknown>(),
+  createdAt: integer('created_at', { mode: 'timestamp' })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
 export type PluginCommerceCategory = typeof pluginCommerceCategories.$inferSelect;
 export type NewPluginCommerceCategory = typeof pluginCommerceCategories.$inferInsert;
 export type PluginCommerceProduct = typeof pluginCommerceProducts.$inferSelect;
@@ -434,3 +497,7 @@ export type PluginCommerceOrder = typeof pluginCommerceOrders.$inferSelect;
 export type NewPluginCommerceOrder = typeof pluginCommerceOrders.$inferInsert;
 export type PluginCommerceOrderItem = typeof pluginCommerceOrderItems.$inferSelect;
 export type NewPluginCommerceOrderItem = typeof pluginCommerceOrderItems.$inferInsert;
+export type PluginCommerceOrderPayment = typeof pluginCommerceOrderPayments.$inferSelect;
+export type NewPluginCommerceOrderPayment = typeof pluginCommerceOrderPayments.$inferInsert;
+export type PluginCommerceIdempotencyKey = typeof pluginCommerceIdempotencyKeys.$inferSelect;
+export type NewPluginCommerceIdempotencyKey = typeof pluginCommerceIdempotencyKeys.$inferInsert;

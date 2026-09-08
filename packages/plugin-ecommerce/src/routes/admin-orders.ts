@@ -1,9 +1,10 @@
 import { createRoute, z } from '@hono/zod-openapi';
 import { createPluginOpenApiApp, requirePluginRole } from '@kenresoft-cms/plugin-sdk';
 import type { PluginBindings, PluginVariables } from '@kenresoft-cms/plugin-sdk';
-import type { PluginCommerceOrder, PluginCommerceOrderItem } from '@kenresoft-cms/database';
+import type { PluginCommerceOrder, PluginCommerceOrderItem, PluginCommerceOrderPayment } from '@kenresoft-cms/database';
 
 import { getOrderById, listOrderItems, listOrders, updateOrderStatus } from '../repository/orders';
+import { listPaymentAttemptsForOrder } from '../repository/payments';
 
 // CMS-staff-facing order management — gated at 'editor', matching products/categories, not
 // admin-customers.ts's stricter 'admin' floor: fulfilling orders (viewing what was bought, where
@@ -48,7 +49,22 @@ const orderItemSchema = z.object({
   quantity: z.number(),
 });
 
-const orderDetailSchema = orderSummarySchema.extend({ shippingAddress: addressSchema, items: z.array(orderItemSchema) });
+const paymentAttemptSchema = z.object({
+  id: z.string(),
+  provider: z.literal('paystack'),
+  reference: z.string(),
+  status: z.enum(['pending', 'success', 'failed']),
+  amount: z.number().nullable(),
+  currency: z.string().nullable(),
+  createdAt: z.string(),
+  resolvedAt: z.string().nullable(),
+});
+
+const orderDetailSchema = orderSummarySchema.extend({
+  shippingAddress: addressSchema,
+  items: z.array(orderItemSchema),
+  payments: z.array(paymentAttemptSchema),
+});
 
 function toOrderSummary(order: PluginCommerceOrder): z.infer<typeof orderSummarySchema> {
   return {
@@ -73,6 +89,19 @@ function toOrderItem(item: PluginCommerceOrderItem): z.infer<typeof orderItemSch
     sku: item.sku,
     unitPriceAtPurchase: item.unitPriceAtPurchase,
     quantity: item.quantity,
+  };
+}
+
+function toPaymentAttempt(payment: PluginCommerceOrderPayment): z.infer<typeof paymentAttemptSchema> {
+  return {
+    id: payment.id,
+    provider: payment.provider,
+    reference: payment.reference,
+    status: payment.status,
+    amount: payment.amount,
+    currency: payment.currency,
+    createdAt: payment.createdAt.toISOString(),
+    resolvedAt: payment.resolvedAt?.toISOString() ?? null,
   };
 }
 
@@ -103,11 +132,11 @@ adminOrdersRoutes.openapi(
     method: 'get',
     path: '/{id}',
     tags: ['Commerce Admin: Orders'],
-    summary: 'Get an order with its shipping address and line items',
+    summary: 'Get an order with its shipping address, line items, and payment attempts',
     middleware: requirePluginRole('editor'),
     request: { params: idParamSchema },
     responses: {
-      200: { description: 'The order, its shipping address, and its items.', content: { 'application/json': { schema: orderDetailSchema } } },
+      200: { description: 'The order, its shipping address, its items, and its payment-attempt ledger.', content: { 'application/json': { schema: orderDetailSchema } } },
       404: { description: 'No order with that id.', content: { 'application/json': { schema: errorSchema } } },
     },
   }),
@@ -118,8 +147,11 @@ adminOrdersRoutes.openapi(
     const order = await getOrderById(ctx.db, id);
     if (!order) return c.json({ error: 'Order not found' }, 404);
 
-    const items = await listOrderItems(ctx.db, id);
-    return c.json({ ...toOrderSummary(order), shippingAddress: order.shippingAddress, items: items.map(toOrderItem) }, 200);
+    const [items, payments] = await Promise.all([listOrderItems(ctx.db, id), listPaymentAttemptsForOrder(ctx.db, id)]);
+    return c.json(
+      { ...toOrderSummary(order), shippingAddress: order.shippingAddress, items: items.map(toOrderItem), payments: payments.map(toPaymentAttempt) },
+      200,
+    );
   },
 );
 

@@ -36,4 +36,11 @@ export interface Bindings {
   // in via `wrangler secret put OWNER_RECOVERY_SECRET`. Never given a default value here or in
   // wrangler.toml; an operator who wants this recovery path enables it deliberately.
   OWNER_RECOVERY_SECRET?: string;
+  // Commerce's Paystack integration (apps/api/src/lib/payments). Unset means `getPaymentProvider`
+  // returns a noop provider whose methods all throw/return "not configured" — matching
+  // EMAIL_PROVIDER's own unset-is-fine, not-an-error convention. A Worker secret
+  // (`wrangler secret put PAYSTACK_SECRET_KEY`), never a plugin_settings/database value — see
+  // docs/PLUGINS.md's Commerce section. Paystack's test-mode secret key (`sk_test_...`) and its
+  // live key both work here unchanged; which one is configured is entirely an operator choice.
+  PAYSTACK_SECRET_KEY?: string;
 }

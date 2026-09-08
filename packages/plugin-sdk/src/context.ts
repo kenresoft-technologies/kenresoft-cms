@@ -59,6 +59,46 @@ export interface PluginEmailService {
   send(message: { to: string; subject: string; text: string; html?: string }): Promise<void>;
 }
 
+export type PaymentTransactionStatus = 'success' | 'failed' | 'abandoned' | 'other';
+
+export interface InitializePaymentInput {
+  amount: number;
+  currency: string;
+  email: string;
+  reference: string;
+  callbackUrl: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface InitializePaymentResult {
+  authorizationUrl: string;
+  accessCode: string;
+  reference: string;
+}
+
+export interface VerifyPaymentResult {
+  status: PaymentTransactionStatus;
+  reference: string;
+  amount: number;
+  currency: string;
+  raw: unknown;
+}
+
+// Wraps Core's existing pluggable payment layer (apps/api/src/lib/payments/*, selected by whether
+// PAYSTACK_SECRET_KEY is set) — a plugin never picks a provider, sees its credentials, or calls
+// its REST API directly. Paystack is the only implementation today; this interface exists
+// specifically so a plugin's own domain code (order/checkout logic) depends on this shape, not on
+// Paystack's request/response format, so a future second provider — or a swap away from Paystack
+// entirely — never touches plugin code (docs/PLUGINS.md's Commerce section). `configured` lets a
+// route check up front and return a clear "not set up" response rather than letting an
+// unconfigured provider's methods throw partway through a request.
+export interface PluginPaymentsService {
+  readonly configured: boolean;
+  initializeTransaction(input: InitializePaymentInput): Promise<InitializePaymentResult>;
+  verifyTransaction(reference: string): Promise<VerifyPaymentResult>;
+  verifyWebhookSignature(rawBody: string, signatureHeader: string | undefined): Promise<boolean>;
+}
+
 // In-process, best-effort, synchronous only — not a durable queue. A handler runs synchronously
 // within the same request that called emit(); there is no persistence, no retry, and no
 // cross-request delivery guarantee. No critical business state transition may depend solely on
@@ -90,6 +130,7 @@ export interface PluginContext {
   config: PluginConfigService;
   events: PluginEventBus;
   email: PluginEmailService;
+  payments: PluginPaymentsService;
   logger: PluginLogger;
 }
 
@@ -111,6 +152,10 @@ export interface PluginPublicContext {
   media: PluginMediaService;
   config: Pick<PluginConfigService, 'get'>;
   email: PluginEmailService;
+  // Public precisely because checkout/payment-confirmation routes must work for a guest with no
+  // session at all (docs/PLUGINS.md's Commerce section) — the same reasoning `email` already
+  // established here for password-reset-style flows.
+  payments: PluginPaymentsService;
   logger: PluginLogger;
 }
 

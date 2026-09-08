@@ -141,3 +141,10 @@ BETTER_AUTH_URL = "https://REPLACE_AFTER_FIRST_DEPLOY.workers.dev"
 # revoke) and is equivalent to a permanent master key for this deployment. docs/DEPLOYMENT.md's
 # recovery section has the full guidance — prefer setting it only when actually needed, then
 # `wrangler secret delete OWNER_RECOVERY_SECRET` once you're done.
+
+# Commerce's Paystack integration (docs/PLUGINS.md's Commerce section) — unset by default, which
+# leaves every payment route responding "not configured" rather than erroring. Set as a secret,
+# never a var (it authenticates every request to Paystack's API and signs its webhooks):
+#   wrangler secret put PAYSTACK_SECRET_KEY
+# Use a test-mode key (starts sk_test_) while developing/testing — Paystack itself decides
+# sandbox-vs-live purely from which key you use, nothing else here needs to change.

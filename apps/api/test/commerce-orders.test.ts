@@ -74,7 +74,7 @@ async function placeOrder(customerCookie: string, productId: string, variantId?:
   });
   const res = await SELF.fetch(CHECKOUT_BASE, {
     method: 'POST',
-    headers: { Cookie: customerCookie, 'Content-Type': 'application/json' },
+    headers: { Cookie: customerCookie, 'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID() },
     body: JSON.stringify({ shippingAddress: SHIPPING_ADDRESS }),
   });
   return res.json<{ id: string; status: string }>();

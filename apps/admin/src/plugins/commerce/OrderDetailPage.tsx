@@ -145,6 +145,31 @@ export function OrderDetailPage() {
                 {order.shippingAddress.phone ? <p>{order.shippingAddress.phone}</p> : null}
               </CardContent>
             </Card>
+
+            {order.payments.length > 0 ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">Payment attempts</CardTitle>
+                </CardHeader>
+                <CardContent className="flex flex-col gap-3">
+                  {order.payments.map((payment) => (
+                    <div key={payment.id} className="rounded-lg border p-3 text-sm">
+                      <div className="flex items-center justify-between">
+                        <span className="font-mono text-xs text-muted-foreground">{payment.reference.slice(0, 12)}…</span>
+                        <StatusBadge status={payment.status === 'success' ? 'paid' : payment.status === 'failed' ? 'cancelled' : 'pending'} />
+                      </div>
+                      <p className="mt-1 text-muted-foreground">
+                        {payment.amount !== null && payment.currency ? formatMoney(payment.amount, payment.currency) : '—'} via {payment.provider}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Initialized {new Date(payment.createdAt).toLocaleString()}
+                        {payment.resolvedAt ? ` · resolved ${new Date(payment.resolvedAt).toLocaleString()}` : ''}
+                      </p>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            ) : null}
           </div>
         </div>
       ) : null}
