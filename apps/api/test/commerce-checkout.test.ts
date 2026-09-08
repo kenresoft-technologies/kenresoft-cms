@@ -459,6 +459,15 @@ describe('commerce plugin: checkout (real D1)', () => {
     if (resultA.ok && resultB.ok) {
       // Both callers get back the SAME order — exactly one was ever actually created for this key.
       expect(resultA.order.id).toBe(resultB.order.id);
+
+      // Issue 1 of the payments concurrency review: the order and its items must land together,
+      // atomically — never an order row that exists with zero items (the prior two-batch design's
+      // partial-state gap). Exactly one order item exists for the winning order, regardless of
+      // which cart actually won the race.
+      const itemCount = await env.DB.prepare('SELECT COUNT(*) as count FROM plugin_commerce_order_items WHERE order_id = ?')
+        .bind(resultA.order.id)
+        .first<{ count: number }>();
+      expect(itemCount?.count).toBe(1);
     }
 
     const orderCount = await env.DB.prepare('SELECT COUNT(*) as count FROM plugin_commerce_orders').first<{ count: number }>();

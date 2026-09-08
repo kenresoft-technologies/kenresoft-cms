@@ -281,6 +281,109 @@ describe('commerce plugin: payments (real D1)', () => {
     expect(orderRow?.status).toBe('paid');
   });
 
+  it('a stale, unauthorized payment claim (the claiming request crashed before persisting an authorizationUrl) is reclaimed rather than blocking the order forever (issue 2 of the payments concurrency review)', async () => {
+    const order = await createPendingOrder();
+    // Simulates exactly what claimPendingPaymentAttempt's own INSERT produces — a 'pending' row
+    // with no authorizationUrl — but with a createdAt well past the 30s staleness cutoff, as if
+    // the Worker that claimed it died before ever calling Paystack (or before persisting the
+    // result), rather than genuinely still being in flight.
+    const staleReference = crypto.randomUUID();
+    const staleTimestamp = Math.floor((Date.now() - 60_000) / 1000);
+    await env.DB.prepare(
+      `INSERT INTO plugin_commerce_order_payments (id, order_id, provider, reference, status, created_at) VALUES (?, ?, 'paystack', ?, 'pending', ?)`,
+    )
+      .bind(crypto.randomUUID(), order.id, staleReference, staleTimestamp)
+      .run();
+
+    let initializeCalls = 0;
+    const provider: PluginPaymentsService = {
+      ...neverProvider,
+      initializeTransaction: async (input) => {
+        initializeCalls += 1;
+        return { authorizationUrl: 'https://checkout.paystack.com/fresh', accessCode: 'fresh', reference: input.reference };
+      },
+      // Paystack has never heard of the stale reference either — the claiming request died
+      // before ever reaching Paystack, not merely before persisting the result locally.
+      verifyTransaction: async () => {
+        throw new Error('unknown reference');
+      },
+    };
+    const app = buildTestApp(provider);
+
+    const res = await app.request(
+      `/orders/${order.id}/initialize`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ callbackUrl: ALLOWED_CALLBACK }) },
+      env,
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json<{ authorizationUrl: string; reference: string }>();
+    expect(body.authorizationUrl).toBe('https://checkout.paystack.com/fresh');
+    expect(body.reference).not.toBe(staleReference);
+    expect(initializeCalls).toBe(1);
+
+    const db = createDb(env.DB);
+    const staleAttempt = await getPaymentAttempt(db, staleReference);
+    expect(staleAttempt?.status).toBe('failed');
+    const attempts = await listPaymentAttemptsForOrder(db, order.id);
+    expect(attempts).toHaveLength(2);
+  });
+
+  it('a stale, unauthorized payment claim that Paystack actually confirms succeeded (a crash after the charge but before the local record) settles the order as paid instead of being discarded', async () => {
+    const order = await createPendingOrder();
+    const staleReference = crypto.randomUUID();
+    const staleTimestamp = Math.floor((Date.now() - 60_000) / 1000);
+    await env.DB.prepare(
+      `INSERT INTO plugin_commerce_order_payments (id, order_id, provider, reference, status, created_at) VALUES (?, ?, 'paystack', ?, 'pending', ?)`,
+    )
+      .bind(crypto.randomUUID(), order.id, staleReference, staleTimestamp)
+      .run();
+
+    const provider: PluginPaymentsService = {
+      ...neverProvider,
+      verifyTransaction: async (ref) => ({ status: 'success', reference: ref, amount: order.totalAmount, currency: order.currency, raw: {} }),
+    };
+    const app = buildTestApp(provider);
+
+    const res = await app.request(
+      `/orders/${order.id}/initialize`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ callbackUrl: ALLOWED_CALLBACK }) },
+      env,
+    );
+    // Never silently discarded as "abandoned" just because it was stale and unauthorized locally
+    // — Paystack's own record is checked first, and it says this reference genuinely succeeded.
+    expect(res.status).toBe(400);
+    expect((await res.json<{ error: string }>()).error).toContain('already been paid');
+
+    const db = createDb(env.DB);
+    const orderRow = await db.query.pluginCommerceOrders.findFirst({ where: (o, { eq }) => eq(o.id, order.id) });
+    expect(orderRow?.status).toBe('paid');
+    const attempt = await getPaymentAttempt(db, staleReference);
+    expect(attempt?.status).toBe('success');
+  });
+
+  it('a recent (not yet stale) unauthorized payment claim is NOT reclaimed — the caller gets 409, not a second Paystack initialization', async () => {
+    const order = await createPendingOrder();
+    const recentReference = crypto.randomUUID();
+    const recentTimestamp = Math.floor(Date.now() / 1000);
+    await env.DB.prepare(
+      `INSERT INTO plugin_commerce_order_payments (id, order_id, provider, reference, status, created_at) VALUES (?, ?, 'paystack', ?, 'pending', ?)`,
+    )
+      .bind(crypto.randomUUID(), order.id, recentReference, recentTimestamp)
+      .run();
+
+    const app = buildTestApp(neverProvider);
+    const res = await app.request(
+      `/orders/${order.id}/initialize`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ callbackUrl: ALLOWED_CALLBACK }) },
+      env,
+    );
+    expect(res.status).toBe(409);
+
+    const db = createDb(env.DB);
+    const attempt = await getPaymentAttempt(db, recentReference);
+    expect(attempt?.status).toBe('pending');
+  });
+
   it('two genuinely concurrent initialize calls for the same order result in exactly one Paystack initialization (issue 1 of the payments concurrency review)', async () => {
     const order = await createPendingOrder();
     let initializeCalls = 0;

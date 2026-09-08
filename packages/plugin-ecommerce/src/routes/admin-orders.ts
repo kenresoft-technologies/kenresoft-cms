@@ -162,7 +162,8 @@ adminOrdersRoutes.openapi(
     method: 'patch',
     path: '/{id}/status',
     tags: ['Commerce Admin: Orders'],
-    summary: 'Transition an order’s status (cancelling/refunding restocks its tracked-variant lines)',
+    summary:
+      'Transition an order’s status (cancelling restocks its tracked-variant lines) — pending -> paid is not settable here; only real Paystack payment settlement can mark an order paid (repository/orders.ts)',
     middleware: requirePluginRole('editor'),
     request: { params: idParamSchema, body: { content: { 'application/json': { schema: statusPatchSchema } } } },
     responses: {

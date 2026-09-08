@@ -16,16 +16,26 @@ import type { CartItemWithDetail } from './cart-items';
 
 export type OrderStatus = PluginCommerceOrder['status'];
 
-// pending -> paid is Phase 2d's job (a real payment gateway). 'refunded' deliberately has NO
-// transition reaching it — it stays a defined status value (so a future pass can implement real
-// provider-backed refunds without a schema/type migration) but is unreachable through this API
-// today. Before this restriction, paid/fulfilled -> refunded changed the CMS status and restocked
-// inventory WITHOUT ever calling Paystack's refund API — an order could read "refunded" while no
-// money had actually moved back to the customer, which is worse than not offering the transition
-// at all. Re-enable it only alongside real refund handling (initiating and confirming an actual
-// Paystack refund before/as part of this transition) — see docs/PLUGINS.md's Commerce section.
+// Deliberately does NOT include pending -> paid. Payment settlement is authoritative and lives
+// entirely outside this function: resolvePaymentAttempt (repository/payments.ts) transitions an
+// order to 'paid' itself, via its own atomic conditional UPDATE driven only by a Paystack-verified
+// reference/webhook — never by this admin-facing status-transition table. Before this restriction,
+// PATCH /orders/{id}/status let any editor mark an order 'paid' by hand with zero payment ever
+// having occurred, which is a real financial-integrity gap for a durable order record, not a minor
+// inconvenience. If a genuinely unpaid order needs to be treated as fulfilled for some
+// out-of-band reason (e.g. a manual bank transfer this deployment doesn't process through
+// Paystack), that's a deliberately unsupported case today, not silently allowed through this API.
+//
+// 'refunded' deliberately has NO transition reaching it either — it stays a defined status value
+// (so a future pass can implement real provider-backed refunds without a schema/type migration)
+// but is unreachable through this API today. Before this restriction, paid/fulfilled -> refunded
+// changed the CMS status and restocked inventory WITHOUT ever calling Paystack's refund API — an
+// order could read "refunded" while no money had actually moved back to the customer, which is
+// worse than not offering the transition at all. Re-enable it only alongside real refund handling
+// (initiating and confirming an actual Paystack refund before/as part of this transition) — see
+// docs/PLUGINS.md's Commerce section.
 const VALID_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
-  pending: ['paid', 'cancelled'],
+  pending: ['cancelled'],
   paid: ['fulfilled', 'cancelled'],
   fulfilled: [],
   cancelled: [],
@@ -76,7 +86,7 @@ type BatchStatement = Parameters<Database['batch']>[0][number];
 
 // Real, concurrency-safe stock enforcement — the "advisory only" capping in cart-items.ts/carts.ts
 // is deliberately just UX; this is the actual reservation. D1 has no SELECT ... FOR UPDATE, so
-// this runs as three phases instead of relying on row locks:
+// this runs as two phases instead of relying on row locks:
 //
 // Phase 1 conditionally decrements every tracked-stock line in one batch (`WHERE stock_qty >=
 // quantity`, `.returning()` so a non-match — insufficient stock — is visible per statement, not
@@ -84,28 +94,21 @@ type BatchStatement = Parameters<Database['batch']>[0][number];
 // in a compensating batch before returning failure, so a checkout that can't be fully satisfied
 // never partially decrements stock out from under other customers.
 //
-// Phase 2 is the actual, durable idempotency guarantee (closing a gap flagged in the Phase 2d
-// payments review): a STANDALONE insert of the order row itself, with `.onConflictDoNothing()`
-// against `idempotencyKey`'s own UNIQUE constraint. This is deliberately NOT folded into the same
-// batch as phase 3's item inserts/cart delete — the checkout route's own
-// plugin_commerce_idempotency_keys claim/reclaim table (routes/checkout.ts) exists purely for
-// fast-path response caching and availability (its 30s stale-claim recovery deliberately allows a
-// claim to be reassigned away from a request that's merely slow, not crashed — which does NOT
-// stop that original request from continuing to run). Two executions can therefore both reach
-// this function for the same idempotencyKey; this insert's UNIQUE constraint is what guarantees
-// only ONE of them can ever actually create an order, independent of that other table's timing.
-//
-// Phase 3 (items + cart delete) only ever runs for whichever execution's phase 2 insert actually
-// won — the loser gives back its phase-1 stock reservation and returns the WINNER's order instead
-// (found by idempotencyKey), never attempting phase 3 for an order it doesn't own.
-//
-// D1's own batch atomicity (all-or-nothing on a genuine SQL error) is necessary but not
-// sufficient for phase 1 alone, since a WHERE clause matching zero rows is not a SQL error —
-// hence phase 1's own explicit reserve-then-compensate design. Known, accepted gap: a crash
-// between any of these phases would leave partial state (stock decremented with no order, or an
-// order with no items) — D1 has no cross-request saga/compensation log, and adding one is out of
-// scope for this pass; the idempotency-key mechanism means a client retry is always safe
-// regardless (repository/idempotency.ts).
+// Phase 2 is a SINGLE batch that inserts the order row, every order-item row, and the cart delete
+// together — closing a real gap the prior two-batch design had: with the order insert as its own
+// standalone statement, a losing concurrent execution (or an admin/read path racing the write)
+// could observe an order row that exists with zero items in between, and a crash between the two
+// batches could leave that state permanently. Because every item-insert statement references
+// THIS execution's own `orderId` via a NOT NULL foreign key, a losing execution's order insert
+// (skipped by `.onConflictDoNothing()` against `idempotencyKey`'s own UNIQUE constraint, since its
+// row was never actually written) makes its own item inserts violate that foreign key — a genuine
+// SQL error, which aborts the whole batch under D1's own transactional batch atomicity. That
+// failure is caught below and treated exactly like the previous design's "lost the race" path:
+// give back the stock this execution speculatively reserved and return the WINNER's order
+// (looked up by idempotencyKey) instead. A winning execution's insert succeeds, so its own item
+// inserts reference a real row and the whole batch — order, every item, and the cart delete —
+// commits atomically together: an order can never be observed, nor left behind after a crash,
+// with no items.
 export async function createOrder(db: Database, input: CreateOrderInput): Promise<CreateOrderResult> {
   const trackedItems = input.items.filter(
     (entry): entry is CartItemWithDetail & { variant: NonNullable<CartItemWithDetail['variant']> } => entry.variant !== null,
@@ -153,56 +156,43 @@ export async function createOrder(db: Database, input: CreateOrderInput): Promis
     0,
   );
 
-  const [insertedOrder] = await db
-    .insert(pluginCommerceOrders)
-    .values({
-      id: orderId,
-      customerId: input.customerId,
-      customerEmail: input.customerEmail,
-      customerName: input.customerName,
-      currency: input.currency,
-      totalAmount,
-      shippingAddress: {
-        recipientName: input.shippingAddress.recipientName,
-        line1: input.shippingAddress.line1,
-        line2: input.shippingAddress.line2 ?? null,
-        city: input.shippingAddress.city,
-        region: input.shippingAddress.region ?? null,
-        postalCode: input.shippingAddress.postalCode,
-        country: input.shippingAddress.country,
-        phone: input.shippingAddress.phone ?? null,
-      },
-      idempotencyKey: input.idempotencyKey,
-    })
-    .onConflictDoNothing()
-    .returning();
-
-  if (!insertedOrder) {
-    // Lost the durable idempotency-key race — another execution already created (or is
-    // concurrently creating) the order for this exact checkout attempt. Give back the stock this
-    // execution speculatively reserved in phase 1; it will never be consumed by an order this
-    // execution actually owns.
-    if (trackedItems.length > 0) {
-      const giveBackStatements: BatchStatement[] = trackedItems.map((entry) =>
-        db
-          .update(pluginCommerceProductVariants)
-          .set({ stockQty: sql`${pluginCommerceProductVariants.stockQty} + ${entry.item.quantity}`, updatedAt: new Date() })
-          .where(eq(pluginCommerceProductVariants.id, entry.variant.id)),
-      );
-      await db.batch(giveBackStatements as [BatchStatement, ...BatchStatement[]]);
-    }
-
-    const existing = await db.query.pluginCommerceOrders.findFirst({ where: eq(pluginCommerceOrders.idempotencyKey, input.idempotencyKey) });
-    if (existing) {
-      return { ok: true, order: existing };
-    }
-    // Extremely unlikely (the conflict implies a row exists) — the winner's own insert may not
-    // have become visible to this read yet. Surface as a retryable failure rather than silently
-    // losing the request; the client's own idempotency-key retry will find the real order.
-    return { ok: false, error: 'out_of_stock', unavailable: [] };
-  }
+  // A helper so both the success path and the "lost the race" catch block below give back
+  // phase 1's speculative reservation the same way.
+  const giveBackReservedStock = async () => {
+    if (trackedItems.length === 0) return;
+    const giveBackStatements: BatchStatement[] = trackedItems.map((entry) =>
+      db
+        .update(pluginCommerceProductVariants)
+        .set({ stockQty: sql`${pluginCommerceProductVariants.stockQty} + ${entry.item.quantity}`, updatedAt: new Date() })
+        .where(eq(pluginCommerceProductVariants.id, entry.variant.id)),
+    );
+    await db.batch(giveBackStatements as [BatchStatement, ...BatchStatement[]]);
+  };
 
   const statements: BatchStatement[] = [
+    db
+      .insert(pluginCommerceOrders)
+      .values({
+        id: orderId,
+        customerId: input.customerId,
+        customerEmail: input.customerEmail,
+        customerName: input.customerName,
+        currency: input.currency,
+        totalAmount,
+        shippingAddress: {
+          recipientName: input.shippingAddress.recipientName,
+          line1: input.shippingAddress.line1,
+          line2: input.shippingAddress.line2 ?? null,
+          city: input.shippingAddress.city,
+          region: input.shippingAddress.region ?? null,
+          postalCode: input.shippingAddress.postalCode,
+          country: input.shippingAddress.country,
+          phone: input.shippingAddress.phone ?? null,
+        },
+        idempotencyKey: input.idempotencyKey,
+      })
+      .onConflictDoNothing()
+      .returning(),
     ...input.items.map((entry) =>
       db.insert(pluginCommerceOrderItems).values({
         orderId,
@@ -220,7 +210,39 @@ export async function createOrder(db: Database, input: CreateOrderInput): Promis
     db.delete(pluginCommerceCarts).where(eq(pluginCommerceCarts.id, input.cartId)),
   ];
 
-  await db.batch(statements as [BatchStatement, ...BatchStatement[]]);
+  let batchResults: Array<Array<PluginCommerceOrder>>;
+  try {
+    batchResults = (await db.batch(statements as [BatchStatement, ...BatchStatement[]])) as unknown as Array<Array<PluginCommerceOrder>>;
+  } catch (err) {
+    // Most likely: this execution lost the idempotency-key race (its own order insert above was
+    // skipped by onConflictDoNothing, so its own item inserts referenced a nonexistent orderId
+    // and violated their foreign key, aborting the whole batch — see this function's own comment).
+    // Give back this execution's speculative stock reservation either way and look for the
+    // winner's order by idempotencyKey.
+    await giveBackReservedStock();
+    const existing = await db.query.pluginCommerceOrders.findFirst({ where: eq(pluginCommerceOrders.idempotencyKey, input.idempotencyKey) });
+    if (existing) {
+      return { ok: true, order: existing };
+    }
+    // No order exists for this key after all — this was a genuinely unexpected failure, not the
+    // anticipated idempotency-key conflict. Surface it rather than silently misreporting it as
+    // out-of-stock.
+    throw err;
+  }
+
+  const insertedOrder = batchResults[0]?.[0];
+  if (!insertedOrder) {
+    // Defensive: the batch committed without error (nothing else referenced this execution's
+    // orderId in a way that would fail), yet the order insert itself still reported no row —
+    // should be unreachable given every item insert above references orderId via a NOT NULL FK,
+    // but handled the same way as the thrown-error case rather than assumed impossible.
+    await giveBackReservedStock();
+    const existing = await db.query.pluginCommerceOrders.findFirst({ where: eq(pluginCommerceOrders.idempotencyKey, input.idempotencyKey) });
+    if (existing) {
+      return { ok: true, order: existing };
+    }
+    return { ok: false, error: 'out_of_stock', unavailable: [] };
+  }
 
   return { ok: true, order: insertedOrder };
 }

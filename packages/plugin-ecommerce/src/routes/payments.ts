@@ -4,7 +4,14 @@ import type { PluginBindings, PluginPublicContext, PluginPublicVariables, Verify
 import type { PluginCommerceOrder, PluginCommerceOrderPayment } from '@kenresoft-cms/database';
 
 import { getOrderById } from '../repository/orders';
-import { abandonPaymentAttempt, claimPendingPaymentAttempt, getPaymentAttempt, resolvePaymentAttempt, setPaymentAttemptAuthorizationUrl } from '../repository/payments';
+import {
+  abandonPaymentAttempt,
+  claimPendingPaymentAttempt,
+  getPaymentAttempt,
+  reclaimStaleUnauthorizedAttempt,
+  resolvePaymentAttempt,
+  setPaymentAttemptAuthorizationUrl,
+} from '../repository/payments';
 
 // Public: checkout/payment confirmation must work for a guest with no session at all. Unlike
 // cart/customer/customer-auth, these routes carry no cookie-based identity to forge in the first
@@ -36,6 +43,12 @@ function isAllowedCallbackOrigin(corsOrigins: string, callbackUrl: string): bool
 // resolves automatically) and must never be treated as a failure — see
 // apps/api/src/lib/payments/types.ts's own comment on why this distinction exists at all.
 const TERMINAL_FAILURE_STATUSES: ReadonlySet<VerifyPaymentResult['status']> = new Set(['failed', 'abandoned']);
+
+// Mirrors repository/payments.ts's own STALE_UNAUTHORIZED_CLAIM_MS — the DB-side reclaim is the
+// actual authority (a fresh claim genuinely younger than this is rejected there regardless of what
+// this route computes), this local check just avoids bothering Paystack with a verify call for a
+// claim that's still well within its normal in-flight window.
+const STALE_UNAUTHORIZED_CLAIM_MS = 30_000;
 
 type SettleOutcome = 'success' | 'failed' | 'mismatch' | 'already_resolved' | 'unknown_reference' | 'succeeded_but_order_not_pending';
 
@@ -183,9 +196,56 @@ paymentsRoutes.openapi(
     // or a genuinely concurrent request. Inspect it with Paystack rather than assuming anything.
     const existing: PluginCommerceOrderPayment = firstClaim.existing;
     if (!existing.authorizationUrl) {
-      // A concurrent request has claimed the slot and is still talking to Paystack right now —
-      // there's nothing usable to hand back yet.
-      return c.json({ error: 'Payment initialization for this order is already in progress — please retry shortly' }, 409);
+      const claimAgeMs = Date.now() - existing.createdAt.getTime();
+      if (claimAgeMs < STALE_UNAUTHORIZED_CLAIM_MS) {
+        // Still genuinely in flight — a concurrent request claimed the slot moments ago and
+        // hasn't heard back from Paystack (or persisted the result) yet. Nothing to recover.
+        return c.json({ error: 'Payment initialization for this order is already in progress — please retry shortly' }, 409);
+      }
+
+      // Stale: the claiming request most likely crashed or was killed somewhere between
+      // reserving this row and persisting an authorizationUrl for it — without recovery this
+      // would block the order from ever initializing payment again. Check with Paystack directly
+      // before assuming nothing happened there: authorizationUrl was never persisted, so this
+      // deployment never handed a checkout link to a customer for this exact reference (making a
+      // genuine success here exceedingly unlikely), but the check is cheap and removes any doubt
+      // rather than relying on that reasoning alone.
+      let recheck;
+      try {
+        recheck = await ctx.payments.verifyTransaction(existing.reference);
+      } catch (err) {
+        // Most likely: Paystack has never heard of this reference either (the claiming request
+        // died before ever calling initializeTransaction) — nothing to recover from Paystack's
+        // side, proceed to reclaim the stale row below.
+        ctx.logger.warn('Paystack re-verify failed while recovering a stale, unauthorized payment claim', {
+          orderId,
+          reference: existing.reference,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        recheck = undefined;
+      }
+
+      if (recheck?.status === 'success') {
+        const outcome = await settlePayment(ctx, order, { reference: existing.reference, status: 'success', amount: recheck.amount, currency: recheck.currency, raw: recheck.raw });
+        if (outcome === 'mismatch') {
+          return c.json({ error: 'A prior payment attempt for this order succeeded, but for an amount/currency that does not match' }, 409);
+        }
+        return c.json({ error: 'This order has already been paid' }, 400);
+      }
+
+      const reclaimed = await reclaimStaleUnauthorizedAttempt(ctx.db, existing.reference);
+      if (!reclaimed) {
+        // Lost a race to reclaim this exact row (another request's recovery attempt, or its own
+        // retry, beat this one to it) — whatever happened, ask the caller to retry shortly rather
+        // than assuming this request now owns anything.
+        return c.json({ error: 'Payment initialization for this order is already in progress — please retry shortly' }, 409);
+      }
+
+      const freshClaim = await claimPendingPaymentAttempt(ctx.db, orderId);
+      if (!freshClaim.claimed) {
+        return c.json({ error: 'Payment initialization for this order is already in progress — please retry shortly' }, 409);
+      }
+      return initializeWithClaimedReference(freshClaim.reference);
     }
 
     let recheck;

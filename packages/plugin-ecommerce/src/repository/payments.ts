@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, pluginCommerceOrderPayments, pluginCommerceOrders } from '@kenresoft-cms/database';
+import { and, asc, desc, eq, isNull, lt, pluginCommerceOrderPayments, pluginCommerceOrders } from '@kenresoft-cms/database';
 import type { Database, PluginCommerceOrderPayment } from '@kenresoft-cms/database';
 
 export type ClaimPendingPaymentAttemptResult =
@@ -53,6 +53,45 @@ export async function abandonPaymentAttempt(db: Database, reference: string): Pr
     .update(pluginCommerceOrderPayments)
     .set({ status: 'failed', resolvedAt: new Date() })
     .where(and(eq(pluginCommerceOrderPayments.reference, reference), eq(pluginCommerceOrderPayments.status, 'pending')));
+}
+
+// Recovers a claim that was reserved (claimPendingPaymentAttempt) but never got as far as
+// recording an authorizationUrl — the window between reserving the row and either a crash/kill of
+// the Worker or a still-in-flight call to Paystack. Without this, such a row blocks
+// POST /orders/{id}/initialize forever: claimPendingPaymentAttempt always loses the race to it,
+// and routes/payments.ts's own "no authorizationUrl yet" branch would otherwise always 409
+// indefinitely. Deliberately never invalidates a row that already has an authorizationUrl — that
+// case means Paystack was actually reached and this deployment DID hand a checkout session id
+// back in a request that returned successfully, which routes/payments.ts's separate
+// re-verify-with-Paystack path (not this function) already covers correctly.
+//
+// Safe to reclaim without asking Paystack first: authorizationUrl is only ever persisted, and
+// only ever returned to a caller, in the same request that set it — if it was never persisted,
+// this deployment never handed a checkout link to anyone, so nobody could have completed payment
+// through this specific reference regardless of what Paystack's own session state for it might
+// be. routes/payments.ts still checks with Paystack directly before calling this, purely as an
+// extra, cheap safety net (not because it's required for correctness here).
+//
+// The same conditional-update-plus-check-returned-rows idiom as resolvePaymentAttempt/
+// claimIdempotencyKey — only one of two concurrent reclaim attempts for the same reference can
+// ever succeed.
+const STALE_UNAUTHORIZED_CLAIM_MS = 30_000;
+
+export async function reclaimStaleUnauthorizedAttempt(db: Database, reference: string): Promise<boolean> {
+  const cutoff = new Date(Date.now() - STALE_UNAUTHORIZED_CLAIM_MS);
+  const [reclaimed] = await db
+    .update(pluginCommerceOrderPayments)
+    .set({ status: 'failed', resolvedAt: new Date() })
+    .where(
+      and(
+        eq(pluginCommerceOrderPayments.reference, reference),
+        eq(pluginCommerceOrderPayments.status, 'pending'),
+        isNull(pluginCommerceOrderPayments.authorizationUrl),
+        lt(pluginCommerceOrderPayments.createdAt, cutoff),
+      ),
+    )
+    .returning();
+  return Boolean(reclaimed);
 }
 
 export function getPaymentAttempt(db: Database, reference: string): Promise<PluginCommerceOrderPayment | undefined> {
