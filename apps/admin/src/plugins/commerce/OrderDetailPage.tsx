@@ -12,7 +12,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { formatMoney } from './format';
 import { useCommerceOrder, useUpdateCommerceOrderStatus, type CommerceOrderStatus } from './queries';
 
-const STATUS_OPTIONS: CommerceOrderStatus[] = ['pending', 'paid', 'fulfilled', 'cancelled', 'refunded'];
+// 'refunded' is deliberately omitted — the API has no transition reaching it today (no
+// provider-backed Paystack refund is actually issued), so offering it here would just be a
+// control that always 400s. See repository/orders.ts's own comment for the full reasoning.
+const STATUS_OPTIONS: CommerceOrderStatus[] = ['pending', 'paid', 'fulfilled', 'cancelled'];
 
 function OrderStatusControl({ orderId, status }: { orderId: string; status: CommerceOrderStatus }) {
   const updateStatus = useUpdateCommerceOrderStatus(orderId);

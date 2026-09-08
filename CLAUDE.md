@@ -1911,3 +1911,31 @@ run (a first concurrent run alongside other work in this same pass produced 51 s
 across totally unrelated pages — confirmed environmental resource contention, not a regression, by
 re-running the identical suite alone immediately after with zero changes and getting 162/162).
 Storefront integration into `@kenresoft-cms/astro`/`examples/astro-site` (2e) remains not started.
+
+**Commerce Phase 2d review fixes** (2026-09-08, prompted by the user's own direct code review of
+the merged 2d work — six real gaps found, all closed before 2e was allowed to start) — done.
+(1) Paystack's real status vocabulary (`pending`/`ongoing`/`processing`/`queued`/`reversed`) was
+being collapsed to `failed` for anything non-`success` — fixed: these are carried 1:1 through
+`PaymentTransactionStatus` now, and only genuinely terminal outcomes ever reach `settlePayment`;
+everything else leaves the payment attempt `pending` for a later check. (2) Repeated
+`POST /orders/{id}/initialize` calls created a new chargeable Paystack reference every time —
+fixed by checking for an existing pending attempt first, re-verifying its real status, and reusing
+its stored `authorizationUrl` (a new column) rather than starting a second session, only issuing a
+genuinely fresh reference once the prior one is confirmed failed. (3) A claimed idempotency key
+could block forever if the Worker crashed before completing it — fixed with a 30s staleness
+window, reclaimed via the same conditional-update-plus-check-returned-rows idiom used everywhere
+else in this codebase (bumping `createdAt` is both the reclaim and the guard against a second
+concurrent reclaimer). (4) The `paid`/`fulfilled -> refunded` transition changed CMS status and
+restocked inventory without ever calling a real Paystack refund — disabled entirely (no transition
+reaches `refunded` now) rather than continuing to represent a financial claim that wasn't true; the
+status value stays defined for a future pass that implements real provider-backed refunds. (5) The
+cancellation-vs-payment race now has an explicit, tested policy: if an order is cancelled while its
+payment is still pending and Paystack later reports success, the order's CMS status is never
+silently overwritten (already safe at the DB level via `resolvePaymentAttempt`'s own conditional
+update) — `settlePayment` now explicitly detects this specific outcome and logs it loudly for
+manual reconciliation, since real money moved for an order this deployment no longer considers
+open. (6) Tests: `commerce-payments.test.ts` grew from 12 to 22 tests, `commerce-checkout.test.ts`
+from 11 to 13, `commerce-orders.test.ts` from 7 to 8, plus an extended status-vocabulary case in
+`paystack-provider.test.ts`. Full re-verification: clean `pnpm typecheck`/`pnpm lint`
+workspace-wide, every commerce/payments test file passing individually, the full `apps/admin`
+suite (162 tests) clean in one run.

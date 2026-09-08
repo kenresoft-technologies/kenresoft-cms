@@ -1,20 +1,37 @@
-import { and, asc, eq, pluginCommerceOrderPayments, pluginCommerceOrders } from '@kenresoft-cms/database';
+import { and, asc, desc, eq, pluginCommerceOrderPayments, pluginCommerceOrders } from '@kenresoft-cms/database';
 import type { Database, PluginCommerceOrderPayment } from '@kenresoft-cms/database';
 
 // Called the moment a Paystack transaction is initialized, before the customer has even reached
 // Paystack's page — this is what makes resolvePaymentAttempt's later lookup-by-reference work
 // regardless of which reference (first attempt, or a later retry) actually gets paid.
-export async function initializePaymentAttempt(db: Database, input: { orderId: string; reference: string }): Promise<void> {
+// authorizationUrl is stored so a later duplicate-initialize call (routes/payments.ts) can return
+// the SAME checkout session instead of starting a second one.
+export async function initializePaymentAttempt(db: Database, input: { orderId: string; reference: string; authorizationUrl: string }): Promise<void> {
   await db.insert(pluginCommerceOrderPayments).values({
     orderId: input.orderId,
     provider: 'paystack',
     reference: input.reference,
     status: 'pending',
+    authorizationUrl: input.authorizationUrl,
   });
 }
 
 export function getPaymentAttempt(db: Database, reference: string): Promise<PluginCommerceOrderPayment | undefined> {
   return db.query.pluginCommerceOrderPayments.findFirst({ where: eq(pluginCommerceOrderPayments.reference, reference) });
+}
+
+// The most recent still-open payment attempt for an order, if any — what routes/payments.ts's
+// initialize route checks before ever calling Paystack again, so a repeated
+// POST /orders/{id}/initialize can't create multiple live references (and therefore multiple
+// chargeable checkout sessions) for the same order. `desc(createdAt)` + a single row is
+// defensive: normal flow only ever has one 'pending' attempt open per order at a time (a prior
+// one is always resolved to success/failed before a fresh one is created), but this stays correct
+// even if that invariant is ever violated.
+export function getPendingPaymentAttemptForOrder(db: Database, orderId: string): Promise<PluginCommerceOrderPayment | undefined> {
+  return db.query.pluginCommerceOrderPayments.findFirst({
+    where: and(eq(pluginCommerceOrderPayments.orderId, orderId), eq(pluginCommerceOrderPayments.status, 'pending')),
+    orderBy: desc(pluginCommerceOrderPayments.createdAt),
+  });
 }
 
 export function listPaymentAttemptsForOrder(db: Database, orderId: string): Promise<PluginCommerceOrderPayment[]> {

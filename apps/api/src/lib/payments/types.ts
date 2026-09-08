@@ -2,7 +2,24 @@
 // is populated exclusively from the provider's own verified response (verifyTransaction) or
 // signed webhook payload, and callers must check it against an order's own totalAmount/currency
 // before ever trusting it (routes/payments.ts) — this type doesn't enforce that on its own.
-export type PaymentTransactionStatus = 'success' | 'failed' | 'abandoned' | 'other';
+//
+// Paystack's real transaction-status vocabulary is wider than a naive success/failure binary —
+// 'pending'/'ongoing'/'processing'/'queued' are all genuinely non-terminal (the transaction is
+// still in flight at Paystack, not failed), and 'reversed' means a previously successful charge
+// was reversed after the fact. Collapsing any of these into 'failed' would incorrectly resolve a
+// payment attempt that hasn't actually finished yet — callers must treat only 'success' and
+// 'failed'/'abandoned' as terminal; everything else must leave the payment attempt 'pending' for
+// a later check (routes/payments.ts's own status-branching has the authoritative list).
+export type PaymentTransactionStatus =
+  | 'success'
+  | 'failed'
+  | 'abandoned'
+  | 'pending'
+  | 'ongoing'
+  | 'processing'
+  | 'queued'
+  | 'reversed'
+  | 'other';
 
 export interface InitializePaymentInput {
   amount: number;
