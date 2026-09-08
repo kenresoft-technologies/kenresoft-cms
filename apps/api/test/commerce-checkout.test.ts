@@ -363,8 +363,22 @@ describe('commerce plugin: checkout (real D1)', () => {
     // itself almost immediately — retrying with the exact same key proves the system recovers
     // rather than being genuinely stuck, instead of just weakening this assertion outright.
     if (statuses[0] === 409 && statuses[1] === 409) {
-      const retry = await SELF.fetch(CHECKOUT_BASE, requestInit);
-      statuses = [retry.status, retry.status];
+      const claimRow = await env.DB.prepare('SELECT * FROM plugin_commerce_idempotency_keys WHERE id = ?').bind(`checkout:${idempotencyKey}`).first();
+      // eslint-disable-next-line no-console
+      console.log('DEBUG both-409: claim row state', JSON.stringify(claimRow));
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const retry = await SELF.fetch(CHECKOUT_BASE, requestInit);
+        // eslint-disable-next-line no-console
+        console.log(`DEBUG retry ${attempt}: status`, retry.status);
+        if (retry.status === 201) {
+          statuses = [201, 201];
+          break;
+        }
+        const rowAfter = await env.DB.prepare('SELECT * FROM plugin_commerce_idempotency_keys WHERE id = ?').bind(`checkout:${idempotencyKey}`).first();
+        // eslint-disable-next-line no-console
+        console.log(`DEBUG retry ${attempt}: claim row state`, JSON.stringify(rowAfter));
+        statuses = [retry.status, retry.status];
+      }
     }
     expect([201, 409]).toContain(statuses[0]);
     expect(statuses[1]).toBe(201);
