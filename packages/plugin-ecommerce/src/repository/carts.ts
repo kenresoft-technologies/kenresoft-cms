@@ -49,6 +49,15 @@ export async function mergeGuestCartIntoCustomerCart(
   customerId: string,
   defaultCurrency: string,
 ): Promise<void> {
+  // Independently re-verifies this is actually a still-existing guest cart (customerId IS NULL)
+  // rather than trusting the caller-supplied id — the guest-cart cookie is itself the only proof
+  // of ownership (docs/PLUGINS.md's guest-cart-security note), so a forged or guessed cookie value
+  // naming a DIFFERENT customer's real cart must not be honored here. Without this check, this
+  // function would happily delete that other cart and move its items onto the logging-in
+  // customer's own cart — a cart-hijack vector, not merely a correctness bug.
+  const guestCart = await getGuestCart(db, guestCartId);
+  if (!guestCart) return;
+
   const guestItems = await db.query.pluginCommerceCartItems.findMany({
     where: eq(pluginCommerceCartItems.cartId, guestCartId),
   });
@@ -86,6 +95,11 @@ export async function mergeGuestCartIntoCustomerCart(
       (item) => item.productId === guestItem.productId && item.variantId === guestItem.variantId,
     );
     const cap = guestItem.variantId ? stockByVariantId.get(guestItem.variantId) : undefined;
+
+    // Out of stock — drop this guest line during merge instead of writing a nonsensical
+    // quantity-0 row. A pre-existing customer-cart line for the same variant (added back when it
+    // still had stock) is left untouched rather than zeroed out by an unrelated login.
+    if (cap === 0) continue;
 
     if (existing) {
       const quantity = cap !== undefined ? Math.min(existing.quantity + guestItem.quantity, cap) : existing.quantity + guestItem.quantity;

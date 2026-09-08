@@ -1742,3 +1742,40 @@ Two new `apps/admin` page test files. Full pre-existing suites re-run clean afte
 practice — several again hit the documented module-fallback resource-exhaustion pattern on first
 attempt, confirmed non-code by retrying clean) and all 31 `apps/admin` files (162 tests) in one
 clean run.
+
+**Commerce Phase 2b hardening pass** (2026-09-08, on `feature/commerce-cart-customer`, prompted
+directly by a review of the just-merged cart/customer code before moving on to 2c) — done, five
+fixes: `consumeCustomerToken` (password-reset/email-verification) was a find-then-delete pair with
+a real race window — two concurrent requests presenting the same still-valid token could both pass
+the SELECT before either DELETE ran; now a single `DELETE ... WHERE ... RETURNING`, so only one
+concurrent caller can ever consume a given token. `mergeGuestCartIntoCustomerCart` trusted its
+`guestCartId` argument outright — since a guest cart's id, read straight from a cookie, is the
+*only* proof of ownership, a forged or guessed id naming a different customer's real cart would
+have been silently deleted and its item moved onto the logging-in customer's own cart; it now
+re-resolves the id through `getGuestCart` (already filters `customerId IS NULL`) and no-ops if
+that fails — closing a real cart-hijack vector, not merely a correctness bug. Adding an
+out-of-stock (`stockQty === 0`) variant to a cart, and merging one across login, previously
+produced a quantity-0 line instead of failing or being dropped; `addOrIncrementItem` now returns
+`null` (the route turns that into a 400) and the merge loop skips such a line entirely.
+`POST /cart/items` now also rejects a variant whose `status` is `archived`, which wasn't checked
+at all before. Last, a new explicit, server-side Origin check
+(`requireTrustedOriginForMutations`, `packages/plugin-ecommerce/src/lib/origin-check.ts`) is
+applied to every mutating route on cart/customer/customer-auth — a second, independent layer on
+top of browser-enforced CORS, closing a real gap CORS/preflight alone leaves open: a body-less
+mutation like `POST /customer-auth/logout` is a "simple" cross-origin request under the Fetch
+spec, sent by a browser with no preflight and therefore no CORS check ever consulted server-side —
+only the JSON *response* would be blocked from an attacker page's own JS, not the logout side
+effect that already fired. The check rejects a mutating request whose `Origin` header is present
+but not in Core's own `CORS_ORIGINS` allow-list (now exposed to plugins via a new
+`PluginBindings.CORS_ORIGINS` field in the SDK) and passes through a genuinely missing `Origin`
+(non-browser clients, and this project's own `SELF.fetch` test harness, which sends none) —
+mirroring the same asymmetry already documented above for better-auth's own origin check on
+`/api/v1/auth/*`. Verified with new tests: three added to `commerce-cart.test.ts` (out-of-stock
+rejection, archived-variant rejection, and the forged-guest-cart-cookie hijack attempt, asserting
+the victim's cart survives untouched and the attacker's cart gains nothing) and a new
+`commerce-origin-check.test.ts` (5 tests: reject/allow by Origin on a cart mutation, GET
+exempted, the logout body-less-mutation case rejected, and a missing-Origin request still
+allowed). Full re-verification after: clean `pnpm typecheck`/`pnpm lint` workspace-wide, all 9
+commerce test files (46 tests) together, and all 39 `apps/api` files plus all 31 `apps/admin`
+files (162 tests) individually/in small batches per this file's own standing Windows/workerd-
+flakiness practice — zero regressions.

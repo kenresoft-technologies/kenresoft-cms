@@ -11,6 +11,7 @@ import {
   clearCustomerSessionCookie,
   getCustomerSessionToken,
 } from '../lib/customer-session';
+import { requireTrustedOriginForMutations } from '../lib/origin-check';
 import { mergeGuestCartIntoCustomerCart } from '../repository/carts';
 import { createCustomer, getCustomerByEmail, updateCustomerPassword, markCustomerEmailVerified, verifyCustomerPassword } from '../repository/customers';
 import { createCustomerSession, deleteCustomerSession, deleteAllSessionsForCustomer } from '../repository/customer-sessions';
@@ -21,6 +22,8 @@ import { createCustomerToken, consumeCustomerToken } from '../repository/custome
 // PluginRegistration.publicRateLimits' 'customer-auth' rule (COMMERCE_CUSTOMER_AUTH_RATE_LIMITER,
 // 10/60s per IP), on top of the generic public-content limiter every public route already gets.
 export const customerAuthRoutes = createPluginOpenApiApp<{ Bindings: PluginBindings; Variables: PluginPublicVariables }>();
+
+customerAuthRoutes.use('*', requireTrustedOriginForMutations());
 
 const errorSchema = z.object({ error: z.string() });
 

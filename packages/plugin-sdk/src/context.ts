@@ -8,6 +8,11 @@ import type { UserRole } from '@kenresoft-cms/contracts/schemas/enums';
 export interface PluginBindings {
   DB: D1Database;
   MEDIA_BUCKET: R2Bucket;
+  // Core's own CORS allow-list (apps/api/src/middleware/cors.ts, apps/api/src/lib/env.ts) —
+  // exposed here so a plugin's own cookie-authenticated public routes can run their own explicit
+  // Origin check against the same allow-list, rather than relying solely on browser-enforced CORS
+  // as the only line of defense against cross-site request forgery.
+  CORS_ORIGINS: string;
 }
 
 export interface PluginSessionUser {
