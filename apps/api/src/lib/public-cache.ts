@@ -55,3 +55,10 @@ export async function invalidatePublicGlobalVariablesCache(): Promise<void> {
   const cache = caches.default;
   await cache.delete(publicCacheKey('/api/v1/public/global-variables'));
 }
+
+// One cache key per Structured Settings module (§6) — a write to one module never needs to
+// invalidate any other module's cached response.
+export async function invalidatePublicStructuredSettingsCache(module: string): Promise<void> {
+  const cache = caches.default;
+  await cache.delete(publicCacheKey(`/api/v1/public/settings/${module}`));
+}

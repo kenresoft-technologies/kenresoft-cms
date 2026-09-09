@@ -1970,3 +1970,75 @@ specifically — asserting exactly one order results and the losing cart's stock
 (`commerce-checkout.test.ts`, 13 → 14 tests). Full re-verification: clean `pnpm typecheck`/
 `pnpm lint` workspace-wide, every commerce/payments test file passing individually, the full
 `apps/admin` suite (162 tests) clean in one run.
+
+**Structured Settings** (2026-09-09, on `develop`, prompted directly by the real Kenresoft
+website migration exposing that Global Variables was being stretched to cover structured, typed
+site configuration it was never designed for) — done, per a detailed architecture-review-then-
+implement flow with the user (an inspection pass first, an approved design with explicit
+adjustments, then implementation — see `docs/ARCHITECTURE.md` §6.2 for the final three-way
+boundary: Content Types/Entries vs. Structured Settings vs. Global Variables). New
+`structured_settings` table (`packages/database/schema/structured-settings.ts`, migration
+`0032_talented_outlaw_kid.sql`) — one singleton row per module (`general`/`contact`/`social`/
+`navigation`/`footer`/`seo`), each validated against its own Zod schema in the new
+`packages/contracts/schemas/structured-settings.ts` rather than fixed DB columns, per the user's
+explicit instruction not to create six separate tables or a generic plugin-settings-registration
+framework without a concrete second consumer. `social`'s shape is a `links: []` collection with a
+known-platform enum plus a `'custom'` escape hatch (new platforms need no migration);
+`general`/`seo` reference an existing Media row by id (`logoMediaId`/`defaultOgImageMediaId`)
+rather than duplicating Media's own metadata, backed by a new shared `MediaReferenceField`
+extracted into `apps/admin/src/pages/settings/shared.tsx`. Admin API:
+`GET`/`PUT /api/v1/admin/structured-settings/:module` (PUT admin-only, audit-logged via the
+existing `recordAudit()` — closing a pre-existing gap where neither `settings.ts` nor
+`global-variables.ts` had ever called it); public API:
+`GET /api/v1/public/settings/:module` (`apps/api/src/routes/public/structured-settings.ts`),
+edge-cached and invalidated per-module the same way `global-variables`/`content` already are,
+mounted before the content catch-all in `index.ts`. A one-time, idempotent, admin-triggered
+import (`POST /api/v1/admin/structured-settings/migrate-legacy`,
+`apps/api/src/lib/legacy-settings-migration.ts`) copies only an explicit, deterministic set of
+known legacy Global Variable keys (`site_name`, `tagline`, `contact_email`/`phone`/`address`,
+`social_*`, `footer_copyright` — the exact set the pre-existing "Site Info" template in
+`GlobalVariablesPage.tsx` produces, plus what migration `0024_volatile_spiral.sql` had earlier
+backfilled from the old `Settings.contactEmail`/`socialLinks` columns) into the corresponding
+module — never overwrites an already-populated module (checked and reported as "skipped"), never
+touches an unrecognized key, and reports anything it had to skip individually (a malformed
+`social_*` URL, a `general` candidate missing the required `site_name`) rather than failing the
+whole run; surfaced as an "Import into Structured Settings" button on the Global Variables page,
+with a report dialog. Nothing existing is deleted or renamed — Global Variables and the
+CMS-internal `Settings` singleton (still genuinely operational-only: name/corsOrigin/
+featureFlags/previewUrl) are otherwise untouched, exactly per the user's explicit instruction not
+to repurpose `Settings` for this and not to touch legacy Global Variables until a real migration
+is verified.
+
+`apps/admin`'s Settings UI: `SocialSection.tsx` rewritten from its former "this moved to Global
+Variables" redirect into a real editor (platform select + label + URL, add/remove); new
+`ContactSection.tsx`/`NavigationSection.tsx`/`FooterSection.tsx`/`SeoSection.tsx` added to the
+`SETTINGS_SECTIONS` registry; `GeneralSection.tsx` gained a second "Site branding" card (public
+`siteName`/`tagline`/logo, labeled "Public site name" to avoid a duplicate-label collision with
+the existing "Site name" field) — deliberately kept visually and functionally separate from the
+"Deployment identity" card above it, since `Settings.name` (admin sidebar/tab) and the public
+site's own name are allowed to differ and are different domains entirely, per the user's explicit
+instruction not to repurpose or rename the existing `Settings` singleton for this feature.
+Navigation reordering uses simple move-up/move-down buttons rather than dnd-kit, a deliberate
+scope call favoring the user's explicit "keep the first implementation intentionally simple"
+instruction over pulling in drag wiring for one settings list (dnd-kit is already a dependency
+elsewhere in the app for the content-type field list). `@kenresoft-cms/astro` gained
+`settings.general()/.contact()/.social()/.navigation()/.footer()/.seo()`, each resolving `{}`
+(never `null`) for a module never saved, mirroring `globalVariables.list()`'s own convention.
+
+Verified: `pnpm typecheck`/`pnpm lint` clean across `apps/api`/`apps/admin`/`packages/contracts`/
+`packages/database`/`integrations/astro`; three new `apps/api` test files against real D1
+(`structured-settings-routes.test.ts` 7 tests, `structured-settings-public.test.ts` 3 tests,
+`structured-settings-legacy-migration.test.ts` 4 tests — role gates, module-schema validation,
+per-module singleton upsert, audit-log recording, public-route module isolation, and the full
+legacy-migration idempotency/malformed-value/admin-only behavior) plus the adjacent pre-existing
+`apps/api` suites most likely to regress from the new `index.ts` mounts and `public-cache.ts`
+addition (`settings-routes`, `global-variables-routes`, `public-routes`, `public-cache`, `health`,
+`audit-log` — 27 tests, all still passing); `apps/admin`'s existing `SettingsPage.test.tsx`
+updated for the new sections and the disambiguated "Public site name" label, plus a new test for
+the Site-branding save path — full `apps/admin` suite re-run clean afterward (31 files, 163
+tests). Not yet done, flagged rather than silently skipped: `docs/ARCHITECTURE.md`'s §16
+migrations list and `docs/DEPLOYMENT.md` weren't independently re-verified against the new
+migration beyond what `pnpm run update`'s existing "applies any new migration" behavior already
+guarantees; and a real click-through of the "Import into Structured Settings" flow against
+`kenresoft.com`'s own actual production Global Variables data hasn't happened yet — this pass
+built and unit/integration-tested the mechanism, not the real website migration itself.

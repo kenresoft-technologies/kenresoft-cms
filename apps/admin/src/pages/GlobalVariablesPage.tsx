@@ -1,5 +1,6 @@
 import { useMemo, useState, type FormEvent } from 'react';
-import { LayoutTemplate, Pencil, Plus, Trash2, Variable } from 'lucide-react';
+import { ArrowRightLeft, LayoutTemplate, Pencil, Plus, Trash2, Variable } from 'lucide-react';
+import { Link } from 'react-router';
 import { toast } from 'sonner';
 import type { ColumnDef } from '@tanstack/react-table';
 
@@ -11,7 +12,8 @@ import {
   useGlobalVariables,
   useUpdateGlobalVariable,
 } from '@/lib/queries/global-variables';
-import { roleAtLeast, type GlobalVariable, type UserRole } from '@/lib/types';
+import { useMigrateLegacySettings } from '@/lib/queries/structured-settings';
+import { roleAtLeast, type GlobalVariable, type LegacyMigrationReport, type UserRole } from '@/lib/types';
 import { DataTable } from '@/components/data-table';
 import { EmptyState } from '@/components/empty-state';
 import { PageBreadcrumb } from '@/components/page-breadcrumb';
@@ -173,6 +175,90 @@ function GlobalVariableTemplatesDialog() {
   );
 }
 
+// One-time, idempotent import of the known legacy keys (site_name, tagline, contact_*,
+// social_*, footer_copyright — see apps/api/src/lib/legacy-settings-migration.ts) into
+// Structured Settings. Never overwrites a module already populated; safe to click again.
+function MigrateToStructuredSettingsDialog() {
+  const [open, setOpen] = useState(false);
+  const [report, setReport] = useState<LegacyMigrationReport | null>(null);
+  const migrateLegacy = useMigrateLegacySettings();
+
+  async function handleMigrate() {
+    try {
+      const result = await migrateLegacy.mutateAsync();
+      setReport(result);
+      if (result.migratedModules.length > 0) {
+        toast.success(`Imported ${result.migratedModules.length} module(s) into Structured Settings`);
+      } else {
+        toast.info('Nothing new to import');
+      }
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Failed to import into Structured Settings');
+    }
+  }
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) setReport(null);
+      }}
+    >
+      <DialogTrigger asChild>
+        <Button variant="outline">
+          <ArrowRightLeft />
+          Import into Structured Settings
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Import into Structured Settings</DialogTitle>
+          <DialogDescription>
+            Copies known legacy keys (site_name, tagline, contact_email/phone/address, social_*,
+            footer_copyright) into the new{' '}
+            <Link to="/settings" className="underline">
+              Settings
+            </Link>{' '}
+            modules. A module already populated there is left untouched — safe to run more than
+            once. Every other Global Variable, including ones not listed here, is left exactly as
+            it is.
+          </DialogDescription>
+        </DialogHeader>
+        {report ? (
+          <div className="flex flex-col gap-3 text-sm">
+            <p>
+              <span className="font-medium">Imported:</span>{' '}
+              {report.migratedModules.length > 0 ? report.migratedModules.join(', ') : 'none'}
+            </p>
+            <p>
+              <span className="font-medium">Already populated (skipped):</span>{' '}
+              {report.skippedModules.length > 0 ? report.skippedModules.join(', ') : 'none'}
+            </p>
+            {report.skippedKeys.length > 0 ? (
+              <div>
+                <p className="font-medium">Skipped keys:</p>
+                <ul className="list-inside list-disc text-muted-foreground">
+                  {report.skippedKeys.map((entry) => (
+                    <li key={entry.key}>
+                      {entry.key}: {entry.reason}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+        <DialogFooter>
+          <Button type="button" disabled={migrateLegacy.isPending} onClick={() => void handleMigrate()}>
+            {migrateLegacy.isPending ? 'Importing…' : 'Run import'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function EditVariableDialog({ variable, trigger }: { variable: GlobalVariable; trigger: React.ReactNode }) {
   const [open, setOpen] = useState(false);
 
@@ -302,6 +388,7 @@ export function GlobalVariablesPage() {
         actions={
           isAdmin ? (
             <>
+              <MigrateToStructuredSettingsDialog />
               <GlobalVariableTemplatesDialog />
               <NewVariableDialog />
             </>

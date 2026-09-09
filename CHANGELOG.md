@@ -12,6 +12,18 @@ landed on `develop`.
 
 ### Added
 
+- **Structured Settings** — a new configuration primitive for singleton, typed site config
+  (General/Contact/Social/Navigation/Footer/SEO), distinct from both Content Types/Entries and
+  Global Variables (`docs/ARCHITECTURE.md` §6.2 explains when to use which). Settings → Social
+  is now a real editor again instead of a redirect to Global Variables, and Contact/Navigation/
+  Footer/SEO sections are new. Publicly readable, edge-cached, per module at
+  `GET /api/v1/public/settings/:module`; `@kenresoft-cms/astro` gained a matching
+  `cms.settings.general()/.contact()/.social()/.navigation()/.footer()/.seo()`. Requires the new
+  database migration (`0032_talented_outlaw_kid.sql`) via `pnpm run update`. If you were already
+  using Global Variables for site config (`site_name`, `tagline`, `contact_email`/`phone`/
+  `address`, `social_*`, `footer_copyright`), a one-time "Import into Structured Settings" button
+  on the Global Variables page copies those known keys into the matching module — nothing is
+  deleted or overwritten automatically, and it's safe to run more than once.
 - Audit log — content, structural, and auth activity (entry/content-type/field/form/media
   create/update/delete/publish/unpublish, sign-up/in/out, failed sign-ins) is now recorded and
   browsable from a new Audit log page (admin/owner only). Requires the new database migration

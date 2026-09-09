@@ -3,8 +3,12 @@ import {
   Bell,
   Database,
   HardDrive,
+  LayoutTemplate,
+  Mail,
+  Menu,
   Palette,
   Plug,
+  Search,
   Settings2,
   Share2,
   Shield,
@@ -21,7 +25,11 @@ import { ApiSection } from './ApiSection';
 import { AppearanceSection } from './AppearanceSection';
 import { CacheSection } from './CacheSection';
 import { ComingSoonSection } from './ComingSoonSection';
+import { ContactSection } from './ContactSection';
+import { FooterSection } from './FooterSection';
 import { GeneralSection } from './GeneralSection';
+import { NavigationSection } from './NavigationSection';
+import { SeoSection } from './SeoSection';
 import { SocialSection } from './SocialSection';
 import { UsersPermissionsSection } from './UsersPermissionsSection';
 import { WebhooksSection } from './WebhooksSection';
@@ -31,7 +39,11 @@ export type SettingsSectionId =
   | 'appearance'
   | 'security'
   | 'notifications'
+  | 'contact'
   | 'social'
+  | 'navigation'
+  | 'footer'
+  | 'seo'
   | 'storage'
   | 'database'
   | 'api'
@@ -96,11 +108,39 @@ export const SETTINGS_SECTIONS: SettingsSectionMeta[] = [
     ),
   },
   {
+    id: 'contact',
+    label: 'Contact',
+    icon: Mail,
+    available: true,
+    render: ({ readOnly }) => <ContactSection readOnly={readOnly} />,
+  },
+  {
     id: 'social',
-    label: 'Social & contact',
+    label: 'Social',
     icon: Share2,
     available: true,
-    render: () => <SocialSection />,
+    render: ({ readOnly }) => <SocialSection readOnly={readOnly} />,
+  },
+  {
+    id: 'navigation',
+    label: 'Navigation',
+    icon: Menu,
+    available: true,
+    render: ({ readOnly }) => <NavigationSection readOnly={readOnly} />,
+  },
+  {
+    id: 'footer',
+    label: 'Footer',
+    icon: LayoutTemplate,
+    available: true,
+    render: ({ readOnly }) => <FooterSection readOnly={readOnly} />,
+  },
+  {
+    id: 'seo',
+    label: 'SEO',
+    icon: Search,
+    available: true,
+    render: ({ readOnly }) => <SeoSection readOnly={readOnly} />,
   },
   {
     id: 'storage',
