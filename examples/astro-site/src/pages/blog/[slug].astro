@@ -1,0 +1,183 @@
+---
+import { createKenresoftClient } from '@kenresoft-cms/astro';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+
+const cms = createKenresoftClient({ url: import.meta.env.PUBLIC_KENRESOFT_CMS_URL });
+
+// Fetched per-request, not via getStaticPaths — see astro.config.mjs's comment on why this
+// site moved to SSR. A missing/unpublished slug 404s exactly like the public API itself does —
+// unless a Live Preview token is present (Kenresoft CMS's Entry Editor "Preview" button appends
+// one), in which case a draft (or any status) renders instead, through this exact same template.
+const { slug } = Astro.params;
+const previewToken = Astro.url.searchParams.get('preview_token');
+const entry = slug
+  ? previewToken
+    ? await cms.entries.preview({ contentType: 'blog-post', slug, token: previewToken }).catch(() => null)
+    : await cms.entries.get({ contentType: 'blog-post', slug }).catch(() => null)
+  : null;
+
+if (!entry) {
+  return new Response(null, { status: 404, statusText: 'Not Found' });
+}
+
+const title = String(entry.data.title ?? entry.slug);
+const featuredImageId = typeof entry.data.featuredImage === 'string' ? entry.data.featuredImage : null;
+const featuredImageUrl = featuredImageId ? cms.media.url({ id: featuredImageId }) : null;
+// Real alt text/dimensions from the public media-metadata endpoint (closes the gap noted in
+// docs/ASTRO.md's Known limitations) — falls back to the post title only when the media item
+// has no altText set, same as before this endpoint existed.
+const featuredImageMeta = featuredImageId ? await cms.media.get({ id: featuredImageId }) : null;
+// The rich-text field (Tiptap, docs/ARCHITECTURE.md §25) is stored and returned as HTML.
+// set:html is safe here because this content only reaches the public API once an
+// authenticated editor/owner has explicitly published it — the same trust boundary as any
+// headless-CMS content field, not arbitrary visitor input.
+const body = entry.data.body;
+// No dedicated "published date" field exists on Entry — createdAt is the closest honest
+// stand-in available from the public API today (publishAt is nullable and only set for
+// entries that used scheduled publishing, so it's not reliably populated).
+const publishedDate = new Date(entry.createdAt).toLocaleDateString(undefined, {
+  year: 'numeric',
+  month: 'long',
+  day: 'numeric',
+});
+
+// "category" is a `reference` field on blog-post pointing at the `category` content type —
+// its stored value is just the referenced entry's id (this codebase's reference-field
+// convention), so rendering a real category link needs a lookup, not a second free-text field.
+const categoryEntryId = typeof entry.data.category === 'string' ? entry.data.category : null;
+const categoryEntries = categoryEntryId ? await cms.entries.list({ contentType: 'category' }) : [];
+const categoryEntry = categoryEntries.find((candidate) => candidate.id === categoryEntryId) ?? null;
+
+const seoTitle = typeof entry.data.metaTitle === 'string' && entry.data.metaTitle ? entry.data.metaTitle : title;
+const seoDescription = typeof entry.data.metaDescription === 'string' && entry.data.metaDescription
+  ? entry.data.metaDescription
+  : typeof entry.data.excerpt === 'string'
+    ? entry.data.excerpt
+    : undefined;
+---
+
+<BaseLayout
+  title={`${seoTitle} — Kenresoft CMS`}
+  description={seoDescription}
+  canonicalUrl={new URL(`/blog/${entry.slug}`, Astro.site ?? Astro.url).toString()}
+  ogImage={featuredImageUrl ?? undefined}
+  noIndex={Boolean(previewToken)}
+>
+  {previewToken ? (
+    <div class="preview-banner">
+      Preview mode — viewing a {entry.status} entry. This banner never appears without a valid preview link.
+    </div>
+  ) : null}
+  <article class="post">
+    <a class="back-link" href="/blog">← Back to blog</a>
+    {categoryEntry ? (
+      <a class="category-pill" href={`/categories/${categoryEntry.slug}`}>
+        {String(categoryEntry.data.title ?? categoryEntry.slug)}
+      </a>
+    ) : null}
+    <h1>{title}</h1>
+    <p class="post-meta">Published {publishedDate}</p>
+    {featuredImageUrl ? (
+      <img
+        class="post-image"
+        src={featuredImageUrl}
+        alt={featuredImageMeta?.altText ?? title}
+        width={featuredImageMeta?.width ?? undefined}
+        height={featuredImageMeta?.height ?? undefined}
+      />
+    ) : null}
+    {typeof body === 'string' ? <div class="post-body" set:html={body} /> : null}
+  </article>
+</BaseLayout>
+
+<style>
+  .preview-banner {
+    background: var(--warning-bg);
+    color: color-mix(in oklch, var(--warning) 70%, var(--ink));
+    text-align: center;
+    padding: var(--space-3) var(--space-4);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    border-bottom: 1px solid var(--warning-border);
+  }
+
+  .post {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: var(--space-12) var(--space-6) var(--space-20);
+  }
+
+  .back-link {
+    display: inline-block;
+    margin-bottom: var(--space-6);
+    color: var(--ink-muted);
+    text-decoration: none;
+    font-size: var(--text-sm);
+    transition: color 0.15s ease;
+  }
+
+  .back-link:hover {
+    color: var(--brand);
+  }
+
+  .category-pill {
+    display: inline-block;
+    margin: 0 0 var(--space-3);
+    padding: var(--space-1) var(--space-3);
+    border-radius: 999px;
+    background: var(--surface-muted);
+    border: 1px solid var(--border);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    color: var(--brand);
+    text-decoration: none;
+  }
+
+  .post h1 {
+    margin: 0 0 var(--space-2);
+    font-size: clamp(1.75rem, 4vw, 2.5rem);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  .post-meta {
+    margin: 0 0 var(--space-8);
+    color: var(--ink-muted);
+    font-size: var(--text-sm);
+  }
+
+  .post-image {
+    width: 100%;
+    max-height: 480px;
+    object-fit: cover;
+    aspect-ratio: 16 / 9;
+    border-radius: var(--radius);
+    margin-bottom: var(--space-8);
+    background: var(--surface-muted);
+  }
+
+  .post-body {
+    font-size: var(--text-lg);
+    line-height: var(--leading-relaxed);
+    max-width: var(--measure);
+  }
+
+  .post-body :global(p) {
+    margin: 0 0 1.25rem;
+  }
+
+  .post-body :global(h2),
+  .post-body :global(h3) {
+    margin: 2rem 0 1rem;
+    font-weight: 600;
+    line-height: var(--leading-tight);
+  }
+
+  .post-body :global(a) {
+    color: var(--brand);
+  }
+
+  .post-body :global(img) {
+    border-radius: var(--radius);
+  }
+</style>

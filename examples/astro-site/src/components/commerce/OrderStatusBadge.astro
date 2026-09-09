@@ -1,0 +1,49 @@
+---
+// Mirrors the real five-state order machine (packages/plugin-ecommerce/src/repository/
+// orders.ts: pending -> paid -> fulfilled, cancelled/refunded both terminal) — never a
+// paid = status !== 'pending' shortcut.
+interface Props {
+  status: 'pending' | 'paid' | 'fulfilled' | 'cancelled' | 'refunded';
+}
+
+const { status } = Astro.props;
+
+const labels: Record<Props['status'], string> = {
+  pending: 'Awaiting payment',
+  paid: 'Paid',
+  fulfilled: 'Fulfilled',
+  cancelled: 'Cancelled',
+  refunded: 'Refunded',
+};
+---
+
+<span class={`order-status order-status-${status}`}>{labels[status]}</span>
+
+<style>
+  .order-status {
+    display: inline-flex;
+    align-items: center;
+    padding: var(--space-1) var(--space-3);
+    border-radius: 999px;
+    font-size: var(--text-xs);
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .order-status-pending {
+    background: var(--warning-bg);
+    color: color-mix(in oklch, var(--warning) 65%, var(--ink));
+  }
+
+  .order-status-paid,
+  .order-status-fulfilled {
+    background: var(--success-bg);
+    color: color-mix(in oklch, var(--success) 60%, var(--ink));
+  }
+
+  .order-status-cancelled,
+  .order-status-refunded {
+    background: var(--surface-muted);
+    color: var(--ink-muted);
+  }
+</style>

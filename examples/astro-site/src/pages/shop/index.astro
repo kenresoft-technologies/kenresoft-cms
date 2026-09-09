@@ -1,0 +1,203 @@
+---
+import { createKenresoftClient } from '@kenresoft-cms/astro';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ProductCard from '../../components/commerce/ProductCard.astro';
+import Alert from '../../components/ui/Alert.astro';
+
+const cms = createKenresoftClient({ url: import.meta.env.PUBLIC_KENRESOFT_CMS_URL });
+
+const categoryId = Astro.url.searchParams.get('category') ?? undefined;
+
+let products: Awaited<ReturnType<typeof cms.commerce.products.list>> = [];
+let categories: Awaited<ReturnType<typeof cms.commerce.categories.list>> = [];
+let loadError: string | null = null;
+
+try {
+  [products, categories] = await Promise.all([cms.commerce.products.list({ categoryId }), cms.commerce.categories.list()]);
+} catch (err) {
+  // Most likely: the commerce plugin isn't installed/enabled on this deployment (every commerce
+  // route 404s identically when disabled — docs/PLUGINS.md's enablement section), which this
+  // client surfaces as a KenresoftApiError rather than an empty list.
+  loadError = err instanceof Error ? err.message : String(err);
+}
+
+// The list endpoint deliberately carries no images/variants (packages/plugin-ecommerce/src/
+// routes/public.ts) — a real product grid still wants a thumbnail and an at-a-glance
+// availability/variant signal, so this fetches each listed product's own detail (the same real
+// endpoint the product page uses) in parallel. Fine for a reference catalog's size; a very large
+// one would want the list endpoint itself extended with a thumbnail field instead — flagged in
+// the final report as a possible backend improvement, not silently worked around with fake data.
+const details = loadError
+  ? []
+  : await Promise.all(
+      products.map((product) =>
+        cms.commerce.products.get({ slug: product.slug }).catch(() => null),
+      ),
+    );
+const detailBySlug = new Map(details.filter((detail) => detail !== null).map((detail) => [detail!.slug, detail!]));
+
+function availabilityFor(product: (typeof products)[number]) {
+  const detail = detailBySlug.get(product.slug);
+  if (!detail) return { label: 'Unknown', inStock: true };
+  if (detail.variants.length === 0) return { label: 'In stock', inStock: true };
+  const totalStock = detail.variants.reduce((sum, variant) => sum + variant.stockQty, 0);
+  return totalStock > 0 ? { label: `${detail.variants.length} option${detail.variants.length > 1 ? 's' : ''}`, inStock: true } : { label: 'Out of stock', inStock: false };
+}
+---
+
+<BaseLayout title="Shop — Kenresoft CMS" description="A storefront rendered from Kenresoft CMS's Commerce plugin." canonicalUrl={new URL('/shop', Astro.site ?? Astro.url).toString()}>
+  <div class="page-header">
+    <h1>Shop</h1>
+    {
+      categories.length > 0 ? (
+        <div class="category-filters">
+          <a href="/shop" aria-current={!categoryId ? 'page' : undefined}>
+            All
+          </a>
+          {categories.map((category) => (
+            <a href={`/shop?category=${category.id}`} aria-current={categoryId === category.id ? 'page' : undefined}>
+              {category.name}
+            </a>
+          ))}
+        </div>
+      ) : null
+    }
+  </div>
+
+  {
+    loadError ? (
+      <Alert tone="error">
+        <p class="alert-line">Couldn’t load the catalog: {loadError}</p>
+        <p class="alert-line">Is the Commerce plugin installed and enabled on this deployment (Settings → Plugins)?</p>
+      </Alert>
+    ) : products.length === 0 ? (
+      <div class="empty-state">
+        <p>No published products yet{categoryId ? ' in this category' : ''}. Create one in the admin (Commerce → Products) and publish it.</p>
+      </div>
+    ) : (
+      <div class="product-grid">
+        {products.map((product) => {
+          const detail = detailBySlug.get(product.slug);
+          const image = detail?.images[0];
+          const imageUrl = image ? cms.media.url({ id: image.mediaId }) : null;
+          const availability = availabilityFor(product);
+          return (
+            <div class="product-slot">
+              <ProductCard product={product} imageUrl={imageUrl} />
+              <p class={`availability ${availability.inStock ? 'in-stock' : 'out-of-stock'}`}>
+                <span class="availability-dot" aria-hidden="true" />
+                {availability.label}
+              </p>
+            </div>
+          );
+        })}
+      </div>
+    )
+  }
+</BaseLayout>
+
+<style>
+  .page-header {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: var(--space-12) var(--space-6) var(--space-4);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-4);
+  }
+
+  .page-header h1 {
+    margin: 0;
+    font-size: var(--text-3xl);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  .category-filters {
+    display: flex;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+  }
+
+  .category-filters a {
+    padding: var(--space-1) var(--space-3);
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    text-decoration: none;
+    color: var(--ink-muted);
+    font-size: var(--text-sm);
+    transition:
+      background-color 0.15s ease,
+      border-color 0.15s ease,
+      color 0.15s ease;
+  }
+
+  .category-filters a:hover {
+    border-color: var(--border-strong);
+    color: var(--ink);
+  }
+
+  .category-filters a[aria-current='page'] {
+    background: var(--brand);
+    border-color: var(--brand);
+    color: var(--brand-foreground);
+  }
+
+  .empty-state {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: var(--space-4) var(--space-6) var(--space-20);
+    color: var(--ink-muted);
+  }
+
+  :global(.alert-line) {
+    margin: 0 0 var(--space-1);
+  }
+
+  :global(.alert-line:last-child) {
+    margin-bottom: 0;
+  }
+
+  .product-grid {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: var(--space-4) var(--space-6) var(--space-20);
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: var(--space-6);
+  }
+
+  .product-slot {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .availability {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin: 0;
+    padding: 0 var(--space-1);
+    font-size: var(--text-xs);
+    font-weight: 600;
+  }
+
+  .availability-dot {
+    width: 0.4rem;
+    height: 0.4rem;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: currentColor;
+  }
+
+  .availability.in-stock {
+    color: color-mix(in oklch, var(--success) 80%, var(--ink));
+  }
+
+  .availability.out-of-stock {
+    color: var(--ink-muted);
+  }
+</style>

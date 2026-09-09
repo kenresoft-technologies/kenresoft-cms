@@ -1,0 +1,131 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import Alert from '../../components/ui/Alert.astro';
+import { createServerClient } from '../../lib/site-client';
+import { sanitizeRedirect } from '../../lib/redirect';
+
+const redirectTo = sanitizeRedirect(Astro.url.searchParams.get('redirect'));
+
+// Already signed in? Skip the form entirely rather than showing it and having the submit fail.
+const cms = createServerClient(Astro.request.headers.get('cookie'));
+const existingCustomer = await cms.commerce.customer.get().catch(() => null);
+if (existingCustomer) {
+  return Astro.redirect(redirectTo);
+}
+---
+
+<BaseLayout title="Log in — Kenresoft CMS" noIndex>
+  <div class="auth-page">
+    <h1>Log in</h1>
+
+    <form id="login-form" novalidate>
+      <label class="field">
+        <span>Email</span>
+        <input type="email" name="email" required autocomplete="email" />
+      </label>
+      <label class="field">
+        <span>Password</span>
+        <input type="password" name="password" required autocomplete="current-password" />
+      </label>
+
+      <Alert tone="error" id="login-error" hidden />
+
+      <button type="submit" class="button button-primary" id="login-submit">Log in</button>
+    </form>
+
+    <p class="auth-links">
+      <a href={`/account/forgot-password`}>Forgot your password?</a>
+    </p>
+    <p class="auth-links">
+      Don't have an account? <a href={`/account/register?redirect=${encodeURIComponent(redirectTo)}`}>Register</a>
+    </p>
+  </div>
+</BaseLayout>
+
+<script>
+  import { getBrowserClient, KenresoftApiError } from '../../lib/browser-client';
+
+  const form = document.getElementById('login-form') as HTMLFormElement;
+  const errorEl = document.getElementById('login-error') as HTMLElement;
+  const submitButton = document.getElementById('login-submit') as HTMLButtonElement;
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    errorEl.hidden = true;
+    submitButton.disabled = true;
+    submitButton.textContent = 'Logging in…';
+
+    const data = new FormData(form);
+    try {
+      await getBrowserClient().commerce.customerAuth.login({
+        email: String(data.get('email')),
+        password: String(data.get('password')),
+      });
+      const redirectTo = new URLSearchParams(window.location.search).get('redirect');
+      window.location.href = redirectTo && redirectTo.startsWith('/') && !redirectTo.startsWith('//') ? redirectTo : '/account';
+    } catch (err) {
+      // Deliberately the exact message the API returns — "Invalid email or password", identical
+      // whether the email exists, the password is wrong, or the account is disabled (never
+      // reveals account existence — packages/plugin-ecommerce/src/routes/customer-auth.ts).
+      errorEl.textContent = err instanceof KenresoftApiError ? err.message : 'Could not log in. Please try again.';
+      errorEl.hidden = false;
+      submitButton.disabled = false;
+      submitButton.textContent = 'Log in';
+    }
+  });
+</script>
+
+<style>
+  .auth-page {
+    max-width: 420px;
+    margin: 0 auto;
+    padding: var(--space-16) var(--space-6) var(--space-20);
+  }
+
+  .auth-page h1 {
+    margin: 0 0 var(--space-8);
+    font-size: var(--text-3xl);
+    font-weight: 600;
+    text-align: center;
+  }
+
+  form {
+    padding: var(--space-6);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin-bottom: var(--space-5);
+    font-size: var(--text-sm);
+    font-weight: 600;
+  }
+
+  #login-submit,
+  form button[type='submit'] {
+    width: 100%;
+    margin-top: var(--space-2);
+  }
+
+  .auth-links {
+    text-align: center;
+    margin: var(--space-4) 0 0;
+    font-size: var(--text-sm);
+    color: var(--ink-muted);
+  }
+
+  .auth-links a {
+    color: var(--brand);
+    font-weight: 600;
+    text-decoration: none;
+  }
+
+  .auth-links a:hover {
+    text-decoration: underline;
+  }
+</style>

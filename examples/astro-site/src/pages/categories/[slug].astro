@@ -1,0 +1,121 @@
+---
+import { createKenresoftClient } from '@kenresoft-cms/astro';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+
+const cms = createKenresoftClient({ url: import.meta.env.PUBLIC_KENRESOFT_CMS_URL });
+
+// "category" is a CMS content type used to organize "blog-post" entries — a real content-type
+// relationship (a reference field on blog-post), not Commerce's own product categories, which
+// have their own separate /shop?category= filtering. Fetched per-request, matching every other
+// page's SSR-on-request approach.
+const { slug } = Astro.params;
+const category = slug ? await cms.entries.get({ contentType: 'category', slug }).catch(() => null) : null;
+
+if (!category) {
+  return new Response(null, { status: 404, statusText: 'Not Found' });
+}
+
+const allPosts = await cms.entries.list({ contentType: 'blog-post' }).catch(() => []);
+const posts = allPosts.filter((post) => post.data.category === category.id);
+
+const title = String(category.data.title ?? category.slug);
+---
+
+<BaseLayout
+  title={`${title} — Kenresoft CMS`}
+  description={typeof category.data.description === 'string' ? category.data.description : undefined}
+  canonicalUrl={new URL(`/categories/${category.slug}`, Astro.site ?? Astro.url).toString()}
+>
+  <div class="page-header">
+    <a class="back-link" href="/blog">← Back to blog</a>
+    <h1>{title}</h1>
+    {typeof category.data.description === 'string' && category.data.description ? <p>{category.data.description}</p> : null}
+  </div>
+
+  {
+    posts.length === 0 ? (
+      <div class="empty-state">
+        <p>No published posts in this category yet.</p>
+      </div>
+    ) : (
+      <div class="post-list">
+        {posts.map((post) => (
+          <a class="post-row card-hoverable" href={`/blog/${post.slug}`}>
+            <h2>{String(post.data.title ?? post.slug)}</h2>
+            {post.data.excerpt ? <p>{String(post.data.excerpt)}</p> : null}
+          </a>
+        ))}
+      </div>
+    )
+  }
+</BaseLayout>
+
+<style>
+  .page-header {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: var(--space-12) var(--space-6) var(--space-4);
+  }
+
+  .back-link {
+    display: inline-block;
+    margin-bottom: var(--space-4);
+    color: var(--ink-muted);
+    text-decoration: none;
+    font-size: var(--text-sm);
+    transition: color 0.15s ease;
+  }
+
+  .back-link:hover {
+    color: var(--brand);
+  }
+
+  .page-header h1 {
+    margin: 0 0 var(--space-2);
+    font-size: var(--text-3xl);
+    font-weight: 600;
+  }
+
+  .page-header p {
+    color: var(--ink-muted);
+    margin: 0;
+  }
+
+  .empty-state {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: var(--space-4) var(--space-6) var(--space-20);
+    color: var(--ink-muted);
+  }
+
+  .post-list {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: var(--space-4) var(--space-6) var(--space-20);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+  }
+
+  .post-row {
+    display: block;
+    padding: var(--space-5);
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    text-decoration: none;
+    color: var(--ink);
+  }
+
+  .post-row h2 {
+    margin: 0 0 var(--space-2);
+    font-size: var(--text-lg);
+    font-weight: 600;
+  }
+
+  .post-row p {
+    margin: 0;
+    color: var(--ink-muted);
+    font-size: var(--text-sm);
+  }
+</style>

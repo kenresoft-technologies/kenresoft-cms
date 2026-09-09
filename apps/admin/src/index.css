@@ -1,0 +1,265 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@fontsource-variable/geist";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+    --font-heading: var(--font-sans);
+    --font-sans: 'Geist Variable', sans-serif;
+    --color-success-foreground: var(--success-foreground);
+    --color-success: var(--success);
+    --color-accent-brand-foreground: var(--accent-brand-foreground);
+    --color-accent-brand: var(--accent-brand);
+    --color-sidebar-ring: var(--sidebar-ring);
+    --color-sidebar-border: var(--sidebar-border);
+    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+    --color-sidebar-accent: var(--sidebar-accent);
+    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+    --color-sidebar-primary: var(--sidebar-primary);
+    --color-sidebar-foreground: var(--sidebar-foreground);
+    --color-sidebar: var(--sidebar);
+    --color-chart-5: var(--chart-5);
+    --color-chart-4: var(--chart-4);
+    --color-chart-3: var(--chart-3);
+    --color-chart-2: var(--chart-2);
+    --color-chart-1: var(--chart-1);
+    --color-swatch-6: var(--swatch-6);
+    --color-swatch-5: var(--swatch-5);
+    --color-swatch-4: var(--swatch-4);
+    --color-swatch-3: var(--swatch-3);
+    --color-swatch-2: var(--swatch-2);
+    --color-swatch-1: var(--swatch-1);
+    --color-ring: var(--ring);
+    --color-input: var(--input);
+    --color-border: var(--border);
+    --color-destructive: var(--destructive);
+    --color-accent-foreground: var(--accent-foreground);
+    --color-accent: var(--accent);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-muted: var(--muted);
+    --color-secondary-foreground: var(--secondary-foreground);
+    --color-secondary: var(--secondary);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-primary: var(--primary);
+    --color-popover-foreground: var(--popover-foreground);
+    --color-popover: var(--popover);
+    --color-card-foreground: var(--card-foreground);
+    --color-card: var(--card);
+    --color-foreground: var(--foreground);
+    --color-background: var(--background);
+    --radius-sm: calc(var(--radius) * 0.6);
+    --radius-md: calc(var(--radius) * 0.8);
+    --radius-lg: var(--radius);
+    --radius-xl: calc(var(--radius) * 1.4);
+    --radius-2xl: calc(var(--radius) * 1.8);
+    --radius-3xl: calc(var(--radius) * 2.2);
+    --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root {
+    --background: oklch(1 0 0);
+    --foreground: oklch(0.145 0 0);
+    --card: oklch(1 0 0);
+    --card-foreground: oklch(0.145 0 0);
+    --popover: oklch(1 0 0);
+    --popover-foreground: oklch(0.145 0 0);
+    --accent-brand: oklch(0.53 0.18 262);
+    --accent-brand-foreground: oklch(0.985 0 0);
+    --primary: var(--accent-brand);
+    --primary-foreground: var(--accent-brand-foreground);
+    --success: oklch(0.6 0.15 145);
+    --success-foreground: oklch(0.985 0 0);
+    --secondary: oklch(0.97 0 0);
+    --secondary-foreground: oklch(0.205 0 0);
+    --muted: oklch(0.97 0 0);
+    --muted-foreground: oklch(0.556 0 0);
+    --accent: oklch(0.97 0 0);
+    --accent-foreground: oklch(0.205 0 0);
+    --destructive: oklch(0.577 0.245 27.325);
+    --border: oklch(0.922 0 0);
+    --input: oklch(0.922 0 0);
+    --ring: var(--accent-brand);
+    /* A small categorical palette, one hue per swatch, reused for both the dashboard's charts
+       and the deterministic per-content-type accent pills (lib/accent-color.ts) — one source
+       of truth instead of two near-duplicate palettes. --swatch-1 intentionally matches
+       --accent-brand's hue so the most "default" pill still reads as on-brand. */
+    --swatch-1: oklch(0.55 0.16 262);
+    --swatch-2: oklch(0.62 0.13 200);
+    --swatch-3: oklch(0.58 0.15 300);
+    --swatch-4: oklch(0.68 0.15 50);
+    --swatch-5: oklch(0.6 0.12 170);
+    --swatch-6: oklch(0.62 0.18 340);
+    --chart-1: var(--swatch-1);
+    --chart-2: var(--swatch-2);
+    --chart-3: var(--swatch-3);
+    --chart-4: var(--swatch-4);
+    --chart-5: var(--swatch-5);
+    --radius: 0.625rem;
+    --sidebar: oklch(0.985 0 0);
+    --sidebar-foreground: oklch(0.145 0 0);
+    --sidebar-primary: var(--accent-brand);
+    --sidebar-primary-foreground: var(--accent-brand-foreground);
+    --sidebar-accent: oklch(0.97 0 0);
+    --sidebar-accent-foreground: oklch(0.205 0 0);
+    --sidebar-border: oklch(0.922 0 0);
+    --sidebar-ring: var(--accent-brand);
+}
+
+.dark {
+    --background: oklch(0.145 0 0);
+    --foreground: oklch(0.985 0 0);
+    --card: oklch(0.205 0 0);
+    --card-foreground: oklch(0.985 0 0);
+    --popover: oklch(0.205 0 0);
+    --popover-foreground: oklch(0.985 0 0);
+    --accent-brand: oklch(0.7 0.15 262);
+    --accent-brand-foreground: oklch(0.16 0 0);
+    --primary: var(--accent-brand);
+    --primary-foreground: var(--accent-brand-foreground);
+    --success: oklch(0.72 0.16 145);
+    --success-foreground: oklch(0.16 0 0);
+    --secondary: oklch(0.269 0 0);
+    --secondary-foreground: oklch(0.985 0 0);
+    --muted: oklch(0.269 0 0);
+    --muted-foreground: oklch(0.708 0 0);
+    --accent: oklch(0.269 0 0);
+    --accent-foreground: oklch(0.985 0 0);
+    --destructive: oklch(0.704 0.191 22.216);
+    --border: oklch(1 0 0 / 10%);
+    --input: oklch(1 0 0 / 15%);
+    --ring: var(--accent-brand);
+    --swatch-1: oklch(0.7 0.15 262);
+    --swatch-2: oklch(0.75 0.12 200);
+    --swatch-3: oklch(0.72 0.14 300);
+    --swatch-4: oklch(0.78 0.14 50);
+    --swatch-5: oklch(0.74 0.11 170);
+    --swatch-6: oklch(0.75 0.16 340);
+    --chart-1: var(--swatch-1);
+    --chart-2: var(--swatch-2);
+    --chart-3: var(--swatch-3);
+    --chart-4: var(--swatch-4);
+    --chart-5: var(--swatch-5);
+    --sidebar: oklch(0.205 0 0);
+    --sidebar-foreground: oklch(0.985 0 0);
+    --sidebar-primary: var(--accent-brand);
+    --sidebar-primary-foreground: var(--accent-brand-foreground);
+    --sidebar-accent: oklch(0.269 0 0);
+    --sidebar-accent-foreground: oklch(0.985 0 0);
+    --sidebar-border: oklch(1 0 0 / 10%);
+    --sidebar-ring: var(--accent-brand);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+    }
+  body {
+    @apply bg-background text-foreground;
+    }
+  html {
+    @apply font-sans;
+    }
+}
+
+/* Styling for Tiptap's generated content (components/rich-text-editor.tsx) — element rules
+   scoped to .ProseMirror rather than pulling in @tailwindcss/typography for one editor. */
+.ProseMirror {
+  outline: none;
+}
+.ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  color: var(--muted-foreground);
+  pointer-events: none;
+}
+.ProseMirror h2 {
+  @apply mt-3 mb-1.5 text-lg font-semibold first:mt-0;
+}
+.ProseMirror h3 {
+  @apply mt-3 mb-1.5 text-base font-semibold first:mt-0;
+}
+.ProseMirror p {
+  @apply my-2 first:mt-0 last:mb-0;
+}
+.ProseMirror ul,
+.ProseMirror ol {
+  @apply my-2 pl-6;
+}
+.ProseMirror ul {
+  @apply list-disc;
+}
+.ProseMirror ol {
+  @apply list-decimal;
+}
+.ProseMirror blockquote {
+  @apply my-2 border-l-2 border-border pl-3 text-muted-foreground;
+}
+.ProseMirror a {
+  @apply text-primary underline underline-offset-2;
+}
+.ProseMirror code {
+  @apply rounded bg-muted px-1 py-0.5 text-[0.85em];
+}
+.ProseMirror img {
+  @apply my-2 max-w-full rounded-md;
+}
+.ProseMirror mark {
+  @apply rounded-xs bg-accent-brand/25 px-0.5 text-foreground;
+}
+.ProseMirror table {
+  @apply my-2 w-full table-fixed border-collapse overflow-hidden;
+}
+.ProseMirror th,
+.ProseMirror td {
+  @apply relative border border-border px-2 py-1 text-left align-top;
+}
+.ProseMirror th {
+  @apply bg-muted font-semibold;
+}
+.ProseMirror ul[data-type='taskList'] {
+  @apply list-none pl-1;
+}
+.ProseMirror ul[data-type='taskList'] li {
+  @apply flex items-start gap-2;
+}
+.ProseMirror ul[data-type='taskList'] li > label {
+  @apply mt-1 select-none;
+}
+.ProseMirror ul[data-type='taskList'] li > div {
+  @apply flex-1;
+}
+.ProseMirror pre {
+  @apply my-2 overflow-x-auto rounded-lg bg-muted p-3 text-[0.85em];
+}
+.ProseMirror pre code {
+  @apply bg-transparent p-0;
+}
+/* highlight.js token colors, mapped to the app's own theme tokens rather than an imported
+   highlight.js theme, so code blocks stay consistent with the rest of the CMS in both themes. */
+.ProseMirror .hljs-comment,
+.ProseMirror .hljs-quote {
+  @apply text-muted-foreground italic;
+}
+.ProseMirror .hljs-keyword,
+.ProseMirror .hljs-selector-tag,
+.ProseMirror .hljs-literal {
+  @apply text-primary;
+}
+.ProseMirror .hljs-string,
+.ProseMirror .hljs-attr,
+.ProseMirror .hljs-template-tag {
+  @apply text-success;
+}
+.ProseMirror .hljs-number,
+.ProseMirror .hljs-built_in,
+.ProseMirror .hljs-type {
+  @apply text-destructive;
+}
+.ProseMirror .hljs-title,
+.ProseMirror .hljs-name,
+.ProseMirror .hljs-section {
+  @apply font-semibold;
+}

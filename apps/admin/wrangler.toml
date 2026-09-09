@@ -1,0 +1,24 @@
+# Kenresoft CMS — Admin Worker
+#
+# Serves the built apps/admin SPA (`pnpm build` -> ./dist) as Cloudflare Workers static assets —
+# not Cloudflare Pages. Cloudflare's own docs now steer new static-hosting projects toward
+# Workers Static Assets (Pages carries a migration banner; Workers Sites is deprecated in favor
+# of this), and it keeps the admin app on the same primitive as the API Worker.
+#
+# This Worker owns no logic and no bindings — it's a completely separate deployable from
+# apps/api's own Worker (see the repo-root wrangler.toml), reached over its normal public HTTPS
+# URL exactly like today: apps/admin's own code (src/lib/api-client.ts, auth-client.ts) already
+# talks to the API purely via VITE_API_URL + fetch(), so nothing about that integration changes.
+# Two independent Workers means two independent deploys/rollbacks, at the cost of the admin and
+# API living on two different origins by default (CORS_ORIGINS + the API's SameSite=None cookies
+# already handle that — see apps/api/src/lib/auth-options.ts's own comment).
+#
+# `not_found_handling = "single-page-application"` is what gives React Router's client-side
+# routes their index.html fallback — Cloudflare serves index.html with a 200 for any path that
+# doesn't match a real built file, rather than 404ing a deep link like /entries/123.
+name = "kenresoft-cms-admin"
+compatibility_date = "2026-09-02"
+
+[assets]
+directory = "./dist"
+not_found_handling = "single-page-application"

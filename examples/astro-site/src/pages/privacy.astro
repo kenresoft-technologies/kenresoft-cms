@@ -1,0 +1,53 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+
+// A static demo page, deliberately not CMS-backed — there is no dedicated legal-content
+// content type on this deployment, and inventing one just to fill this footer link would be
+// exactly the "fake CMS data" this rebuild's own spec rules out. Everything else on this site
+// that could plausibly come from the CMS (pages, blog, categories, contact) genuinely does.
+---
+
+<BaseLayout title="Privacy Policy — Kenresoft CMS" noIndex>
+  <article class="legal">
+    <h1>Privacy Policy</h1>
+    <p class="legal-note">
+      This is a placeholder page for this reference storefront — it is not backed by the CMS
+      (there is no dedicated legal-content type on this deployment). A real deployment should
+      replace this with its own actual privacy policy, either as static content like this or as a
+      real CMS <code>page</code> entry.
+    </p>
+    <p>
+      A production storefront built on Kenresoft CMS would describe here what customer data it
+      collects during checkout (name, email, shipping address), how order records are retained,
+      and how to request their deletion.
+    </p>
+  </article>
+</BaseLayout>
+
+<style>
+  .legal {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: var(--space-12) var(--space-6) var(--space-20);
+  }
+
+  .legal h1 {
+    margin: 0 0 var(--space-6);
+    font-size: var(--text-3xl);
+    font-weight: 600;
+  }
+
+  .legal p {
+    max-width: var(--measure);
+    line-height: var(--leading-relaxed);
+  }
+
+  .legal-note {
+    padding: var(--space-4);
+    background: var(--surface-muted);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--ink-muted);
+    font-size: var(--text-sm);
+  }
+</style>

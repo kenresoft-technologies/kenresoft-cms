@@ -1,0 +1,66 @@
+---
+import { createKenresoftClient } from '@kenresoft-cms/astro';
+import BaseLayout from '../layouts/BaseLayout.astro';
+import RichText from '../components/cms/RichText.astro';
+
+const cms = createKenresoftClient({ url: import.meta.env.PUBLIC_KENRESOFT_CMS_URL });
+
+// "page" is this deployment's content type slug for freeform pages (see this example's README
+// for the seed data this assumes); "about" is that content type's entry slug. A missing content
+// type or a missing/draft entry both come back as the same `null` here — this page renders a
+// clear "not set up yet" state rather than crashing, since a fresh clone of this example won't
+// have seeded any content until its own setup step runs.
+const entry = await cms.entries.get({ contentType: 'page', slug: 'about' }).catch(() => null);
+
+const title = entry ? String(entry.data.metaTitle ?? entry.data.title ?? 'About') : 'About';
+const description = entry ? (entry.data.metaDescription ? String(entry.data.metaDescription) : undefined) : undefined;
+---
+
+<BaseLayout title={`${title} — Kenresoft CMS`} description={description} canonicalUrl={new URL('/about', Astro.site ?? Astro.url).toString()}>
+  <article class="page-content">
+    {
+      entry ? (
+        <>
+          <h1>{String(entry.data.title ?? 'About')}</h1>
+          <RichText html={String(entry.data.body ?? '')} />
+        </>
+      ) : (
+        <div class="empty-state">
+          <h1>About</h1>
+          <p>
+            No <code>page</code> entry with slug <code>about</code> has been published on this
+            deployment yet. Create a <code>page</code> content type with a <code>title</code> and
+            a <code>rich_text</code> <code>body</code> field, then publish an entry with slug{' '}
+            <code>about</code> to fill this page in — see this example's README.
+          </p>
+        </div>
+      )
+    }
+  </article>
+</BaseLayout>
+
+<style>
+  .page-content {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: var(--space-12) var(--space-6) var(--space-20);
+  }
+
+  .page-content h1 {
+    margin: 0 0 var(--space-6);
+    font-size: var(--text-3xl);
+    font-weight: 600;
+  }
+
+  .empty-state {
+    color: var(--ink-muted);
+    line-height: var(--leading-relaxed);
+  }
+
+  .empty-state code {
+    background: var(--surface-muted);
+    padding: 0.1em 0.4em;
+    border-radius: 4px;
+    font-size: 0.9em;
+  }
+</style>

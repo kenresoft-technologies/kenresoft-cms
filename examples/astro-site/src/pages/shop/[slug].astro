@@ -1,0 +1,305 @@
+---
+import { createKenresoftClient } from '@kenresoft-cms/astro';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import Alert from '../../components/ui/Alert.astro';
+import { formatMoney } from '../../lib/money';
+
+const cms = createKenresoftClient({ url: import.meta.env.PUBLIC_KENRESOFT_CMS_URL });
+
+// Fetched per-request, not via getStaticPaths — same SSR reasoning as blog/[slug].astro. An
+// unpublished/nonexistent slug 404s identically (products.get()'s own documented convention).
+const { slug } = Astro.params;
+const product = slug ? await cms.commerce.products.get({ slug }) : null;
+
+if (!product) {
+  return new Response(null, { status: 404, statusText: 'Not Found' });
+}
+
+const images = [...product.images].sort((a, b) => a.sortOrder - b.sortOrder);
+const primaryImage = images[0] ?? null;
+const imageMetaById = new Map(
+  await Promise.all(images.map(async (image) => [image.mediaId, await cms.media.get({ id: image.mediaId })] as const)),
+);
+
+const hasVariants = product.variants.length > 0;
+const allOutOfStock = hasVariants && product.variants.every((variant) => variant.stockQty === 0);
+
+// Cart/checkout mutations happen client-side (see the <script> below), not here in SSR
+// frontmatter — cart identity is a browser cookie the API sets directly on this deployment's own
+// origin (credentials: 'include'), which a server-side fetch from Astro's own runtime has no
+// natural way to receive and hand back to the browser without manually proxying Set-Cookie
+// headers through Astro.cookies. Every add-to-cart/checkout/payment call in this example follows
+// the same client-side pattern for that reason.
+---
+
+<BaseLayout
+  title={`${product.name} — Shop — Kenresoft CMS`}
+  description={product.shortDescription ?? undefined}
+  canonicalUrl={new URL(`/shop/${product.slug}`, Astro.site ?? Astro.url).toString()}
+  ogImage={primaryImage ? cms.media.url({ id: primaryImage.mediaId }) : undefined}
+>
+  <div class="product">
+    <a class="back-link" href="/shop">← Back to shop</a>
+    <div class="product-layout">
+      <div class="product-media">
+        <div class="product-media-main">
+          {primaryImage ? (
+            <img
+              id="main-product-image"
+              src={cms.media.url({ id: primaryImage.mediaId })}
+              alt={imageMetaById.get(primaryImage.mediaId)?.altText ?? primaryImage.altText ?? product.name}
+            />
+          ) : (
+            <div class="product-media-placeholder" aria-hidden="true" />
+          )}
+        </div>
+        {images.length > 1 ? (
+          <div class="product-thumbs" role="tablist" aria-label="Product images">
+            {images.map((image, index) => (
+              <button
+                type="button"
+                class="product-thumb"
+                data-thumb-src={cms.media.url({ id: image.mediaId })}
+                aria-current={index === 0 ? 'true' : undefined}
+              >
+                <img src={cms.media.url({ id: image.mediaId })} alt={imageMetaById.get(image.mediaId)?.altText ?? `${product.name} photo ${index + 1}`} />
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </div>
+      <div class="product-info">
+        <h1>{product.name}</h1>
+        <p class="price" id="selected-price">{formatMoney(product.basePrice, product.currency)}</p>
+        {product.description ? <p class="description">{product.description}</p> : null}
+
+        {allOutOfStock ? (
+          <Alert tone="error">This product is currently out of stock.</Alert>
+        ) : (
+          <form id="add-to-cart-form" data-product-id={product.id} data-base-price={product.basePrice} data-currency={product.currency}>
+            {hasVariants ? (
+              <label class="field">
+                <span>Options</span>
+                <select id="variant-select" name="variantId" required>
+                  {product.variants.map((variant) => (
+                    <option value={variant.id} data-price={variant.price ?? product.basePrice} data-stock={variant.stockQty} disabled={variant.stockQty === 0}>
+                      {variant.name}
+                      {variant.stockQty === 0 ? ' (out of stock)' : 5 >= variant.stockQty ? ` (${variant.stockQty} left)` : ''}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+            <label class="field">
+              <span>Quantity</span>
+              <input type="number" name="quantity" value="1" min="1" />
+            </label>
+            <button type="submit" class="button button-primary" id="add-to-cart-button">Add to cart</button>
+            <div id="add-to-cart-alert" role="status"></div>
+          </form>
+        )}
+      </div>
+    </div>
+  </div>
+</BaseLayout>
+
+<script>
+  import { getBrowserClient, KenresoftApiError } from '../../lib/browser-client';
+  import { refreshCartBadge } from '../../lib/cart-badge';
+
+  const form = document.querySelector<HTMLFormElement>('#add-to-cart-form');
+  const alertEl = document.querySelector<HTMLDivElement>('#add-to-cart-alert');
+  const submitButton = document.querySelector<HTMLButtonElement>('#add-to-cart-button');
+  const priceEl = document.querySelector<HTMLParagraphElement>('#selected-price');
+  const variantSelect = document.querySelector<HTMLSelectElement>('#variant-select');
+  const mainImage = document.querySelector<HTMLImageElement>('#main-product-image');
+
+  function showAlert(message: string, tone: 'success' | 'error') {
+    if (!alertEl) return;
+    alertEl.textContent = message;
+    alertEl.className = `inline-alert inline-alert-${tone}`;
+  }
+
+  // Reflects the selected variant's own price override, if any — matches the same
+  // basePrice-unless-a-variant-overrides-it resolution the cart/order APIs already use.
+  function updatePriceDisplay() {
+    if (!priceEl || !form) return;
+    const currency = form.dataset.currency!;
+    const selectedOption = variantSelect?.selectedOptions[0];
+    const price = Number(selectedOption?.dataset.price ?? form.dataset.basePrice);
+    priceEl.textContent = new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(price / 100);
+  }
+  variantSelect?.addEventListener('change', updatePriceDisplay);
+
+  document.querySelectorAll<HTMLButtonElement>('.product-thumb').forEach((thumb) => {
+    thumb.addEventListener('click', () => {
+      const src = thumb.dataset.thumbSrc;
+      if (src && mainImage) mainImage.src = src;
+      document.querySelectorAll('.product-thumb').forEach((el) => el.removeAttribute('aria-current'));
+      thumb.setAttribute('aria-current', 'true');
+    });
+  });
+
+  form?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!submitButton) return;
+    submitButton.disabled = true;
+    submitButton.textContent = 'Adding…';
+
+    const formData = new FormData(form);
+    const variantId = (formData.get('variantId') as string | null) || undefined;
+    const quantity = Number(formData.get('quantity') ?? 1);
+
+    try {
+      await getBrowserClient().commerce.cart.addItem({ productId: form.dataset.productId!, variantId, quantity });
+      showAlert('Added to cart.', 'success');
+      await refreshCartBadge();
+    } catch (err) {
+      showAlert(err instanceof KenresoftApiError ? err.message : 'Could not add this item to your cart.', 'error');
+    } finally {
+      submitButton.disabled = false;
+      submitButton.textContent = 'Add to cart';
+    }
+  });
+</script>
+
+<style>
+  .product {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: var(--space-12) var(--space-6) var(--space-20);
+  }
+
+  .back-link {
+    display: inline-block;
+    margin-bottom: var(--space-6);
+    color: var(--ink-muted);
+    text-decoration: none;
+    font-size: var(--text-sm);
+    transition: color 0.15s ease;
+  }
+
+  .back-link:hover {
+    color: var(--brand);
+  }
+
+  .product-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: var(--space-10);
+  }
+
+  @media (max-width: 720px) {
+    .product-layout {
+      grid-template-columns: 1fr;
+      gap: var(--space-6);
+    }
+  }
+
+  .product-media-main img {
+    width: 100%;
+    border-radius: var(--radius);
+    object-fit: cover;
+    aspect-ratio: 1 / 1;
+    background: var(--surface-muted);
+  }
+
+  .product-media-placeholder {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    border-radius: var(--radius);
+    background: linear-gradient(135deg, var(--surface-muted), var(--border));
+    border: 1px solid var(--border);
+  }
+
+  .product-thumbs {
+    display: flex;
+    gap: var(--space-3);
+    margin-top: var(--space-3);
+  }
+
+  .product-thumb {
+    padding: 0;
+    border: 2px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: none;
+    cursor: pointer;
+    width: 64px;
+    height: 64px;
+    overflow: hidden;
+    transition: border-color 0.15s ease;
+  }
+
+  .product-thumb:hover {
+    border-color: var(--border-strong);
+  }
+
+  .product-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .product-thumb[aria-current='true'] {
+    border-color: var(--brand);
+  }
+
+  .product-info h1 {
+    margin: 0 0 var(--space-2);
+    font-size: clamp(1.5rem, 3vw, 2rem);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  .price {
+    margin: 0 0 var(--space-5);
+    font-size: var(--text-2xl);
+    font-weight: 600;
+    color: var(--brand);
+  }
+
+  .description {
+    margin: 0 0 var(--space-6);
+    color: var(--ink-muted);
+    line-height: var(--leading-relaxed);
+  }
+
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin-bottom: var(--space-4);
+    font-size: var(--text-sm);
+    font-weight: 600;
+  }
+
+  .field select,
+  .field input {
+    max-width: 16rem;
+  }
+
+  #add-to-cart-button {
+    margin-top: var(--space-2);
+  }
+
+  .inline-alert {
+    margin-top: var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    border: 1px solid transparent;
+  }
+
+  .inline-alert-success {
+    background: var(--success-bg);
+    border-color: var(--success-border);
+    color: color-mix(in oklch, var(--success) 65%, var(--ink));
+  }
+
+  .inline-alert-error {
+    background: var(--danger-bg);
+    border-color: var(--danger-border);
+    color: color-mix(in oklch, var(--danger) 70%, var(--ink));
+  }
+</style>

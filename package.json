@@ -2,7 +2,7 @@
   "name": "kenresoft-cms",
   "version": "0.1.0",
   "private": true,
-  "description": "Cloudflare-native, API-first, reusable CMS. First production target: Pathvera Group.",
+  "description": "Cloudflare-native, API-first, reusable CMS. Single-site-per-deployment, self-hostable.",
   "license": "MIT",
   "packageManager": "pnpm@9.15.0",
   "engines": {
@@ -14,6 +14,23 @@
     "test": "pnpm -r test",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
-    "clean": "pnpm -r clean"
+    "clean": "pnpm -r clean",
+    "setup": "node scripts/setup.mjs",
+    "update": "node scripts/update.mjs",
+    "rename-worker": "node scripts/rename-worker.mjs"
+  },
+  "devDependencies": {
+    "wrangler": "^4.128.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "qs": "^6.16.0",
+      "esbuild": "^0.28.1",
+      "undici": "^7.29.0",
+      "sharp": "^0.35.0",
+      "ws": "^8.21.0",
+      "@better-auth/core>zod": "4.4.3",
+      "better-call>zod": "4.4.3"
+    }
   }
 }

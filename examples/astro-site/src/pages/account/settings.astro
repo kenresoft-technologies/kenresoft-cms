@@ -1,0 +1,176 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import AccountNav from '../../components/account/AccountNav.astro';
+import Alert from '../../components/ui/Alert.astro';
+import { requireCustomerOrRedirect } from '../../lib/site-client';
+
+const result = await requireCustomerOrRedirect(Astro.request, '/account/settings');
+if ('redirect' in result) return Astro.redirect(result.redirect);
+const { customer } = result;
+---
+
+<BaseLayout title="Account settings — Kenresoft CMS" noIndex>
+  <div class="account-page">
+    <AccountNav active="settings" />
+    <div class="account-content">
+      <h1>Account settings</h1>
+
+      <section class="settings-section">
+        <h2>Profile</h2>
+        <form id="profile-form">
+          <label class="field">
+            <span>Email</span>
+            <input type="email" value={customer.email} disabled />
+            <span class="hint">Email can't be changed here — it isn't a supported update on this deployment.</span>
+          </label>
+          <label class="field">
+            <span>Full name</span>
+            <input type="text" name="name" value={customer.name} required />
+          </label>
+          <label class="field">
+            <span>Phone (optional)</span>
+            <input type="tel" name="phone" value={customer.phone ?? ''} />
+          </label>
+          <Alert tone="error" id="profile-error" hidden />
+          <Alert tone="success" id="profile-success" hidden>Profile updated.</Alert>
+          <button type="submit" class="button button-primary" id="profile-submit">Save profile</button>
+        </form>
+      </section>
+
+      <section class="settings-section">
+        <h2>Change password</h2>
+        <form id="password-form">
+          <label class="field">
+            <span>Current password</span>
+            <input type="password" name="currentPassword" required autocomplete="current-password" />
+          </label>
+          <label class="field">
+            <span>New password</span>
+            <input type="password" name="newPassword" required minlength="8" autocomplete="new-password" />
+          </label>
+          <Alert tone="error" id="password-error" hidden />
+          <Alert tone="success" id="password-success" hidden>Password changed. Every other session was signed out.</Alert>
+          <button type="submit" class="button button-primary" id="password-submit">Change password</button>
+        </form>
+      </section>
+    </div>
+  </div>
+</BaseLayout>
+
+<script>
+  import { getBrowserClient, KenresoftApiError } from '../../lib/browser-client';
+
+  const cms = getBrowserClient();
+
+  const profileForm = document.getElementById('profile-form') as HTMLFormElement;
+  const profileError = document.getElementById('profile-error') as HTMLElement;
+  const profileSuccess = document.getElementById('profile-success') as HTMLElement;
+  const profileSubmit = document.getElementById('profile-submit') as HTMLButtonElement;
+
+  profileForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    profileError.hidden = true;
+    profileSuccess.hidden = true;
+    profileSubmit.disabled = true;
+    profileSubmit.textContent = 'Saving…';
+
+    const data = new FormData(profileForm);
+    try {
+      await cms.commerce.customer.update({
+        name: String(data.get('name')),
+        phone: (data.get('phone') as string) || null,
+      });
+      profileSuccess.hidden = false;
+    } catch (err) {
+      profileError.textContent = err instanceof KenresoftApiError ? err.message : 'Could not update your profile.';
+      profileError.hidden = false;
+    } finally {
+      profileSubmit.disabled = false;
+      profileSubmit.textContent = 'Save profile';
+    }
+  });
+
+  const passwordForm = document.getElementById('password-form') as HTMLFormElement;
+  const passwordError = document.getElementById('password-error') as HTMLElement;
+  const passwordSuccess = document.getElementById('password-success') as HTMLElement;
+  const passwordSubmit = document.getElementById('password-submit') as HTMLButtonElement;
+
+  passwordForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    passwordError.hidden = true;
+    passwordSuccess.hidden = true;
+    passwordSubmit.disabled = true;
+    passwordSubmit.textContent = 'Changing…';
+
+    const data = new FormData(passwordForm);
+    try {
+      await cms.commerce.customer.changePassword({
+        currentPassword: String(data.get('currentPassword')),
+        newPassword: String(data.get('newPassword')),
+      });
+      passwordSuccess.hidden = false;
+      passwordForm.reset();
+    } catch (err) {
+      passwordError.textContent = err instanceof KenresoftApiError ? err.message : 'Could not change your password.';
+      passwordError.hidden = false;
+    } finally {
+      passwordSubmit.disabled = false;
+      passwordSubmit.textContent = 'Change password';
+    }
+  });
+</script>
+
+<style>
+  .account-page {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: var(--space-12) var(--space-6) var(--space-20);
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    gap: var(--space-10);
+  }
+
+  @media (max-width: 720px) {
+    .account-page {
+      grid-template-columns: 1fr;
+      gap: var(--space-6);
+    }
+  }
+
+  .account-content h1 {
+    margin: 0 0 var(--space-8);
+    font-size: var(--text-3xl);
+    font-weight: 600;
+  }
+
+  .settings-section {
+    max-width: 460px;
+    margin-bottom: var(--space-8);
+    padding: var(--space-6);
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .settings-section h2 {
+    margin: 0 0 var(--space-4);
+    font-size: var(--text-lg);
+    font-weight: 600;
+  }
+
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin-bottom: var(--space-4);
+    font-size: var(--text-sm);
+    font-weight: 600;
+  }
+
+  .hint {
+    font-weight: 400;
+    color: var(--ink-muted);
+    font-size: var(--text-xs);
+  }
+</style>

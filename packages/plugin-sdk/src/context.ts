@@ -1,0 +1,191 @@
+import type { Database } from '@kenresoft-cms/database';
+import type { UserRole } from '@kenresoft-cms/contracts/schemas/enums';
+
+// The exact bindings/session shape a plugin route actually needs — a deliberate subset of
+// apps/api's own Bindings/AuthedVariables (apps/api/src/lib/env.ts,
+// apps/api/src/middleware/require-session.ts), not a re-export of them: a plugin package must
+// never depend on an app's src/, only the reverse (docs/PLUGINS.md).
+export interface PluginBindings {
+  DB: D1Database;
+  MEDIA_BUCKET: R2Bucket;
+  // Core's own CORS allow-list (apps/api/src/middleware/cors.ts, apps/api/src/lib/env.ts) —
+  // exposed here so a plugin's own cookie-authenticated public routes can run their own explicit
+  // Origin check against the same allow-list, rather than relying solely on browser-enforced CORS
+  // as the only line of defense against cross-site request forgery.
+  CORS_ORIGINS: string;
+}
+
+export interface PluginSessionUser {
+  id: string;
+  email: string;
+  role: UserRole;
+  disabled: boolean;
+}
+
+export interface PluginMediaSummary {
+  id: string;
+  filename: string;
+  contentType: string;
+  size: number;
+  width: number | null;
+  height: number | null;
+}
+
+// Wraps Core's existing media system (apps/api/src/lib/media-service.ts) — a plugin never
+// touches R2 or the media table directly. There's no `contentType` input: Core sniffs the
+// actual bytes to decide it, the same "never trust a declared MIME type" rule the admin upload
+// route already enforces (docs/ARCHITECTURE.md §9/§14) — a caller-supplied value would be
+// silently ignored, so the field isn't offered at all.
+export interface PluginMediaService {
+  get(id: string): Promise<PluginMediaSummary | null>;
+  upload(input: { bytes: Uint8Array; filename: string }): Promise<PluginMediaSummary>;
+  delete(id: string): Promise<boolean>;
+}
+
+// Generic, validated, non-secret plugin configuration (packages/database/schema/plugin-
+// settings.ts) — T is the plugin's own config shape, validated against its own
+// PluginRegistration.configSchema before being handed back. Never store secrets through this —
+// see docs/PLUGINS.md.
+export interface PluginConfigService<T = unknown> {
+  get(): Promise<T>;
+  set(value: T): Promise<void>;
+}
+
+// Wraps Core's existing pluggable email layer (apps/api/src/lib/email/*, selected via
+// EMAIL_PROVIDER — cloudflare/resend/noop) — a plugin never picks a provider or touches provider
+// credentials itself. Matches apps/api/src/lib/email/types.ts's EmailMessage/EmailSender shape
+// exactly, so the wrapper that constructs this is a pure pass-through with no translation logic.
+export interface PluginEmailService {
+  send(message: { to: string; subject: string; text: string; html?: string }): Promise<void>;
+}
+
+// Mirrors apps/api/src/lib/payments/types.ts's own PaymentTransactionStatus exactly — Paystack's
+// real vocabulary is wider than success/failure: 'pending'/'ongoing'/'processing'/'queued' are
+// non-terminal, 'reversed' means a previously successful charge was reversed after the fact. A
+// caller must never collapse any of these into 'failed' — only 'success' and 'failed'/'abandoned'
+// are terminal outcomes.
+export type PaymentTransactionStatus =
+  | 'success'
+  | 'failed'
+  | 'abandoned'
+  | 'pending'
+  | 'ongoing'
+  | 'processing'
+  | 'queued'
+  | 'reversed'
+  | 'other';
+
+export interface InitializePaymentInput {
+  amount: number;
+  currency: string;
+  email: string;
+  reference: string;
+  callbackUrl: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface InitializePaymentResult {
+  authorizationUrl: string;
+  accessCode: string;
+  reference: string;
+}
+
+export interface VerifyPaymentResult {
+  status: PaymentTransactionStatus;
+  reference: string;
+  amount: number;
+  currency: string;
+  raw: unknown;
+}
+
+// Mirrors apps/api/src/lib/payments/types.ts's own PaymentProviderStatus exactly — a deliberately
+// non-sensitive status snapshot for a developer-facing admin UI (Commerce Settings' Paystack
+// section). Never the key itself, never anything derived from it beyond which of Paystack's two
+// documented key prefixes (`sk_test_`/`sk_live_`) it starts with. 'unknown' covers a configured
+// key that doesn't match either documented prefix.
+export interface PaymentProviderStatus {
+  configured: boolean;
+  environment: 'test' | 'live' | 'unknown';
+}
+
+// Wraps Core's existing pluggable payment layer (apps/api/src/lib/payments/*, selected by whether
+// PAYSTACK_SECRET_KEY is set) — a plugin never picks a provider, sees its credentials, or calls
+// its REST API directly. Paystack is the only implementation today; this interface exists
+// specifically so a plugin's own domain code (order/checkout logic) depends on this shape, not on
+// Paystack's request/response format, so a future second provider — or a swap away from Paystack
+// entirely — never touches plugin code (docs/PLUGINS.md's Commerce section). `configured` lets a
+// route check up front and return a clear "not set up" response rather than letting an
+// unconfigured provider's methods throw partway through a request.
+export interface PluginPaymentsService {
+  readonly configured: boolean;
+  initializeTransaction(input: InitializePaymentInput): Promise<InitializePaymentResult>;
+  verifyTransaction(reference: string): Promise<VerifyPaymentResult>;
+  verifyWebhookSignature(rawBody: string, signatureHeader: string | undefined): Promise<boolean>;
+  // Non-sensitive, synchronous, no network call — see PaymentProviderStatus above for exactly
+  // what this may and may not expose.
+  getStatus(): PaymentProviderStatus;
+}
+
+// In-process, best-effort, synchronous only — not a durable queue. A handler runs synchronously
+// within the same request that called emit(); there is no persistence, no retry, and no
+// cross-request delivery guarantee. No critical business state transition may depend solely on
+// a handler firing here — see docs/PLUGINS.md and the existing apps/api/src/lib/webhooks.ts
+// (DB-backed, retried on the Cron Trigger) for the durable-delivery answer when one is needed.
+export interface PluginEventBus {
+  emit(event: string, payload: unknown): void;
+  on(event: string, handler: (payload: unknown) => void): () => void;
+}
+
+export interface PluginLogger {
+  info(message: string, meta?: Record<string, unknown>): void;
+  warn(message: string, meta?: Record<string, unknown>): void;
+  error(message: string, meta?: Record<string, unknown>): void;
+}
+
+// The one object a plugin's route handlers ever receive to reach Core. `db` is deliberately
+// typed as the same singular Database type Core's own repositories use (docs/PLUGINS.md's SDK
+// boundary note) — a plugin repository file may only query its own `plugin_<id>_*` tables, a
+// convention enforced by review/docs, not the type system, in Phase 1. This is named as its own
+// interface (not a bare re-export of Database) specifically so a future version can narrow it
+// into a per-plugin scoped query interface without changing PluginRegistration's shape.
+export interface PluginContext {
+  pluginId: string;
+  db: Database;
+  user: PluginSessionUser;
+  hasRole(minimum: UserRole): boolean;
+  media: PluginMediaService;
+  config: PluginConfigService;
+  events: PluginEventBus;
+  email: PluginEmailService;
+  payments: PluginPaymentsService;
+  logger: PluginLogger;
+}
+
+export interface PluginVariables {
+  user: PluginSessionUser;
+  session: { id: string };
+  pluginContext: PluginContext;
+}
+
+// The unauthenticated counterpart to PluginContext — for a plugin's optional public,
+// storefront-facing routes (PluginRegistration.publicRoutes), mounted with no session at all
+// (apps/api/src/plugins/mount.ts). No `user`/`hasRole`/`events`: there's no session to scope a
+// permission check to, and a public route emitting a user-scoped event wouldn't mean anything.
+// `config` is read-only here — public routes read a plugin's settings (e.g. a store name), they
+// never change them.
+export interface PluginPublicContext {
+  pluginId: string;
+  db: Database;
+  media: PluginMediaService;
+  config: Pick<PluginConfigService, 'get'>;
+  email: PluginEmailService;
+  // Public precisely because checkout/payment-confirmation routes must work for a guest with no
+  // session at all (docs/PLUGINS.md's Commerce section) — the same reasoning `email` already
+  // established here for password-reset-style flows.
+  payments: PluginPaymentsService;
+  logger: PluginLogger;
+}
+
+export interface PluginPublicVariables {
+  pluginContext: PluginPublicContext;
+}

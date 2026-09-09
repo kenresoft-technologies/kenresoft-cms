@@ -1,0 +1,330 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+
+const { id } = Astro.params;
+if (!id) {
+  return new Response(null, { status: 404, statusText: 'Not Found' });
+}
+---
+
+<BaseLayout title="Order confirmation — Kenresoft CMS" description="Payment confirmation for your order." noIndex>
+  <div class="order-page">
+    <div id="order-loading" class="loading-note">Loading your order…</div>
+    <div id="order-not-found" hidden>
+      <h1>We couldn't find that order here</h1>
+      <p>
+        There's no public "get order by id" endpoint for a guest checkout on this deployment —
+        only the checkout response itself (cached in this browser tab) and a signed-in customer's
+        own order history can show a guest's order after the fact. If you just checked out in
+        this browser, try going back rather than reloading; if you have an account,
+        <a href={`/account/login?redirect=${encodeURIComponent(Astro.url.pathname + Astro.url.search)}`}> sign in</a>
+        to see it under Orders.
+      </p>
+    </div>
+
+    <div id="order-body" hidden>
+      <div class="order-header">
+        <h1>Order confirmation</h1>
+        <p class="order-id">Order #<span id="order-id-text"></span></p>
+      </div>
+
+      <div id="status-panel" class="status-panel"></div>
+
+      <div class="order-details">
+        <div class="order-block">
+          <h2>Items</h2>
+          <ul id="order-items"></ul>
+        </div>
+        <div class="order-block">
+          <h2>Total</h2>
+          <p id="order-total" class="order-total"></p>
+        </div>
+        <div class="order-block" id="customer-block">
+          <h2>Customer</h2>
+          <p id="customer-info"></p>
+        </div>
+      </div>
+    </div>
+  </div>
+</BaseLayout>
+
+<script>
+  import { getBrowserClient, KenresoftApiError } from '../../lib/browser-client';
+  import { formatMoney } from '../../lib/money';
+  import { getCachedOrder, cacheOrder } from '../../lib/order-cache';
+  import type { CommerceOrder } from '@kenresoft-cms/astro';
+
+  const cms = getBrowserClient();
+
+  const loadingEl = document.getElementById('order-loading') as HTMLElement;
+  const notFoundEl = document.getElementById('order-not-found') as HTMLElement;
+  const bodyEl = document.getElementById('order-body') as HTMLElement;
+  const statusPanel = document.getElementById('status-panel') as HTMLElement;
+  const itemsEl = document.getElementById('order-items') as HTMLUListElement;
+  const totalEl = document.getElementById('order-total') as HTMLElement;
+  const customerInfoEl = document.getElementById('customer-info') as HTMLElement;
+  const orderIdTextEl = document.getElementById('order-id-text') as HTMLElement;
+
+  function escapeHtml(value: string): string {
+    const div = document.createElement('div');
+    div.textContent = value;
+    return div.innerHTML;
+  }
+
+  const STATUS_LABEL: Record<CommerceOrder['status'], string> = {
+    pending: 'Awaiting payment',
+    paid: 'Paid',
+    fulfilled: 'Fulfilled',
+    cancelled: 'Cancelled',
+    refunded: 'Refunded',
+  };
+
+  type RenderableOrder = Pick<CommerceOrder, 'id' | 'status' | 'currency' | 'totalAmount' | 'items'> &
+    Partial<Pick<CommerceOrder, 'customerEmail' | 'customerName'>>;
+
+  function renderOrder(order: RenderableOrder, extraStatusHtml = '') {
+    loadingEl.hidden = true;
+    notFoundEl.hidden = true;
+    bodyEl.hidden = false;
+
+    orderIdTextEl.textContent = order.id;
+    itemsEl.innerHTML = order.items
+      .map(
+        (item) =>
+          `<li>${escapeHtml(item.productName)}${item.variantName ? ` (${escapeHtml(item.variantName)})` : ''} × ${item.quantity} — ${formatMoney(item.unitPriceAtPurchase * item.quantity, order.currency)}</li>`,
+      )
+      .join('');
+    totalEl.textContent = formatMoney(order.totalAmount, order.currency);
+
+    const customerBlock = document.getElementById('customer-block') as HTMLElement;
+    if (order.customerEmail && order.customerName) {
+      customerBlock.hidden = false;
+      customerInfoEl.textContent = `${order.customerName} · ${order.customerEmail}`;
+    } else {
+      // Reached via a signed-in customer's own order history (customer.ts's orders.get() never
+      // returns customerEmail/customerName — the viewer already knows who they are) rather than
+      // this browser's cached checkout response.
+      customerBlock.hidden = true;
+    }
+
+    statusPanel.className = `status-panel status-${order.status}`;
+    statusPanel.innerHTML = `<p class="status-label">${STATUS_LABEL[order.status]}</p>${extraStatusHtml}`;
+  }
+
+  function renderPendingPaymentAction(order: RenderableOrder) {
+    const actionsHtml = `
+      <p>Your order has been created but payment hasn't been completed yet.</p>
+      <button type="button" id="pay-now-button" class="button button-primary">Pay now</button>
+      <p id="pay-now-error" class="pay-now-error" hidden></p>
+    `;
+    renderOrder(order, actionsHtml);
+
+    document.getElementById('pay-now-button')?.addEventListener('click', async (event) => {
+      const button = event.currentTarget as HTMLButtonElement;
+      const errorEl = document.getElementById('pay-now-error')!;
+      button.disabled = true;
+      button.textContent = 'Starting payment…';
+      errorEl.hidden = true;
+      try {
+        const session = await cms.commerce.payments.initialize({
+          orderId: order.id,
+          callbackUrl: `${window.location.origin}/order/${order.id}`,
+        });
+        window.location.href = session.authorizationUrl;
+      } catch (err) {
+        button.disabled = false;
+        button.textContent = 'Pay now';
+        errorEl.hidden = false;
+        if (err instanceof KenresoftApiError && err.status === 503) {
+          errorEl.textContent = 'Payments are not configured on this deployment (no PAYSTACK_SECRET_KEY set) — there is nothing to pay yet.';
+        } else {
+          errorEl.textContent = err instanceof KenresoftApiError ? err.message : 'Could not start payment.';
+        }
+      }
+    });
+  }
+
+  async function main() {
+    const url = new URL(window.location.href);
+    const pathParts = url.pathname.split('/');
+    const orderId = pathParts[pathParts.length - 1] ?? '';
+    // Paystack appends its own `reference` query param to the callbackUrl on redirect (the same
+    // reference payments.initialize() returned, echoed back) — this proves the browser came
+    // back from a real Paystack redirect, NOT that payment succeeded. The verify() call below —
+    // never the mere presence of this param — is what's actually authoritative.
+    const reference = url.searchParams.get('reference');
+    const cached = getCachedOrder(orderId);
+
+    if (reference) {
+      try {
+        const result = await cms.commerce.payments.verify({ orderId, reference });
+        if (cached) cacheOrder({ ...cached, status: result.orderStatus });
+        const updated = cached ? { ...cached, status: result.orderStatus } : await tryFetchViaCustomerSession(orderId);
+        if (!updated) {
+          notFoundEl.hidden = false;
+          loadingEl.hidden = true;
+          return;
+        }
+        if (result.paid) {
+          renderOrder(updated, `<p>Thank you — your payment was confirmed by the server.</p>`);
+        } else if (result.orderStatus === 'cancelled' || result.orderStatus === 'refunded') {
+          renderOrder(updated, `<p>This order is ${result.orderStatus} and can no longer be paid.</p>`);
+        } else {
+          renderOrder(updated, `<p>Payment wasn't confirmed as successful (order is still <strong>${result.orderStatus}</strong>). If you completed payment on Paystack's page, this can take a moment — refresh to check again.</p>`);
+        }
+      } catch (err) {
+        loadingEl.hidden = true;
+        notFoundEl.hidden = false;
+        notFoundEl.querySelector('p')!.textContent = err instanceof KenresoftApiError ? err.message : 'Could not confirm your payment.';
+      }
+      return;
+    }
+
+    // No reference — either a fresh redirect straight from checkout (payments not configured,
+    // or the customer hasn't clicked "Pay now" yet) or someone revisiting this URL later.
+    const order = cached ?? (await tryFetchViaCustomerSession(orderId));
+    if (!order) {
+      loadingEl.hidden = true;
+      notFoundEl.hidden = false;
+      return;
+    }
+
+    if (order.status === 'pending') {
+      renderPendingPaymentAction(order);
+    } else {
+      renderOrder(order);
+    }
+  }
+
+  async function tryFetchViaCustomerSession(orderId: string): Promise<RenderableOrder | null> {
+    try {
+      return await cms.commerce.customer.orders.get(orderId);
+    } catch {
+      // 401 (no session) or 404 (not this customer's order, or a guest order — customer.ts
+      // 404s both identically, matching this codebase's own draft-vs-nonexistent convention).
+      return null;
+    }
+  }
+
+  main();
+</script>
+
+<style>
+  .order-page {
+    max-width: 640px;
+    margin: 0 auto;
+    padding: var(--space-12) var(--space-6) var(--space-20);
+  }
+
+  #order-not-found h1 {
+    font-size: var(--text-2xl);
+    margin: 0 0 var(--space-3);
+  }
+
+  #order-not-found p {
+    color: var(--ink-muted);
+    line-height: var(--leading-relaxed);
+  }
+
+  .order-header {
+    margin-bottom: var(--space-6);
+  }
+
+  .order-header h1 {
+    margin: 0 0 var(--space-1);
+    font-size: var(--text-3xl);
+    font-weight: 600;
+  }
+
+  .order-id {
+    margin: 0;
+    color: var(--ink-muted);
+    font-size: var(--text-sm);
+  }
+
+  .status-panel {
+    padding: var(--space-5);
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    margin-bottom: var(--space-8);
+  }
+
+  .status-panel :global(.status-label) {
+    margin: 0 0 var(--space-2);
+    font-weight: 700;
+    font-size: var(--text-lg);
+  }
+
+  .status-panel :global(p:not(.status-label)) {
+    margin: var(--space-2) 0 0;
+    color: var(--ink-muted);
+  }
+
+  .status-pending {
+    background: var(--warning-bg);
+    border-color: var(--warning-border);
+  }
+
+  .status-paid,
+  .status-fulfilled {
+    background: var(--success-bg);
+    border-color: var(--success-border);
+  }
+
+  .status-cancelled,
+  .status-refunded {
+    background: var(--surface-muted);
+  }
+
+  #pay-now-button {
+    margin-top: var(--space-3);
+  }
+
+  .pay-now-error {
+    color: var(--danger);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    margin-top: var(--space-2);
+  }
+
+  .order-details {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-6);
+  }
+
+  .order-block {
+    padding: var(--space-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+  }
+
+  .order-block h2 {
+    margin: 0 0 var(--space-2);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--ink-muted);
+  }
+
+  #order-items {
+    margin: 0;
+    padding-left: 1.2rem;
+    color: var(--ink);
+    font-size: var(--text-sm);
+    line-height: var(--leading-relaxed);
+  }
+
+  .order-total {
+    margin: 0;
+    font-size: var(--text-xl);
+    font-weight: 700;
+  }
+
+  #customer-info {
+    margin: 0;
+    color: var(--ink);
+    font-size: var(--text-sm);
+  }
+</style>

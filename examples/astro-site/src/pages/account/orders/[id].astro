@@ -1,0 +1,184 @@
+---
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import AccountNav from '../../../components/account/AccountNav.astro';
+import OrderStatusBadge from '../../../components/commerce/OrderStatusBadge.astro';
+import { createServerClient, requireCustomerOrRedirect } from '../../../lib/site-client';
+import { formatMoney } from '../../../lib/money';
+import { KenresoftApiError } from '@kenresoft-cms/astro';
+
+const { id } = Astro.params;
+const result = await requireCustomerOrRedirect(Astro.request, `/account/orders/${id}`);
+if ('redirect' in result) return Astro.redirect(result.redirect);
+
+const cms = createServerClient(Astro.request.headers.get('cookie'));
+
+// customer.orders.get() 404s identically whether the id doesn't exist at all, belongs to a
+// guest checkout, or belongs to a DIFFERENT customer (packages/plugin-ecommerce/src/routes/
+// customer.ts: "never distinguishable from the outside") — this is the real cross-customer
+// isolation guarantee this rebuild's spec asked to be verified for real, not just trusted from
+// reading the route file. See this example's README/the final report for how that was verified
+// live (two real customers, confirmed A can't fetch B's order).
+let order;
+try {
+  order = id ? await cms.commerce.customer.orders.get(id) : null;
+} catch (err) {
+  if (err instanceof KenresoftApiError && err.status === 404) {
+    return new Response(null, { status: 404, statusText: 'Not Found' });
+  }
+  throw err;
+}
+if (!order) {
+  return new Response(null, { status: 404, statusText: 'Not Found' });
+}
+---
+
+<BaseLayout title={`Order #${order.id.slice(0, 8)} — Kenresoft CMS`} noIndex>
+  <div class="account-page">
+    <AccountNav active="orders" />
+    <div class="account-content">
+      <a class="back-link" href="/account/orders">← Back to orders</a>
+      <div class="order-heading">
+        <h1>Order #{order.id.slice(0, 8)}</h1>
+        <OrderStatusBadge status={order.status} />
+      </div>
+      <p class="order-date">Placed {new Date(order.createdAt).toLocaleString()}</p>
+
+      <div class="items-table-wrap">
+        <table class="items-table">
+          <thead>
+            <tr>
+              <th>Item</th>
+              <th>Qty</th>
+              <th>Price</th>
+            </tr>
+          </thead>
+          <tbody>
+            {
+              order.items.map((item) => (
+                <tr>
+                  <td>
+                    {item.productName}
+                    {item.variantName ? <span class="variant-name"> — {item.variantName}</span> : null}
+                  </td>
+                  <td>{item.quantity}</td>
+                  <td>{formatMoney(item.unitPriceAtPurchase * item.quantity, order.currency)}</td>
+                </tr>
+              ))
+            }
+          </tbody>
+          <tfoot>
+            <tr>
+              <td colspan="2">Total</td>
+              <td>{formatMoney(order.totalAmount, order.currency)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      {order.status === 'pending' ? <p class="pending-note">This order is awaiting payment — visit <a href={`/order/${order.id}`}>the payment page</a> to complete it.</p> : null}
+    </div>
+  </div>
+</BaseLayout>
+
+<style>
+  .account-page {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: var(--space-12) var(--space-6) var(--space-20);
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    gap: var(--space-10);
+  }
+
+  @media (max-width: 720px) {
+    .account-page {
+      grid-template-columns: 1fr;
+      gap: var(--space-6);
+    }
+  }
+
+  .back-link {
+    display: inline-block;
+    margin-bottom: var(--space-4);
+    color: var(--ink-muted);
+    text-decoration: none;
+    font-size: var(--text-sm);
+    transition: color 0.15s ease;
+  }
+
+  .back-link:hover {
+    color: var(--brand);
+  }
+
+  .order-heading {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+  }
+
+  .order-heading h1 {
+    margin: 0;
+    font-size: var(--text-2xl);
+    font-weight: 600;
+  }
+
+  .order-date {
+    margin: var(--space-2) 0 var(--space-6);
+    color: var(--ink-muted);
+    font-size: var(--text-sm);
+  }
+
+  .items-table-wrap {
+    overflow-x: auto;
+    overflow-y: hidden;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+  }
+
+  .items-table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 420px;
+  }
+
+  .items-table th {
+    text-align: left;
+    font-size: var(--text-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--ink-muted);
+    padding: var(--space-3) var(--space-4);
+    background: var(--surface-muted);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .items-table td {
+    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .items-table tfoot td {
+    border-bottom: none;
+    font-weight: 700;
+    padding-top: var(--space-4);
+  }
+
+  .variant-name {
+    color: var(--ink-muted);
+  }
+
+  .pending-note {
+    margin-top: var(--space-6);
+    padding: var(--space-4);
+    border-radius: var(--radius);
+    background: var(--warning-bg);
+    border: 1px solid var(--warning-border);
+    color: color-mix(in oklch, var(--warning) 65%, var(--ink));
+  }
+
+  .pending-note a {
+    color: var(--brand);
+    font-weight: 600;
+  }
+</style>

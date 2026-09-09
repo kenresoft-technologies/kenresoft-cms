@@ -1,5 +1,5 @@
 {
-  "name": "@kenresoft/database",
+  "name": "@kenresoft-cms/database",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -7,9 +7,23 @@
   "types": "./src/index.ts",
   "scripts": {
     "generate": "drizzle-kit generate",
-    "migrate:local": "wrangler d1 migrations apply kenresoft-cms-db --local",
-    "migrate:remote": "wrangler d1 migrations apply kenresoft-cms-db --remote",
+    "migrate:local": "wrangler d1 migrations apply DB --local --config ../../wrangler.toml",
+    "migrate:remote": "wrangler d1 migrations apply DB --remote --config ../../wrangler.toml",
+    "migrate:production": "wrangler d1 migrations apply DB --remote --env production --config ../../wrangler.toml",
+    "migrate:e2e": "wrangler d1 migrations apply DB --local --config ../../wrangler.toml --persist-to ../../apps/api/.wrangler/e2e-state",
     "typecheck": "tsc --noEmit",
     "lint": "eslint ."
+  },
+  "dependencies": {
+    "@kenresoft-cms/contracts": "workspace:*",
+    "drizzle-orm": "^0.45.2"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260903.1",
+    "@kenresoft-cms/config": "workspace:*",
+    "drizzle-kit": "^0.31.7",
+    "eslint": "^10.9.1",
+    "typescript": "^5.9.3",
+    "wrangler": "^4.128.0"
   }
 }

@@ -1,0 +1,87 @@
+---
+const REPO_URL = 'https://github.com/kenresoft-technologies/kenresoft-cms';
+---
+
+<footer class="site-footer">
+  <div class="footer-columns">
+    <div class="footer-column">
+      <p class="footer-heading">Kenresoft CMS</p>
+      <p>A reusable, open-source, Cloudflare-native content and commerce platform.</p>
+      <p><a href={REPO_URL} target="_blank" rel="noreferrer">Source on GitHub →</a></p>
+    </div>
+    <div class="footer-column">
+      <p class="footer-heading">Site</p>
+      <a href="/about">About</a>
+      <a href="/blog">Blog</a>
+      <a href="/contact">Contact</a>
+    </div>
+    <div class="footer-column">
+      <p class="footer-heading">Shop</p>
+      <a href="/shop">All products</a>
+      <a href="/cart">Cart</a>
+    </div>
+    <div class="footer-column">
+      <p class="footer-heading">Account</p>
+      <a href="/account">Dashboard</a>
+      <a href="/account/orders">Orders</a>
+      <a href="/account/login">Log in</a>
+    </div>
+    <div class="footer-column">
+      <p class="footer-heading">Legal</p>
+      <a href="/privacy">Privacy Policy</a>
+      <a href="/terms">Terms of Service</a>
+    </div>
+  </div>
+  <p class="footer-note">Kenresoft CMS — reference storefront. MIT licensed.</p>
+</footer>
+
+<style>
+  .site-footer {
+    display: block;
+    padding: var(--space-12) var(--space-6) var(--space-10);
+    background: var(--surface-muted);
+  }
+
+  .footer-columns {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: 2fr repeat(4, 1fr);
+    gap: var(--space-8);
+  }
+
+  .footer-column {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .footer-heading {
+    margin: 0 0 var(--space-1);
+    font-weight: 600;
+    font-size: var(--text-sm);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--ink);
+  }
+
+  .footer-note {
+    max-width: var(--max-width);
+    margin: var(--space-10) auto 0;
+    padding-top: var(--space-6);
+    border-top: 1px solid var(--border);
+  }
+
+  @media (max-width: 720px) {
+    .footer-columns {
+      grid-template-columns: repeat(2, 1fr);
+      gap: var(--space-6);
+    }
+  }
+
+  @media (max-width: 480px) {
+    .footer-columns {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

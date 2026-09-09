@@ -1,0 +1,160 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import AccountNav from '../../components/account/AccountNav.astro';
+import { createServerClient, requireCustomerOrRedirect } from '../../lib/site-client';
+
+// A real, server-verified protected-route check — Astro.redirect() only actually aborts
+// rendering when returned directly from THIS page's own top-level frontmatter (see
+// site-client.ts's own comment on why a shared layout component can't do this). Verified live:
+// hitting /account with no session cookie produces a real redirect to /account/login, not a
+// client-side-hidden page that briefly flashes real content before JS kicks in.
+const result = await requireCustomerOrRedirect(Astro.request, '/account');
+if ('redirect' in result) return Astro.redirect(result.redirect);
+const { customer } = result;
+
+const cms = createServerClient(Astro.request.headers.get('cookie'));
+const orders = await cms.commerce.customer.orders.list().catch(() => []);
+const recentOrders = orders.slice(0, 5);
+---
+
+<BaseLayout title="My account — Kenresoft CMS" noIndex>
+  <div class="account-page">
+    <AccountNav active="dashboard" />
+    <div class="account-content">
+      <h1>Welcome back, {customer.name.split(' ')[0]}</h1>
+      <p class="account-summary">
+        {customer.email} {customer.emailVerified ? null : <span class="unverified">(email not verified)</span>}
+      </p>
+
+      <section class="account-section">
+        <div class="section-header">
+          <h2>Recent orders</h2>
+          <a href="/account/orders">View all →</a>
+        </div>
+        {
+          recentOrders.length === 0 ? (
+            <p class="empty-note">No orders yet. <a href="/shop">Browse the shop →</a></p>
+          ) : (
+            <ul class="order-list">
+              {recentOrders.map((order) => (
+                <li>
+                  <a href={`/account/orders/${order.id}`}>
+                    Order #{order.id.slice(0, 8)} — {order.status} — {new Date(order.createdAt).toLocaleDateString()}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          )
+        }
+      </section>
+
+      <section class="account-section">
+        <h2>Quick links</h2>
+        <div class="quick-links">
+          <a href="/account/addresses" class="button button-secondary">Manage addresses</a>
+          <a href="/account/settings" class="button button-secondary">Account settings</a>
+        </div>
+      </section>
+    </div>
+  </div>
+</BaseLayout>
+
+<style>
+  .account-page {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: var(--space-12) var(--space-6) var(--space-20);
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    gap: var(--space-10);
+  }
+
+  @media (max-width: 720px) {
+    .account-page {
+      grid-template-columns: 1fr;
+      gap: var(--space-6);
+    }
+  }
+
+  .account-content h1 {
+    margin: 0 0 var(--space-1);
+    font-size: var(--text-3xl);
+    font-weight: 600;
+  }
+
+  .account-summary {
+    margin: 0 0 var(--space-8);
+    color: var(--ink-muted);
+  }
+
+  .unverified {
+    color: var(--warning);
+    font-weight: 600;
+  }
+
+  .account-section {
+    margin-bottom: var(--space-8);
+  }
+
+  .section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: var(--space-3);
+  }
+
+  .section-header h2,
+  .account-section > h2 {
+    margin: 0 0 var(--space-3);
+    font-size: var(--text-lg);
+    font-weight: 600;
+  }
+
+  .section-header a {
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--brand);
+    text-decoration: none;
+  }
+
+  .section-header a:hover {
+    text-decoration: underline;
+  }
+
+  .empty-note {
+    color: var(--ink-muted);
+  }
+
+  .order-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .order-list a {
+    display: block;
+    padding: var(--space-4);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    text-decoration: none;
+    color: var(--ink);
+    transition:
+      border-color 0.15s ease,
+      box-shadow 0.15s ease;
+  }
+
+  .order-list a:hover {
+    border-color: var(--border-strong);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .quick-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+  }
+</style>

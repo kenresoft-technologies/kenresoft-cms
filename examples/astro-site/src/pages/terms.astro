@@ -1,0 +1,47 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+// Same deliberate non-CMS-backed placeholder as privacy.astro — see its own comment.
+---
+
+<BaseLayout title="Terms of Service — Kenresoft CMS" noIndex>
+  <article class="legal">
+    <h1>Terms of Service</h1>
+    <p class="legal-note">
+      Placeholder demo content, not backed by the CMS — see the Privacy Policy page's own note
+      for why.
+    </p>
+    <p>
+      Orders placed through this reference storefront are processed by the Commerce plugin's
+      real checkout and payment flow; a production deployment should replace this page with its
+      own actual terms covering payment, fulfillment, and returns.
+    </p>
+  </article>
+</BaseLayout>
+
+<style>
+  .legal {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: var(--space-12) var(--space-6) var(--space-20);
+  }
+
+  .legal h1 {
+    margin: 0 0 var(--space-6);
+    font-size: var(--text-3xl);
+    font-weight: 600;
+  }
+
+  .legal p {
+    max-width: var(--measure);
+    line-height: var(--leading-relaxed);
+  }
+
+  .legal-note {
+    padding: var(--space-4);
+    background: var(--surface-muted);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--ink-muted);
+    font-size: var(--text-sm);
+  }
+</style>

@@ -1,0 +1,370 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import AccountNav from '../../components/account/AccountNav.astro';
+import Alert from '../../components/ui/Alert.astro';
+import { requireCustomerOrRedirect } from '../../lib/site-client';
+
+const result = await requireCustomerOrRedirect(Astro.request, '/account/addresses');
+if ('redirect' in result) return Astro.redirect(result.redirect);
+---
+
+<BaseLayout title="Addresses — Kenresoft CMS" noIndex>
+  <div class="account-page">
+    <AccountNav active="addresses" />
+    <div class="account-content">
+      <div class="section-header">
+        <h1>Addresses</h1>
+        <button type="button" class="button button-secondary" id="add-address-button">Add address</button>
+      </div>
+
+      <Alert tone="error" id="addresses-error" hidden />
+      <div id="addresses-loading" class="loading-note">Loading…</div>
+      <ul id="address-list" class="address-list" hidden></ul>
+      <p id="addresses-empty" hidden class="empty-note">No saved addresses yet.</p>
+
+      <form id="address-form" class="address-form" hidden>
+        <h2 id="address-form-title">Add address</h2>
+        <input type="hidden" name="id" />
+        <label class="field">
+          <span>Label (optional)</span>
+          <input type="text" name="label" placeholder="e.g. Home" />
+        </label>
+        <label class="field">
+          <span>Recipient name</span>
+          <input type="text" name="recipientName" required />
+        </label>
+        <label class="field">
+          <span>Address line 1</span>
+          <input type="text" name="line1" required />
+        </label>
+        <label class="field">
+          <span>Address line 2 (optional)</span>
+          <input type="text" name="line2" />
+        </label>
+        <div class="field-row">
+          <label class="field">
+            <span>City</span>
+            <input type="text" name="city" required />
+          </label>
+          <label class="field">
+            <span>Postal code</span>
+            <input type="text" name="postalCode" required />
+          </label>
+        </div>
+        <label class="field">
+          <span>Country</span>
+          <input type="text" name="country" required placeholder="e.g. NG" />
+        </label>
+        <label class="field">
+          <span>Phone (optional)</span>
+          <input type="tel" name="phone" />
+        </label>
+        <label class="field checkbox-field">
+          <input type="checkbox" name="isDefault" />
+          <span>Set as default</span>
+        </label>
+
+        <div class="form-actions">
+          <button type="submit" class="button button-primary" id="address-save-button">Save address</button>
+          <button type="button" class="button button-secondary" id="address-cancel-button">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</BaseLayout>
+
+<script>
+  import { getBrowserClient, KenresoftApiError } from '../../lib/browser-client';
+  import type { CommerceCustomerAddress } from '@kenresoft-cms/astro';
+
+  const cms = getBrowserClient();
+
+  const errorEl = document.getElementById('addresses-error') as HTMLElement;
+  const loadingEl = document.getElementById('addresses-loading') as HTMLElement;
+  const listEl = document.getElementById('address-list') as HTMLUListElement;
+  const emptyEl = document.getElementById('addresses-empty') as HTMLElement;
+  const form = document.getElementById('address-form') as HTMLFormElement;
+  const formTitle = document.getElementById('address-form-title') as HTMLElement;
+  const addButton = document.getElementById('add-address-button') as HTMLButtonElement;
+  const cancelButton = document.getElementById('address-cancel-button') as HTMLButtonElement;
+  const saveButton = document.getElementById('address-save-button') as HTMLButtonElement;
+
+  function escapeHtml(value: string): string {
+    const div = document.createElement('div');
+    div.textContent = value;
+    return div.innerHTML;
+  }
+
+  const idField = form.elements.namedItem('id') as HTMLInputElement;
+
+  function showForm(address?: CommerceCustomerAddress) {
+    form.hidden = false;
+    formTitle.textContent = address ? 'Edit address' : 'Add address';
+    form.reset();
+    idField.value = address?.id ?? '';
+    if (address) {
+      form.label.value = address.label ?? '';
+      form.recipientName.value = address.recipientName;
+      form.line1.value = address.line1;
+      form.line2.value = address.line2 ?? '';
+      form.city.value = address.city;
+      form.postalCode.value = address.postalCode;
+      form.country.value = address.country;
+      form.phone.value = address.phone ?? '';
+      form.isDefault.checked = address.isDefault;
+    }
+    form.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  function hideForm() {
+    form.hidden = true;
+    form.reset();
+  }
+
+  async function loadAddresses() {
+    errorEl.hidden = true;
+    try {
+      const addresses = await cms.commerce.customer.addresses.list();
+      loadingEl.hidden = true;
+      if (addresses.length === 0) {
+        emptyEl.hidden = false;
+        listEl.hidden = true;
+        return;
+      }
+      emptyEl.hidden = true;
+      listEl.hidden = false;
+      listEl.innerHTML = addresses
+        .map(
+          (address) => `
+        <li class="address-card" data-id="${address.id}">
+          <div class="address-body">
+            ${address.label ? `<span class="address-label">${escapeHtml(address.label)}</span>` : ''}
+            ${address.isDefault ? '<span class="default-badge">Default</span>' : ''}
+            <p>${escapeHtml(address.recipientName)}</p>
+            <p>${escapeHtml(address.line1)}${address.line2 ? `, ${escapeHtml(address.line2)}` : ''}</p>
+            <p>${escapeHtml(address.city)}, ${escapeHtml(address.postalCode)}, ${escapeHtml(address.country)}</p>
+          </div>
+          <div class="address-actions">
+            <button type="button" data-edit="${address.id}">Edit</button>
+            <button type="button" data-delete="${address.id}" class="danger">Delete</button>
+          </div>
+        </li>`,
+        )
+        .join('');
+
+      listEl.querySelectorAll<HTMLButtonElement>('[data-edit]').forEach((button) => {
+        button.addEventListener('click', () => {
+          const address = addresses.find((a) => a.id === button.dataset.edit);
+          if (address) showForm(address);
+        });
+      });
+      listEl.querySelectorAll<HTMLButtonElement>('[data-delete]').forEach((button) => {
+        button.addEventListener('click', async () => {
+          if (!window.confirm('Delete this address?')) return;
+          button.disabled = true;
+          try {
+            await cms.commerce.customer.addresses.remove(button.dataset.delete!);
+            await loadAddresses();
+          } catch (err) {
+            errorEl.textContent = err instanceof KenresoftApiError ? err.message : 'Could not delete this address.';
+            errorEl.hidden = false;
+            button.disabled = false;
+          }
+        });
+      });
+    } catch (err) {
+      loadingEl.hidden = true;
+      errorEl.textContent = err instanceof KenresoftApiError ? err.message : 'Could not load your addresses.';
+      errorEl.hidden = false;
+    }
+  }
+
+  addButton.addEventListener('click', () => showForm());
+  cancelButton.addEventListener('click', hideForm);
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    saveButton.disabled = true;
+    saveButton.textContent = 'Saving…';
+    errorEl.hidden = true;
+
+    const data = new FormData(form);
+    const payload = {
+      label: (data.get('label') as string) || null,
+      recipientName: String(data.get('recipientName')),
+      line1: String(data.get('line1')),
+      line2: (data.get('line2') as string) || null,
+      city: String(data.get('city')),
+      postalCode: String(data.get('postalCode')),
+      country: String(data.get('country')),
+      phone: (data.get('phone') as string) || null,
+      isDefault: data.get('isDefault') === 'on',
+    };
+
+    try {
+      const existingId = String(data.get('id') || '');
+      if (existingId) {
+        await cms.commerce.customer.addresses.update(existingId, payload);
+      } else {
+        await cms.commerce.customer.addresses.create(payload);
+      }
+      hideForm();
+      await loadAddresses();
+    } catch (err) {
+      errorEl.textContent = err instanceof KenresoftApiError ? err.message : 'Could not save this address.';
+      errorEl.hidden = false;
+    } finally {
+      saveButton.disabled = false;
+      saveButton.textContent = 'Save address';
+    }
+  });
+
+  loadAddresses();
+</script>
+
+<style>
+  .account-page {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: var(--space-12) var(--space-6) var(--space-20);
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    gap: var(--space-10);
+  }
+
+  @media (max-width: 720px) {
+    .account-page {
+      grid-template-columns: 1fr;
+      gap: var(--space-6);
+    }
+  }
+
+  .section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    margin-bottom: var(--space-6);
+  }
+
+  .section-header h1 {
+    margin: 0;
+    font-size: var(--text-3xl);
+    font-weight: 600;
+  }
+
+  .empty-note {
+    color: var(--ink-muted);
+  }
+
+  .address-list {
+    list-style: none;
+    margin: 0 0 var(--space-8);
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: var(--space-4);
+  }
+
+  .address-card {
+    padding: var(--space-4);
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .address-body p {
+    margin: 0.1rem 0;
+    font-size: var(--text-sm);
+    color: var(--ink-muted);
+  }
+
+  .address-label {
+    font-weight: 700;
+    margin-right: var(--space-2);
+  }
+
+  .default-badge {
+    font-size: var(--text-xs);
+    padding: 0.15rem var(--space-2);
+    border-radius: 999px;
+    background: var(--surface-muted);
+    color: var(--brand);
+    font-weight: 600;
+  }
+
+  .address-actions {
+    display: flex;
+    gap: var(--space-4);
+    padding-top: var(--space-1);
+  }
+
+  .address-actions button {
+    border: none;
+    background: none;
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--brand);
+    cursor: pointer;
+    padding: 0;
+    transition: color 0.15s ease;
+  }
+
+  .address-actions button:hover {
+    text-decoration: underline;
+  }
+
+  .address-actions button.danger {
+    color: var(--danger);
+  }
+
+  .address-form {
+    max-width: 480px;
+    padding: var(--space-6);
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: var(--surface-muted);
+    margin-top: var(--space-4);
+  }
+
+  .address-form h2 {
+    margin: 0 0 var(--space-4);
+    font-size: var(--text-lg);
+  }
+
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin-bottom: var(--space-4);
+    font-size: var(--text-sm);
+    font-weight: 600;
+  }
+
+  .checkbox-field {
+    flex-direction: row;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .field-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-4);
+  }
+
+  .form-actions {
+    display: flex;
+    gap: var(--space-3);
+  }
+
+  @media (max-width: 480px) {
+    .field-row {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

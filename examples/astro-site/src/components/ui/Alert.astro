@@ -1,0 +1,71 @@
+---
+interface Props {
+  tone?: 'info' | 'success' | 'error' | 'warning';
+  id?: string;
+  hidden?: boolean;
+}
+
+const { tone = 'info', id, hidden = false } = Astro.props;
+
+const ICONS: Record<Required<Props>['tone'], string> = {
+  info: 'M12 16v-4m0-4h.01M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Z',
+  success: 'm8 12 3 3 6-6M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Z',
+  warning: 'M12 9v4m0 4h.01M10.3 3.9 2 18a1 1 0 0 0 .87 1.5h18.26A1 1 0 0 0 22 18L13.7 3.9a1 1 0 0 0-1.74 0Z',
+  error: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20ZM12 8v5m0 3h.01',
+};
+---
+
+<div class={`alert alert-${tone}`} id={id} role={tone === 'error' || tone === 'warning' ? 'alert' : 'status'} hidden={hidden}>
+  <svg class="alert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d={ICONS[tone]}></path>
+  </svg>
+  <div class="alert-body"><slot /></div>
+</div>
+
+<style>
+  .alert {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius);
+    font-size: var(--text-sm);
+    line-height: var(--leading-normal);
+    border: 1px solid transparent;
+  }
+
+  .alert-icon {
+    width: 1.1rem;
+    height: 1.1rem;
+    flex-shrink: 0;
+    margin-top: 0.1rem;
+  }
+
+  .alert-body {
+    min-width: 0;
+  }
+
+  .alert-info {
+    background: var(--info-bg);
+    border-color: var(--info-border);
+    color: var(--ink-muted);
+  }
+
+  .alert-success {
+    background: var(--success-bg);
+    border-color: var(--success-border);
+    color: color-mix(in oklch, var(--success) 65%, var(--ink));
+  }
+
+  .alert-warning {
+    background: var(--warning-bg);
+    border-color: var(--warning-border);
+    color: color-mix(in oklch, var(--warning) 70%, var(--ink));
+  }
+
+  .alert-error {
+    background: var(--danger-bg);
+    border-color: var(--danger-border);
+    color: color-mix(in oklch, var(--danger) 70%, var(--ink));
+  }
+</style>

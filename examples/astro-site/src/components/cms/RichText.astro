@@ -1,0 +1,101 @@
+---
+// Renders a `rich_text` field's stored value, which is always an HTML string produced by the
+// admin's Tiptap editor (CLAUDE.md's Tiptap entry — content is "stored and returned as an HTML
+// string"). set:html is the same trust boundary docs/ASTRO.md's own blog example already
+// establishes: reachable only once an authenticated CMS editor has written it, never
+// user-submitted input.
+interface Props {
+  html: string;
+}
+
+const { html } = Astro.props;
+---
+
+<div class="rich-text" set:html={html} />
+
+<style>
+  .rich-text {
+    font-size: var(--text-base);
+    max-width: var(--measure);
+  }
+
+  .rich-text :global(p) {
+    margin: 0 0 1.1em;
+    line-height: var(--leading-relaxed);
+  }
+
+  .rich-text :global(h2) {
+    margin: 1.75em 0 0.6em;
+    font-size: var(--text-2xl);
+    font-weight: 600;
+    line-height: var(--leading-tight);
+  }
+
+  .rich-text :global(h3) {
+    margin: 1.5em 0 0.5em;
+    font-size: var(--text-lg);
+    font-weight: 600;
+    line-height: var(--leading-tight);
+  }
+
+  .rich-text :global(ul),
+  .rich-text :global(ol) {
+    margin: 0 0 1.1em;
+    padding-left: 1.4em;
+    line-height: var(--leading-relaxed);
+  }
+
+  .rich-text :global(li + li) {
+    margin-top: 0.35em;
+  }
+
+  .rich-text :global(blockquote) {
+    margin: 1.25em 0;
+    padding-left: 1rem;
+    border-left: 3px solid var(--brand);
+    color: var(--ink-muted);
+    font-style: italic;
+  }
+
+  .rich-text :global(a) {
+    color: var(--brand);
+    text-decoration: underline;
+    text-decoration-color: var(--border-strong);
+    text-underline-offset: 2px;
+  }
+
+  .rich-text :global(a:hover) {
+    text-decoration-color: var(--brand);
+  }
+
+  .rich-text :global(img) {
+    border-radius: var(--radius);
+    margin: 1.25em 0;
+  }
+
+  .rich-text :global(table) {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1.25em 0;
+  }
+
+  .rich-text :global(td),
+  .rich-text :global(th) {
+    border: 1px solid var(--border);
+    padding: 0.5em 0.7em;
+  }
+
+  .rich-text :global(code) {
+    background: var(--surface-muted);
+    padding: 0.15em 0.4em;
+    border-radius: 4px;
+    font-size: 0.9em;
+  }
+
+  .rich-text :global(pre) {
+    background: var(--surface-muted);
+    padding: 1em;
+    border-radius: var(--radius);
+    overflow-x: auto;
+  }
+</style>

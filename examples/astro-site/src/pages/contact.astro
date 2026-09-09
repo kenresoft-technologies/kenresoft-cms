@@ -1,0 +1,144 @@
+---
+import { createKenresoftClient } from '@kenresoft-cms/astro';
+import BaseLayout from '../layouts/BaseLayout.astro';
+import RichText from '../components/cms/RichText.astro';
+import Alert from '../components/ui/Alert.astro';
+
+const cms = createKenresoftClient({ url: import.meta.env.PUBLIC_KENRESOFT_CMS_URL });
+const entry = await cms.entries.get({ contentType: 'page', slug: 'contact' }).catch(() => null);
+---
+
+<BaseLayout title="Contact — Kenresoft CMS" canonicalUrl={new URL('/contact', Astro.site ?? Astro.url).toString()}>
+  <div class="contact-page">
+    <div class="contact-intro">
+      <h1>{entry ? String(entry.data.title ?? 'Contact') : 'Contact'}</h1>
+      {
+        entry ? (
+          <RichText html={String(entry.data.body ?? '')} />
+        ) : (
+          <p class="empty-state">
+            No <code>page</code> entry with slug <code>contact</code> is published yet — this
+            intro text would come from the CMS once one is. The form below is real regardless: it
+            submits to a <code>contact</code> form defined via the admin Forms API.
+          </p>
+        )
+      }
+    </div>
+
+    <form id="contact-form" class="contact-form" novalidate>
+      <div class="field">
+        <label for="name">Name</label>
+        <input id="name" name="name" type="text" autocomplete="name" required />
+      </div>
+      <div class="field">
+        <label for="email">Email</label>
+        <input id="email" name="email" type="email" autocomplete="email" required />
+      </div>
+      <div class="field">
+        <label for="message">Message</label>
+        <textarea id="message" name="message" rows="5" required></textarea>
+      </div>
+
+      <Alert tone="error" id="contact-error" hidden />
+      <Alert tone="success" id="contact-success" hidden>Thanks — your message has been sent.</Alert>
+
+      <button type="submit" class="button button-primary" id="contact-submit">Send message</button>
+    </form>
+  </div>
+</BaseLayout>
+
+<script>
+  import { getBrowserClient, KenresoftApiError } from '../lib/browser-client';
+
+  const form = document.getElementById('contact-form') as HTMLFormElement | null;
+  const errorEl = document.getElementById('contact-error') as HTMLElement | null;
+  const successEl = document.getElementById('contact-success') as HTMLElement | null;
+  const submitButton = document.getElementById('contact-submit') as HTMLButtonElement | null;
+
+  form?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!errorEl || !successEl || !submitButton) return;
+    errorEl.hidden = true;
+    successEl.hidden = true;
+    submitButton.disabled = true;
+    submitButton.textContent = 'Sending…';
+
+    const data = Object.fromEntries(new FormData(form).entries());
+
+    try {
+      await getBrowserClient().forms.submit({ formSlug: 'contact', data });
+      successEl.hidden = false;
+      form.reset();
+    } catch (err) {
+      if (err instanceof KenresoftApiError) {
+        if (err.status === 404) {
+          errorEl.textContent = 'This deployment has no "contact" form configured yet — create one in the admin under Forms.';
+        } else if (err.status === 429) {
+          errorEl.textContent = 'Too many submissions — please wait a moment and try again.';
+        } else if (err.issues && err.issues.length > 0) {
+          errorEl.textContent = err.issues.map((issue) => issue.message).join(' ');
+        } else {
+          errorEl.textContent = err.message;
+        }
+      } else {
+        errorEl.textContent = 'Something went wrong sending your message. Please try again.';
+      }
+      errorEl.hidden = false;
+    } finally {
+      submitButton.disabled = false;
+      submitButton.textContent = 'Send message';
+    }
+  });
+</script>
+
+<style>
+  .contact-page {
+    max-width: 640px;
+    margin: 0 auto;
+    padding: var(--space-12) var(--space-6) var(--space-20);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-10);
+  }
+
+  .contact-intro h1 {
+    margin: 0 0 var(--space-4);
+    font-size: var(--text-3xl);
+    font-weight: 600;
+  }
+
+  .empty-state {
+    color: var(--ink-muted);
+    line-height: var(--leading-relaxed);
+  }
+
+  .contact-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-5);
+    padding: var(--space-6);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface-muted);
+  }
+
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .field label {
+    font-size: var(--text-sm);
+    font-weight: 600;
+  }
+
+  .field textarea {
+    resize: vertical;
+    min-height: 8rem;
+  }
+
+  .contact-form button {
+    align-self: flex-start;
+  }
+</style>

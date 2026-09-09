@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    // This client runs wherever a global `fetch` exists — Node 18+, browsers, Astro SSR,
+    // Cloudflare Workers — so it needs fetch/Response/RequestInit's ambient types. The root
+    // tsconfig's lib is ES2022-only (apps/api gets these from @cloudflare/workers-types
+    // instead, apps/admin from its own DOM-including tsconfig), so this package adds DOM on
+    // top rather than changing the shared base for everyone.
+    "lib": ["ES2022", "DOM"]
+  },
+  "include": ["src/**/*.ts"]
+}

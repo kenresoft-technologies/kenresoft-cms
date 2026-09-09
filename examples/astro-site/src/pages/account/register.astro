@@ -1,0 +1,137 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import Alert from '../../components/ui/Alert.astro';
+import { createServerClient } from '../../lib/site-client';
+import { sanitizeRedirect } from '../../lib/redirect';
+
+const redirectTo = sanitizeRedirect(Astro.url.searchParams.get('redirect'));
+const cms = createServerClient(Astro.request.headers.get('cookie'));
+const existingCustomer = await cms.commerce.customer.get().catch(() => null);
+if (existingCustomer) {
+  return Astro.redirect(redirectTo);
+}
+---
+
+<BaseLayout title="Register — Kenresoft CMS" noIndex>
+  <div class="auth-page">
+    <h1>Create an account</h1>
+
+    <form id="register-form" novalidate>
+      <label class="field">
+        <span>Full name</span>
+        <input type="text" name="name" required autocomplete="name" />
+      </label>
+      <label class="field">
+        <span>Email</span>
+        <input type="email" name="email" required autocomplete="email" />
+      </label>
+      <label class="field">
+        <span>Password</span>
+        <input type="password" name="password" required minlength="8" autocomplete="new-password" />
+        <span class="hint">At least 8 characters.</span>
+      </label>
+
+      <Alert tone="error" id="register-error" hidden />
+
+      <button type="submit" class="button button-primary" id="register-submit">Create account</button>
+    </form>
+
+    <p class="auth-links">
+      Already have an account? <a href={`/account/login?redirect=${encodeURIComponent(redirectTo)}`}>Log in</a>
+    </p>
+  </div>
+</BaseLayout>
+
+<script>
+  import { getBrowserClient, KenresoftApiError } from '../../lib/browser-client';
+
+  const form = document.getElementById('register-form') as HTMLFormElement;
+  const errorEl = document.getElementById('register-error') as HTMLElement;
+  const submitButton = document.getElementById('register-submit') as HTMLButtonElement;
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    errorEl.hidden = true;
+    submitButton.disabled = true;
+    submitButton.textContent = 'Creating account…';
+
+    const data = new FormData(form);
+    try {
+      await getBrowserClient().commerce.customerAuth.register({
+        name: String(data.get('name')),
+        email: String(data.get('email')),
+        password: String(data.get('password')),
+      });
+      const redirectTo = new URLSearchParams(window.location.search).get('redirect');
+      window.location.href = redirectTo && redirectTo.startsWith('/') && !redirectTo.startsWith('//') ? redirectTo : '/account';
+    } catch (err) {
+      // 409 here deliberately DOES reveal "an account with that email already exists" — a
+      // documented usability-over-enumeration-resistance tradeoff at this one endpoint only
+      // (packages/plugin-ecommerce/src/routes/customer-auth.ts) — login/password-reset never do.
+      errorEl.textContent = err instanceof KenresoftApiError ? err.message : 'Could not create your account.';
+      errorEl.hidden = false;
+      submitButton.disabled = false;
+      submitButton.textContent = 'Create account';
+    }
+  });
+</script>
+
+<style>
+  .auth-page {
+    max-width: 420px;
+    margin: 0 auto;
+    padding: var(--space-16) var(--space-6) var(--space-20);
+  }
+
+  .auth-page h1 {
+    margin: 0 0 var(--space-8);
+    font-size: var(--text-3xl);
+    font-weight: 600;
+    text-align: center;
+  }
+
+  form {
+    padding: var(--space-6);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin-bottom: var(--space-5);
+    font-size: var(--text-sm);
+    font-weight: 600;
+  }
+
+  .hint {
+    font-weight: 400;
+    color: var(--ink-muted);
+    font-size: var(--text-xs);
+  }
+
+  #register-submit {
+    width: 100%;
+    margin-top: var(--space-2);
+  }
+
+  .auth-links {
+    text-align: center;
+    margin: var(--space-4) 0 0;
+    font-size: var(--text-sm);
+    color: var(--ink-muted);
+  }
+
+  .auth-links a {
+    color: var(--brand);
+    font-weight: 600;
+    text-decoration: none;
+  }
+
+  .auth-links a:hover {
+    text-decoration: underline;
+  }
+</style>

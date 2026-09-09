@@ -1,0 +1,303 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Alert from '../components/ui/Alert.astro';
+import { createServerClient } from '../lib/site-client';
+
+// SSR only to know guest-vs-signed-in for the banner text below — the cart's own contents are
+// still rendered/managed entirely client-side (see the <script>), since every cart mutation
+// needs the browser's own cookie jar (see site-client.ts's comment on why).
+const cms = createServerClient(Astro.request.headers.get('cookie'));
+const customer = await cms.commerce.customer.get().catch(() => null);
+---
+
+<BaseLayout title="Cart — Kenresoft CMS" description="Your shopping cart." noIndex>
+  <div class="cart-page">
+    <h1>Cart</h1>
+    <p class="identity-note">
+      {customer ? <>Shopping as <strong>{customer.email}</strong>.</> : <>Shopping as a guest — <a href={`/account/login?redirect=${encodeURIComponent('/cart')}`}>sign in</a> to save this cart to your account.</>}
+    </p>
+
+    <div id="cart-loading" class="loading-note">Loading your cart…</div>
+    <div id="cart-empty" class="empty-state" hidden>
+      <p>Your cart is empty. <a class="text-link" href="/shop">Browse the shop →</a></p>
+    </div>
+    <Alert tone="error" id="cart-error" hidden />
+
+    <ul id="cart-items" class="cart-items" hidden></ul>
+    <div id="cart-footer" hidden class="cart-footer">
+      <p id="cart-total" class="cart-total"></p>
+      <div class="cart-actions">
+        <button type="button" id="clear-cart-button" class="button button-secondary">Clear cart</button>
+        <a href="/checkout" class="button button-primary" id="checkout-cta">Checkout</a>
+      </div>
+    </div>
+  </div>
+</BaseLayout>
+
+<script>
+  import { getBrowserClient, KenresoftApiError } from '../lib/browser-client';
+  import { formatMoney } from '../lib/money';
+  import { refreshCartBadge } from '../lib/cart-badge';
+  import type { CommerceCart } from '@kenresoft-cms/astro';
+
+  const cms = getBrowserClient();
+
+  const loadingEl = document.querySelector<HTMLDivElement>('#cart-loading')!;
+  const emptyEl = document.querySelector<HTMLDivElement>('#cart-empty')!;
+  const errorEl = document.querySelector<HTMLDivElement>('#cart-error')!;
+  const itemsEl = document.querySelector<HTMLUListElement>('#cart-items')!;
+  const footerEl = document.querySelector<HTMLDivElement>('#cart-footer')!;
+  const totalEl = document.querySelector<HTMLParagraphElement>('#cart-total')!;
+  const clearButton = document.querySelector<HTMLButtonElement>('#clear-cart-button')!;
+
+  function escapeHtml(value: string): string {
+    const div = document.createElement('div');
+    div.textContent = value;
+    return div.innerHTML;
+  }
+
+  function renderCart(cart: CommerceCart) {
+    loadingEl.hidden = true;
+    errorEl.hidden = true;
+
+    if (cart.items.length === 0) {
+      emptyEl.hidden = false;
+      itemsEl.hidden = true;
+      footerEl.hidden = true;
+      return;
+    }
+
+    emptyEl.hidden = true;
+    itemsEl.hidden = false;
+    footerEl.hidden = false;
+
+    itemsEl.innerHTML = '';
+    let total = 0;
+    for (const item of cart.items) {
+      total += item.unitPrice * item.quantity;
+      const li = document.createElement('li');
+      li.className = 'cart-item';
+      const overStock = item.stockQty !== null && item.quantity > item.stockQty;
+      li.innerHTML = `
+        <div class="cart-item-info">
+          <strong>${escapeHtml(item.productName)}</strong>
+          ${item.variantName ? `<span class="variant-name">${escapeHtml(item.variantName)}</span>` : ''}
+          <span class="unit-price">${formatMoney(item.unitPrice, item.currency)} each</span>
+          ${overStock ? `<span class="stock-warning">Only ${item.stockQty} left in stock — reduce quantity before checking out.</span>` : ''}
+        </div>
+        <div class="cart-item-controls">
+          <input type="number" min="1" ${item.stockQty !== null ? `max="${item.stockQty}"` : ''} value="${item.quantity}" data-item-id="${item.id}" class="quantity-input" aria-label="Quantity for ${escapeHtml(item.productName)}" />
+          <span class="line-total">${formatMoney(item.unitPrice * item.quantity, item.currency)}</span>
+          <button type="button" data-remove-id="${item.id}" class="remove-button" aria-label="Remove ${escapeHtml(item.productName)}">Remove</button>
+        </div>
+      `;
+      itemsEl.appendChild(li);
+    }
+    totalEl.textContent = `Subtotal: ${formatMoney(total, cart.items[0]!.currency)}`;
+
+    itemsEl.querySelectorAll<HTMLInputElement>('.quantity-input').forEach((input) => {
+      input.addEventListener('change', async () => {
+        const itemId = input.dataset.itemId!;
+        const quantity = Math.max(1, Number(input.value) || 1);
+        try {
+          const updated = await cms.commerce.cart.updateItem({ itemId, quantity });
+          renderCart(updated);
+          await refreshCartBadge();
+        } catch (err) {
+          errorEl.hidden = false;
+          errorEl.textContent = err instanceof KenresoftApiError ? err.message : 'Could not update that item.';
+        }
+      });
+    });
+    itemsEl.querySelectorAll<HTMLButtonElement>('.remove-button').forEach((button) => {
+      button.addEventListener('click', async () => {
+        const itemId = button.dataset.removeId!;
+        try {
+          const updated = await cms.commerce.cart.removeItem({ itemId });
+          renderCart(updated);
+          await refreshCartBadge();
+        } catch (err) {
+          errorEl.hidden = false;
+          errorEl.textContent = err instanceof KenresoftApiError ? err.message : 'Could not remove that item.';
+        }
+      });
+    });
+  }
+
+  cms.commerce.cart
+    .get()
+    .then(renderCart)
+    .catch((err) => {
+      loadingEl.hidden = true;
+      errorEl.hidden = false;
+      errorEl.textContent = err instanceof KenresoftApiError ? err.message : 'Could not load your cart.';
+    });
+
+  clearButton.addEventListener('click', async () => {
+    clearButton.disabled = true;
+    try {
+      await cms.commerce.cart.clear();
+      renderCart({ id: null, currency: null, items: [] });
+      await refreshCartBadge();
+    } finally {
+      clearButton.disabled = false;
+    }
+  });
+</script>
+
+<style>
+  .cart-page {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: var(--space-12) var(--space-6) var(--space-20);
+  }
+
+  .cart-page h1 {
+    margin: 0 0 var(--space-2);
+    font-size: var(--text-3xl);
+    font-weight: 600;
+  }
+
+  .identity-note {
+    margin: 0 0 var(--space-8);
+    color: var(--ink-muted);
+    font-size: var(--text-sm);
+  }
+
+  .identity-note a,
+  .text-link {
+    color: var(--brand);
+    font-weight: 600;
+    text-decoration: none;
+  }
+
+  .identity-note a:hover,
+  .text-link:hover {
+    text-decoration: underline;
+  }
+
+  #cart-error {
+    margin-bottom: var(--space-6);
+  }
+
+  .empty-state {
+    color: var(--ink-muted);
+    padding: var(--space-8) 0;
+  }
+
+  .cart-items {
+    list-style: none;
+    margin: 0 0 var(--space-6);
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  .cart-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--space-4);
+    padding: var(--space-4);
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: var(--surface);
+  }
+
+  .cart-item-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+  }
+
+  .variant-name,
+  .unit-price {
+    color: var(--ink-muted);
+    font-size: var(--text-xs);
+  }
+
+  .stock-warning {
+    color: color-mix(in oklch, var(--warning) 65%, var(--ink));
+    font-size: var(--text-xs);
+    font-weight: 600;
+  }
+
+  .cart-item-controls {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+  }
+
+  .quantity-input {
+    width: 3.5rem;
+    padding: 0.4rem var(--space-2);
+    text-align: center;
+  }
+
+  .line-total {
+    font-weight: 600;
+    min-width: 5rem;
+    text-align: right;
+  }
+
+  .remove-button {
+    border: none;
+    background: none;
+    color: var(--ink-muted);
+    cursor: pointer;
+    font-size: var(--text-sm);
+    text-decoration: underline;
+    transition: color 0.15s ease;
+  }
+
+  .remove-button:hover {
+    color: var(--danger);
+  }
+
+  .cart-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: var(--space-4);
+    padding-top: var(--space-5);
+    margin-top: var(--space-2);
+    border-top: 1px solid var(--border);
+  }
+
+  .cart-total {
+    font-weight: 600;
+    font-size: var(--text-xl);
+    margin: 0;
+  }
+
+  .cart-actions {
+    display: flex;
+    gap: var(--space-3);
+  }
+
+  @media (max-width: 480px) {
+    .cart-item {
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    .cart-item-controls {
+      justify-content: space-between;
+    }
+
+    .cart-footer {
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    .cart-actions {
+      flex-direction: column;
+    }
+
+    .cart-actions .button {
+      width: 100%;
+    }
+  }
+</style>

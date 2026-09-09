@@ -1,0 +1,106 @@
+---
+interface Props {
+  active: 'dashboard' | 'orders' | 'addresses' | 'settings';
+}
+
+const { active } = Astro.props;
+
+const items = [
+  { key: 'dashboard', href: '/account', label: 'Dashboard' },
+  { key: 'orders', href: '/account/orders', label: 'Orders' },
+  { key: 'addresses', href: '/account/addresses', label: 'Addresses' },
+  { key: 'settings', href: '/account/settings', label: 'Settings' },
+] as const;
+---
+
+<nav class="account-nav" aria-label="Account">
+  {
+    items.map((item) => (
+      <a href={item.href} aria-current={item.key === active ? 'page' : undefined} class={item.key === active ? 'active' : ''}>
+        {item.label}
+      </a>
+    ))
+  }
+  <button type="button" data-account-logout class="link-button">Log out</button>
+</nav>
+
+<script>
+  import { getBrowserClient } from '../../lib/browser-client';
+
+  document.querySelectorAll<HTMLButtonElement>('[data-account-logout]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      button.disabled = true;
+      try {
+        await getBrowserClient().commerce.customerAuth.logout();
+      } finally {
+        window.location.href = '/';
+      }
+    });
+  });
+</script>
+
+<style>
+  .account-nav {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    padding: var(--space-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface-muted);
+  }
+
+  .account-nav a,
+  .account-nav .link-button {
+    display: block;
+    padding: var(--space-3) var(--space-3);
+    border-radius: var(--radius-sm);
+    text-decoration: none;
+    color: var(--ink-muted);
+    font-size: var(--text-sm);
+    text-align: left;
+    border: none;
+    border-left: 3px solid transparent;
+    background: none;
+    font-family: inherit;
+    cursor: pointer;
+    width: 100%;
+    transition:
+      background-color 0.15s ease,
+      color 0.15s ease,
+      border-color 0.15s ease;
+  }
+
+  .account-nav a:hover,
+  .account-nav .link-button:hover {
+    background: var(--surface);
+    color: var(--ink);
+  }
+
+  .account-nav a.active {
+    background: var(--surface);
+    color: var(--ink);
+    font-weight: 600;
+    border-left-color: var(--brand);
+    box-shadow: var(--shadow-sm);
+  }
+
+  @media (max-width: 720px) {
+    .account-nav {
+      flex-direction: row;
+      flex-wrap: wrap;
+    }
+
+    .account-nav a,
+    .account-nav .link-button {
+      width: auto;
+      border-left: none;
+      border-bottom: 3px solid transparent;
+    }
+
+    .account-nav a.active {
+      border-left: none;
+      border-bottom-color: var(--brand);
+    }
+  }
+</style>

@@ -1,0 +1,287 @@
+---
+import { createKenresoftClient } from '@kenresoft-cms/astro';
+import BaseLayout from '../layouts/BaseLayout.astro';
+
+const cms = createKenresoftClient({ url: import.meta.env.PUBLIC_KENRESOFT_CMS_URL });
+
+// "blog-post" is this content type's slug on this deployment — see examples/astro-site's
+// README for how to set that up on a fresh deployment. An empty array here (no content type
+// with that slug yet, or no published entries) is a normal, expected state, not an error —
+// the section below renders nothing rather than an empty heading in that case. A genuine
+// request failure (API unreachable/misconfigured) is caught the same way, so a hero-only
+// homepage still renders instead of a hard crash — matching every other page's own
+// graceful-degradation convention (see shop/index.astro's loadError).
+let posts: Awaited<ReturnType<typeof cms.entries.list>> = [];
+try {
+  posts = await cms.entries.list({ contentType: 'blog-post' });
+} catch {
+  // Nothing further to show for this section — the rest of the homepage is static.
+}
+const latestPosts = posts.slice(0, 3);
+
+const features = [
+  {
+    title: 'API-first, always',
+    body: 'Every piece of published content is available through one clean, unauthenticated REST API — documented with OpenAPI, no SDK required to get started.',
+  },
+  {
+    title: 'Astro as a first-class citizen',
+    body: '@kenresoft-cms/astro is a typed client purpose-built for this integration: entries, media, and form submissions, with real TypeScript types generated from the API contract.',
+  },
+  {
+    title: 'Cloudflare-native',
+    body: 'Runs entirely on Workers, D1, and R2 — no separate database or file storage to provision, monitor, or pay for on top of the platform you already deploy to.',
+  },
+  {
+    title: 'A real editorial workflow',
+    body: 'Draft/publish states, scheduled publishing, full revision history with one-click restore — the parts of a CMS that matter once more than one person is editing content.',
+  },
+];
+---
+
+<BaseLayout title="Kenresoft CMS — a Cloudflare-native, API-first content platform">
+  <section class="hero">
+    <div class="hero-inner">
+      <p class="eyebrow">Open source · Cloudflare-native · API-first</p>
+      <h1>Model content once. <span class="hero-highlight">Publish it anywhere.</span></h1>
+      <p class="lede">
+        Kenresoft CMS is a reusable content platform built on Cloudflare Workers, D1, and R2 —
+        with a clean public REST API any frontend can call, and Astro as a first-class,
+        officially supported integration.
+      </p>
+      <div class="hero-actions">
+        <a class="button button-primary" href="https://github.com/kenresoft-technologies/kenresoft-cms" target="_blank" rel="noreferrer">
+          View on GitHub
+        </a>
+        <a class="button button-secondary" href={`${import.meta.env.PUBLIC_KENRESOFT_CMS_URL}/api/v1/docs`} target="_blank" rel="noreferrer">
+          API reference
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <section class="features">
+    <div class="features-grid">
+      {
+        features.map((feature) => (
+          <article class="feature-card card-hoverable">
+            <h2>{feature.title}</h2>
+            <p>{feature.body}</p>
+          </article>
+        ))
+      }
+    </div>
+  </section>
+
+  {
+    latestPosts.length > 0 ? (
+      <section class="latest">
+        <div class="latest-header">
+          <h2>From the blog</h2>
+          <a href="/blog">All posts →</a>
+        </div>
+        <div class="latest-grid">
+          {latestPosts.map((entry) => (
+            <a class="post-card card-hoverable" href={`/blog/${entry.slug}`}>
+              <h3>{String(entry.data.title ?? entry.slug)}</h3>
+              {entry.data.excerpt ? <p>{String(entry.data.excerpt)}</p> : null}
+            </a>
+          ))}
+        </div>
+      </section>
+    ) : null
+  }
+</BaseLayout>
+
+<style>
+  .hero {
+    position: relative;
+    padding: var(--space-20) var(--space-6) var(--space-16);
+    border-bottom: 1px solid var(--border);
+    background: radial-gradient(ellipse 80% 60% at 50% -10%, color-mix(in oklch, var(--brand) 10%, transparent), transparent);
+    overflow: hidden;
+  }
+
+  /* A subtle dot-grid, faded via a radial mask so it reads as texture near the top and
+     dissolves toward the fold — cheap, dependency-free depth instead of a flat wash. */
+  .hero::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: radial-gradient(color-mix(in oklch, var(--ink) 14%, transparent) 1px, transparent 1px);
+    background-size: 22px 22px;
+    -webkit-mask-image: radial-gradient(ellipse 60% 50% at 50% 0%, black, transparent 70%);
+    mask-image: radial-gradient(ellipse 60% 50% at 50% 0%, black, transparent 70%);
+    pointer-events: none;
+  }
+
+  .hero-inner {
+    position: relative;
+  }
+
+  .hero-highlight {
+    background: linear-gradient(100deg, var(--brand), color-mix(in oklch, var(--brand) 55%, oklch(0.62 0.2 320)));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .hero-inner {
+    max-width: 760px;
+    margin: 0 auto;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-5);
+  }
+
+  .eyebrow {
+    margin: 0;
+    font-size: var(--text-sm);
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: var(--brand);
+  }
+
+  h1 {
+    margin: 0;
+    font-size: var(--text-4xl);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+
+  .lede {
+    margin: 0;
+    font-size: var(--text-lg);
+    line-height: var(--leading-relaxed);
+    color: var(--ink-muted);
+    max-width: var(--measure);
+  }
+
+  .hero-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    justify-content: center;
+    margin-top: var(--space-2);
+  }
+
+  .features {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: var(--space-16) var(--space-6);
+  }
+
+  .features-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: var(--space-6);
+  }
+
+  .feature-card {
+    padding: var(--space-6);
+    border-radius: var(--radius);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-sm);
+    transition:
+      border-color 0.15s ease,
+      box-shadow 0.2s ease,
+      transform 0.2s ease;
+  }
+
+  .feature-card:hover {
+    border-color: var(--border-strong);
+    box-shadow: var(--shadow-md);
+    transform: translateY(-3px);
+  }
+
+  .feature-card h2 {
+    margin: 0 0 var(--space-2);
+    font-size: var(--text-lg);
+    font-weight: 600;
+  }
+
+  .feature-card p {
+    margin: 0;
+    color: var(--ink-muted);
+    font-size: var(--text-sm);
+    line-height: var(--leading-relaxed);
+  }
+
+  .latest {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: var(--space-4) var(--space-6) var(--space-20);
+  }
+
+  .latest-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: var(--space-6);
+  }
+
+  .latest-header h2 {
+    margin: 0;
+    font-size: var(--text-2xl);
+    font-weight: 600;
+  }
+
+  .latest-header a {
+    text-decoration: none;
+    color: var(--brand);
+    font-size: var(--text-sm);
+    font-weight: 600;
+  }
+
+  .latest-header a:hover {
+    text-decoration: underline;
+  }
+
+  .latest-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: var(--space-6);
+  }
+
+  .post-card {
+    display: block;
+    padding: var(--space-6);
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    text-decoration: none;
+    color: var(--ink);
+  }
+
+  .post-card h3 {
+    margin: 0 0 var(--space-2);
+    font-size: var(--text-lg);
+    font-weight: 600;
+  }
+
+  .post-card p {
+    margin: 0;
+    color: var(--ink-muted);
+    font-size: var(--text-sm);
+    line-height: var(--leading-normal);
+  }
+
+  @media (max-width: 480px) {
+    .hero {
+      padding: var(--space-16) var(--space-4) var(--space-10);
+    }
+
+    .hero-actions {
+      flex-direction: column;
+      width: 100%;
+    }
+
+    .hero-actions .button {
+      width: 100%;
+    }
+  }
+</style>

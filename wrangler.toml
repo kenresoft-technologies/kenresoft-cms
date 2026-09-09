@@ -1,0 +1,150 @@
+# Kenresoft CMS — API Worker
+#
+# Lives at the repo root, not inside apps/api/, even though that's the Worker's own directory —
+# the "Deploy to Cloudflare" button (README.md) only detects a wrangler config at the repository
+# root; a monorepo subdirectory URL does a sparse checkout of just that folder instead, which
+# would break apps/api's workspace:* dependencies on @kenresoft-cms/database/@kenresoft-cms/contracts
+# (confirmed the hard way — the button reported "No Wrangler configuration detected" when this
+# file lived at apps/api/wrangler.toml with no subdirectory in the button URL). Every path below
+# is relative to this file's own location (the repo root), not to whatever cwd a command runs
+# from — apps/api/package.json's dev/deploy scripts pass --config ../../wrangler.toml explicitly
+# so they keep working unchanged from their own directory.
+
+name = "kenresoft-cms-api"
+main = "apps/api/src/index.ts"
+compatibility_date = "2026-08-01"
+# better-auth needs node:async_hooks (AsyncLocalStorage) at runtime.
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "kenresoft-cms-db"
+migrations_dir = "packages/database/migrations"
+# database_id deliberately omitted here. A plain `wrangler deploy` against this top-level block
+# — a fresh clone, `pnpm run setup`, or the "Deploy to Cloudflare" button — triggers wrangler's
+# own automatic provisioning (developers.cloudflare.com/workers/wrangler/configuration,
+# "Automatic provisioning"): it creates a brand-new D1 database on whichever account is
+# deploying and writes the resulting id back into this file, non-interactively. No manual
+# `wrangler d1 create` + copy-paste needed. If you later split off a named environment of your
+# own (e.g. `[env.production]`, pinned to a real database_id) the way Kenresoft's own deployment
+# used to, that block doesn't inherit this one — see the ratelimits/vars sections below for why.
+
+[[r2_buckets]]
+binding = "MEDIA_BUCKET"
+# bucket_name deliberately omitted (same reasoning as database_id above) — R2 has no separate id
+# field, so omitting the name itself is what triggers auto-provisioning here. The resulting
+# bucket gets an auto-generated, worker-name-prefixed name, not the literal "kenresoft-cms-media".
+# If you want that exact, predictable name instead (e.g. for apps/api/scripts/backup-media.mjs,
+# which assumes it by default), use the explicit
+# `wrangler r2 bucket create kenresoft-cms-media --update-config` from docs/DEPLOYMENT.md's
+# step 3 instead of relying on auto-provisioning here.
+
+# No KV namespace here — Workers KV as a secondary caching tier is documented
+# (docs/ARCHITECTURE.md §12) but not implemented; nothing in src/ reads or writes it yet, so
+# provisioning one would just be an unused resource. Add it back when that's actually built.
+
+[[ratelimits]]
+# Public form submissions (§9) — 5 per 60s per rate-limit key (IP address). namespace_id is
+# an arbitrary account-unique identifier, not a provisioned resource — no setup step needed.
+name = "FORM_SUBMISSION_RATE_LIMITER"
+namespace_id = "1001"
+simple = { limit = 5, period = 60 }
+
+[[ratelimits]]
+# better-auth's own routes (/api/v1/auth/*) had no rate limiting at all — sign-in/sign-up were
+# brute-forceable at whatever throughput a client could sustain. 10 per 60s per IP, applied
+# only to POST (sign-in/sign-up/sign-out/etc.), not GET (get-session — the SPA calls that on
+# every load/navigation, so limiting it would cause real false-positive lockouts).
+name = "AUTH_RATE_LIMITER"
+namespace_id = "1002"
+simple = { limit = 10, period = 60 }
+
+[[ratelimits]]
+# Password-reset request/confirm, recovery-code redemption, and the break-glass owner-recovery
+# endpoint (docs/ARCHITECTURE.md's recovery section) — all either send email or attempt a
+# credential-like guess, so all share one conservative per-IP limit. Tighter than the others
+# since a successful hit here changes someone's password.
+name = "RECOVERY_RATE_LIMITER"
+namespace_id = "1003"
+simple = { limit = 3, period = 60 }
+
+[[ratelimits]]
+# Public content/media reads (list-by-content-type, get-by-slug, media file/metadata) had no
+# rate limiting at all — a real gap, since only requests for a slug already sitting in the edge
+# cache (public-cache.ts) are cheap; a flood of varying/nonexistent slugs reaches D1 every time.
+# Much looser than the write-side limiters above — this guards against abuse/cost, not a
+# security boundary, and real read traffic can legitimately burst (a page going viral, a
+# frontend's build-time fetch of many entries) far above what a login attempt ever should.
+name = "PUBLIC_CONTENT_RATE_LIMITER"
+namespace_id = "1004"
+simple = { limit = 300, period = 60 }
+
+[[ratelimits]]
+# Commerce's customer-auth sub-path (register/login/logout/password-reset/verify-email) —
+# declared by the plugin-ecommerce package via PluginRegistration.publicRateLimits and applied
+# generically by apps/api/src/plugins/mount.ts (docs/PLUGINS.md); nothing about this binding is
+# hardcoded into Core beyond its name. Same posture as AUTH_RATE_LIMITER, for the same reason —
+# this is a real login/registration surface, brute-forceable without it.
+name = "COMMERCE_CUSTOMER_AUTH_RATE_LIMITER"
+namespace_id = "1005"
+simple = { limit = 10, period = 60 }
+
+[triggers]
+# Scheduled publishing (§13) — checks for draft entries whose publishAt has elapsed.
+crons = ["*/5 * * * *"]
+
+[vars]
+API_VERSION = "v1"
+# Comma-separated allow-list per docs/ARCHITECTURE.md §9 — never "*". This is the generic,
+# reusable default for a fresh deployment — .dev.vars overrides it back to localhost for
+# local dev either way (see .dev.vars.example) since .dev.vars overrides plain vars too, not just
+# secrets.
+#
+# CORS only matters for browser-originated requests — apps/admin is the only one today (the
+# Astro integration fetches server-side, no Origin header involved). Add your admin app's real
+# deployed origin here (or under your own [env.*] block, if you introduce one) once you've
+# deployed it — docs/DEPLOYMENT.md's admin section covers this, including the
+# deploy-once-then-add-origin ordering it requires.
+#
+# Testing from another device on your LAN (`dev:live` runs with --host, so a phone can reach it
+# via the host machine's LAN IP) needs its own allow-list entry, since that's a different
+# browser origin than "localhost" — add it in .dev.vars (see .dev.vars.example), not
+# here. This file is committed to the repo, so it must stay free of any one contributor's
+# personal, DHCP-assigned local network address.
+CORS_ORIGINS = "http://localhost:5173,http://localhost:5174,http://localhost:5175,http://localhost:5176,http://localhost:5177,http://localhost:4321"
+# Can't be correct before a first deploy — a Worker has no *.workers.dev URL until it's deployed
+# at least once. `pnpm run setup` handles this automatically: deploy once, read the real URL
+# wrangler prints, write it here, redeploy. Manual/CI deployers: docs/DEPLOYMENT.md's deploy
+# section covers the same two-step sequence. Deploying once with this placeholder in place is
+# safe — better-auth only uses it for redirect/callback URL construction, and
+# apps/api/src/lib/auth-options.ts already forces Secure cookies unconditionally rather than
+# inferring HTTPS from this value, so a first deploy never silently breaks cookie auth over it.
+BETTER_AUTH_URL = "https://REPLACE_AFTER_FIRST_DEPLOY.workers.dev"
+# BETTER_AUTH_SECRET is a real secret, not a var — set it in .dev.vars for local dev
+# (see .dev.vars.example) and via `wrangler secret put BETTER_AUTH_SECRET` for deployed envs.
+
+# Password-recovery email (docs/ARCHITECTURE.md's recovery section) — all optional. Unset
+# EMAIL_PROVIDER (the default) uses a noop sender that logs instead of sending, so this Worker
+# runs with zero email setup. Set these to actually deliver password-reset emails:
+#   EMAIL_PROVIDER = "cloudflare"   # or "resend"
+#   EMAIL_FROM = "noreply@yourdomain.example"
+#   ADMIN_URL = "https://your-admin.example"        # where the reset-password link points
+# "cloudflare" also needs a [[send_email]] binding here plus `wrangler email sending enable`
+# for EMAIL_FROM's domain; "resend" needs RESEND_API_KEY as a secret
+# (`wrangler secret put RESEND_API_KEY`) and a domain verified in the Resend dashboard.
+
+# The break-glass owner-recovery endpoint (POST /api/v1/system/recover-owner) is disabled
+# (404) unless this secret is set — deliberately absent here and with no default anywhere in
+# the code. An operator who wants it enables it explicitly:
+#   wrangler secret put OWNER_RECOVERY_SECRET
+# EXTREMELY SENSITIVE while set: it bypasses the account entirely (no MFA, no session to
+# revoke) and is equivalent to a permanent master key for this deployment. docs/DEPLOYMENT.md's
+# recovery section has the full guidance — prefer setting it only when actually needed, then
+# `wrangler secret delete OWNER_RECOVERY_SECRET` once you're done.
+
+# Commerce's Paystack integration (docs/PLUGINS.md's Commerce section) — unset by default, which
+# leaves every payment route responding "not configured" rather than erroring. Set as a secret,
+# never a var (it authenticates every request to Paystack's API and signs its webhooks):
+#   wrangler secret put PAYSTACK_SECRET_KEY
+# Use a test-mode key (starts sk_test_) while developing/testing — Paystack itself decides
+# sandbox-vs-live purely from which key you use, nothing else here needs to change.

@@ -1,0 +1,324 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Alert from '../components/ui/Alert.astro';
+import { createServerClient } from '../lib/site-client';
+
+// SSR: knows whether this visitor is a signed-in customer (so the email/name fields can be
+// hidden and prefilled instead of asked for again) purely to render the right initial form —
+// the actual checkout submission still runs client-side (see the <script> below), same as
+// every other commerce mutation on this site.
+const cms = createServerClient(Astro.request.headers.get('cookie'));
+const customer = await cms.commerce.customer.get().catch(() => null);
+const addresses = customer ? await cms.commerce.customer.addresses.list().catch(() => []) : [];
+---
+
+<BaseLayout title="Checkout — Kenresoft CMS" noIndex canonicalUrl={new URL('/checkout', Astro.site ?? Astro.url).toString()}>
+  <div class="checkout-page">
+    <h1>Checkout</h1>
+
+    <div id="checkout-loading" class="loading-note">Loading your cart…</div>
+    <div id="checkout-empty" class="empty-state" hidden>
+      <p>Your cart is empty. <a class="text-link" href="/shop">Browse the shop →</a></p>
+    </div>
+
+    <div id="checkout-body" hidden>
+      <div class="order-summary" id="order-summary" aria-label="Order summary"></div>
+
+      <form id="checkout-form" class="checkout-form">
+        {
+          customer ? (
+            <p class="checkout-note">
+              Checking out as <strong>{customer.email}</strong>.
+            </p>
+          ) : (
+            <p class="checkout-note">
+              Checking out as a guest. <a href={`/account/login?redirect=${encodeURIComponent('/checkout')}`}>Sign in</a> for faster checkout next time.
+            </p>
+          )
+        }
+
+        {
+          !customer ? (
+            <>
+              <label class="field">
+                <span>Email</span>
+                <input type="email" name="email" required autocomplete="email" />
+              </label>
+              <label class="field">
+                <span>Full name</span>
+                <input type="text" name="name" required autocomplete="name" />
+              </label>
+            </>
+          ) : null
+        }
+
+        {
+          addresses.length > 0 ? (
+            <label class="field">
+              <span>Use a saved address</span>
+              <select id="saved-address-select">
+                <option value="">Enter a new address below</option>
+                {addresses.map((address) => (
+                  <option value={address.id}>
+                    {address.label ? `${address.label} — ` : ''}
+                    {address.line1}, {address.city}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null
+        }
+
+        <label class="field">
+          <span>Recipient name</span>
+          <input type="text" name="recipientName" required />
+        </label>
+        <label class="field">
+          <span>Address line 1</span>
+          <input type="text" name="line1" required autocomplete="address-line1" />
+        </label>
+        <label class="field">
+          <span>Address line 2 (optional)</span>
+          <input type="text" name="line2" autocomplete="address-line2" />
+        </label>
+        <div class="field-row">
+          <label class="field">
+            <span>City</span>
+            <input type="text" name="city" required autocomplete="address-level2" />
+          </label>
+          <label class="field">
+            <span>Postal code</span>
+            <input type="text" name="postalCode" required autocomplete="postal-code" />
+          </label>
+        </div>
+        <label class="field">
+          <span>Country</span>
+          <input type="text" name="country" required placeholder="e.g. NG" autocomplete="country" />
+        </label>
+        <label class="field">
+          <span>Phone (optional)</span>
+          <input type="tel" name="phone" autocomplete="tel" />
+        </label>
+
+        <Alert tone="error" id="checkout-error" hidden />
+
+        <button type="submit" class="button button-primary" id="checkout-submit">Place order</button>
+      </form>
+    </div>
+  </div>
+</BaseLayout>
+
+<script>
+  import { getBrowserClient, KenresoftApiError } from '../lib/browser-client';
+  import { formatMoney } from '../lib/money';
+  import { cacheOrder } from '../lib/order-cache';
+  import { getOrCreateIdempotencyKey, clearIdempotencyKey } from '../lib/checkout-idempotency';
+
+  const loadingEl = document.getElementById('checkout-loading') as HTMLElement;
+  const emptyEl = document.getElementById('checkout-empty') as HTMLElement;
+  const bodyEl = document.getElementById('checkout-body') as HTMLElement;
+  const summaryEl = document.getElementById('order-summary') as HTMLElement;
+  const form = document.getElementById('checkout-form') as HTMLFormElement;
+  const errorEl = document.getElementById('checkout-error') as HTMLElement;
+  const submitButton = document.getElementById('checkout-submit') as HTMLButtonElement;
+  const savedAddressSelect = document.getElementById('saved-address-select') as HTMLSelectElement | null;
+
+  function escapeHtml(value: string): string {
+    const div = document.createElement('div');
+    div.textContent = value;
+    return div.innerHTML;
+  }
+
+  const cms = getBrowserClient();
+
+  cms.commerce.cart
+    .get()
+    .then((cart) => {
+      loadingEl.hidden = true;
+      if (cart.items.length === 0) {
+        emptyEl.hidden = false;
+        return;
+      }
+      bodyEl.hidden = false;
+      const total = cart.items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
+      const currency = cart.currency ?? cart.items[0]!.currency;
+      summaryEl.innerHTML = `
+        <h2>Order summary</h2>
+        <ul>
+          ${cart.items.map((item) => `<li>${escapeHtml(item.productName)}${item.variantName ? ` (${escapeHtml(item.variantName)})` : ''} × ${item.quantity} — ${formatMoney(item.unitPrice * item.quantity, item.currency)}</li>`).join('')}
+        </ul>
+        <p class="summary-total">Total: ${formatMoney(total, currency)}</p>
+      `;
+    })
+    .catch(() => {
+      loadingEl.textContent = 'Could not load your cart.';
+    });
+
+  // Fetched once so a saved-address selection can fill the form without another round trip.
+  const addressCache = new Map<string, Awaited<ReturnType<typeof cms.commerce.customer.addresses.list>>[number]>();
+  if (savedAddressSelect) {
+    cms.commerce.customer.addresses
+      .list()
+      .then((addresses) => addresses.forEach((address) => addressCache.set(address.id, address)))
+      .catch(() => {});
+
+    savedAddressSelect.addEventListener('change', () => {
+      const address = addressCache.get(savedAddressSelect.value);
+      if (!address) return;
+      form.recipientName.value = address.recipientName;
+      form.line1.value = address.line1;
+      form.line2.value = address.line2 ?? '';
+      form.city.value = address.city;
+      form.postalCode.value = address.postalCode;
+      form.country.value = address.country;
+      form.phone.value = address.phone ?? '';
+    });
+  }
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    errorEl.hidden = true;
+    submitButton.disabled = true;
+    submitButton.textContent = 'Placing order…';
+
+    const data = new FormData(form);
+    const emailField = data.get('email');
+    const nameField = data.get('name');
+
+    try {
+      const order = await cms.commerce.checkout.submit({
+        // Minted once per checkout attempt (see checkout-idempotency.ts) — reused across
+        // retries of THIS attempt, never regenerated just because the user clicked submit again
+        // for the exact same cart.
+        idempotencyKey: getOrCreateIdempotencyKey(),
+        email: emailField ? String(emailField) : undefined,
+        name: nameField ? String(nameField) : undefined,
+        shippingAddress: {
+          recipientName: String(data.get('recipientName')),
+          line1: String(data.get('line1')),
+          line2: (data.get('line2') as string) || null,
+          city: String(data.get('city')),
+          postalCode: String(data.get('postalCode')),
+          country: String(data.get('country')),
+          phone: (data.get('phone') as string) || null,
+        },
+      });
+
+      // The order is now durable — this exact idempotency key has done its job. Clear it so a
+      // later, genuinely new checkout (a different cart) doesn't accidentally get associated
+      // with a stale key at all (harmless either way, since the key is per-order once claimed,
+      // but clearing it is the honest "this attempt is over" signal).
+      clearIdempotencyKey();
+      cacheOrder(order);
+      window.location.href = `/order/${order.id}?fresh=1`;
+    } catch (err) {
+      if (err instanceof KenresoftApiError) {
+        if (err.status === 409) {
+          // Still in flight (a genuinely concurrent duplicate, or this exact request being
+          // retried while the first is still processing) — the SAME key must be reused; the
+          // backend's own idempotency ledger is what makes a shortly-after retry safe.
+          errorEl.textContent = 'Your order is already being processed — please wait a moment and try again.';
+        } else {
+          // A definitive rejection (empty cart, item no longer available, out of stock, a
+          // missing guest email/name) is permanently recorded against this exact key on the
+          // backend (packages/plugin-ecommerce/src/routes/checkout.ts's idempotency ledger) —
+          // resubmitting with the SAME key would just replay this identical error forever, even
+          // after the user fixes their cart. A genuinely new attempt needs a fresh key.
+          clearIdempotencyKey();
+          errorEl.textContent = err.message;
+        }
+      } else {
+        // A real network-level failure (no response received at all) — keep the same key; a
+        // retry should safely resolve to whatever actually happened server-side, not double-book.
+        errorEl.textContent = 'Could not reach the server. Please check your connection and try again.';
+      }
+      errorEl.hidden = false;
+    } finally {
+      submitButton.disabled = false;
+      submitButton.textContent = 'Place order';
+    }
+  });
+</script>
+
+<style>
+  .checkout-page {
+    max-width: 640px;
+    margin: 0 auto;
+    padding: var(--space-12) var(--space-6) var(--space-20);
+  }
+
+  .checkout-page h1 {
+    margin: 0 0 var(--space-6);
+    font-size: var(--text-3xl);
+    font-weight: 600;
+  }
+
+  .order-summary {
+    padding: var(--space-5);
+    border-radius: var(--radius);
+    background: var(--surface-muted);
+    border: 1px solid var(--border);
+    margin-bottom: var(--space-8);
+  }
+
+  .order-summary h2 {
+    margin: 0 0 var(--space-3);
+    font-size: var(--text-lg);
+  }
+
+  .order-summary ul {
+    margin: 0 0 var(--space-3);
+    padding-left: 1.2rem;
+    font-size: var(--text-sm);
+    color: var(--ink-muted);
+    line-height: var(--leading-relaxed);
+  }
+
+  .summary-total {
+    margin: 0;
+    font-weight: 600;
+    font-size: var(--text-lg);
+  }
+
+  .checkout-note {
+    margin: 0 0 var(--space-5);
+    color: var(--ink-muted);
+    font-size: var(--text-sm);
+  }
+
+  .checkout-note a {
+    color: var(--brand);
+    font-weight: 600;
+    text-decoration: none;
+  }
+
+  .checkout-form {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin-bottom: var(--space-4);
+    font-size: var(--text-sm);
+    font-weight: 600;
+  }
+
+  .field-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-4);
+  }
+
+  @media (max-width: 480px) {
+    .field-row {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  #checkout-submit {
+    margin-top: var(--space-2);
+  }
+</style>
