@@ -78,7 +78,7 @@ try {
   .cart-link {
     display: inline-flex;
     align-items: center;
-    gap: 0.35rem;
+    gap: var(--space-2);
   }
 
   .cart-count {
@@ -87,11 +87,11 @@ try {
     justify-content: center;
     min-width: 1.35rem;
     height: 1.35rem;
-    padding: 0 0.3rem;
+    padding: 0 var(--space-2);
     border-radius: 999px;
     background: var(--brand);
     color: var(--brand-foreground);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     font-weight: 600;
   }
 
@@ -100,11 +100,28 @@ try {
     background: none;
     padding: 0;
     font: inherit;
+    font-size: var(--text-sm);
     color: var(--ink-muted);
     cursor: pointer;
+    transition: color 0.15s ease;
   }
 
   .link-button:hover {
     color: var(--ink);
+  }
+
+  @media (max-width: 640px) {
+    .site-header {
+      flex-wrap: wrap;
+      gap: var(--space-3);
+      padding: var(--space-4) var(--space-4);
+    }
+
+    .site-nav {
+      width: 100%;
+      justify-content: space-between;
+      gap: var(--space-4);
+      overflow-x: auto;
+    }
   }
 </style>

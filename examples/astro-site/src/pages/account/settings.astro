@@ -124,62 +124,53 @@ const { customer } = result;
   .account-page {
     max-width: var(--max-width);
     margin: 0 auto;
-    padding: 3rem 1.5rem 5rem;
+    padding: var(--space-12) var(--space-6) var(--space-20);
     display: grid;
     grid-template-columns: 220px 1fr;
-    gap: 2.5rem;
+    gap: var(--space-10);
   }
 
   @media (max-width: 720px) {
     .account-page {
       grid-template-columns: 1fr;
+      gap: var(--space-6);
     }
   }
 
   .account-content h1 {
-    margin: 0 0 1.75rem;
-    font-size: 1.75rem;
+    margin: 0 0 var(--space-8);
+    font-size: var(--text-3xl);
     font-weight: 600;
   }
 
   .settings-section {
     max-width: 460px;
-    margin-bottom: 2.5rem;
-    padding: 1.5rem;
+    margin-bottom: var(--space-8);
+    padding: var(--space-6);
     border-radius: var(--radius);
     border: 1px solid var(--border);
+    background: var(--surface);
+    box-shadow: var(--shadow-sm);
   }
 
   .settings-section h2 {
-    margin: 0 0 1rem;
-    font-size: 1.05rem;
+    margin: 0 0 var(--space-4);
+    font-size: var(--text-lg);
     font-weight: 600;
   }
 
   .field {
     display: flex;
     flex-direction: column;
-    gap: 0.35rem;
-    margin-bottom: 1rem;
-    font-size: 0.9rem;
+    gap: var(--space-2);
+    margin-bottom: var(--space-4);
+    font-size: var(--text-sm);
     font-weight: 600;
-  }
-
-  .field input {
-    padding: 0.6rem 0.75rem;
-    border-radius: 8px;
-    border: 1px solid var(--border);
-    font: inherit;
-  }
-
-  .field input:disabled {
-    background: var(--surface-muted);
-    color: var(--ink-muted);
   }
 
   .hint {
     font-weight: 400;
     color: var(--ink-muted);
-    font-size: 0.8rem;
+    font-size: var(--text-xs);
   }
 </style>

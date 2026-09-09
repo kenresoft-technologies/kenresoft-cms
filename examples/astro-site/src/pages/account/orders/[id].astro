@@ -43,35 +43,37 @@ if (!order) {
       </div>
       <p class="order-date">Placed {new Date(order.createdAt).toLocaleString()}</p>
 
-      <table class="items-table">
-        <thead>
-          <tr>
-            <th>Item</th>
-            <th>Qty</th>
-            <th>Price</th>
-          </tr>
-        </thead>
-        <tbody>
-          {
-            order.items.map((item) => (
-              <tr>
-                <td>
-                  {item.productName}
-                  {item.variantName ? <span class="variant-name"> — {item.variantName}</span> : null}
-                </td>
-                <td>{item.quantity}</td>
-                <td>{formatMoney(item.unitPriceAtPurchase * item.quantity, order.currency)}</td>
-              </tr>
-            ))
-          }
-        </tbody>
-        <tfoot>
-          <tr>
-            <td colspan="2">Total</td>
-            <td>{formatMoney(order.totalAmount, order.currency)}</td>
-          </tr>
-        </tfoot>
-      </table>
+      <div class="items-table-wrap">
+        <table class="items-table">
+          <thead>
+            <tr>
+              <th>Item</th>
+              <th>Qty</th>
+              <th>Price</th>
+            </tr>
+          </thead>
+          <tbody>
+            {
+              order.items.map((item) => (
+                <tr>
+                  <td>
+                    {item.productName}
+                    {item.variantName ? <span class="variant-name"> — {item.variantName}</span> : null}
+                  </td>
+                  <td>{item.quantity}</td>
+                  <td>{formatMoney(item.unitPriceAtPurchase * item.quantity, order.currency)}</td>
+                </tr>
+              ))
+            }
+          </tbody>
+          <tfoot>
+            <tr>
+              <td colspan="2">Total</td>
+              <td>{formatMoney(order.totalAmount, order.currency)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
 
       {order.status === 'pending' ? <p class="pending-note">This order is awaiting payment — visit <a href={`/order/${order.id}`}>the payment page</a> to complete it.</p> : null}
     </div>
@@ -82,67 +84,84 @@ if (!order) {
   .account-page {
     max-width: var(--max-width);
     margin: 0 auto;
-    padding: 3rem 1.5rem 5rem;
+    padding: var(--space-12) var(--space-6) var(--space-20);
     display: grid;
     grid-template-columns: 220px 1fr;
-    gap: 2.5rem;
+    gap: var(--space-10);
   }
 
   @media (max-width: 720px) {
     .account-page {
       grid-template-columns: 1fr;
+      gap: var(--space-6);
     }
   }
 
   .back-link {
     display: inline-block;
-    margin-bottom: 1rem;
+    margin-bottom: var(--space-4);
     color: var(--ink-muted);
     text-decoration: none;
-    font-size: 0.9rem;
+    font-size: var(--text-sm);
+    transition: color 0.15s ease;
+  }
+
+  .back-link:hover {
+    color: var(--brand);
   }
 
   .order-heading {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    flex-wrap: wrap;
+    gap: var(--space-3);
   }
 
   .order-heading h1 {
     margin: 0;
-    font-size: 1.5rem;
+    font-size: var(--text-2xl);
     font-weight: 600;
   }
 
   .order-date {
-    margin: 0.35rem 0 1.5rem;
+    margin: var(--space-2) 0 var(--space-6);
     color: var(--ink-muted);
-    font-size: 0.9rem;
+    font-size: var(--text-sm);
+  }
+
+  .items-table-wrap {
+    overflow-x: auto;
+    overflow-y: hidden;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
   }
 
   .items-table {
     width: 100%;
     border-collapse: collapse;
+    min-width: 420px;
   }
 
   .items-table th {
     text-align: left;
-    font-size: 0.8rem;
+    font-size: var(--text-xs);
     text-transform: uppercase;
+    letter-spacing: 0.03em;
     color: var(--ink-muted);
-    padding: 0.6rem 0.75rem;
+    padding: var(--space-3) var(--space-4);
+    background: var(--surface-muted);
     border-bottom: 1px solid var(--border);
   }
 
   .items-table td {
-    padding: 0.75rem;
+    padding: var(--space-3) var(--space-4);
     border-bottom: 1px solid var(--border);
   }
 
   .items-table tfoot td {
     border-bottom: none;
     font-weight: 700;
-    padding-top: 1rem;
+    padding-top: var(--space-4);
   }
 
   .variant-name {
@@ -150,14 +169,16 @@ if (!order) {
   }
 
   .pending-note {
-    margin-top: 1.5rem;
-    padding: 0.85rem 1rem;
+    margin-top: var(--space-6);
+    padding: var(--space-4);
     border-radius: var(--radius);
-    background: var(--surface-muted);
-    color: var(--ink-muted);
+    background: var(--warning-bg);
+    border: 1px solid var(--warning-border);
+    color: color-mix(in oklch, var(--warning) 65%, var(--ink));
   }
 
   .pending-note a {
     color: var(--brand);
+    font-weight: 600;
   }
 </style>

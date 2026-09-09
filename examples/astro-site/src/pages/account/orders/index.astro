@@ -22,30 +22,32 @@ const orders = await cms.commerce.customer.orders.list().catch(() => []);
         orders.length === 0 ? (
           <p class="empty-note">No orders yet. <a href="/shop">Browse the shop →</a></p>
         ) : (
-          <table class="orders-table">
-            <thead>
-              <tr>
-                <th>Order</th>
-                <th>Date</th>
-                <th>Status</th>
-                <th>Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {orders.map((order) => (
+          <div class="orders-table-wrap">
+            <table class="orders-table">
+              <thead>
                 <tr>
-                  <td>
-                    <a href={`/account/orders/${order.id}`}>#{order.id.slice(0, 8)}</a>
-                  </td>
-                  <td>{new Date(order.createdAt).toLocaleDateString()}</td>
-                  <td>
-                    <OrderStatusBadge status={order.status} />
-                  </td>
-                  <td>{formatMoney(order.totalAmount, order.currency)}</td>
+                  <th>Order</th>
+                  <th>Date</th>
+                  <th>Status</th>
+                  <th>Total</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {orders.map((order) => (
+                  <tr>
+                    <td>
+                      <a href={`/account/orders/${order.id}`}>#{order.id.slice(0, 8)}</a>
+                    </td>
+                    <td>{new Date(order.createdAt).toLocaleDateString()}</td>
+                    <td>
+                      <OrderStatusBadge status={order.status} />
+                    </td>
+                    <td>{formatMoney(order.totalAmount, order.currency)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )
       }
     </div>
@@ -56,21 +58,22 @@ const orders = await cms.commerce.customer.orders.list().catch(() => []);
   .account-page {
     max-width: var(--max-width);
     margin: 0 auto;
-    padding: 3rem 1.5rem 5rem;
+    padding: var(--space-12) var(--space-6) var(--space-20);
     display: grid;
     grid-template-columns: 220px 1fr;
-    gap: 2.5rem;
+    gap: var(--space-10);
   }
 
   @media (max-width: 720px) {
     .account-page {
       grid-template-columns: 1fr;
+      gap: var(--space-6);
     }
   }
 
   .account-content h1 {
-    margin: 0 0 1.5rem;
-    font-size: 1.75rem;
+    margin: 0 0 var(--space-6);
+    font-size: var(--text-3xl);
     font-weight: 600;
   }
 
@@ -78,24 +81,41 @@ const orders = await cms.commerce.customer.orders.list().catch(() => []);
     color: var(--ink-muted);
   }
 
+  .orders-table-wrap {
+    overflow-x: auto;
+    overflow-y: hidden;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+  }
+
   .orders-table {
     width: 100%;
     border-collapse: collapse;
+    min-width: 480px;
   }
 
   .orders-table th {
     text-align: left;
-    font-size: 0.8rem;
+    font-size: var(--text-xs);
     text-transform: uppercase;
     letter-spacing: 0.03em;
     color: var(--ink-muted);
-    padding: 0.6rem 0.75rem;
+    padding: var(--space-3) var(--space-4);
+    background: var(--surface-muted);
     border-bottom: 1px solid var(--border);
   }
 
   .orders-table td {
-    padding: 0.75rem;
+    padding: var(--space-3) var(--space-4);
     border-bottom: 1px solid var(--border);
+  }
+
+  .orders-table tr:last-child td {
+    border-bottom: none;
+  }
+
+  .orders-table tr:hover td {
+    background: var(--surface-muted);
   }
 
   .orders-table a {

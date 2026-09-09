@@ -117,11 +117,7 @@ const allOutOfStock = hasVariants && product.variants.every((variant) => variant
   function showAlert(message: string, tone: 'success' | 'error') {
     if (!alertEl) return;
     alertEl.textContent = message;
-    alertEl.className = `alert alert-${tone}`;
-    alertEl.style.marginTop = '0.75rem';
-    alertEl.style.padding = '0.6rem 0.85rem';
-    alertEl.style.borderRadius = '10px';
-    alertEl.style.fontSize = '0.9rem';
+    alertEl.className = `inline-alert inline-alert-${tone}`;
   }
 
   // Reflects the selected variant's own price override, if any — matches the same
@@ -171,15 +167,16 @@ const allOutOfStock = hasVariants && product.variants.every((variant) => variant
   .product {
     max-width: var(--max-width);
     margin: 0 auto;
-    padding: 3rem 1.5rem 5rem;
+    padding: var(--space-12) var(--space-6) var(--space-20);
   }
 
   .back-link {
     display: inline-block;
-    margin-bottom: 1.5rem;
+    margin-bottom: var(--space-6);
     color: var(--ink-muted);
     text-decoration: none;
-    font-size: 0.9rem;
+    font-size: var(--text-sm);
+    transition: color 0.15s ease;
   }
 
   .back-link:hover {
@@ -189,12 +186,13 @@ const allOutOfStock = hasVariants && product.variants.every((variant) => variant
   .product-layout {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    gap: 2.5rem;
+    gap: var(--space-10);
   }
 
   @media (max-width: 720px) {
     .product-layout {
       grid-template-columns: 1fr;
+      gap: var(--space-6);
     }
   }
 
@@ -203,31 +201,37 @@ const allOutOfStock = hasVariants && product.variants.every((variant) => variant
     border-radius: var(--radius);
     object-fit: cover;
     aspect-ratio: 1 / 1;
+    background: var(--surface-muted);
   }
 
   .product-media-placeholder {
     width: 100%;
     aspect-ratio: 1 / 1;
     border-radius: var(--radius);
-    background: var(--surface-muted);
+    background: linear-gradient(135deg, var(--surface-muted), var(--border));
     border: 1px solid var(--border);
   }
 
   .product-thumbs {
     display: flex;
-    gap: 0.6rem;
-    margin-top: 0.75rem;
+    gap: var(--space-3);
+    margin-top: var(--space-3);
   }
 
   .product-thumb {
     padding: 0;
-    border: 2px solid transparent;
-    border-radius: 8px;
+    border: 2px solid var(--border);
+    border-radius: var(--radius-sm);
     background: none;
     cursor: pointer;
     width: 64px;
     height: 64px;
     overflow: hidden;
+    transition: border-color 0.15s ease;
+  }
+
+  .product-thumb:hover {
+    border-color: var(--border-strong);
   }
 
   .product-thumb img {
@@ -241,44 +245,61 @@ const allOutOfStock = hasVariants && product.variants.every((variant) => variant
   }
 
   .product-info h1 {
-    margin: 0 0 0.5rem;
+    margin: 0 0 var(--space-2);
     font-size: clamp(1.5rem, 3vw, 2rem);
     font-weight: 600;
     letter-spacing: -0.01em;
   }
 
   .price {
-    margin: 0 0 1.25rem;
-    font-size: 1.35rem;
+    margin: 0 0 var(--space-5);
+    font-size: var(--text-2xl);
     font-weight: 600;
+    color: var(--brand);
   }
 
   .description {
-    margin: 0 0 1.5rem;
+    margin: 0 0 var(--space-6);
     color: var(--ink-muted);
-    line-height: 1.6;
+    line-height: var(--leading-relaxed);
   }
 
   .field {
     display: flex;
     flex-direction: column;
-    gap: 0.35rem;
-    margin-bottom: 1rem;
-    font-size: 0.9rem;
+    gap: var(--space-2);
+    margin-bottom: var(--space-4);
+    font-size: var(--text-sm);
     font-weight: 600;
   }
 
   .field select,
   .field input {
-    padding: 0.6rem 0.75rem;
-    border-radius: 8px;
-    border: 1px solid var(--border);
-    font-size: 0.95rem;
-    font-family: inherit;
+    max-width: 16rem;
   }
 
-  #add-to-cart-button:disabled {
-    opacity: 0.7;
-    cursor: not-allowed;
+  #add-to-cart-button {
+    margin-top: var(--space-2);
+  }
+
+  .inline-alert {
+    margin-top: var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    border: 1px solid transparent;
+  }
+
+  .inline-alert-success {
+    background: var(--success-bg);
+    border-color: var(--success-border);
+    color: color-mix(in oklch, var(--success) 65%, var(--ink));
+  }
+
+  .inline-alert-error {
+    background: var(--danger-bg);
+    border-color: var(--danger-border);
+    color: color-mix(in oklch, var(--danger) 70%, var(--ink));
   }
 </style>

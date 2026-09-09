@@ -38,7 +38,8 @@ const REPO_URL = 'https://github.com/kenresoft-technologies/kenresoft-cms';
 <style>
   .site-footer {
     display: block;
-    padding: 3rem 1.5rem 2.5rem;
+    padding: var(--space-12) var(--space-6) var(--space-10);
+    background: var(--surface-muted);
   }
 
   .footer-columns {
@@ -46,31 +47,41 @@ const REPO_URL = 'https://github.com/kenresoft-technologies/kenresoft-cms';
     margin: 0 auto;
     display: grid;
     grid-template-columns: 2fr repeat(4, 1fr);
-    gap: 2rem;
+    gap: var(--space-8);
   }
 
   .footer-column {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: var(--space-2);
   }
 
   .footer-heading {
-    margin: 0 0 0.25rem;
+    margin: 0 0 var(--space-1);
     font-weight: 600;
+    font-size: var(--text-sm);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
     color: var(--ink);
   }
 
   .footer-note {
     max-width: var(--max-width);
-    margin: 2.5rem auto 0;
-    padding-top: 1.5rem;
+    margin: var(--space-10) auto 0;
+    padding-top: var(--space-6);
     border-top: 1px solid var(--border);
   }
 
   @media (max-width: 720px) {
     .footer-columns {
       grid-template-columns: repeat(2, 1fr);
+      gap: var(--space-6);
+    }
+  }
+
+  @media (max-width: 480px) {
+    .footer-columns {
+      grid-template-columns: 1fr;
     }
   }
 </style>

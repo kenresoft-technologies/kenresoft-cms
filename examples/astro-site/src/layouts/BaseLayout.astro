@@ -41,19 +41,85 @@ const { title, description = 'A Cloudflare-native, API-first content and commerc
 
 <style is:global>
   :root {
+    /* Color */
     --brand: oklch(0.53 0.18 262);
+    --brand-hover: oklch(0.46 0.18 262);
     --brand-foreground: oklch(0.985 0 0);
     --ink: oklch(0.2 0.01 262);
     --ink-muted: oklch(0.45 0.01 262);
+    --ink-subtle: oklch(0.62 0.01 262);
     --surface: oklch(1 0 0);
     --surface-muted: oklch(0.97 0.005 262);
     --border: oklch(0.9 0.005 262);
+    --border-strong: oklch(0.82 0.006 262);
+
+    --success: oklch(0.5 0.15 145);
+    --success-bg: color-mix(in oklch, var(--success) 14%, var(--surface));
+    --success-border: color-mix(in oklch, var(--success) 38%, transparent);
+    --danger: oklch(0.5 0.2 25);
+    --danger-bg: color-mix(in oklch, var(--danger) 12%, var(--surface));
+    --danger-border: color-mix(in oklch, var(--danger) 35%, transparent);
+    --warning: oklch(0.62 0.16 75);
+    --warning-bg: color-mix(in oklch, var(--warning) 16%, var(--surface));
+    --warning-border: color-mix(in oklch, var(--warning) 42%, transparent);
+    --info-bg: var(--surface-muted);
+    --info-border: var(--border);
+
+    --focus-ring: 0 0 0 3px color-mix(in oklch, var(--brand) 32%, transparent);
+
+    /* Radius */
+    --radius-sm: 7px;
     --radius: 12px;
+    --radius-lg: 18px;
+
+    /* Layout */
     --max-width: 1120px;
+    --measure: 68ch;
+
+    /* Spacing scale (4px base unit) */
+    --space-1: 0.25rem;
+    --space-2: 0.5rem;
+    --space-3: 0.75rem;
+    --space-4: 1rem;
+    --space-5: 1.25rem;
+    --space-6: 1.5rem;
+    --space-8: 2rem;
+    --space-10: 2.5rem;
+    --space-12: 3rem;
+    --space-16: 4rem;
+    --space-20: 5rem;
+
+    /* Type scale */
+    --text-xs: 0.8rem;
+    --text-sm: 0.875rem;
+    --text-base: 1rem;
+    --text-lg: 1.125rem;
+    --text-xl: 1.25rem;
+    --text-2xl: 1.5rem;
+    --text-3xl: 1.875rem;
+    --text-4xl: clamp(2.25rem, 5vw, 3.25rem);
+    --leading-tight: 1.2;
+    --leading-normal: 1.5;
+    --leading-relaxed: 1.7;
+
+    /* Elevation */
+    --shadow-sm: 0 1px 2px oklch(0.2 0.01 262 / 0.05), 0 1px 1px oklch(0.2 0.01 262 / 0.04);
+    --shadow-md: 0 8px 20px oklch(0.2 0.01 262 / 0.07), 0 1px 3px oklch(0.2 0.01 262 / 0.05);
+    --shadow-lg: 0 16px 40px oklch(0.2 0.01 262 / 0.1);
   }
 
   * {
     box-sizing: border-box;
+  }
+
+  /* Several pages toggle visibility via the plain `hidden` attribute on an element that also has
+     an explicit `display` (flex/grid) set by its own scoped styles for when it's shown — per the
+     CSS cascade, an author-set `display` otherwise wins over the UA's own `[hidden]{display:none}`
+     rule, since browsers apply cascade *origin* (author beats user-agent) before specificity. This
+     guarantees `hidden` always actually hides, site-wide, regardless of what any page's own styles
+     set `display` to. */
+  [hidden] {
+    display: none !important;
   }
 
   html {
@@ -62,6 +128,8 @@ const { title, description = 'A Cloudflare-native, API-first content and commerc
     color: var(--ink);
     background: var(--surface);
     -webkit-font-smoothing: antialiased;
+    font-size: 16px;
+    line-height: var(--leading-normal);
   }
 
   body {
@@ -84,6 +152,86 @@ const { title, description = 'A Cloudflare-native, API-first content and commerc
     display: block;
   }
 
+  h1,
+  h2,
+  h3,
+  h4 {
+    line-height: var(--leading-tight);
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+  }
+
+  p {
+    line-height: var(--leading-relaxed);
+  }
+
+  /* A visible, consistent keyboard-focus indicator across every interactive element — replaces
+     relying on each browser's own inconsistent default outline. */
+  a:focus-visible,
+  button:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible,
+  [tabindex]:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring);
+    border-radius: var(--radius-sm);
+  }
+
+  /* Base form-control look, applied globally so every input/select/textarea on the site starts
+     from the same real, non-default-browser-chrome baseline — pages that define their own
+     `.field input` rules in a scoped <style> block still take precedence where they differ, this
+     just removes the "some forms look styled, some don't" inconsistency at the source. */
+  input,
+  select,
+  textarea {
+    font: inherit;
+    color: var(--ink);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 0.65rem 0.85rem;
+    transition:
+      border-color 0.15s ease,
+      box-shadow 0.15s ease;
+  }
+
+  input:hover,
+  select:hover,
+  textarea:hover {
+    border-color: var(--border-strong);
+  }
+
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    border-color: var(--brand);
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--ink-subtle);
+  }
+
+  input:disabled,
+  select:disabled,
+  textarea:disabled {
+    background: var(--surface-muted);
+    color: var(--ink-muted);
+    cursor: not-allowed;
+  }
+
+  input[type='checkbox'],
+  input[type='radio'] {
+    width: auto;
+    padding: 0;
+    accent-color: var(--brand);
+  }
+
+  label {
+    color: var(--ink);
+  }
+
   .site-header {
     display: flex;
     align-items: center;
@@ -91,15 +239,24 @@ const { title, description = 'A Cloudflare-native, API-first content and commerc
     width: 100%;
     max-width: var(--max-width);
     margin: 0 auto;
-    padding: 1.25rem 1.5rem;
+    padding: var(--space-5) var(--space-6);
+  }
+
+  header:has(.site-header) {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: color-mix(in oklch, var(--surface) 92%, transparent);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
   }
 
   .brand {
     display: flex;
     align-items: center;
-    gap: 0.6rem;
+    gap: var(--space-2);
     font-weight: 600;
-    font-size: 1.05rem;
+    font-size: var(--text-lg);
     text-decoration: none;
     color: var(--ink);
   }
@@ -113,6 +270,7 @@ const { title, description = 'A Cloudflare-native, API-first content and commerc
     border-radius: 8px;
     background: var(--brand);
     color: var(--brand-foreground);
+    box-shadow: var(--shadow-sm);
   }
 
   .brand-mark svg {
@@ -122,8 +280,8 @@ const { title, description = 'A Cloudflare-native, API-first content and commerc
 
   .site-nav {
     display: flex;
-    gap: 1.5rem;
-    font-size: 0.95rem;
+    gap: var(--space-6);
+    font-size: var(--text-sm);
   }
 
   .site-nav a {
@@ -140,60 +298,144 @@ const { title, description = 'A Cloudflare-native, API-first content and commerc
     width: 100%;
     max-width: var(--max-width);
     margin: 0 auto;
-    padding: 2.5rem 1.5rem 3rem;
+    padding: var(--space-10) var(--space-6) var(--space-12);
     border-top: 1px solid var(--border);
     display: flex;
     flex-wrap: wrap;
     justify-content: space-between;
-    gap: 0.75rem;
+    gap: var(--space-3);
     color: var(--ink-muted);
-    font-size: 0.9rem;
+    font-size: var(--text-sm);
   }
 
   .site-footer a {
     text-decoration: none;
     color: var(--ink-muted);
+    transition: color 0.15s ease;
   }
 
   .site-footer a:hover {
-    color: var(--ink);
+    color: var(--brand);
   }
 
+  /* Button hierarchy — every page's forms/CTAs share this one foundation instead of
+     reinventing button styling per page. Primary = the one obvious action; secondary = a
+     lower-emphasis alternative; danger = destructive (delete/remove) actions. */
   .button {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 0.5rem;
+    gap: var(--space-2);
     padding: 0.75rem 1.5rem;
-    border-radius: 10px;
+    border-radius: var(--radius-sm);
     font-weight: 600;
-    font-size: 0.95rem;
+    font-size: var(--text-sm);
+    line-height: 1;
     text-decoration: none;
+    border: 1px solid transparent;
+    cursor: pointer;
     transition:
       transform 0.1s ease,
+      background-color 0.15s ease,
+      border-color 0.15s ease,
+      box-shadow 0.15s ease,
       opacity 0.15s ease;
   }
 
-  .button:active {
+  .button:active:not(:disabled) {
     transform: translateY(1px);
+  }
+
+  .button:disabled,
+  .button[aria-disabled='true'] {
+    opacity: 0.55;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  .button-sm {
+    padding: 0.5rem 1rem;
+    font-size: var(--text-xs);
   }
 
   .button-primary {
     background: var(--brand);
     color: var(--brand-foreground);
+    box-shadow: var(--shadow-sm);
   }
 
-  .button-primary:hover {
-    opacity: 0.9;
+  .button-primary:hover:not(:disabled) {
+    background: var(--brand-hover);
   }
 
   .button-secondary {
-    background: var(--surface-muted);
+    background: var(--surface);
     color: var(--ink);
-    border: 1px solid var(--border);
+    border-color: var(--border);
   }
 
-  .button-secondary:hover {
-    background: var(--border);
+  .button-secondary:hover:not(:disabled) {
+    background: var(--surface-muted);
+    border-color: var(--border-strong);
+  }
+
+  .button-danger {
+    background: var(--surface);
+    color: var(--danger);
+    border-color: var(--danger-border);
+  }
+
+  .button-danger:hover:not(:disabled) {
+    background: var(--danger-bg);
+    border-color: var(--danger);
+  }
+
+  /* Shared "content card" hover treatment — product/post/order/address cards across the site
+     use this same subtle lift instead of each page inventing its own. */
+  .card-hoverable {
+    transition:
+      border-color 0.15s ease,
+      box-shadow 0.15s ease,
+      transform 0.15s ease;
+  }
+
+  .card-hoverable:hover {
+    border-color: var(--border-strong);
+    box-shadow: var(--shadow-md);
+    transform: translateY(-2px);
+  }
+
+  /* A designed loading placeholder — replaces bare "Loading…" text nodes site-wide. Apply
+     `class="loading-note"` to any status element already used for that purpose. */
+  .loading-note {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    color: var(--ink-muted);
+    font-size: var(--text-sm);
+    padding: var(--space-4) 0;
+  }
+
+  .loading-note::before {
+    content: '';
+    width: 1rem;
+    height: 1rem;
+    flex-shrink: 0;
+    border-radius: 50%;
+    border: 2px solid var(--border);
+    border-top-color: var(--brand);
+    animation: loading-spin 0.7s linear infinite;
+  }
+
+  @keyframes loading-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .loading-note::before {
+      animation: none;
+    }
   }
 </style>

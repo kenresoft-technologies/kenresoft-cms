@@ -9,7 +9,7 @@ if (!id) {
 
 <BaseLayout title="Order confirmation — Kenresoft CMS" description="Payment confirmation for your order." noIndex>
   <div class="order-page">
-    <div id="order-loading">Loading your order…</div>
+    <div id="order-loading" class="loading-note">Loading your order…</div>
     <div id="order-not-found" hidden>
       <h1>We couldn't find that order here</h1>
       <p>
@@ -213,62 +213,62 @@ if (!id) {
   .order-page {
     max-width: 640px;
     margin: 0 auto;
-    padding: 3.5rem 1.5rem 5rem;
+    padding: var(--space-12) var(--space-6) var(--space-20);
   }
 
   #order-not-found h1 {
-    font-size: 1.5rem;
-    margin: 0 0 0.75rem;
+    font-size: var(--text-2xl);
+    margin: 0 0 var(--space-3);
   }
 
   #order-not-found p {
     color: var(--ink-muted);
-    line-height: 1.6;
+    line-height: var(--leading-relaxed);
   }
 
   .order-header {
-    margin-bottom: 1.5rem;
+    margin-bottom: var(--space-6);
   }
 
   .order-header h1 {
-    margin: 0 0 0.25rem;
-    font-size: 1.75rem;
+    margin: 0 0 var(--space-1);
+    font-size: var(--text-3xl);
     font-weight: 600;
   }
 
   .order-id {
     margin: 0;
     color: var(--ink-muted);
-    font-size: 0.9rem;
+    font-size: var(--text-sm);
   }
 
   .status-panel {
-    padding: 1.25rem;
+    padding: var(--space-5);
     border-radius: var(--radius);
     border: 1px solid var(--border);
-    margin-bottom: 1.75rem;
+    margin-bottom: var(--space-8);
   }
 
   .status-panel :global(.status-label) {
-    margin: 0 0 0.5rem;
+    margin: 0 0 var(--space-2);
     font-weight: 700;
-    font-size: 1.05rem;
+    font-size: var(--text-lg);
   }
 
   .status-panel :global(p:not(.status-label)) {
-    margin: 0.35rem 0 0;
+    margin: var(--space-2) 0 0;
     color: var(--ink-muted);
   }
 
   .status-pending {
-    background: color-mix(in oklch, oklch(0.75 0.15 80) 14%, transparent);
-    border-color: color-mix(in oklch, oklch(0.75 0.15 80) 40%, transparent);
+    background: var(--warning-bg);
+    border-color: var(--warning-border);
   }
 
   .status-paid,
   .status-fulfilled {
-    background: color-mix(in oklch, oklch(0.6 0.15 145) 12%, transparent);
-    border-color: color-mix(in oklch, oklch(0.6 0.15 145) 35%, transparent);
+    background: var(--success-bg);
+    border-color: var(--success-border);
   }
 
   .status-cancelled,
@@ -277,42 +277,54 @@ if (!id) {
   }
 
   #pay-now-button {
-    margin-top: 0.75rem;
+    margin-top: var(--space-3);
   }
 
   .pay-now-error {
-    color: oklch(0.4 0.18 25);
-    font-size: 0.9rem;
+    color: var(--danger);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    margin-top: var(--space-2);
   }
 
   .order-details {
     display: flex;
     flex-direction: column;
-    gap: 1.5rem;
+    gap: var(--space-6);
+  }
+
+  .order-block {
+    padding: var(--space-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
   }
 
   .order-block h2 {
-    margin: 0 0 0.5rem;
-    font-size: 1rem;
+    margin: 0 0 var(--space-2);
+    font-size: var(--text-sm);
     font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--ink-muted);
   }
 
   #order-items {
     margin: 0;
     padding-left: 1.2rem;
-    color: var(--ink-muted);
-    font-size: 0.92rem;
-    line-height: 1.6;
+    color: var(--ink);
+    font-size: var(--text-sm);
+    line-height: var(--leading-relaxed);
   }
 
   .order-total {
     margin: 0;
-    font-size: 1.2rem;
+    font-size: var(--text-xl);
     font-weight: 700;
   }
 
   #customer-info {
     margin: 0;
-    color: var(--ink-muted);
+    color: var(--ink);
+    font-size: var(--text-sm);
   }
 </style>

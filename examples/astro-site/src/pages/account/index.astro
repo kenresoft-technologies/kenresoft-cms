@@ -63,56 +63,62 @@ const recentOrders = orders.slice(0, 5);
   .account-page {
     max-width: var(--max-width);
     margin: 0 auto;
-    padding: 3rem 1.5rem 5rem;
+    padding: var(--space-12) var(--space-6) var(--space-20);
     display: grid;
     grid-template-columns: 220px 1fr;
-    gap: 2.5rem;
+    gap: var(--space-10);
   }
 
   @media (max-width: 720px) {
     .account-page {
       grid-template-columns: 1fr;
+      gap: var(--space-6);
     }
   }
 
   .account-content h1 {
-    margin: 0 0 0.35rem;
-    font-size: 1.75rem;
+    margin: 0 0 var(--space-1);
+    font-size: var(--text-3xl);
     font-weight: 600;
   }
 
   .account-summary {
-    margin: 0 0 2rem;
+    margin: 0 0 var(--space-8);
     color: var(--ink-muted);
   }
 
   .unverified {
-    color: oklch(0.5 0.18 40);
+    color: var(--warning);
     font-weight: 600;
   }
 
   .account-section {
-    margin-bottom: 2.25rem;
+    margin-bottom: var(--space-8);
   }
 
   .section-header {
     display: flex;
     justify-content: space-between;
     align-items: baseline;
-    margin-bottom: 0.75rem;
+    margin-bottom: var(--space-3);
   }
 
   .section-header h2,
   .account-section > h2 {
-    margin: 0 0 0.75rem;
-    font-size: 1.05rem;
+    margin: 0 0 var(--space-3);
+    font-size: var(--text-lg);
     font-weight: 600;
   }
 
   .section-header a {
-    font-size: 0.9rem;
+    font-size: var(--text-sm);
+    font-weight: 600;
     color: var(--brand);
     text-decoration: none;
+  }
+
+  .section-header a:hover {
+    text-decoration: underline;
   }
 
   .empty-note {
@@ -125,24 +131,30 @@ const recentOrders = orders.slice(0, 5);
     padding: 0;
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: var(--space-2);
   }
 
   .order-list a {
     display: block;
-    padding: 0.85rem 1rem;
-    border-radius: 8px;
+    padding: var(--space-4);
+    border-radius: var(--radius-sm);
     border: 1px solid var(--border);
+    background: var(--surface);
     text-decoration: none;
     color: var(--ink);
+    transition:
+      border-color 0.15s ease,
+      box-shadow 0.15s ease;
   }
 
   .order-list a:hover {
-    border-color: var(--brand);
+    border-color: var(--border-strong);
+    box-shadow: var(--shadow-sm);
   }
 
   .quick-links {
     display: flex;
-    gap: 0.75rem;
+    flex-wrap: wrap;
+    gap: var(--space-3);
   }
 </style>
