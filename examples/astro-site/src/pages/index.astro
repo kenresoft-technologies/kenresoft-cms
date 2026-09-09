@@ -56,7 +56,7 @@ const features = [
     <div class="features-grid">
       {
         features.map((feature) => (
-          <article class="feature-card">
+          <article class="feature-card card-hoverable">
             <h2>{feature.title}</h2>
             <p>{feature.body}</p>
           </article>
@@ -74,7 +74,7 @@ const features = [
         </div>
         <div class="latest-grid">
           {latestPosts.map((entry) => (
-            <a class="post-card" href={`/blog/${entry.slug}`}>
+            <a class="post-card card-hoverable" href={`/blog/${entry.slug}`}>
               <h3>{String(entry.data.title ?? entry.slug)}</h3>
               {entry.data.excerpt ? <p>{String(entry.data.excerpt)}</p> : null}
             </a>
@@ -87,8 +87,9 @@ const features = [
 
 <style>
   .hero {
-    padding: 5rem 1.5rem 4rem;
+    padding: var(--space-20) var(--space-6) var(--space-16);
     border-bottom: 1px solid var(--border);
+    background: radial-gradient(ellipse 80% 60% at 50% -10%, color-mix(in oklch, var(--brand) 8%, transparent), transparent);
   }
 
   .hero-inner {
@@ -98,12 +99,12 @@ const features = [
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 1.25rem;
+    gap: var(--space-5);
   }
 
   .eyebrow {
     margin: 0;
-    font-size: 0.85rem;
+    font-size: var(--text-sm);
     font-weight: 600;
     letter-spacing: 0.03em;
     text-transform: uppercase;
@@ -112,118 +113,131 @@ const features = [
 
   h1 {
     margin: 0;
-    font-size: clamp(2.25rem, 5vw, 3.25rem);
-    line-height: 1.1;
+    font-size: var(--text-4xl);
     font-weight: 600;
     letter-spacing: -0.02em;
   }
 
   .lede {
     margin: 0;
-    font-size: 1.15rem;
-    line-height: 1.6;
+    font-size: var(--text-lg);
+    line-height: var(--leading-relaxed);
     color: var(--ink-muted);
-    max-width: 620px;
+    max-width: var(--measure);
   }
 
   .hero-actions {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.75rem;
+    gap: var(--space-3);
     justify-content: center;
-    margin-top: 0.5rem;
+    margin-top: var(--space-2);
   }
 
   .features {
     max-width: var(--max-width);
     margin: 0 auto;
-    padding: 4rem 1.5rem;
+    padding: var(--space-16) var(--space-6);
   }
 
   .features-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 1.5rem;
+    gap: var(--space-6);
   }
 
   .feature-card {
-    padding: 1.75rem;
+    padding: var(--space-6);
     border-radius: var(--radius);
-    background: var(--surface-muted);
+    background: var(--surface);
     border: 1px solid var(--border);
+    box-shadow: var(--shadow-sm);
   }
 
   .feature-card h2 {
-    margin: 0 0 0.5rem;
-    font-size: 1.05rem;
+    margin: 0 0 var(--space-2);
+    font-size: var(--text-lg);
     font-weight: 600;
   }
 
   .feature-card p {
     margin: 0;
     color: var(--ink-muted);
-    font-size: 0.95rem;
-    line-height: 1.55;
+    font-size: var(--text-sm);
+    line-height: var(--leading-relaxed);
   }
 
   .latest {
     max-width: var(--max-width);
     margin: 0 auto;
-    padding: 1rem 1.5rem 5rem;
+    padding: var(--space-4) var(--space-6) var(--space-20);
   }
 
   .latest-header {
     display: flex;
     align-items: baseline;
     justify-content: space-between;
-    margin-bottom: 1.5rem;
+    margin-bottom: var(--space-6);
   }
 
   .latest-header h2 {
     margin: 0;
-    font-size: 1.4rem;
+    font-size: var(--text-2xl);
     font-weight: 600;
   }
 
   .latest-header a {
     text-decoration: none;
     color: var(--brand);
-    font-size: 0.95rem;
-    font-weight: 500;
+    font-size: var(--text-sm);
+    font-weight: 600;
+  }
+
+  .latest-header a:hover {
+    text-decoration: underline;
   }
 
   .latest-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 1.5rem;
+    gap: var(--space-6);
   }
 
   .post-card {
     display: block;
-    padding: 1.5rem;
+    padding: var(--space-6);
     border-radius: var(--radius);
     border: 1px solid var(--border);
+    background: var(--surface);
     text-decoration: none;
     color: var(--ink);
-    transition:
-      border-color 0.15s ease,
-      transform 0.1s ease;
-  }
-
-  .post-card:hover {
-    border-color: var(--brand);
   }
 
   .post-card h3 {
-    margin: 0 0 0.4rem;
-    font-size: 1.05rem;
+    margin: 0 0 var(--space-2);
+    font-size: var(--text-lg);
     font-weight: 600;
   }
 
   .post-card p {
     margin: 0;
     color: var(--ink-muted);
-    font-size: 0.9rem;
-    line-height: 1.5;
+    font-size: var(--text-sm);
+    line-height: var(--leading-normal);
+  }
+
+  @media (max-width: 480px) {
+    .hero {
+      padding: var(--space-16) var(--space-4) var(--space-10);
+    }
+
+    .hero-actions {
+      flex-direction: column;
+      width: 100%;
+    }
+
+    .hero-actions .button {
+      width: 100%;
+    }
   }
 </style>

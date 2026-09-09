@@ -93,64 +93,52 @@ const entry = await cms.entries.get({ contentType: 'page', slug: 'contact' });
 
 <style>
   .contact-page {
-    max-width: 720px;
+    max-width: 640px;
     margin: 0 auto;
-    padding: 3.5rem 1.5rem 5rem;
+    padding: var(--space-12) var(--space-6) var(--space-20);
     display: flex;
     flex-direction: column;
-    gap: 2.5rem;
+    gap: var(--space-10);
   }
 
   .contact-intro h1 {
-    margin: 0 0 1rem;
-    font-size: 2rem;
+    margin: 0 0 var(--space-4);
+    font-size: var(--text-3xl);
     font-weight: 600;
   }
 
   .empty-state {
     color: var(--ink-muted);
-    line-height: 1.7;
+    line-height: var(--leading-relaxed);
   }
 
   .contact-form {
     display: flex;
     flex-direction: column;
-    gap: 1.1rem;
+    gap: var(--space-5);
+    padding: var(--space-6);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface-muted);
   }
 
   .field {
     display: flex;
     flex-direction: column;
-    gap: 0.4rem;
+    gap: var(--space-2);
   }
 
   .field label {
-    font-size: 0.9rem;
+    font-size: var(--text-sm);
     font-weight: 600;
   }
 
-  .field input,
   .field textarea {
-    padding: 0.65rem 0.8rem;
-    border-radius: 8px;
-    border: 1px solid var(--border);
-    font: inherit;
-    background: var(--surface);
-    color: var(--ink);
-  }
-
-  .field input:focus,
-  .field textarea:focus {
-    outline: 2px solid var(--brand);
-    outline-offset: 1px;
+    resize: vertical;
+    min-height: 8rem;
   }
 
   .contact-form button {
     align-self: flex-start;
-  }
-
-  .contact-form button:disabled {
-    opacity: 0.7;
-    cursor: not-allowed;
   }
 </style>

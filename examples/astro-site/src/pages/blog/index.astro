@@ -39,7 +39,7 @@ const featuredImageAltById = new Map(
         {entries.map((entry) => {
           const title = String(entry.data.title ?? entry.slug);
           return (
-            <a class="post-row" href={`/blog/${entry.slug}`}>
+            <a class="post-row card-hoverable" href={`/blog/${entry.slug}`}>
               {typeof entry.data.featuredImage === 'string' ? (
                 <img
                   src={cms.media.url({ id: entry.data.featuredImage })}
@@ -62,12 +62,12 @@ const featuredImageAltById = new Map(
   .page-header {
     max-width: var(--max-width);
     margin: 0 auto;
-    padding: 3rem 1.5rem 1rem;
+    padding: var(--space-12) var(--space-6) var(--space-4);
   }
 
   .page-header h1 {
     margin: 0;
-    font-size: 2rem;
+    font-size: var(--text-3xl);
     font-weight: 600;
     letter-spacing: -0.01em;
   }
@@ -75,7 +75,7 @@ const featuredImageAltById = new Map(
   .empty-state {
     max-width: var(--max-width);
     margin: 0 auto;
-    padding: 1rem 1.5rem 5rem;
+    padding: var(--space-4) var(--space-6) var(--space-20);
     color: var(--ink-muted);
   }
 
@@ -89,46 +89,53 @@ const featuredImageAltById = new Map(
   .post-list {
     max-width: var(--max-width);
     margin: 0 auto;
-    padding: 1rem 1.5rem 5rem;
+    padding: var(--space-4) var(--space-6) var(--space-20);
     display: flex;
     flex-direction: column;
-    gap: 1rem;
+    gap: var(--space-4);
   }
 
   .post-row {
     display: flex;
-    gap: 1.5rem;
+    gap: var(--space-6);
     align-items: center;
-    padding: 1.25rem;
+    padding: var(--space-5);
     border-radius: var(--radius);
     border: 1px solid var(--border);
+    background: var(--surface);
     text-decoration: none;
     color: var(--ink);
-    transition: border-color 0.15s ease;
-  }
-
-  .post-row:hover {
-    border-color: var(--brand);
   }
 
   .post-row img {
     width: 96px;
     height: 96px;
     object-fit: cover;
-    border-radius: 8px;
+    border-radius: var(--radius-sm);
     flex-shrink: 0;
   }
 
   .post-row-body h2 {
-    margin: 0 0 0.35rem;
-    font-size: 1.15rem;
+    margin: 0 0 var(--space-1);
+    font-size: var(--text-lg);
     font-weight: 600;
   }
 
   .post-row-body p {
     margin: 0;
     color: var(--ink-muted);
-    font-size: 0.95rem;
-    line-height: 1.5;
+    font-size: var(--text-sm);
+    line-height: var(--leading-normal);
+  }
+
+  @media (max-width: 480px) {
+    .post-row {
+      gap: var(--space-4);
+    }
+
+    .post-row img {
+      width: 64px;
+      height: 64px;
+    }
   }
 </style>

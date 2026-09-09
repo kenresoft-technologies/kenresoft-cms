@@ -43,23 +43,24 @@ const description = entry ? (entry.data.metaDescription ? String(entry.data.meta
   .page-content {
     max-width: 720px;
     margin: 0 auto;
-    padding: 3.5rem 1.5rem 5rem;
+    padding: var(--space-12) var(--space-6) var(--space-20);
   }
 
   .page-content h1 {
-    margin: 0 0 1.5rem;
-    font-size: 2rem;
+    margin: 0 0 var(--space-6);
+    font-size: var(--text-3xl);
     font-weight: 600;
   }
 
   .empty-state {
     color: var(--ink-muted);
-    line-height: 1.7;
+    line-height: var(--leading-relaxed);
   }
 
   .empty-state code {
     background: var(--surface-muted);
     padding: 0.1em 0.4em;
     border-radius: 4px;
+    font-size: 0.9em;
   }
 </style>
