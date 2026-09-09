@@ -14,40 +14,58 @@ const { html } = Astro.props;
 <div class="rich-text" set:html={html} />
 
 <style>
+  .rich-text {
+    font-size: var(--text-base);
+    max-width: var(--measure);
+  }
+
   .rich-text :global(p) {
     margin: 0 0 1.1em;
-    line-height: 1.7;
+    line-height: var(--leading-relaxed);
   }
 
   .rich-text :global(h2) {
     margin: 1.75em 0 0.6em;
-    font-size: 1.4rem;
+    font-size: var(--text-2xl);
     font-weight: 600;
+    line-height: var(--leading-tight);
   }
 
   .rich-text :global(h3) {
     margin: 1.5em 0 0.5em;
-    font-size: 1.15rem;
+    font-size: var(--text-lg);
     font-weight: 600;
+    line-height: var(--leading-tight);
   }
 
   .rich-text :global(ul),
   .rich-text :global(ol) {
     margin: 0 0 1.1em;
     padding-left: 1.4em;
-    line-height: 1.7;
+    line-height: var(--leading-relaxed);
+  }
+
+  .rich-text :global(li + li) {
+    margin-top: 0.35em;
   }
 
   .rich-text :global(blockquote) {
     margin: 1.25em 0;
     padding-left: 1rem;
-    border-left: 3px solid var(--border);
+    border-left: 3px solid var(--brand);
     color: var(--ink-muted);
+    font-style: italic;
   }
 
   .rich-text :global(a) {
     color: var(--brand);
     text-decoration: underline;
+    text-decoration-color: var(--border-strong);
+    text-underline-offset: 2px;
+  }
+
+  .rich-text :global(a:hover) {
+    text-decoration-color: var(--brand);
   }
 
   .rich-text :global(img) {
