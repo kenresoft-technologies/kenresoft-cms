@@ -17,4 +17,7 @@ export const noopPaymentProvider: PaymentProvider = {
   async verifyWebhookSignature() {
     return false;
   },
+  getStatus() {
+    return { configured: false, environment: 'unknown' };
+  },
 };

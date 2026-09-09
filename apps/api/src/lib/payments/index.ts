@@ -3,7 +3,7 @@ import { createPaystackProvider } from './paystack';
 import type { Bindings } from '../env';
 import type { PaymentProvider } from './types';
 
-export type { PaymentProvider, InitializePaymentInput, InitializePaymentResult, VerifyPaymentResult, PaymentTransactionStatus } from './types';
+export type { PaymentProvider, InitializePaymentInput, InitializePaymentResult, PaymentProviderStatus, VerifyPaymentResult, PaymentTransactionStatus } from './types';
 
 // Selected by whether PAYSTACK_SECRET_KEY is set, not a separate PAYMENT_PROVIDER var — there's
 // only one provider today, so a selector variable would just be one more thing to configure for

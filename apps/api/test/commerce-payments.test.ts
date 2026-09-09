@@ -104,6 +104,7 @@ const neverProvider: PluginPaymentsService = {
     throw new Error('should not be called in this test');
   },
   verifyWebhookSignature: async () => true,
+  getStatus: () => ({ configured: true, environment: 'test' }),
 };
 
 describe('commerce plugin: payments (real D1)', () => {

@@ -44,6 +44,16 @@ export interface VerifyPaymentResult {
   raw: unknown;
 }
 
+// A deliberately non-sensitive status snapshot for a developer-facing admin UI (the Commerce
+// Settings page's Paystack section) — never the key itself, never anything derived from it beyond
+// which of Paystack's two documented key prefixes (`sk_test_`/`sk_live_`) it starts with.
+// 'unknown' covers a configured key that, for whatever reason, doesn't match either documented
+// prefix — surfaced honestly rather than guessed at.
+export interface PaymentProviderStatus {
+  configured: boolean;
+  environment: 'test' | 'live' | 'unknown';
+}
+
 // The boundary Commerce's own domain code depends on instead of Paystack's request/response shape
 // directly (docs/PLUGINS.md's Commerce section) — Paystack is the only implementation today
 // (./paystack.ts), with a noop stand-in (./noop.ts) when unconfigured, mirroring
@@ -55,4 +65,8 @@ export interface PaymentProvider {
   initializeTransaction(input: InitializePaymentInput): Promise<InitializePaymentResult>;
   verifyTransaction(reference: string): Promise<VerifyPaymentResult>;
   verifyWebhookSignature(rawBody: string, signatureHeader: string | undefined): Promise<boolean>;
+  // Non-sensitive, synchronous, never touches the network — a plain local read of whether a key
+  // is set and which documented prefix it has. See PaymentProviderStatus above for exactly what
+  // this may and may not expose.
+  getStatus(): PaymentProviderStatus;
 }
