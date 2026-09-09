@@ -31,6 +31,7 @@ try {
     </span>
     Kenresoft CMS
   </a>
+
   <nav class="site-nav" aria-label="Primary">
     <a href="/">Home</a>
     <a href="/blog">Blog</a>
@@ -53,7 +54,46 @@ try {
       )
     }
   </nav>
+
+  <a href="/cart" class="cart-link cart-link-mobile" aria-label={`Cart, ${cartCount} item${cartCount === 1 ? '' : 's'}`}>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <circle cx="9" cy="21" r="1"></circle>
+      <circle cx="20" cy="21" r="1"></circle>
+      <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path>
+    </svg>
+    <span data-cart-count class="cart-count" hidden={cartCount === 0}>{cartCount}</span>
+  </a>
+
+  <button type="button" class="nav-toggle" data-nav-toggle aria-expanded="false" aria-controls="mobile-nav" aria-label="Open menu">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </button>
 </header>
+
+<div id="mobile-nav" class="mobile-nav" data-mobile-nav hidden>
+  <nav aria-label="Primary, mobile">
+    <a href="/">Home</a>
+    <a href="/blog">Blog</a>
+    <a href="/shop">Shop</a>
+    <a href="/cart">Cart{cartCount > 0 ? ` (${cartCount})` : ''}</a>
+    {
+      customerName ? (
+        <>
+          <a href="/account">Account ({customerName.split(' ')[0]})</a>
+          <a href="/account/orders">Orders</a>
+          <button type="button" data-logout-button class="link-button mobile-link-button">
+            Log out
+          </button>
+        </>
+      ) : (
+        <a href="/account/login">Log in</a>
+      )
+    }
+  </nav>
+</div>
 
 <script>
   import { getBrowserClient } from '../../lib/browser-client';
@@ -67,6 +107,41 @@ try {
         window.location.href = '/';
       }
     });
+  });
+
+  const toggle = document.querySelector<HTMLButtonElement>('[data-nav-toggle]');
+  const mobileNav = document.querySelector<HTMLDivElement>('[data-mobile-nav]');
+
+  function closeMenu() {
+    if (!toggle || !mobileNav) return;
+    toggle.setAttribute('aria-expanded', 'false');
+    toggle.setAttribute('aria-label', 'Open menu');
+    mobileNav.hidden = true;
+    document.body.classList.remove('mobile-nav-open');
+  }
+
+  function openMenu() {
+    if (!toggle || !mobileNav) return;
+    toggle.setAttribute('aria-expanded', 'true');
+    toggle.setAttribute('aria-label', 'Close menu');
+    mobileNav.hidden = false;
+    document.body.classList.add('mobile-nav-open');
+  }
+
+  toggle?.addEventListener('click', () => {
+    if (toggle.getAttribute('aria-expanded') === 'true') closeMenu();
+    else openMenu();
+  });
+
+  // Closing on link click covers same-page navigations too (Astro's own client-side
+  // navigation, when it kicks in) — without this the panel would still be open in the DOM
+  // after the URL changes.
+  mobileNav?.querySelectorAll('a').forEach((link) => link.addEventListener('click', closeMenu));
+
+  // A resize past the breakpoint (rotating a tablet, or a dev-tools viewport change) shouldn't
+  // leave the panel open underneath the now-restored desktop nav.
+  window.addEventListener('resize', () => {
+    if (window.innerWidth > 720) closeMenu();
   });
 </script>
 
@@ -110,18 +185,129 @@ try {
     color: var(--ink);
   }
 
-  @media (max-width: 640px) {
+  /* Mobile-only affordances — the cart icon (so it's always one tap away, not buried in the
+     menu) and the hamburger toggle. Hidden on desktop, where the full .site-nav already
+     covers both. */
+  .cart-link-mobile,
+  .nav-toggle {
+    display: none;
+  }
+
+  .nav-toggle {
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--ink);
+    cursor: pointer;
+    transition:
+      border-color 0.15s ease,
+      background-color 0.15s ease;
+  }
+
+  .nav-toggle:hover {
+    background: var(--surface-muted);
+    border-color: var(--border-strong);
+  }
+
+  .nav-toggle svg {
+    width: 1.15rem;
+    height: 1.15rem;
+  }
+
+  .mobile-nav {
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    /* Slides in from under the sticky header rather than just popping into view. */
+    animation: mobile-nav-in 0.18s ease;
+  }
+
+  @keyframes mobile-nav-in {
+    from {
+      opacity: 0;
+      transform: translateY(-6px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .mobile-nav {
+      animation: none;
+    }
+  }
+
+  .mobile-nav nav {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: var(--space-2) var(--space-4) var(--space-4);
+    display: flex;
+    flex-direction: column;
+  }
+
+  .mobile-nav nav a,
+  .mobile-link-button {
+    padding: var(--space-4) var(--space-2);
+    border-bottom: 1px solid var(--border);
+    text-decoration: none;
+    color: var(--ink);
+    font-size: var(--text-base);
+    font-weight: 600;
+    text-align: left;
+  }
+
+  .mobile-nav nav a:last-of-type {
+    border-bottom: none;
+  }
+
+  .mobile-link-button {
+    border-bottom: none;
+    color: var(--danger);
+  }
+
+  @media (max-width: 720px) {
     .site-header {
-      flex-wrap: wrap;
-      gap: var(--space-3);
-      padding: var(--space-4) var(--space-4);
+      padding: var(--space-4);
     }
 
     .site-nav {
-      width: 100%;
-      justify-content: space-between;
-      gap: var(--space-4);
-      overflow-x: auto;
+      display: none;
+    }
+
+    .cart-link-mobile {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      width: 2.25rem;
+      height: 2.25rem;
+      color: var(--ink);
+    }
+
+    .cart-link-mobile svg {
+      width: 1.35rem;
+      height: 1.35rem;
+    }
+
+    .cart-link-mobile .cart-count {
+      position: absolute;
+      top: -0.3rem;
+      right: -0.3rem;
+      min-width: 1.1rem;
+      height: 1.1rem;
+      font-size: 0.65rem;
+      padding: 0 0.3rem;
+    }
+
+    .nav-toggle {
+      display: inline-flex;
+      margin-left: var(--space-2);
     }
   }
 </style>

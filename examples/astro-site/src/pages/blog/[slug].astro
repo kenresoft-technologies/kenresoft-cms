@@ -12,8 +12,8 @@ const { slug } = Astro.params;
 const previewToken = Astro.url.searchParams.get('preview_token');
 const entry = slug
   ? previewToken
-    ? await cms.entries.preview({ contentType: 'blog-post', slug, token: previewToken })
-    : await cms.entries.get({ contentType: 'blog-post', slug })
+    ? await cms.entries.preview({ contentType: 'blog-post', slug, token: previewToken }).catch(() => null)
+    : await cms.entries.get({ contentType: 'blog-post', slug }).catch(() => null)
   : null;
 
 if (!entry) {

@@ -10,7 +10,7 @@ const cms = createKenresoftClient({ url: import.meta.env.PUBLIC_KENRESOFT_CMS_UR
 // type or a missing/draft entry both come back as the same `null` here — this page renders a
 // clear "not set up yet" state rather than crashing, since a fresh clone of this example won't
 // have seeded any content until its own setup step runs.
-const entry = await cms.entries.get({ contentType: 'page', slug: 'about' });
+const entry = await cms.entries.get({ contentType: 'page', slug: 'about' }).catch(() => null);
 
 const title = entry ? String(entry.data.metaTitle ?? entry.data.title ?? 'About') : 'About';
 const description = entry ? (entry.data.metaDescription ? String(entry.data.metaDescription) : undefined) : undefined;
