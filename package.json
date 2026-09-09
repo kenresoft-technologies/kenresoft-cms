@@ -27,8 +27,9 @@
       "qs": "^6.16.0",
       "esbuild": "^0.28.1",
       "undici": "^7.29.0",
-      "sharp": "^0.35.0",
+      "sharp": "^0.35.4",
       "ws": "^8.21.0",
+      "js-yaml": "^4.3.2",
       "@better-auth/core>zod": "4.4.3",
       "better-call>zod": "4.4.3"
     }
