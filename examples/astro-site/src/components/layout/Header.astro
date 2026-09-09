@@ -1,22 +1,26 @@
 ---
 import { createServerClient } from '../../lib/site-client';
 
-// SSR: forwards the incoming request's own cookies to the CMS API so the header reflects real
-// signed-in/guest state and the real cart count on first paint — no flash of the wrong state,
-// and no separate client-side round trip just to render a badge. cart-badge.ts still refreshes
-// the count client-side after an add/remove so it stays live without a full reload.
+// SSR: forwards the incoming request's own cookies to the CMS API to get the real cart count on
+// first paint (the guest-cart cookie is set on the FIRST add-to-cart, which — unlike the customer
+// session — genuinely can be same-site with the Astro app if a deployment chooses to route
+// through it; where it isn't, this just comes back empty and cart-badge.ts's client-side refresh
+// catches up). Customer identity is NOT trusted from this SSR call — see lib/account-guard.ts's
+// comment: on a cross-origin deployment (the common case) the customer session cookie is set
+// directly by the browser's own fetch to the CMS API, so it lands on the API's own origin and
+// never reaches this SSR request's cookie header at all, making createServerClient always see a
+// signed-in visitor as a guest. Both the guest and signed-in nav markup are rendered up front
+// below; the inline script picks the right one client-side, where the check is actually reliable.
 const cms = createServerClient(Astro.request.headers.get('cookie'));
 
 let cartCount = 0;
-let customerName: string | null = null;
 
 try {
-  const [cart, customer] = await Promise.all([cms.commerce.cart.get(), cms.commerce.customer.get()]);
+  const cart = await cms.commerce.cart.get();
   cartCount = cart.items.reduce((sum, item) => sum + item.quantity, 0);
-  customerName = customer?.name ?? null;
 } catch {
   // Commerce may be disabled/unreachable on some deployments — the header still renders, just
-  // without account/cart state, rather than failing the whole page.
+  // without cart state, rather than failing the whole page.
 }
 ---
 
@@ -40,19 +44,10 @@ try {
       Cart
       <span data-cart-count class="cart-count" hidden={cartCount === 0}>{cartCount}</span>
     </a>
-    {
-      customerName ? (
-        <>
-          <a href="/account">Account ({customerName.split(' ')[0]})</a>
-          <a href="/account/orders">Orders</a>
-          <button type="button" data-logout-button class="link-button">
-            Log out
-          </button>
-        </>
-      ) : (
-        <a href="/account/login">Log in</a>
-      )
-    }
+    <a href="/account/login" data-guest-nav>Log in</a>
+    <a href="/account" data-customer-nav hidden>Account (<span data-customer-name></span>)</a>
+    <a href="/account/orders" data-customer-nav hidden>Orders</a>
+    <button type="button" data-logout-button data-customer-nav hidden class="link-button">Log out</button>
   </nav>
 
   <a href="/cart" class="cart-link cart-link-mobile" aria-label={`Cart, ${cartCount} item${cartCount === 1 ? '' : 's'}`}>
@@ -79,24 +74,16 @@ try {
     <a href="/blog">Blog</a>
     <a href="/shop">Shop</a>
     <a href="/cart">Cart{cartCount > 0 ? ` (${cartCount})` : ''}</a>
-    {
-      customerName ? (
-        <>
-          <a href="/account">Account ({customerName.split(' ')[0]})</a>
-          <a href="/account/orders">Orders</a>
-          <button type="button" data-logout-button class="link-button mobile-link-button">
-            Log out
-          </button>
-        </>
-      ) : (
-        <a href="/account/login">Log in</a>
-      )
-    }
+    <a href="/account/login" data-guest-nav>Log in</a>
+    <a href="/account" data-customer-nav hidden>Account (<span data-customer-name></span>)</a>
+    <a href="/account/orders" data-customer-nav hidden>Orders</a>
+    <button type="button" data-logout-button data-customer-nav hidden class="link-button mobile-link-button">Log out</button>
   </nav>
 </div>
 
 <script>
   import { getBrowserClient } from '../../lib/browser-client';
+  import { getCustomerClientSide } from '../../lib/account-guard';
 
   document.querySelectorAll<HTMLButtonElement>('[data-logout-button]').forEach((button) => {
     button.addEventListener('click', async () => {
@@ -106,6 +93,18 @@ try {
       } finally {
         window.location.href = '/';
       }
+    });
+  });
+
+  // The nav renders in its signed-out state by default (see the frontmatter comment above for
+  // why SSR can't reliably know better) — corrected here via a real client-side check, which is
+  // the only place this can actually be answered correctly.
+  getCustomerClientSide().then((customer) => {
+    if (!customer) return;
+    document.querySelectorAll<HTMLElement>('[data-guest-nav]').forEach((el) => (el.hidden = true));
+    document.querySelectorAll<HTMLElement>('[data-customer-nav]').forEach((el) => (el.hidden = false));
+    document.querySelectorAll<HTMLElement>('[data-customer-name]').forEach((el) => {
+      el.textContent = customer.name.split(' ')[0] ?? customer.name;
     });
   });
 

@@ -202,6 +202,10 @@ export interface VerifyCustomerEmailOptions {
   token: string;
 }
 
+export interface ResendCustomerVerificationEmailOptions {
+  email: string;
+}
+
 export interface UpdateCustomerProfileOptions {
   name?: string;
   phone?: string | null;
@@ -397,6 +401,8 @@ export interface KenresoftClient {
       confirmPasswordReset(options: ConfirmCustomerPasswordResetOptions): Promise<{ message: string }>;
       /** Throws KenresoftApiError (400) for an invalid/expired token. */
       verifyEmail(options: VerifyCustomerEmailOptions): Promise<{ message: string }>;
+      /** Always resolves with the same generic message regardless of whether the email matches an account or is already verified — never reveals either. */
+      resendVerificationEmail(options: ResendCustomerVerificationEmailOptions): Promise<{ message: string }>;
     };
     /**
      * The signed-in customer's own profile/addresses/order-history — every method throws
@@ -610,6 +616,9 @@ export function createKenresoftClient(config: KenresoftClientConfig): KenresoftC
         },
         verifyEmail({ token }) {
           return commerceRequest<{ message: string }>(`/customer-auth/verify-email?token=${encodeURIComponent(token)}`);
+        },
+        resendVerificationEmail(options) {
+          return commerceRequest<{ message: string }>('/customer-auth/verify-email/resend', { method: 'POST', body: JSON.stringify(options) });
         },
       },
       customer: {

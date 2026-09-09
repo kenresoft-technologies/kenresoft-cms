@@ -1,0 +1,127 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import Alert from '../../components/ui/Alert.astro';
+
+const token = Astro.url.searchParams.get('token');
+---
+
+<BaseLayout title="Verify your email — Kenresoft CMS" noIndex>
+  <div class="auth-page">
+    <h1>Verify your email</h1>
+
+    {
+      !token ? (
+        <Alert tone="error">
+          This link is missing its verification token. Use the link from your verification email, or
+          <a href="/account/settings">check your account settings</a> once signed in.
+        </Alert>
+      ) : (
+        <>
+          <div id="verify-loading" class="loading-note">Verifying…</div>
+          <Alert tone="error" id="verify-error" hidden />
+          <Alert tone="success" id="verify-success" hidden>
+            Your email is verified.
+          </Alert>
+          <p id="verify-resend-row" class="verify-resend-row" hidden>
+            <button type="button" class="button button-secondary" id="verify-resend-button">Send a new verification email</button>
+            <span id="verify-resend-status" class="verify-resend-status"></span>
+          </p>
+          <p class="auth-links"><a href="/account">Go to your account</a></p>
+        </>
+      )
+    }
+  </div>
+</BaseLayout>
+
+<script>
+  import { getBrowserClient, KenresoftApiError } from '../../lib/browser-client';
+  import { getCustomerClientSide } from '../../lib/account-guard';
+
+  const token = new URLSearchParams(window.location.search).get('token');
+  const loadingEl = document.getElementById('verify-loading') as HTMLElement | null;
+  const errorEl = document.getElementById('verify-error') as HTMLElement | null;
+  const successEl = document.getElementById('verify-success') as HTMLElement | null;
+  const resendRowEl = document.getElementById('verify-resend-row') as HTMLElement | null;
+  const resendButtonEl = document.getElementById('verify-resend-button') as HTMLButtonElement | null;
+  const resendStatusEl = document.getElementById('verify-resend-status') as HTMLElement | null;
+
+  if (token && loadingEl && errorEl && successEl) {
+    getBrowserClient()
+      .commerce.customerAuth.verifyEmail({ token })
+      .then(() => {
+        loadingEl.hidden = true;
+        successEl.hidden = false;
+      })
+      .catch(async (err) => {
+        loadingEl.hidden = true;
+        // A used/expired token is exactly the case this page is meant to catch — offer a fresh
+        // one immediately rather than sending the visitor off to dig through /account/settings.
+        // Only possible if they're still signed in (register auto-signs-in before email is
+        // verified — see account-guard.ts) or signed in again since; otherwise there's no known
+        // email to resend to, so this button stays hidden and the plain error message is all
+        // there is.
+        errorEl.textContent = err instanceof KenresoftApiError ? err.message : 'Could not verify your email.';
+        errorEl.hidden = false;
+
+        const customer = await getCustomerClientSide();
+        if (customer && !customer.emailVerified && resendRowEl && resendButtonEl && resendStatusEl) {
+          resendRowEl.hidden = false;
+          resendButtonEl.addEventListener('click', async () => {
+            resendButtonEl.disabled = true;
+            resendStatusEl.textContent = 'Sending…';
+            try {
+              await getBrowserClient().commerce.customerAuth.resendVerificationEmail({ email: customer.email });
+              resendStatusEl.textContent = 'Sent — check your inbox.';
+            } catch (resendErr) {
+              resendStatusEl.textContent = resendErr instanceof KenresoftApiError ? resendErr.message : 'Could not send the email.';
+              resendButtonEl.disabled = false;
+            }
+          });
+        }
+      });
+  }
+</script>
+
+<style>
+  .auth-page {
+    max-width: 420px;
+    margin: 0 auto;
+    padding: var(--space-16) var(--space-6) var(--space-20);
+  }
+
+  .auth-page h1 {
+    margin: 0 0 var(--space-8);
+    font-size: var(--text-3xl);
+    font-weight: 600;
+    text-align: center;
+  }
+
+  .auth-links {
+    text-align: center;
+    margin: var(--space-4) 0 0;
+    font-size: var(--text-sm);
+  }
+
+  .auth-links a {
+    color: var(--brand);
+    font-weight: 600;
+    text-decoration: none;
+  }
+
+  .auth-links a:hover {
+    text-decoration: underline;
+  }
+
+  .verify-resend-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-3);
+    margin: var(--space-4) 0 0;
+  }
+
+  .verify-resend-status {
+    font-size: var(--text-sm);
+    color: var(--ink-muted);
+  }
+</style>

@@ -2,11 +2,10 @@
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import AccountNav from '../../components/account/AccountNav.astro';
 import Alert from '../../components/ui/Alert.astro';
-import { requireCustomerOrRedirect } from '../../lib/site-client';
 
-const result = await requireCustomerOrRedirect(Astro.request, '/account/settings');
-if ('redirect' in result) return Astro.redirect(result.redirect);
-const { customer } = result;
+// Identity/data load client-side, not via SSR — see lib/account-guard.ts's comment for why an
+// SSR cookie-forwarding check can't reliably answer "is this visitor signed in" once the Astro
+// site and the CMS API are different origins (the common case).
 ---
 
 <BaseLayout title="Account settings — Kenresoft CMS" noIndex>
@@ -15,21 +14,23 @@ const { customer } = result;
     <div class="account-content">
       <h1>Account settings</h1>
 
-      <section class="settings-section">
+      <div id="settings-loading" class="loading-note">Loading…</div>
+
+      <section class="settings-section" id="profile-section" hidden>
         <h2>Profile</h2>
         <form id="profile-form">
           <label class="field">
             <span>Email</span>
-            <input type="email" value={customer.email} disabled />
+            <input type="email" id="profile-email" disabled />
             <span class="hint">Email can't be changed here — it isn't a supported update on this deployment.</span>
           </label>
           <label class="field">
             <span>Full name</span>
-            <input type="text" name="name" value={customer.name} required />
+            <input type="text" name="name" id="profile-name" required />
           </label>
           <label class="field">
             <span>Phone (optional)</span>
-            <input type="tel" name="phone" value={customer.phone ?? ''} />
+            <input type="tel" name="phone" id="profile-phone" />
           </label>
           <Alert tone="error" id="profile-error" hidden />
           <Alert tone="success" id="profile-success" hidden>Profile updated.</Alert>
@@ -37,7 +38,7 @@ const { customer } = result;
         </form>
       </section>
 
-      <section class="settings-section">
+      <section class="settings-section" id="password-section" hidden>
         <h2>Change password</h2>
         <form id="password-form">
           <label class="field">
@@ -59,8 +60,13 @@ const { customer } = result;
 
 <script>
   import { getBrowserClient, KenresoftApiError } from '../../lib/browser-client';
+  import { requireCustomerClientSide } from '../../lib/account-guard';
 
   const cms = getBrowserClient();
+
+  const loadingEl = document.getElementById('settings-loading') as HTMLElement;
+  const profileSection = document.getElementById('profile-section') as HTMLElement;
+  const passwordSection = document.getElementById('password-section') as HTMLElement;
 
   const profileForm = document.getElementById('profile-form') as HTMLFormElement;
   const profileError = document.getElementById('profile-error') as HTMLElement;
@@ -118,6 +124,19 @@ const { customer } = result;
       passwordSubmit.textContent = 'Change password';
     }
   });
+
+  (async () => {
+    const customer = await requireCustomerClientSide('/account/settings');
+    if (!customer) return; // already redirecting to /account/login
+
+    loadingEl.hidden = true;
+    profileSection.hidden = false;
+    passwordSection.hidden = false;
+
+    (document.getElementById('profile-email') as HTMLInputElement).value = customer.email;
+    (document.getElementById('profile-name') as HTMLInputElement).value = customer.name;
+    (document.getElementById('profile-phone') as HTMLInputElement).value = customer.phone ?? '';
+  })();
 </script>
 
 <style>

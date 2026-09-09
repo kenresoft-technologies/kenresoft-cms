@@ -4,6 +4,7 @@ import type { PluginBindings, PluginVariables } from '@kenresoft-cms/plugin-sdk'
 import { desc, or, like, pluginCommerceCustomers } from '@kenresoft-cms/database';
 import type { PluginCommerceCustomer, PluginCommerceCustomerAddress } from '@kenresoft-cms/database';
 
+import { sendVerificationEmail } from '../lib/verification-email';
 import { listAddressesForCustomer } from '../repository/customer-addresses';
 import { getCustomerById, setCustomerDisabled } from '../repository/customers';
 import { deleteAllSessionsForCustomer } from '../repository/customer-sessions';
@@ -148,5 +149,34 @@ adminCustomersRoutes.openapi(
     if (disabled) await deleteAllSessionsForCustomer(ctx.db, id);
 
     return c.json(toCustomerSummary(updated!), 200);
+  },
+);
+
+adminCustomersRoutes.openapi(
+  createRoute({
+    method: 'post',
+    path: '/{id}/resend-verification-email',
+    tags: ['Commerce Admin: Customers'],
+    summary: 'Resend the email-verification link on a customer\'s behalf',
+    middleware: requirePluginRole('admin'),
+    request: { params: idParamSchema },
+    responses: {
+      200: { description: 'Sent (or a no-op if the customer is already verified).', content: { 'application/json': { schema: z.object({ message: z.string() }) } } },
+      404: { description: 'No customer with that id.', content: { 'application/json': { schema: errorSchema } } },
+    },
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const ctx = c.get('pluginContext');
+
+    const customer = await getCustomerById(ctx.db, id);
+    if (!customer) return c.json({ error: 'Customer not found' }, 404);
+
+    if (customer.emailVerified) {
+      return c.json({ message: 'This customer\'s email is already verified — nothing sent.' }, 200);
+    }
+
+    await sendVerificationEmail(ctx.db, c.executionCtx.waitUntil.bind(c.executionCtx), ctx.email, ctx.config, customer);
+    return c.json({ message: 'Verification email sent.' }, 200);
   },
 );

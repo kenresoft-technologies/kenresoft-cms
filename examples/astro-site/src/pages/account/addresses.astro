@@ -2,10 +2,10 @@
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import AccountNav from '../../components/account/AccountNav.astro';
 import Alert from '../../components/ui/Alert.astro';
-import { requireCustomerOrRedirect } from '../../lib/site-client';
 
-const result = await requireCustomerOrRedirect(Astro.request, '/account/addresses');
-if ('redirect' in result) return Astro.redirect(result.redirect);
+// Identity is checked client-side, not via SSR — see lib/account-guard.ts's comment for why an
+// SSR cookie-forwarding check can't reliably answer "is this visitor signed in" once the Astro
+// site and the CMS API are different origins (the common case).
 ---
 
 <BaseLayout title="Addresses — Kenresoft CMS" noIndex>
@@ -75,6 +75,7 @@ if ('redirect' in result) return Astro.redirect(result.redirect);
 
 <script>
   import { getBrowserClient, KenresoftApiError } from '../../lib/browser-client';
+  import { requireCustomerClientSide } from '../../lib/account-guard';
   import type { CommerceCustomerAddress } from '@kenresoft-cms/astro';
 
   const cms = getBrowserClient();
@@ -219,7 +220,11 @@ if ('redirect' in result) return Astro.redirect(result.redirect);
     }
   });
 
-  loadAddresses();
+  (async () => {
+    const customer = await requireCustomerClientSide('/account/addresses');
+    if (!customer) return; // already redirecting to /account/login
+    await loadAddresses();
+  })();
 </script>
 
 <style>

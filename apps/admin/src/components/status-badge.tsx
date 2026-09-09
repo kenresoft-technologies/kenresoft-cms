@@ -15,6 +15,12 @@ const STATUS_CONFIG: Record<string, { label: string; tone: StatusTone }> = {
   // User activity status (UsersPage) — derived from lastActiveAt, not a stored field.
   active: { label: 'Active', tone: 'success' },
   'never-active': { label: 'Never signed in', tone: 'muted' },
+  // Commerce customer email-verification status — deliberately distinct from active/never-active
+  // above: a customer is auto-signed-in on registration regardless of verification
+  // (packages/plugin-ecommerce/src/routes/customer-auth.ts), so reusing "never signed in" here
+  // would misreport an unverified-but-genuinely-signed-in customer as never having signed in.
+  verified: { label: 'Verified', tone: 'success' },
+  unverified: { label: 'Unverified', tone: 'muted' },
   // Commerce order status (Phase 2c).
   pending: { label: 'Pending', tone: 'info' },
   paid: { label: 'Paid', tone: 'success' },
