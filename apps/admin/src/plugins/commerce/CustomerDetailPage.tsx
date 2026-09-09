@@ -101,7 +101,7 @@ export function CustomerDetailPage() {
 
       {customer ? (
         <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
-          <Card>
+          <Card className="min-w-0">
             <CardHeader>
               <CardTitle>Addresses</CardTitle>
             </CardHeader>
@@ -134,7 +134,7 @@ export function CustomerDetailPage() {
             </CardContent>
           </Card>
 
-          <div className="flex flex-col gap-4">
+          <div className="flex min-w-0 flex-col gap-4">
             <Card>
               <CardHeader>
                 <CardTitle className="text-sm">Status</CardTitle>

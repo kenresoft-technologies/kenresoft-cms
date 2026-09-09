@@ -26,6 +26,8 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Table, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { TableSkeleton } from '@/components/table-skeleton';
 import { formatMoney } from './format';
 import {
   useCommerceCategories,
@@ -106,7 +108,7 @@ function NewProductDialog() {
             <Label htmlFor="product-slug">Slug</Label>
             <Input id="product-slug" required value={slug} onChange={(event) => setSlug(event.target.value)} />
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid gap-4 sm:grid-cols-2">
             <div className="flex flex-col gap-2">
               <Label htmlFor="product-price">Base price</Label>
               <Input
@@ -213,7 +215,23 @@ export function ProductsPage() {
 
       {error ? <p className="text-destructive">{error.message}</p> : null}
 
-      {isPending ? <p className="text-muted-foreground">Loading…</p> : null}
+      {isPending ? (
+        <div className="rounded-xl border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Slug</TableHead>
+                <TableHead>Price</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Category</TableHead>
+                <TableHead>Updated</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableSkeleton columns={6} />
+          </Table>
+        </div>
+      ) : null}
 
       {products && products.length === 0 && statusFilter === ALL_STATUSES && categoryFilter === ALL_CATEGORIES ? (
         <EmptyState

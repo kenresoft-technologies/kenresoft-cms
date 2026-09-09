@@ -133,7 +133,7 @@ function VariantFormDialog({
             <Label htmlFor="variant-name">Name</Label>
             <Input id="variant-name" required value={name} onChange={(event) => setName(event.target.value)} />
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid gap-4 sm:grid-cols-2">
             <div className="flex flex-col gap-2">
               <Label htmlFor="variant-sku">SKU (optional)</Label>
               <Input id="variant-sku" value={sku} onChange={(event) => setSku(event.target.value)} />
@@ -143,7 +143,7 @@ function VariantFormDialog({
               <Input id="variant-price" type="number" min="0" step="0.01" value={price} onChange={(event) => setPrice(event.target.value)} />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid gap-4 sm:grid-cols-2">
             <div className="flex flex-col gap-2">
               <Label htmlFor="variant-stock">Stock quantity</Label>
               <Input
@@ -335,7 +335,7 @@ function ImagesCard({ product, canEdit }: { product: CommerceProductDetail; canE
         {product.images.length === 0 ? (
           <p className="text-sm text-muted-foreground">No images yet.</p>
         ) : (
-          <div className="grid grid-cols-3 gap-3 sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {product.images.map((image) => {
               const media = mediaItems?.find((item) => item.id === image.mediaId);
               return (
@@ -463,13 +463,13 @@ function ProductForm({ product, canEdit }: { product: CommerceProductDetail; can
   return (
     <form className="flex flex-col gap-6" onSubmit={handleSubmit}>
       <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
-        <div className="flex flex-col gap-6">
+        <div className="flex min-w-0 flex-col gap-6">
           <Card>
             <CardHeader>
               <CardTitle>Details</CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-4 sm:grid-cols-2">
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="product-name">Name</Label>
                   <Input id="product-name" required disabled={!canEdit} value={name} onChange={(event) => setName(event.target.value)} />
@@ -498,7 +498,7 @@ function ProductForm({ product, canEdit }: { product: CommerceProductDetail; can
                   onChange={(event) => setDescription(event.target.value)}
                 />
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-4 sm:grid-cols-2">
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="product-price">Base price</Label>
                   <Input
@@ -524,7 +524,7 @@ function ProductForm({ product, canEdit }: { product: CommerceProductDetail; can
                   />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-4 sm:grid-cols-2">
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="product-sku">SKU (optional)</Label>
                   <Input id="product-sku" disabled={!canEdit} value={sku} onChange={(event) => setSku(event.target.value)} />
@@ -572,7 +572,7 @@ function ProductForm({ product, canEdit }: { product: CommerceProductDetail; can
           <ImagesCard product={product} canEdit={canEdit} />
         </div>
 
-        <div className="flex flex-col gap-4">
+        <div className="flex min-w-0 flex-col gap-4">
           <Card>
             <CardHeader>
               <CardTitle className="text-sm">Status</CardTitle>
