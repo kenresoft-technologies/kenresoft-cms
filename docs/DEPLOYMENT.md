@@ -205,6 +205,51 @@ this, sign-in from the deployed admin app fails, since the API rejects cross-ori
 from an origin it doesn't recognize (`docs/ARCHITECTURE.md` §9). `pnpm run setup` automates this
 entire sequence end to end, including the final redeploy.
 
+## Commerce: configuring Paystack (optional)
+
+Only relevant if you're using the `@kenresoft-cms/plugin-ecommerce` plugin — Commerce works fully
+without this (catalog, orders, everything except actually taking payment) if you skip it entirely,
+and payment initialization just responds "not configured" until you set it up.
+
+Kenresoft Commerce takes payment through Paystack's **hosted checkout** only — your Worker calls
+Paystack's Initialize Transaction API, redirects the customer to a page Paystack hosts, and
+Paystack redirects back to your own callback URL. There's no inline/popup JS widget anywhere in
+this integration, which is why **no Paystack public key is ever needed or asked for** — a public
+key exists specifically for client-side/inline widgets to authenticate with Paystack directly from
+the browser, and this integration never puts Paystack's SDK in the browser at all.
+
+The only credential involved is your Paystack **secret key**, and it's a Cloudflare Worker secret,
+exactly like `BETTER_AUTH_SECRET`/`RESEND_API_KEY` above — never a database value, never returned
+by any API response, never logged.
+
+```bash
+# Local dev — add to apps/api/.dev.vars (see .dev.vars.example):
+PAYSTACK_SECRET_KEY=sk_test_your_test_key_here
+
+# Deployed environments:
+wrangler secret put PAYSTACK_SECRET_KEY
+```
+
+Use a key starting `sk_test_` while developing or testing, and one starting `sk_live_` for
+production — Paystack itself decides sandbox-vs-live purely from which secret key you use, so
+switching later is just setting a different secret, nothing in this codebase changes. The Commerce
+Settings page in the admin (`/plugins/commerce/settings`) has a "Verify configuration" button that
+confirms whether the key is set and which environment it's for, without ever displaying the key
+itself — useful for confirming a `wrangler secret put` actually took effect.
+
+Register your webhook URL in the Paystack dashboard under **Settings → API Keys & Webhooks**, so
+Paystack can notify your deployment when a payment completes even if the customer's browser never
+makes it back to the callback page:
+
+```
+https://your-worker-url/api/plugins/commerce/public/v1/payments/webhook
+```
+
+(The Commerce Settings page shows this URL pre-filled with your actual deployed API origin, with a
+copy button — you don't need to construct it by hand.) Paystack signs every webhook delivery with
+the same secret key used above (there's no separate webhook-signing secret to configure), and this
+deployment verifies that signature before ever acting on a delivery.
+
 ## Password recovery & owner recovery
 
 None of this is required to run a deployment — password reset and recovery codes degrade

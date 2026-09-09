@@ -1,7 +1,7 @@
 import { constantTimeEqual } from 'better-auth/crypto';
 
 import type { Bindings } from '../env';
-import type { InitializePaymentInput, InitializePaymentResult, PaymentProvider, PaymentTransactionStatus, VerifyPaymentResult } from './types';
+import type { InitializePaymentInput, InitializePaymentResult, PaymentProvider, PaymentProviderStatus, PaymentTransactionStatus, VerifyPaymentResult } from './types';
 
 const PAYSTACK_BASE_URL = 'https://api.paystack.co';
 
@@ -104,6 +104,15 @@ export function createPaystackProvider(env: Bindings): PaymentProvider {
       if (!signatureHeader) return false;
       const expected = await hmacSha512Hex(secretKey, rawBody);
       return constantTimeEqual(expected, signatureHeader);
+    },
+
+    // Never the key itself — only which of Paystack's two documented prefixes it starts with
+    // (https://paystack.com/docs/payments/test-payments/). Local and synchronous: no network call
+    // to Paystack, since this is a developer-facing status readout, not a live credential check.
+    getStatus(): PaymentProviderStatus {
+      if (secretKey.startsWith('sk_test_')) return { configured: true, environment: 'test' };
+      if (secretKey.startsWith('sk_live_')) return { configured: true, environment: 'live' };
+      return { configured: true, environment: 'unknown' };
     },
   };
 }

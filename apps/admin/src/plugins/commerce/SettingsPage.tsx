@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
+import { PaystackSection } from './PaystackSection';
 import { useCommerceSettings, useUpdateCommerceSettings } from './queries';
 
 function SettingsForm({ storeName: initialStoreName, defaultCurrency: initialDefaultCurrency, canEdit }: {
@@ -95,6 +96,8 @@ export function CommerceSettingsPage() {
       {settings ? (
         <SettingsForm storeName={settings.storeName} defaultCurrency={settings.defaultCurrency} canEdit={canEdit} />
       ) : null}
+
+      <PaystackSection />
     </div>
   );
 }

@@ -31,6 +31,34 @@ settingsRoutes.openapi(
   },
 );
 
+// Never anything more than provider/configured/environment — see PaymentProviderStatus
+// (@kenresoft-cms/plugin-sdk, mirroring apps/api/src/lib/payments/types.ts) for exactly what
+// ctx.payments.getStatus() may and may not expose. No role gate, same as the GET above — this is
+// a read-only, non-sensitive status readout, not a mutation. Deliberately not the actual key,
+// its full value, or anything that could be used to reconstruct it.
+const paymentStatusSchema = z.object({
+  provider: z.literal('Paystack'),
+  configured: z.boolean(),
+  environment: z.enum(['test', 'live', 'unknown']),
+});
+
+settingsRoutes.openapi(
+  createRoute({
+    method: 'get',
+    path: '/payment-status',
+    tags: ['Commerce Settings'],
+    summary: 'Check whether Paystack is configured for this deployment, and which environment (never the secret itself)',
+    responses: {
+      200: { description: 'The current payment-provider status.', content: { 'application/json': { schema: paymentStatusSchema } } },
+    },
+  }),
+  async (c) => {
+    const ctx = c.get('pluginContext');
+    const status = ctx.payments.getStatus();
+    return c.json({ provider: 'Paystack' as const, ...status }, 200);
+  },
+);
+
 settingsRoutes.openapi(
   createRoute({
     method: 'put',
