@@ -116,7 +116,7 @@ removing every `workspace:*` dependency this app had:
   to provide should complete it at least once to confirm the deploy itself succeeds, the way the
   [API Worker's button](../api/README.md) was confirmed.
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/kenresoft-technologies/kenresoft-cms/tree/develop/apps/admin)
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/kenresoft-technologies/kenresoft-cms/tree/main/apps/admin)
 
 **What actually works today:**
 
