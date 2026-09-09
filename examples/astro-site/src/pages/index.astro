@@ -7,8 +7,16 @@ const cms = createKenresoftClient({ url: import.meta.env.PUBLIC_KENRESOFT_CMS_UR
 // "blog-post" is this content type's slug on this deployment — see examples/astro-site's
 // README for how to set that up on a fresh deployment. An empty array here (no content type
 // with that slug yet, or no published entries) is a normal, expected state, not an error —
-// the section below renders nothing rather than an empty heading in that case.
-const posts = await cms.entries.list({ contentType: 'blog-post' });
+// the section below renders nothing rather than an empty heading in that case. A genuine
+// request failure (API unreachable/misconfigured) is caught the same way, so a hero-only
+// homepage still renders instead of a hard crash — matching every other page's own
+// graceful-degradation convention (see shop/index.astro's loadError).
+let posts: Awaited<ReturnType<typeof cms.entries.list>> = [];
+try {
+  posts = await cms.entries.list({ contentType: 'blog-post' });
+} catch {
+  // Nothing further to show for this section — the rest of the homepage is static.
+}
 const latestPosts = posts.slice(0, 3);
 
 const features = [
@@ -35,7 +43,7 @@ const features = [
   <section class="hero">
     <div class="hero-inner">
       <p class="eyebrow">Open source · Cloudflare-native · API-first</p>
-      <h1>Model content once. Publish it anywhere.</h1>
+      <h1>Model content once. <span class="hero-highlight">Publish it anywhere.</span></h1>
       <p class="lede">
         Kenresoft CMS is a reusable content platform built on Cloudflare Workers, D1, and R2 —
         with a clean public REST API any frontend can call, and Astro as a first-class,
@@ -87,9 +95,35 @@ const features = [
 
 <style>
   .hero {
+    position: relative;
     padding: var(--space-20) var(--space-6) var(--space-16);
     border-bottom: 1px solid var(--border);
-    background: radial-gradient(ellipse 80% 60% at 50% -10%, color-mix(in oklch, var(--brand) 8%, transparent), transparent);
+    background: radial-gradient(ellipse 80% 60% at 50% -10%, color-mix(in oklch, var(--brand) 10%, transparent), transparent);
+    overflow: hidden;
+  }
+
+  /* A subtle dot-grid, faded via a radial mask so it reads as texture near the top and
+     dissolves toward the fold — cheap, dependency-free depth instead of a flat wash. */
+  .hero::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: radial-gradient(color-mix(in oklch, var(--ink) 14%, transparent) 1px, transparent 1px);
+    background-size: 22px 22px;
+    -webkit-mask-image: radial-gradient(ellipse 60% 50% at 50% 0%, black, transparent 70%);
+    mask-image: radial-gradient(ellipse 60% 50% at 50% 0%, black, transparent 70%);
+    pointer-events: none;
+  }
+
+  .hero-inner {
+    position: relative;
+  }
+
+  .hero-highlight {
+    background: linear-gradient(100deg, var(--brand), color-mix(in oklch, var(--brand) 55%, oklch(0.62 0.2 320)));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
   }
 
   .hero-inner {
@@ -152,6 +186,16 @@ const features = [
     background: var(--surface);
     border: 1px solid var(--border);
     box-shadow: var(--shadow-sm);
+    transition:
+      border-color 0.15s ease,
+      box-shadow 0.2s ease,
+      transform 0.2s ease;
+  }
+
+  .feature-card:hover {
+    border-color: var(--border-strong);
+    box-shadow: var(--shadow-md);
+    transform: translateY(-3px);
   }
 
   .feature-card h2 {

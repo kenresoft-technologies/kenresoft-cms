@@ -9,13 +9,13 @@ const cms = createKenresoftClient({ url: import.meta.env.PUBLIC_KENRESOFT_CMS_UR
 // have their own separate /shop?category= filtering. Fetched per-request, matching every other
 // page's SSR-on-request approach.
 const { slug } = Astro.params;
-const category = slug ? await cms.entries.get({ contentType: 'category', slug }) : null;
+const category = slug ? await cms.entries.get({ contentType: 'category', slug }).catch(() => null) : null;
 
 if (!category) {
   return new Response(null, { status: 404, statusText: 'Not Found' });
 }
 
-const allPosts = await cms.entries.list({ contentType: 'blog-post' });
+const allPosts = await cms.entries.list({ contentType: 'blog-post' }).catch(() => []);
 const posts = allPosts.filter((post) => post.data.category === category.id);
 
 const title = String(category.data.title ?? category.slug);

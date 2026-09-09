@@ -5,7 +5,7 @@ import RichText from '../components/cms/RichText.astro';
 import Alert from '../components/ui/Alert.astro';
 
 const cms = createKenresoftClient({ url: import.meta.env.PUBLIC_KENRESOFT_CMS_URL });
-const entry = await cms.entries.get({ contentType: 'page', slug: 'contact' });
+const entry = await cms.entries.get({ contentType: 'page', slug: 'contact' }).catch(() => null);
 ---
 
 <BaseLayout title="Contact — Kenresoft CMS" canonicalUrl={new URL('/contact', Astro.site ?? Astro.url).toString()}>

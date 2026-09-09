@@ -359,13 +359,19 @@ const { title, description = 'A Cloudflare-native, API-first content and commerc
   }
 
   .button-primary {
-    background: var(--brand);
+    background: linear-gradient(180deg, color-mix(in oklch, var(--brand) 92%, white), var(--brand));
     color: var(--brand-foreground);
-    box-shadow: var(--shadow-sm);
+    box-shadow:
+      var(--shadow-sm),
+      inset 0 1px 0 color-mix(in oklch, white 20%, transparent);
   }
 
   .button-primary:hover:not(:disabled) {
-    background: var(--brand-hover);
+    background: linear-gradient(180deg, var(--brand), var(--brand-hover));
+    box-shadow:
+      var(--shadow-md),
+      inset 0 1px 0 color-mix(in oklch, white 20%, transparent);
+    transform: translateY(-1px);
   }
 
   .button-secondary {
