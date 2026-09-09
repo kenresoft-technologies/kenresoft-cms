@@ -1,4 +1,5 @@
 export * from './settings';
+export * from './structured-settings';
 export * from './content-types';
 export * from './field-definitions';
 export * from './entries';

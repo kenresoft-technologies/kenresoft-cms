@@ -95,6 +95,39 @@ export function roleAtLeast(role: UserRole, minimum: UserRole): boolean {
   return ROLE_RANK[role] >= ROLE_RANK[minimum];
 }
 
+// Structured Settings (docs/ARCHITECTURE.md §6): singleton, typed, schema-validated site
+// configuration — distinct from both Global Variables (arbitrary, schema-less key/value) and
+// the CMS-internal `settings` table (deployment-operational config: name, CORS, feature flags,
+// preview URL). One row per module in the `structured_settings` table; the module name itself
+// is plain text at the DB layer (no CHECK constraint — this codebase validates enum-shaped
+// columns at the API/Zod layer everywhere else too, e.g. entries.status, user.role) but kept
+// as a real TS union here so route/repository code can't typo a module name past the compiler.
+// Deliberately not a plugin-extensible registry yet (no concrete second consumer exists) —
+// adding one later only means widening this union/union-keyed record, not a schema rewrite.
+export const STRUCTURED_SETTINGS_MODULES = ['general', 'contact', 'social', 'navigation', 'footer', 'seo'] as const;
+
+export type StructuredSettingsModule = (typeof STRUCTURED_SETTINGS_MODULES)[number];
+
+// Known platforms get their own enum value (admin UI can show a real icon/label for each);
+// 'custom' is the escape hatch so a future platform never needs a migration or a contracts
+// release to be added — an operator just picks 'custom' and supplies their own label.
+export const KNOWN_SOCIAL_PLATFORMS = [
+  'twitter',
+  'linkedin',
+  'github',
+  'instagram',
+  'facebook',
+  'medium',
+  'hashnode',
+  'youtube',
+  'tiktok',
+  'discord',
+] as const;
+
+export const SOCIAL_PLATFORMS = [...KNOWN_SOCIAL_PLATFORMS, 'custom'] as const;
+
+export type SocialPlatform = (typeof SOCIAL_PLATFORMS)[number];
+
 // Fired from apps/api/src/routes/admin/entries.ts at the route layer (not the repository),
 // since only the route handler has both the pre-update and post-update entry to compare
 // statuses against — "updated" always fires alongside "published"/"unpublished" on a status-

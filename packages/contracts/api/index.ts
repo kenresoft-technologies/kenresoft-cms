@@ -16,5 +16,6 @@ export * from '../schemas/media';
 export * from '../schemas/password-recovery';
 export * from '../schemas/plugins';
 export * from '../schemas/settings';
+export * from '../schemas/structured-settings';
 export * from '../schemas/users';
 export * from '../schemas/webhooks';

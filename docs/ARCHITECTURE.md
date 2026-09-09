@@ -7,6 +7,36 @@ Status: Proposed / Ready for implementation
 
 ## Changelog
 
+**v0.12 (2026-09-09)** — Adds **Structured Settings** (§6.2), a third configuration primitive
+alongside Content Types/Entries and Global Variables — prompted by a real production website
+migration that exposed Global Variables being stretched to cover structured, typed site
+configuration (contact details, social links, navigation, footer, SEO) it was never designed
+for. A new `structured_settings` table (`packages/database/schema/structured-settings.ts`,
+migration `0032`) holds one singleton row per module (`general`/`contact`/`social`/`navigation`/
+`footer`/`seo`), each validated against its own Zod schema
+(`packages/contracts/schemas/structured-settings.ts`) rather than a fixed set of DB columns —
+deliberately not six separate tables, and deliberately not a generic plugin-settings-registration
+framework (no second consumer exists yet to justify one). `social`'s shape is a `links: []`
+collection with a known-platform enum plus a `'custom'` escape hatch, so a new platform never
+needs a migration. `general`/`seo` reference an existing Media row by id (`logoMediaId`/
+`defaultOgImageMediaId`) rather than duplicating Media's own metadata. Admin API:
+`GET`/`PUT /api/v1/admin/structured-settings/:module` (PUT is admin-only, audit-logged); public
+API: `GET /api/v1/public/settings/:module`, edge-cached and cache-invalidated the same way
+`global-variables`/`content` already are, mounted before the content catch-all. A one-time,
+idempotent, admin-triggered import (`POST /api/v1/admin/structured-settings/migrate-legacy`,
+surfaced as an "Import into Structured Settings" action on the Global Variables page) copies only
+an explicit, deterministic set of known legacy Global Variable keys (`site_name`, `tagline`,
+`contact_email`/`phone`/`address`, `social_*`, `footer_copyright`) into the corresponding module —
+never overwrites an already-populated module, never touches an unrecognized key, and reports
+anything it had to skip (a malformed URL, a required field never set). Global Variables and the
+CMS-internal `Settings` singleton are otherwise unchanged — nothing is deleted, and both remain
+exactly what §6.2 says they're for. `apps/admin`'s Settings UI gained Contact/Social/Navigation/
+Footer/SEO sections (replacing Social's previous "this moved to Global Variables" redirect with a
+real editor) plus a "Site branding" card under General, distinct from `Settings.name` (the
+deployment's own admin-facing identity). `@kenresoft-cms/astro` gained `cms.settings.general()/
+.contact()/.social()/.navigation()/.footer()/.seo()`, each a typed wrapper over the new public
+route, resolving `{}` rather than `null` for a module never saved.
+
 **v0.11 (2026-08-28)** — Adds the account-recovery mechanisms v0.10 deliberately deferred:
 password reset via email, recovery codes, and two independent owner-recovery paths for a fully
 locked-out deployment — all designed so Kenresoft itself never holds any credential, secret, or
@@ -487,7 +517,9 @@ kenresoft-cms/
 
 | Entity | Purpose |
 |---|---|
-| Settings | Singleton per-deployment site configuration (name, contact email, social links, CORS origin, feature flags) |
+| Settings | Singleton per-deployment **operational** configuration (deployment identity name, CORS origin, feature flags, Live Preview URL template) — never exposed to the public API. Used to also carry `contactEmail`/`socialLinks`; both were removed once Global Variables, and later Structured Settings, gave that kind of data a real home (see §6.2/Changelog). |
+| StructuredSettings | Singleton, typed, schema-validated **site** configuration — one row per module (`general`/`contact`/`social`/`navigation`/`footer`/`seo`), each validated against its own Zod schema (`packages/contracts/schemas/structured-settings.ts`). Publicly readable per module at `GET /api/v1/public/settings/:module` (§6.2). |
+| GlobalVariable | Generic, arbitrary key/value configuration with no fixed schema — feature flags, plugin/app variables, and anything genuinely schema-less. Publicly readable as a flat map at `GET /api/v1/public/global-variables`. Not the home for structured site content once a Structured Settings module exists for it (§6.2). |
 | User | Administrative identity |
 | Role | Authorization role; initially simple, extensible later |
 | ContentType | Defines a reusable type such as Blog Post or Service |
@@ -499,6 +531,32 @@ kenresoft-cms/
 | FormSubmission | Captured form submission; separate from CMS content |
 | AuditLog | Security/administrative activity history |
 | APIKey | Future programmatic access mechanism |
+
+### 6.2 Settings vs. Structured Settings vs. Global Variables
+
+Three distinct places exist for "configuration," each with a clear boundary — picking the wrong
+one for a given value is the mistake this section exists to prevent:
+
+- **Use a Content Type/Entry** when the data is repeatable, editorial, or domain content (blog
+  posts, services, portfolio items) — anything with more than one instance, or that benefits
+  from drafts/revisions/scheduling.
+- **Use Structured Settings** when the data is *singleton* configuration with a *stable schema*
+  that a frontend needs to render — a site name, a set of social links, primary navigation, a
+  footer, SEO defaults. Each module's shape is a real Zod schema, not a free-form blob, so a
+  frontend integration (e.g. `@kenresoft-cms/astro`'s `cms.settings.*`) gets real TypeScript types
+  instead of parsing string keys.
+- **Use a Global Variable** when the value is genuinely arbitrary, low-level, or plugin/
+  application-specific and doesn't justify a stable schema — a feature flag, a one-off custom
+  value a specific deployment needs that isn't part of any Structured Settings module.
+- **Use the CMS-internal `Settings` singleton** only for deployment-*operational* configuration
+  that the admin itself needs to function (its own display name, CORS origin, feature flags,
+  the Live Preview URL template) — never for anything a public frontend renders. This table
+  briefly also carried `contactEmail`/`socialLinks`, removed once this distinction existed to
+  hold them properly instead.
+
+A value migrating from Global Variables into a new Structured Settings module (as `contact`/
+`social`/`footer` did, §16) is expected as the CMS's schema-worthy configuration surface grows —
+Global Variables remains the correct home for anything that never earns a stable schema.
 
 ### 6.1 Initial content field types
 

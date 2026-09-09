@@ -1,4 +1,14 @@
-import type { Entry, FormSubmission, PublicMedia } from '@kenresoft-cms/contracts';
+import type {
+  ContactSettingsData,
+  Entry,
+  FooterSettingsData,
+  FormSubmission,
+  GeneralSettingsData,
+  NavigationSettingsData,
+  PublicMedia,
+  SeoSettingsData,
+  SocialSettingsData,
+} from '@kenresoft-cms/contracts';
 
 // Type-only imports — erased at compile time, so this package never actually depends on zod
 // (or anything else @kenresoft-cms/contracts pulls in) at runtime. They exist purely so this
@@ -372,6 +382,21 @@ export interface KenresoftClient {
     list(): Promise<Record<string, string>>;
   };
   /**
+   * Structured Settings (docs/ARCHITECTURE.md §6) — singleton, typed, schema-validated site
+   * configuration, distinct from the free-form `globalVariables` above. Each method matches
+   * `GET /api/v1/public/settings/:module` exactly (edge-cached the same way) and resolves an
+   * empty object `{}` — never null — for a module that's never been saved in the admin, so a
+   * consumer can always destructure straight into its own defaults.
+   */
+  settings: {
+    general(): Promise<GeneralSettingsData | Record<string, never>>;
+    contact(): Promise<ContactSettingsData | Record<string, never>>;
+    social(): Promise<SocialSettingsData | Record<string, never>>;
+    navigation(): Promise<NavigationSettingsData | Record<string, never>>;
+    footer(): Promise<FooterSettingsData | Record<string, never>>;
+    seo(): Promise<SeoSettingsData | Record<string, never>>;
+  };
+  /**
    * The Commerce plugin's storefront surface (packages/plugin-ecommerce) — catalog, cart,
    * checkout, and Paystack payment confirmation. Only present/meaningful on a deployment that
    * has the commerce plugin installed and enabled; calling these against one that doesn't will
@@ -595,6 +620,26 @@ export function createKenresoftClient(config: KenresoftClientConfig): KenresoftC
       async list() {
         const variables = await request<Record<string, string>>('/api/v1/public/global-variables');
         return variables ?? {};
+      },
+    },
+    settings: {
+      async general() {
+        return (await request<GeneralSettingsData>('/api/v1/public/settings/general')) ?? {};
+      },
+      async contact() {
+        return (await request<ContactSettingsData>('/api/v1/public/settings/contact')) ?? {};
+      },
+      async social() {
+        return (await request<SocialSettingsData>('/api/v1/public/settings/social')) ?? {};
+      },
+      async navigation() {
+        return (await request<NavigationSettingsData>('/api/v1/public/settings/navigation')) ?? {};
+      },
+      async footer() {
+        return (await request<FooterSettingsData>('/api/v1/public/settings/footer')) ?? {};
+      },
+      async seo() {
+        return (await request<SeoSettingsData>('/api/v1/public/settings/seo')) ?? {};
       },
     },
     commerce: {
