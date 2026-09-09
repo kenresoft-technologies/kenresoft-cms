@@ -8,8 +8,10 @@ import { EmptyState } from '@/components/empty-state';
 import { PageBreadcrumb } from '@/components/page-breadcrumb';
 import { PageHeader } from '@/components/page-header';
 import { StatusBadge } from '@/components/status-badge';
+import { TableSkeleton } from '@/components/table-skeleton';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Table, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { formatMoney } from './format';
 import { useCommerceOrders, type CommerceOrderStatus, type CommerceOrderSummary } from './queries';
 
@@ -67,7 +69,23 @@ export function OrdersPage() {
 
       {error ? <p className="text-destructive">{error.message}</p> : null}
 
-      {isPending ? <p className="text-muted-foreground">Loading…</p> : null}
+      {isPending ? (
+        <div className="rounded-xl border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Order</TableHead>
+                <TableHead>Customer</TableHead>
+                <TableHead>Email</TableHead>
+                <TableHead>Total</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Placed</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableSkeleton columns={6} />
+          </Table>
+        </div>
+      ) : null}
 
       {orders && orders.length === 0 && statusFilter === ALL_STATUSES ? (
         <EmptyState icon={ShoppingCart} title="No orders yet" description="Orders appear here once a customer or guest checks out." />

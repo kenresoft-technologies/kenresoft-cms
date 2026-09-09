@@ -277,7 +277,7 @@ function EntryForm({ contentTypeId, contentTypeSlug, entryId, fields, entry }: E
   return (
     <form className="flex flex-col gap-6" onSubmit={handleSubmit}>
       <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
-        <Card className="h-fit gap-0 py-0">
+        <Card className="h-fit min-w-0 gap-0 py-0">
           <Tabs defaultValue="edit">
             <CardHeader className="flex-row items-center justify-between border-b py-4">
               <CardTitle>Content</CardTitle>
@@ -333,7 +333,7 @@ function EntryForm({ contentTypeId, contentTypeSlug, entryId, fields, entry }: E
           </Tabs>
         </Card>
 
-        <div className="flex flex-col gap-4">
+        <div className="flex min-w-0 flex-col gap-4">
           <Card>
             <CardHeader>
               <CardTitle className="text-sm">Status</CardTitle>

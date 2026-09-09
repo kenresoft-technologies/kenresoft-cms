@@ -6,6 +6,7 @@ import {
   Inbox,
   LayoutDashboard,
   LayoutList,
+  Layers,
   LogOut,
   Puzzle,
   ScrollText,
@@ -80,7 +81,10 @@ const auditLogItem = { to: '/audit-log', label: 'Audit log', end: false, icon: S
 // so there's nothing a lower role could do with this page. Labeled "Installed Plugins" rather
 // than bare "Plugins" so it doesn't collide with the "Plugins" SidebarGroupLabel below (the
 // group of per-plugin nav entries) in either the rendered DOM or test queries.
-const pluginsItem = { to: '/plugins', label: 'Installed Plugins', end: false, icon: Puzzle };
+// end: true (unlike every other nav item here) — every per-plugin page also lives under
+// /plugins/<id>/..., so a prefix match here would light this item up any time a plugin's own
+// page (e.g. Commerce) is open, at the same time as that plugin's own nav item.
+const pluginsItem = { to: '/plugins', label: 'Installed Plugins', end: true, icon: Puzzle };
 
 function initials(label: string) {
   const parts = label.trim().split(/\s+/);
@@ -158,10 +162,15 @@ export function AppLayout() {
   return (
     <SidebarProvider>
       <Sidebar collapsible="icon">
-        <SidebarHeader className="px-3 py-3">
-          <span className="truncate text-lg font-semibold group-data-[collapsible=icon]:hidden">
-            Kenresoft CMS
-          </span>
+        <SidebarHeader className="px-3 py-3.5">
+          <div className="flex items-center gap-2.5">
+            <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-sidebar-primary text-sidebar-primary-foreground shadow-sm">
+              <Layers className="size-4" />
+            </div>
+            <span className="truncate text-[0.95rem] font-semibold tracking-tight group-data-[collapsible=icon]:hidden">
+              Kenresoft CMS
+            </span>
+          </div>
         </SidebarHeader>
         <SidebarContent>
           <SidebarGroup>
@@ -200,10 +209,12 @@ export function AppLayout() {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <SidebarMenuButton size="lg">
-                <Avatar className="size-6 shrink-0">
-                  <AvatarFallback>{initials(session.user.name || session.user.email)}</AvatarFallback>
+                <Avatar className="size-7 shrink-0 ring-2 ring-sidebar-primary/15">
+                  <AvatarFallback className="bg-sidebar-primary/10 text-xs font-medium text-sidebar-primary">
+                    {initials(session.user.name || session.user.email)}
+                  </AvatarFallback>
                 </Avatar>
-                <span className="truncate text-sm group-data-[collapsible=icon]:hidden">
+                <span className="truncate text-sm font-medium group-data-[collapsible=icon]:hidden">
                   {session.user.name || session.user.email}
                 </span>
               </SidebarMenuButton>
@@ -234,18 +245,25 @@ export function AppLayout() {
         </SidebarFooter>
       </Sidebar>
       <SidebarInset>
-        <header className="flex items-center justify-between gap-2 border-b px-4 py-3">
+        <header className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b bg-background/85 px-4 py-3 backdrop-blur-sm supports-[backdrop-filter]:bg-background/70">
           <SidebarTrigger />
-          <div className="flex items-center gap-1">
-            <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => setCommandPaletteOpen(true)}>
-              <Search />
+          <div className="flex items-center gap-1.5">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2 text-muted-foreground shadow-none hover:text-foreground"
+              onClick={() => setCommandPaletteOpen(true)}
+            >
+              <Search className="size-4" />
               Search
-              <kbd className="ml-1 rounded border bg-muted px-1.5 font-mono text-xs">⌘K</kbd>
+              <kbd className="ml-1 rounded-sm border bg-muted px-1.5 py-px font-mono text-[0.7rem] text-muted-foreground">
+                ⌘K
+              </kbd>
             </Button>
             <ThemeToggle />
           </div>
         </header>
-        <main className="flex-1 p-6">
+        <main className="min-w-0 flex-1 overflow-x-hidden p-6">
           <Outlet />
         </main>
       </SidebarInset>

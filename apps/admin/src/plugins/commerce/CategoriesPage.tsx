@@ -36,6 +36,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
+import { TableSkeleton } from '@/components/table-skeleton';
 import {
   useCommerceCategories,
   useCreateCommerceCategory,
@@ -353,7 +354,21 @@ export function CategoriesPage() {
 
       {error ? <p className="text-destructive">{error.message}</p> : null}
 
-      {isPending ? <p className="text-muted-foreground">Loading…</p> : null}
+      {isPending ? (
+        <div className="rounded-xl border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Slug</TableHead>
+                <TableHead>Parent</TableHead>
+                <TableHead>Status</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableSkeleton columns={4} />
+          </Table>
+        </div>
+      ) : null}
 
       {categories && categories.length === 0 ? (
         <EmptyState
