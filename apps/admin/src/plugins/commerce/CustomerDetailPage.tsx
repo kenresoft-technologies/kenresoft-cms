@@ -20,7 +20,26 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useCommerceCustomer, useUpdateCommerceCustomerDisabled } from './queries';
+import { useCommerceCustomer, useResendCommerceCustomerVerificationEmail, useUpdateCommerceCustomerDisabled } from './queries';
+
+function ResendVerificationControl({ customerId }: { customerId: string }) {
+  const resend = useResendCommerceCustomerVerificationEmail(customerId);
+
+  async function handleClick() {
+    try {
+      const result = await resend.mutateAsync();
+      toast.success(result.message);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Failed to send verification email');
+    }
+  }
+
+  return (
+    <Button type="button" variant="outline" size="sm" onClick={() => void handleClick()} disabled={resend.isPending}>
+      {resend.isPending ? 'Sending…' : 'Resend verification email'}
+    </Button>
+  );
+}
 
 function DisableCustomerControl({ customerId, disabled }: { customerId: string; disabled: boolean }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -147,13 +166,16 @@ export function CustomerDetailPage() {
                       Disabled
                     </Badge>
                   ) : (
-                    <StatusBadge status={customer.emailVerified ? 'active' : 'never-active'} />
+                    <Badge variant="outline" className="border-success/25 bg-success/12 text-success dark:bg-success/20">
+                      Active
+                    </Badge>
                   )}
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Email verified</span>
-                  <span className="text-sm">{customer.emailVerified ? 'Yes' : 'No'}</span>
+                  <StatusBadge status={customer.emailVerified ? 'verified' : 'unverified'} />
                 </div>
+                {!customer.emailVerified ? <ResendVerificationControl customerId={customer.id} /> : null}
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Phone</span>
                   <span className="text-sm">{customer.phone ?? '—'}</span>

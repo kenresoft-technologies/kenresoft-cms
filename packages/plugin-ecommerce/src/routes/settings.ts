@@ -12,6 +12,7 @@ export const settingsRoutes = createPluginOpenApiApp<{ Bindings: PluginBindings;
 const configSchema = z.object({
   storeName: z.string().min(1),
   defaultCurrency: z.string().length(3),
+  siteUrl: z.string().url().nullable(),
 });
 
 settingsRoutes.openapi(
