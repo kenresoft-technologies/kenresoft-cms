@@ -48,6 +48,7 @@ import {
   SidebarMenuItem,
   SidebarProvider,
   SidebarTrigger,
+  useSidebar,
 } from '@/components/ui/sidebar';
 
 const overviewItems = [{ to: '/', label: 'Dashboard', end: true, icon: LayoutDashboard }];
@@ -90,6 +91,10 @@ function initials(label: string) {
 type NavItem = { to: string; label: string; end: boolean; icon: typeof LayoutDashboard };
 
 function NavItems({ items, pathname }: { items: NavItem[]; pathname: string }) {
+  // On mobile the sidebar renders as a Sheet overlay (ui/sidebar.tsx) — react-router's <NavLink>
+  // navigating doesn't unmount or close it on its own, so without this a mobile user has to tap
+  // a selected item, then separately dismiss the sheet by hand to see the page underneath.
+  const { isMobile, setOpenMobile } = useSidebar();
   return (
     <SidebarMenu>
       {items.map((item) => {
@@ -97,7 +102,13 @@ function NavItems({ items, pathname }: { items: NavItem[]; pathname: string }) {
         return (
           <SidebarMenuItem key={item.to}>
             <SidebarMenuButton asChild isActive={isActive} tooltip={item.label}>
-              <NavLink to={item.to} end={item.end}>
+              <NavLink
+                to={item.to}
+                end={item.end}
+                onClick={() => {
+                  if (isMobile) setOpenMobile(false);
+                }}
+              >
                 <item.icon />
                 <span>{item.label}</span>
               </NavLink>
