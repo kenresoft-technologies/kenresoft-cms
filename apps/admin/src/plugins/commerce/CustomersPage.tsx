@@ -7,7 +7,9 @@ import { EmptyState } from '@/components/empty-state';
 import { PageBreadcrumb } from '@/components/page-breadcrumb';
 import { PageHeader } from '@/components/page-header';
 import { StatusBadge } from '@/components/status-badge';
+import { TableSkeleton } from '@/components/table-skeleton';
 import { Badge } from '@/components/ui/badge';
+import { Table, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useCommerceCustomers, type CommerceCustomerSummary } from './queries';
 
 const columns: ColumnDef<CommerceCustomerSummary>[] = [
@@ -49,7 +51,21 @@ export function CustomersPage() {
 
       {error ? <p className="text-destructive">{error.message}</p> : null}
 
-      {isPending ? <p className="text-muted-foreground">Loading…</p> : null}
+      {isPending ? (
+        <div className="rounded-xl border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Email</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Joined</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableSkeleton columns={4} />
+          </Table>
+        </div>
+      ) : null}
 
       {customers && customers.length === 0 ? (
         <EmptyState icon={UsersIcon} title="No customers yet" description="Customer accounts appear here once someone registers." />
