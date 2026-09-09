@@ -805,3 +805,66 @@ update sticks, and submitting checkout (on an instance with no `PAYSTACK_SECRET_
 deliberately, since no real Paystack credentials are available to this environment) correctly
 falls through to the inline confirmation rather than breaking. Zero unexpected console errors —
 the one 503 logged is the deliberate payments-unconfigured path being exercised, not a bug.
+
+## Paystack developer status UI — done, 2026-09-09
+
+A developer-experience-only pass, not a change to how payments/secrets actually work: an operator
+setting up (or troubleshooting) a deployment previously had no way to check whether
+`PAYSTACK_SECRET_KEY` was actually set, or whether it was a test or live key, short of reading
+source or trying a real checkout. Closed with one additive method on the existing provider
+boundary, never by loosening it.
+
+`PaymentProvider`/`PluginPaymentsService` (`apps/api/src/lib/payments/types.ts`,
+`packages/plugin-sdk/src/context.ts`) both gained `getStatus(): { configured: boolean;
+environment: 'test' | 'live' | 'unknown' }` — local, synchronous, no network call. The Paystack
+implementation (`paystack.ts`) derives `environment` purely from which of Paystack's two
+documented prefixes (`sk_test_`/`sk_live_`) the already-in-hand secret starts with; the noop
+implementation (`noop.ts`) always reports `{ configured: false, environment: 'unknown' }`. Neither
+implementation, nor the new route below, ever returns the key itself or anything derived from more
+than its own prefix — `getStatus()` exists specifically so a plugin (or this admin UI) never needs
+to see the credential to answer "is this set up." `apps/api/src/plugins/context.ts`'s
+`createPluginPaymentsService` needed no change at all — it already passes `PaymentProvider`
+through to `PluginPaymentsService` verbatim, and the two interfaces are still identical shapes.
+
+New `GET /api/plugins/commerce/v1/settings/payment-status` (`packages/plugin-ecommerce/src/routes/
+settings.ts`, same no-role-gate treatment as the existing settings `GET /`, since this is a
+read-only, non-sensitive status readout, not a mutation) calls `ctx.payments.getStatus()` and
+returns exactly `{ provider: 'Paystack', configured, environment }` — nothing else, by
+construction (the response schema is a closed Zod object, not a passthrough of whatever the
+provider returns).
+
+`apps/admin`'s Commerce Settings page (`apps/admin/src/plugins/commerce/SettingsPage.tsx`) gained
+a new Paystack section (`PaystackSection.tsx`): a "Verify configuration" button that calls the new
+endpoint on demand (not fetched automatically on page load, since this is meant as an explicit
+check, not ambient page data) and renders Not configured / Configured badges, an
+environment-specific banner (a plain informational note for test, a visually distinct
+destructive-toned warning for live — "real transactions will be processed"), copy-pasteable
+`.dev.vars`/`wrangler secret put PAYSTACK_SECRET_KEY` setup snippets, and the deployment's own
+webhook URL (`${API_URL}/api/plugins/commerce/public/v1/payments/webhook`, derived from the
+admin app's existing `API_URL` — never a hardcoded domain) with a copy-to-clipboard button, plus
+links out to Paystack's dashboard and docs. The page never has a field that accepts a secret or
+public key of any kind — setup instructions are shown as plain text/code blocks, matching this
+integration's server-redirect-only design (no inline/JS widget ever needs a public key at all).
+When not configured, the page explains plainly that Commerce still works — catalog/order
+management is unaffected — only payment initialization is disabled until a key is set, matching
+`PaymentProvider`'s own existing "not configured" convention rather than treating it as an error.
+
+`docs/DEPLOYMENT.md` gained a "Commerce: configuring Paystack (optional)" section (see there) so
+this is documented for a fresh deployment without needing to read source or find this admin page
+first.
+
+Verified live against a real, isolated `wrangler dev` instance (dedicated `--persist-to`
+path/port, killed and confirmed via `netstat`/`taskkill` before starting, per this project's own
+standing Windows note that a background task's shell id doesn't reliably kill the underlying
+`workerd`/`node` tree): with `PAYSTACK_SECRET_KEY` unset, both the API route and the admin UI
+correctly show "not configured"; setting a fake `sk_test_...` value in that isolated instance's
+own `.dev.vars` flips the response to `{ configured: true, environment: 'test' }` and the UI shows
+the test-mode banner; setting a fake `sk_live_...` value flips it to `environment: 'live'` and the
+UI shows the live-transactions warning. The actual HTTP response body was inspected directly for
+every case (not just the rendered UI) to confirm it never carries anything beyond
+`provider`/`configured`/`environment` — no key, no prefix, no length, nothing key-shaped. New
+tests: `paystack-provider.test.ts` gained `getStatus()` coverage for the noop provider and both
+Paystack key prefixes plus an unrecognized-prefix case (`unknown`); a new
+`commerce-payment-status.test.ts` exercises the real route end-to-end against real D1 (session
+required, and the response's own key set asserted to be exactly `{configured, environment,
+provider}`).
