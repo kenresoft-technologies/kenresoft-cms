@@ -294,6 +294,23 @@ export function useUpdateCommerceSettings() {
   });
 }
 
+// Paystack config/status — a deliberately non-sensitive readout (never the secret key itself,
+// never anything key-shaped) backing the Commerce Settings page's Paystack section. Not a
+// useQuery hook with its own cache key: this is triggered on demand by a "Verify configuration"
+// button (useMutation with a GET-shaped call), not something to fetch automatically on page load,
+// since it's a manual, explicit check rather than ambient page data.
+export interface CommercePaymentStatus {
+  provider: 'Paystack';
+  configured: boolean;
+  environment: 'test' | 'live' | 'unknown';
+}
+
+export function useCheckCommercePaymentStatus() {
+  return useMutation({
+    mutationFn: () => apiClient.get<CommercePaymentStatus>(`${BASE}/settings/payment-status`),
+  });
+}
+
 // Phase 2b — Cart & Customer. Customer PII (email/address/phone) is admin-role-gated on the API
 // side (stricter than catalog's editor floor); these hooks call the same routes, gating is
 // enforced server-side regardless of what the UI shows.
