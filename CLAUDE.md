@@ -2036,9 +2036,11 @@ addition (`settings-routes`, `global-variables-routes`, `public-routes`, `public
 `audit-log` — 27 tests, all still passing); `apps/admin`'s existing `SettingsPage.test.tsx`
 updated for the new sections and the disambiguated "Public site name" label, plus a new test for
 the Site-branding save path — full `apps/admin` suite re-run clean afterward (31 files, 163
-tests). Not yet done, flagged rather than silently skipped: `docs/ARCHITECTURE.md`'s §16
-migrations list and `docs/DEPLOYMENT.md` weren't independently re-verified against the new
-migration beyond what `pnpm run update`'s existing "applies any new migration" behavior already
-guarantees; and a real click-through of the "Import into Structured Settings" flow against
-`kenresoft.com`'s own actual production Global Variables data hasn't happened yet — this pass
-built and unit/integration-tested the mechanism, not the real website migration itself.
+tests). Merged to `main` via PR #34 (2026-09-09) and confirmed against a real deployment: a
+`pnpm run update` run applied migration `0032` and redeployed both Workers cleanly, and the new
+Settings sections (Contact/Social/Navigation/Footer/SEO, plus General's "Site branding" card)
+were confirmed visible and working in that deployment's live admin UI. Still not yet done, flagged
+rather than silently skipped: a real click-through of the "Import into Structured Settings" legacy
+migration against `kenresoft.com`'s own actual production Global Variables data — the live check
+above confirmed the update/deploy path and the new UI render correctly, not that the legacy-import
+button has been run against real production Global Variables yet.
