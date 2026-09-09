@@ -358,9 +358,11 @@ CI provider is just as valid a way to ship changes.
 
 ## Updating an existing install
 
-New CMS features and fixes land on the project's `develop` branch (its default branch) —
-`CHANGELOG.md` tracks what actually changed, in plain terms, so you know what you're pulling in
-before you do.
+New CMS features and fixes are developed on the project's `develop` branch, then periodically
+merged into `main` — the repository's default branch, and the one `pnpm run update`,
+`npm create @kenresoft-cms@latest`, and the "Deploy to Cloudflare" buttons all pull from (each
+follows GitHub's default branch automatically rather than a hardcoded name). `CHANGELOG.md`
+tracks what actually changed, in plain terms, so you know what you're pulling in before you do.
 
 From the repo root, run:
 
