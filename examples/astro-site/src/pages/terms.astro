@@ -22,16 +22,26 @@ import BaseLayout from '../layouts/BaseLayout.astro';
   .legal {
     max-width: 720px;
     margin: 0 auto;
-    padding: 3rem 1.5rem 5rem;
-    line-height: 1.7;
+    padding: var(--space-12) var(--space-6) var(--space-20);
+  }
+
+  .legal h1 {
+    margin: 0 0 var(--space-6);
+    font-size: var(--text-3xl);
+    font-weight: 600;
+  }
+
+  .legal p {
+    max-width: var(--measure);
+    line-height: var(--leading-relaxed);
   }
 
   .legal-note {
-    padding: 0.85rem 1rem;
+    padding: var(--space-4);
     background: var(--surface-muted);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     color: var(--ink-muted);
-    font-size: 0.9rem;
+    font-size: var(--text-sm);
   }
 </style>
