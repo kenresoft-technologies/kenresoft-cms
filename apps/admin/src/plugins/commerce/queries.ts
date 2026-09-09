@@ -69,6 +69,7 @@ export interface CommerceProductDetail extends CommerceProduct {
 export interface CommerceSettings {
   storeName: string;
   defaultCurrency: string;
+  siteUrl: string | null;
 }
 
 export interface CommerceProductFilters {
@@ -377,6 +378,12 @@ export function useUpdateCommerceCustomerDisabled(customerId: string) {
       void queryClient.invalidateQueries({ queryKey: customersKey });
       void queryClient.invalidateQueries({ queryKey: customerByIdKey(customerId) });
     },
+  });
+}
+
+export function useResendCommerceCustomerVerificationEmail(customerId: string) {
+  return useMutation({
+    mutationFn: () => apiClient.post<{ message: string }>(`${BASE}/customers/${customerId}/resend-verification-email`, {}),
   });
 }
 

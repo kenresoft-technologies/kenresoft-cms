@@ -1,63 +1,110 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import AccountNav from '../../components/account/AccountNav.astro';
-import { createServerClient, requireCustomerOrRedirect } from '../../lib/site-client';
 
-// A real, server-verified protected-route check — Astro.redirect() only actually aborts
-// rendering when returned directly from THIS page's own top-level frontmatter (see
-// site-client.ts's own comment on why a shared layout component can't do this). Verified live:
-// hitting /account with no session cookie produces a real redirect to /account/login, not a
-// client-side-hidden page that briefly flashes real content before JS kicks in.
-const result = await requireCustomerOrRedirect(Astro.request, '/account');
-if ('redirect' in result) return Astro.redirect(result.redirect);
-const { customer } = result;
-
-const cms = createServerClient(Astro.request.headers.get('cookie'));
-const orders = await cms.commerce.customer.orders.list().catch(() => []);
-const recentOrders = orders.slice(0, 5);
+// Identity/data load client-side, not via SSR — see lib/account-guard.ts's comment for why an
+// SSR cookie-forwarding check can't reliably answer "is this visitor signed in" once the Astro
+// site and the CMS API are different origins (the common case).
 ---
 
 <BaseLayout title="My account — Kenresoft CMS" noIndex>
   <div class="account-page">
     <AccountNav active="dashboard" />
     <div class="account-content">
-      <h1>Welcome back, {customer.name.split(' ')[0]}</h1>
-      <p class="account-summary">
-        {customer.email} {customer.emailVerified ? null : <span class="unverified">(email not verified)</span>}
-      </p>
+      <div id="account-loading" class="loading-note">Loading…</div>
+      <div id="account-body" hidden>
+        <h1 id="account-greeting"></h1>
+        <p class="account-summary" id="account-summary"></p>
+        <p id="verify-resend-row" class="verify-resend-row" hidden>
+          <button type="button" class="button button-secondary" id="verify-resend-button">Resend verification email</button>
+          <span id="verify-resend-status" class="verify-resend-status"></span>
+        </p>
 
-      <section class="account-section">
-        <div class="section-header">
-          <h2>Recent orders</h2>
-          <a href="/account/orders">View all →</a>
-        </div>
-        {
-          recentOrders.length === 0 ? (
-            <p class="empty-note">No orders yet. <a href="/shop">Browse the shop →</a></p>
-          ) : (
-            <ul class="order-list">
-              {recentOrders.map((order) => (
-                <li>
-                  <a href={`/account/orders/${order.id}`}>
-                    Order #{order.id.slice(0, 8)} — {order.status} — {new Date(order.createdAt).toLocaleDateString()}
-                  </a>
-                </li>
-              ))}
-            </ul>
-          )
-        }
-      </section>
+        <section class="account-section">
+          <div class="section-header">
+            <h2>Recent orders</h2>
+            <a href="/account/orders">View all →</a>
+          </div>
+          <div id="account-orders"></div>
+        </section>
 
-      <section class="account-section">
-        <h2>Quick links</h2>
-        <div class="quick-links">
-          <a href="/account/addresses" class="button button-secondary">Manage addresses</a>
-          <a href="/account/settings" class="button button-secondary">Account settings</a>
-        </div>
-      </section>
+        <section class="account-section">
+          <h2>Quick links</h2>
+          <div class="quick-links">
+            <a href="/account/addresses" class="button button-secondary">Manage addresses</a>
+            <a href="/account/settings" class="button button-secondary">Account settings</a>
+          </div>
+        </section>
+      </div>
     </div>
   </div>
 </BaseLayout>
+
+<script>
+  import { requireCustomerClientSide } from '../../lib/account-guard';
+  import { getBrowserClient, KenresoftApiError } from '../../lib/browser-client';
+
+  const loadingEl = document.getElementById('account-loading') as HTMLElement;
+  const bodyEl = document.getElementById('account-body') as HTMLElement;
+  const greetingEl = document.getElementById('account-greeting') as HTMLElement;
+  const summaryEl = document.getElementById('account-summary') as HTMLElement;
+  const ordersEl = document.getElementById('account-orders') as HTMLElement;
+  const resendRowEl = document.getElementById('verify-resend-row') as HTMLElement;
+  const resendButtonEl = document.getElementById('verify-resend-button') as HTMLButtonElement;
+  const resendStatusEl = document.getElementById('verify-resend-status') as HTMLElement;
+
+  function escapeHtml(value: string): string {
+    const div = document.createElement('div');
+    div.textContent = value;
+    return div.innerHTML;
+  }
+
+  (async () => {
+    const customer = await requireCustomerClientSide('/account');
+    if (!customer) return; // already redirecting to /account/login
+
+    loadingEl.hidden = true;
+    bodyEl.hidden = false;
+    greetingEl.textContent = `Welcome back, ${customer.name.split(' ')[0]}`;
+
+    summaryEl.textContent = customer.email;
+    if (!customer.emailVerified) {
+      const span = document.createElement('span');
+      span.className = 'unverified';
+      span.textContent = ' (email not verified)';
+      summaryEl.appendChild(span);
+      resendRowEl.hidden = false;
+    }
+
+    resendButtonEl.addEventListener('click', async () => {
+      resendButtonEl.disabled = true;
+      resendStatusEl.textContent = 'Sending…';
+      try {
+        await getBrowserClient().commerce.customerAuth.resendVerificationEmail({ email: customer.email });
+        resendStatusEl.textContent = 'Verification email sent — check your inbox.';
+      } catch (err) {
+        resendStatusEl.textContent = err instanceof KenresoftApiError ? err.message : 'Could not send the email. Please try again.';
+        resendButtonEl.disabled = false;
+      }
+    });
+
+    try {
+      const orders = await getBrowserClient().commerce.customer.orders.list();
+      const recentOrders = orders.slice(0, 5);
+      ordersEl.innerHTML =
+        recentOrders.length === 0
+          ? '<p class="empty-note">No orders yet. <a href="/shop">Browse the shop →</a></p>'
+          : `<ul class="order-list">${recentOrders
+              .map(
+                (order) =>
+                  `<li><a href="/account/orders/${order.id}">Order #${order.id.slice(0, 8)} — ${escapeHtml(order.status)} — ${new Date(order.createdAt).toLocaleDateString()}</a></li>`,
+              )
+              .join('')}</ul>`;
+    } catch {
+      ordersEl.innerHTML = '<p class="empty-note">No orders yet. <a href="/shop">Browse the shop →</a></p>';
+    }
+  })();
+</script>
 
 <style>
   .account-page {
@@ -90,6 +137,18 @@ const recentOrders = orders.slice(0, 5);
   .unverified {
     color: var(--warning);
     font-weight: 600;
+  }
+
+  .verify-resend-row {
+    margin: 0 0 var(--space-8);
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+  }
+
+  .verify-resend-status {
+    font-size: var(--text-sm);
+    color: var(--ink-muted);
   }
 
   .account-section {

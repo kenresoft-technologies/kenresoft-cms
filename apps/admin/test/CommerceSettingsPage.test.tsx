@@ -46,8 +46,8 @@ describe('CommerceSettingsPage', () => {
   });
 
   it('shows the current settings and saves an edit', async () => {
-    getMock.mockResolvedValue({ storeName: 'My Store', defaultCurrency: 'NGN' });
-    putMock.mockResolvedValue({ storeName: 'New Name', defaultCurrency: 'USD' });
+    getMock.mockResolvedValue({ storeName: 'My Store', defaultCurrency: 'NGN', siteUrl: null });
+    putMock.mockResolvedValue({ storeName: 'New Name', defaultCurrency: 'USD', siteUrl: null });
 
     renderPage();
 
@@ -66,6 +66,7 @@ describe('CommerceSettingsPage', () => {
       expect(putMock).toHaveBeenCalledWith('/api/plugins/commerce/v1/settings', {
         storeName: 'New Name',
         defaultCurrency: 'USD',
+        siteUrl: null,
       }),
     );
   });
@@ -75,7 +76,7 @@ describe('CommerceSettingsPage', () => {
       data: { user: { email: 'viewer@example.test', role: 'viewer' } },
       isPending: false,
     });
-    getMock.mockResolvedValue({ storeName: 'My Store', defaultCurrency: 'NGN' });
+    getMock.mockResolvedValue({ storeName: 'My Store', defaultCurrency: 'NGN', siteUrl: null });
 
     renderPage();
 

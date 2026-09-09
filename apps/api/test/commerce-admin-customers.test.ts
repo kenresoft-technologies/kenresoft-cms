@@ -1,6 +1,7 @@
 import { createDb } from '@kenresoft-cms/database';
 import { createCustomerSession } from '@kenresoft-cms/plugin-ecommerce/src/repository/customer-sessions';
-import { createCustomer } from '@kenresoft-cms/plugin-ecommerce/src/repository/customers';
+import { createCustomerToken } from '@kenresoft-cms/plugin-ecommerce/src/repository/customer-tokens';
+import { createCustomer, markCustomerEmailVerified } from '@kenresoft-cms/plugin-ecommerce/src/repository/customers';
 import { SELF, env } from 'cloudflare:test';
 import { beforeEach, describe, expect, it } from 'vitest';
 
@@ -124,5 +125,40 @@ describe('commerce plugin: admin customers (real D1)', () => {
       headers: { Cookie: customerCookie },
     });
     expect(meAfterReEnable.status).toBe(401);
+  });
+
+  it('staff can resend a verification email for an unverified customer, and it is a no-op for one already verified', async () => {
+    const adminCookie = await authedCookie('commerce-admin-customers-4@example.test');
+    const db = createDb(env.DB);
+    const unverified = await createCustomer(db, { email: 'unverified@example.test', name: 'Unverified', password: 'correct horse battery staple' });
+    const verified = await createCustomer(db, { email: 'verified@example.test', name: 'Verified', password: 'correct horse battery staple' });
+    await markCustomerEmailVerified(db, verified.id);
+    const staleToken = await createCustomerToken(db, unverified.id, 'email_verification');
+
+    const resendUnverified = await SELF.fetch(`${ADMIN_BASE}/${unverified.id}/resend-verification-email`, {
+      method: 'POST',
+      headers: { Cookie: adminCookie },
+    });
+    expect(resendUnverified.status).toBe(200);
+    expect(await resendUnverified.json()).toMatchObject({ message: 'Verification email sent.' });
+
+    // The prior token was superseded by the fresh one the resend just issued.
+    const staleAttempt = await SELF.fetch(
+      `https://example.com/api/plugins/commerce/public/v1/customer-auth/verify-email?token=${encodeURIComponent(staleToken)}`,
+    );
+    expect(staleAttempt.status).toBe(400);
+
+    const resendVerified = await SELF.fetch(`${ADMIN_BASE}/${verified.id}/resend-verification-email`, {
+      method: 'POST',
+      headers: { Cookie: adminCookie },
+    });
+    expect(resendVerified.status).toBe(200);
+    expect(await resendVerified.json()).toMatchObject({ message: "This customer's email is already verified — nothing sent." });
+
+    const resendMissing = await SELF.fetch(`${ADMIN_BASE}/does-not-exist/resend-verification-email`, {
+      method: 'POST',
+      headers: { Cookie: adminCookie },
+    });
+    expect(resendMissing.status).toBe(404);
   });
 });

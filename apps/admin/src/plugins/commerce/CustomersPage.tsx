@@ -25,7 +25,7 @@ const columns: ColumnDef<CommerceCustomerSummary>[] = [
           Disabled
         </Badge>
       ) : (
-        <StatusBadge status={row.original.emailVerified ? 'active' : 'never-active'} />
+        <StatusBadge status={row.original.emailVerified ? 'verified' : 'unverified'} />
       ),
   },
   {

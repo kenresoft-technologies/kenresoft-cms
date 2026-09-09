@@ -14,13 +14,20 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { PaystackSection } from './PaystackSection';
 import { useCommerceSettings, useUpdateCommerceSettings } from './queries';
 
-function SettingsForm({ storeName: initialStoreName, defaultCurrency: initialDefaultCurrency, canEdit }: {
+function SettingsForm({
+  storeName: initialStoreName,
+  defaultCurrency: initialDefaultCurrency,
+  siteUrl: initialSiteUrl,
+  canEdit,
+}: {
   storeName: string;
   defaultCurrency: string;
+  siteUrl: string | null;
   canEdit: boolean;
 }) {
   const [storeName, setStoreName] = useState(initialStoreName);
   const [defaultCurrency, setDefaultCurrency] = useState(initialDefaultCurrency);
+  const [siteUrl, setSiteUrl] = useState(initialSiteUrl ?? '');
   const [error, setError] = useState<string | null>(null);
   const updateSettings = useUpdateCommerceSettings();
 
@@ -28,7 +35,11 @@ function SettingsForm({ storeName: initialStoreName, defaultCurrency: initialDef
     event.preventDefault();
     setError(null);
     try {
-      await updateSettings.mutateAsync({ storeName, defaultCurrency: defaultCurrency.toUpperCase() });
+      await updateSettings.mutateAsync({
+        storeName,
+        defaultCurrency: defaultCurrency.toUpperCase(),
+        siteUrl: siteUrl.trim() || null,
+      });
       toast.success('Settings saved');
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to save settings';
@@ -66,6 +77,22 @@ function SettingsForm({ storeName: initialStoreName, defaultCurrency: initialDef
             />
             <p className="text-xs text-muted-foreground">A 3-letter ISO currency code, e.g. NGN or USD.</p>
           </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="store-site-url">Storefront URL</Label>
+            <Input
+              id="store-site-url"
+              type="url"
+              placeholder="https://your-storefront.example.com"
+              disabled={!canEdit}
+              value={siteUrl}
+              onChange={(event) => setSiteUrl(event.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              Optional — used to build real links in verify-email/password-reset emails (e.g.{' '}
+              <code>https://your-storefront.example.com/account/verify-email?token=...</code>). Leave blank and those
+              emails fall back to a plain token instead of a link.
+            </p>
+          </div>
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
           {canEdit ? (
             <Button type="submit" disabled={updateSettings.isPending} className="w-fit">
@@ -94,7 +121,12 @@ export function CommerceSettingsPage() {
       {isPending ? <Skeleton className="h-48 w-full max-w-md" /> : null}
 
       {settings ? (
-        <SettingsForm storeName={settings.storeName} defaultCurrency={settings.defaultCurrency} canEdit={canEdit} />
+        <SettingsForm
+          storeName={settings.storeName}
+          defaultCurrency={settings.defaultCurrency}
+          siteUrl={settings.siteUrl}
+          canEdit={canEdit}
+        />
       ) : null}
 
       <PaystackSection />

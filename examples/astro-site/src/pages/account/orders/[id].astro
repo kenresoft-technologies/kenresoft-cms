@@ -1,84 +1,145 @@
 ---
 import BaseLayout from '../../../layouts/BaseLayout.astro';
 import AccountNav from '../../../components/account/AccountNav.astro';
-import OrderStatusBadge from '../../../components/commerce/OrderStatusBadge.astro';
-import { createServerClient, requireCustomerOrRedirect } from '../../../lib/site-client';
-import { formatMoney } from '../../../lib/money';
-import { KenresoftApiError } from '@kenresoft-cms/astro';
 
+// Identity/data load client-side, not via SSR — see lib/account-guard.ts's comment for why an
+// SSR cookie-forwarding check can't reliably answer "is this visitor signed in" once the Astro
+// site and the CMS API are different origins (the common case). The order id itself is a route
+// param, not identity-dependent, so it's still read here and handed to the client script via a
+// data attribute — the one thing this page still needs from Astro's own SSR.
 const { id } = Astro.params;
-const result = await requireCustomerOrRedirect(Astro.request, `/account/orders/${id}`);
-if ('redirect' in result) return Astro.redirect(result.redirect);
-
-const cms = createServerClient(Astro.request.headers.get('cookie'));
-
-// customer.orders.get() 404s identically whether the id doesn't exist at all, belongs to a
-// guest checkout, or belongs to a DIFFERENT customer (packages/plugin-ecommerce/src/routes/
-// customer.ts: "never distinguishable from the outside") — this is the real cross-customer
-// isolation guarantee this rebuild's spec asked to be verified for real, not just trusted from
-// reading the route file. See this example's README/the final report for how that was verified
-// live (two real customers, confirmed A can't fetch B's order).
-let order;
-try {
-  order = id ? await cms.commerce.customer.orders.get(id) : null;
-} catch (err) {
-  if (err instanceof KenresoftApiError && err.status === 404) {
-    return new Response(null, { status: 404, statusText: 'Not Found' });
-  }
-  throw err;
-}
-if (!order) {
-  return new Response(null, { status: 404, statusText: 'Not Found' });
-}
 ---
 
-<BaseLayout title={`Order #${order.id.slice(0, 8)} — Kenresoft CMS`} noIndex>
-  <div class="account-page">
+<BaseLayout title="Order details — Kenresoft CMS" noIndex>
+  <div class="account-page" data-order-id={id}>
     <AccountNav active="orders" />
     <div class="account-content">
       <a class="back-link" href="/account/orders">← Back to orders</a>
-      <div class="order-heading">
-        <h1>Order #{order.id.slice(0, 8)}</h1>
-        <OrderStatusBadge status={order.status} />
-      </div>
-      <p class="order-date">Placed {new Date(order.createdAt).toLocaleString()}</p>
 
-      <div class="items-table-wrap">
-        <table class="items-table">
-          <thead>
-            <tr>
-              <th>Item</th>
-              <th>Qty</th>
-              <th>Price</th>
-            </tr>
-          </thead>
-          <tbody>
-            {
-              order.items.map((item) => (
-                <tr>
-                  <td>
-                    {item.productName}
-                    {item.variantName ? <span class="variant-name"> — {item.variantName}</span> : null}
-                  </td>
-                  <td>{item.quantity}</td>
-                  <td>{formatMoney(item.unitPriceAtPurchase * item.quantity, order.currency)}</td>
-                </tr>
-              ))
-            }
-          </tbody>
-          <tfoot>
-            <tr>
-              <td colspan="2">Total</td>
-              <td>{formatMoney(order.totalAmount, order.currency)}</td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
+      <div id="order-loading" class="loading-note">Loading…</div>
+      <p id="order-not-found" hidden class="empty-note">
+        This order couldn't be found — it may not exist, or it may belong to a different account.
+      </p>
 
-      {order.status === 'pending' ? <p class="pending-note">This order is awaiting payment — visit <a href={`/order/${order.id}`}>the payment page</a> to complete it.</p> : null}
+      <div id="order-body" hidden>
+        <div class="order-heading">
+          <h1 id="order-title"></h1>
+          <span id="order-status-badge"></span>
+        </div>
+        <p class="order-date" id="order-date"></p>
+
+        <div class="items-table-wrap">
+          <table class="items-table">
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th>Qty</th>
+                <th>Price</th>
+              </tr>
+            </thead>
+            <tbody id="order-items"></tbody>
+            <tfoot>
+              <tr>
+                <td colspan="2">Total</td>
+                <td id="order-total"></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+
+        <p id="order-pending-note" class="pending-note" hidden></p>
+      </div>
     </div>
   </div>
 </BaseLayout>
+
+<script>
+  import { getBrowserClient, KenresoftApiError } from '../../../lib/browser-client';
+  import { requireCustomerClientSide } from '../../../lib/account-guard';
+  import { formatMoney } from '../../../lib/money';
+
+  const containerEl = document.querySelector('.account-page') as HTMLElement;
+  const orderId = containerEl.dataset.orderId ?? '';
+
+  const loadingEl = document.getElementById('order-loading') as HTMLElement;
+  const notFoundEl = document.getElementById('order-not-found') as HTMLElement;
+  const bodyEl = document.getElementById('order-body') as HTMLElement;
+  const titleEl = document.getElementById('order-title') as HTMLElement;
+  const statusBadgeEl = document.getElementById('order-status-badge') as HTMLElement;
+  const dateEl = document.getElementById('order-date') as HTMLElement;
+  const itemsEl = document.getElementById('order-items') as HTMLElement;
+  const totalEl = document.getElementById('order-total') as HTMLElement;
+  const pendingNoteEl = document.getElementById('order-pending-note') as HTMLElement;
+
+  function escapeHtml(value: string): string {
+    const div = document.createElement('div');
+    div.textContent = value;
+    return div.innerHTML;
+  }
+
+  // Mirrors components/commerce/OrderStatusBadge.astro's labels/classes — that component is
+  // server-rendered only, so this client-rendered page reproduces its output by hand instead.
+  const statusLabels: Record<string, string> = {
+    pending: 'Awaiting payment',
+    paid: 'Paid',
+    fulfilled: 'Fulfilled',
+    cancelled: 'Cancelled',
+    refunded: 'Refunded',
+  };
+
+  (async () => {
+    const customer = await requireCustomerClientSide(`/account/orders/${orderId}`);
+    if (!customer) return; // already redirecting to /account/login
+
+    if (!orderId) {
+      loadingEl.hidden = true;
+      notFoundEl.hidden = false;
+      return;
+    }
+
+    // customer.orders.get() 404s identically whether the id doesn't exist at all, belongs to a
+    // guest checkout, or belongs to a DIFFERENT customer (packages/plugin-ecommerce/src/routes/
+    // customer.ts: "never distinguishable from the outside") — that guarantee is unchanged here,
+    // just surfaced as this same client-rendered "couldn't be found" message either way instead
+    // of a real HTTP 404 status (this page can no longer render a true 404 status now that the
+    // fetch happens client-side rather than in Astro's own SSR response).
+    try {
+      const order = await getBrowserClient().commerce.customer.orders.get(orderId);
+      loadingEl.hidden = true;
+      bodyEl.hidden = false;
+
+      titleEl.textContent = `Order #${order.id.slice(0, 8)}`;
+      statusBadgeEl.className = `order-status order-status-${order.status}`;
+      statusBadgeEl.textContent = statusLabels[order.status] ?? order.status;
+      dateEl.textContent = `Placed ${new Date(order.createdAt).toLocaleString()}`;
+
+      itemsEl.innerHTML = order.items
+        .map(
+          (item) => `
+        <tr>
+          <td>${escapeHtml(item.productName)}${item.variantName ? ` <span class="variant-name">— ${escapeHtml(item.variantName)}</span>` : ''}</td>
+          <td>${item.quantity}</td>
+          <td>${formatMoney(item.unitPriceAtPurchase * item.quantity, order.currency)}</td>
+        </tr>`,
+        )
+        .join('');
+      totalEl.textContent = formatMoney(order.totalAmount, order.currency);
+
+      if (order.status === 'pending') {
+        pendingNoteEl.hidden = false;
+        pendingNoteEl.innerHTML = `This order is awaiting payment — visit <a href="/order/${order.id}">the payment page</a> to complete it.`;
+      }
+    } catch (err) {
+      loadingEl.hidden = true;
+      if (err instanceof KenresoftApiError && err.status === 404) {
+        notFoundEl.hidden = false;
+      } else {
+        notFoundEl.hidden = false;
+        notFoundEl.textContent = 'Could not load this order. Please try again.';
+      }
+    }
+  })();
+</script>
 
 <style>
   .account-page {
@@ -165,6 +226,33 @@ if (!order) {
   }
 
   .variant-name {
+    color: var(--ink-muted);
+  }
+
+  .order-status {
+    display: inline-flex;
+    align-items: center;
+    padding: var(--space-1) var(--space-3);
+    border-radius: 999px;
+    font-size: var(--text-xs);
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .order-status-pending {
+    background: var(--warning-bg);
+    color: color-mix(in oklch, var(--warning) 65%, var(--ink));
+  }
+
+  .order-status-paid,
+  .order-status-fulfilled {
+    background: var(--success-bg);
+    color: color-mix(in oklch, var(--success) 60%, var(--ink));
+  }
+
+  .order-status-cancelled,
+  .order-status-refunded {
+    background: var(--surface-muted);
     color: var(--ink-muted);
   }
 
