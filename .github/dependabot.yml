@@ -5,6 +5,11 @@ updates:
   # packages/*, integrations/*, and examples/* — one root entry is enough, not one per workspace.
   - package-ecosystem: 'npm'
     directory: '/'
+    # Repo branch rules (CLAUDE.md): main is production, never a direct-commit/direct-PR target
+    # — all work, dependency bumps included, goes through develop first. Left unset, Dependabot
+    # falls back to the repo's configured default branch, which is main; every PR it opened
+    # before this targeted main directly, contradicting that rule.
+    target-branch: 'develop'
     schedule:
       interval: 'weekly'
     open-pull-requests-limit: 10
@@ -17,5 +22,6 @@ updates:
 
   - package-ecosystem: 'github-actions'
     directory: '/'
+    target-branch: 'develop'
     schedule:
       interval: 'weekly'
