@@ -17,16 +17,23 @@ export async function sendVerificationEmail(
 ): Promise<void> {
   const verifyToken = await createCustomerToken(db, customer.id, 'email_verification');
   const resolvedConfig = (await config.get()) as CommerceConfig;
+  // config.siteUrl is optional (this plugin has no way to know a storefront's own URL on its
+  // own — same reasoning as Core's settings.previewUrl) — when it's unset, there's no page this
+  // plugin can build a working link to, so the email says so explicitly (instead of handing over
+  // an unexplained bare token) and names exactly where an operator sets it.
+  const verifyUrl = resolvedConfig.siteUrl ? `${resolvedConfig.siteUrl}/account/verify-email?token=${verifyToken}` : null;
   waitUntil(
     email.send({
       to: customer.email,
       subject: 'Verify your email',
-      // config.siteUrl is optional (this plugin has no way to know a storefront's own URL on its
-      // own — same reasoning as Core's settings.previewUrl) — when it's unset, fall back to a
-      // plain instruction rather than a bare, unexplained token with nothing to do with it.
-      text: resolvedConfig.siteUrl
-        ? `Verify your email by visiting: ${resolvedConfig.siteUrl}/account/verify-email?token=${verifyToken}`
-        : `Verify your email with this token: ${verifyToken}`,
+      text: verifyUrl
+        ? `Verify your email by visiting: ${verifyUrl}\n\nThis link expires soon — if it doesn't work, request a new verification email.`
+        : `Your email verification code is: ${verifyToken}\n\n(This store hasn't configured its site URL yet, so we can't send a clickable link — enter this code on the store's verify-email page, or ask the store to set Site URL under Settings → Commerce.)`,
+      ...(verifyUrl
+        ? {
+            html: `<p>Verify your email by <a href="${verifyUrl}">clicking here</a>.</p><p>This link expires soon — if it doesn't work, request a new verification email.</p>`,
+          }
+        : {}),
     }),
   );
 }

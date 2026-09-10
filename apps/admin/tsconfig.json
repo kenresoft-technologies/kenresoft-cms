@@ -20,7 +20,9 @@
     "declarationMap": true,
     "jsx": "react-jsx",
     "types": ["vite/client"],
-    "baseUrl": ".",
+    // "paths" without "baseUrl" resolves each pattern relative to this file's own directory —
+    // supported since TS 4.1, so this isn't a TS7-only migration; baseUrl itself was removed
+    // outright in TypeScript 7 (error TS5102), which is what forced this change.
     "paths": {
       "@/*": ["./src/*"]
     },

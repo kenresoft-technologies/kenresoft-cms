@@ -173,13 +173,19 @@ customerAuthRoutes.openapi(
     if (customer && !customer.disabled) {
       const token = await createCustomerToken(ctx.db, customer.id, 'password_reset');
       const config = (await ctx.config.get()) as CommerceConfig;
+      const resetUrl = config.siteUrl ? `${config.siteUrl}/account/reset-password?token=${token}` : null;
       c.executionCtx.waitUntil(
         ctx.email.send({
           to: customer.email,
           subject: 'Reset your password',
-          text: config.siteUrl
-            ? `Reset your password by visiting: ${config.siteUrl}/account/reset-password?token=${token}`
-            : `Reset your password with this token: ${token}`,
+          text: resetUrl
+            ? `Reset your password by visiting: ${resetUrl}\n\nThis link expires soon. If you didn't request this, you can ignore this email.`
+            : `Your password reset code is: ${token}\n\n(This store hasn't configured its site URL yet, so we can't send a clickable link — enter this code on the store's reset-password page, or ask the store to set Site URL under Settings → Commerce.) If you didn't request this, you can ignore this email.`,
+          ...(resetUrl
+            ? {
+                html: `<p>Reset your password by <a href="${resetUrl}">clicking here</a>.</p><p>This link expires soon. If you didn't request this, you can ignore this email.</p>`,
+              }
+            : {}),
         }),
       );
     }

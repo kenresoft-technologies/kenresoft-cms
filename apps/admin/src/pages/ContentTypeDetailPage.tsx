@@ -63,6 +63,20 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 
 const OPTION_LIST_TYPES: FieldType[] = ['select', 'multi_select'];
 
+// Disambiguates field types that look interchangeable but aren't — most importantly `url`
+// (a plain, hand-typed link — never connects to the Media Library) vs. `media` (picks an
+// already-uploaded image from the Media Library). A content type built with `url` for what was
+// meant to be an image field has no way to attach an uploaded file to it; the fix is switching
+// that field's type to `media`, not something this select can prevent after the fact, so the
+// description is here to prevent the mistake up front.
+const FIELD_TYPE_DESCRIPTIONS: Partial<Record<FieldType, string>> = {
+  url: 'A plain link the editor types by hand — not connected to the Media Library.',
+  media: 'Picks an already-uploaded image from the Media Library.',
+  reference: 'Links to another entry.',
+  rich_text: 'Formatted text with a toolbar (bold, links, images, tables…).',
+  textarea: 'Plain multi-line text, no formatting.',
+};
+
 // Handles both "Add field" and "Edit field" — the same shape of form either way, just a POST
 // vs. a PATCH and different starting values. A single field prop (undefined = create mode)
 // avoids maintaining two near-identical dialogs. The form body is a separate component, keyed
@@ -193,6 +207,9 @@ function FieldForm({
                 })}
               </SelectContent>
             </Select>
+            {FIELD_TYPE_DESCRIPTIONS[fieldType] ? (
+              <p className="text-xs text-muted-foreground">{FIELD_TYPE_DESCRIPTIONS[fieldType]}</p>
+            ) : null}
           </div>
 
           {OPTION_LIST_TYPES.includes(fieldType) ? <OptionListEditor options={options} onChange={setOptions} /> : null}

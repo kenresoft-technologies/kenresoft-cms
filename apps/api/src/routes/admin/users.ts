@@ -15,6 +15,7 @@ import { z } from 'zod';
 import { recordAudit } from '../../lib/audit';
 import { createAuth } from '../../lib/auth';
 import { getDb } from '../../lib/db';
+import { getEmailSender } from '../../lib/email';
 import { createOpenApiApp } from '../../lib/openapi';
 import { checkGuardianRemains, checkNotTargetingOwner } from '../../lib/user-guards';
 import { isSessionElevated } from '../../middleware/require-elevated-session';
@@ -95,13 +96,16 @@ function generateTemporaryPassword(): string {
   return btoa(String.fromCharCode(...bytes)).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
 }
 
-// Admin-only, same as role changes. There's no email sending configured (§9), so this can't
-// be a real invite-by-link flow — it creates the account directly via better-auth's own
+// Admin-only, same as role changes. Creates the account directly via better-auth's own
 // sign-up (the same internal call the public /sign-up/email route makes) with a random
-// temporary password, returned once for the admin to share with the new user out-of-band.
-// New signups already default to 'editor' (src/lib/auth.ts's bootstrap hook only grants
-// 'admin' to a literal first-ever signup) — an admin can promote or reassign them afterward
-// via the existing role control.
+// temporary password, returned once in this response for the admin to share with the new
+// user directly if needed. It's not a real invite-by-link flow (there's no pending/unclaimed
+// account state — the account is live immediately), but a real onboarding email is still sent
+// via the pluggable email layer (§9) — same "noop unless EMAIL_PROVIDER is set" behavior as
+// password-reset — so the new user isn't only reachable through the admin relaying the
+// temporary password verbally/manually. New signups already default to 'editor' (src/lib/
+// auth.ts's bootstrap hook only grants 'admin' to a literal first-ever signup) — an admin can
+// promote or reassign them afterward via the existing role control.
 usersRoute.openapi(
   createRoute({
     method: 'post',
@@ -156,6 +160,18 @@ usersRoute.openapi(
       createdAt: new Date(result.user.createdAt).toISOString(),
       lastActiveAt: null,
     };
+
+    const signInUrl = c.env.ADMIN_URL ?? c.env.CORS_ORIGINS.split(',')[0];
+    const sender = getEmailSender(c.env);
+    c.executionCtx.waitUntil(
+      sender.send({
+        to: response.email,
+        subject: 'Your Kenresoft CMS account',
+        text: `An account was created for you on Kenresoft CMS.\n\nSign in here: ${signInUrl}\nEmail: ${response.email}\nTemporary password: ${temporaryPassword}\n\nYou'll be asked to keep or change this password after signing in — treat it as sensitive until then.`,
+        html: `<p>An account was created for you on Kenresoft CMS.</p><p><a href="${signInUrl}">Sign in here</a></p><p>Email: ${response.email}<br>Temporary password: <code>${temporaryPassword}</code></p><p>Treat this password as sensitive until you've signed in and changed it.</p>`,
+      }),
+    );
+
     return c.json({ user: response, temporaryPassword }, 201);
   },
 );
