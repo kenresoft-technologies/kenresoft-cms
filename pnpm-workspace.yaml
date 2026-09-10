@@ -3,3 +3,22 @@ packages:
   - 'packages/*'
   - 'integrations/*'
   - 'examples/*'
+
+# Moved here from package.json's "pnpm.overrides" — that key stopped being honored by this
+# pnpm version on a clean install, breaking apps/admin's typecheck (TS2742, an inferred type not
+# portably nameable) via the zod overrides specifically. This is the current, unambiguous
+# location pnpm itself points to when it warns "the pnpm field ... is no longer read".
+overrides:
+  qs: ^6.16.0
+  esbuild: ^0.28.1
+  undici: ^7.29.0
+  sharp: ^0.35.4
+  ws: ^8.21.0
+  js-yaml: ^4.3.2
+  '@better-auth/core>zod': 4.4.3
+  'better-call>zod': 4.4.3
+  # better-auth's own direct "zod": "^4.3.6" dependency (distinct from @better-auth/core's and
+  # better-call's, both already overridden above) was never covered — its own resolution to
+  # 4.5.4 was the actual remaining source of apps/admin's TS2742 "inferred type not portably
+  # nameable" error on auth-client.ts even after the two overrides above were in place.
+  'better-auth>zod': 4.4.3
