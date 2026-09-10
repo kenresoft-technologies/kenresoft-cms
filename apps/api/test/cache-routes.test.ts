@@ -59,6 +59,13 @@ describe('cache routes (real D1)', () => {
       headers: { Cookie: ownerCookie },
     });
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ entriesPurged: 1, mediaPurged: 0 });
+    // 2 keys for the one published entry (its content-type list page + its own detail page) —
+    // the draft is never included, since only published entries have a public cache key at all.
+    expect(await response.json()).toEqual({
+      id: expect.any(String),
+      totalItems: 2,
+      processedItems: 2,
+      done: true,
+    });
   });
 });

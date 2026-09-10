@@ -9,7 +9,7 @@ import { corsMiddleware } from './middleware/cors';
 import { publicContentRateLimit } from './middleware/public-content-rate-limit';
 import { requireSession } from './middleware/require-session';
 import { securityHeaders } from './middleware/security-headers';
-import { invalidatePublicEntryCache } from './lib/public-cache';
+import { enqueueCachePurgePaths, processCachePurgeQueue } from './lib/cache-purge';
 import { dispatchWebhookEvent, retryFailedWebhookDeliveries } from './lib/webhooks';
 import { mountPlugins } from './plugins/mount';
 import { getContentTypeById } from './repositories/content-types';
@@ -125,16 +125,22 @@ export default {
     ctx.waitUntil(
       (async () => {
         const published = await publishDueEntries(db);
-        // Newly-published entries invalidate the public API cache the same way an admin
-        // edit does (§12/§13) — otherwise a cached "not published yet" response could
-        // outlive the auto-publish by up to the cache TTL.
-        await Promise.all(
-          published.map(async (entry) => {
+        // Newly-published entries invalidate the public API cache the same way an admin edit
+        // does (§12/§13) — otherwise a cached "not published yet" response could outlive the
+        // auto-publish by up to the cache TTL. Queued rather than invalidated directly (as a
+        // single admin edit still is, just two keys) since an unusually large batch of entries
+        // becoming due in the same tick could otherwise exceed a Worker invocation's subrequest
+        // budget the same way the manual "Purge Cache" button used to — see lib/cache-purge.ts.
+        if (published.length > 0) {
+          const paths = new Set<string>();
+          for (const entry of published) {
             const contentType = await getContentTypeById(db, entry.contentTypeId);
-            if (!contentType) return;
-            await invalidatePublicEntryCache(contentType.slug, entry.slug);
-          }),
-        );
+            if (!contentType) continue;
+            paths.add(`/api/v1/public/${contentType.slug}`);
+            paths.add(`/api/v1/public/${contentType.slug}/${entry.slug}`);
+          }
+          if (paths.size > 0) await enqueueCachePurgePaths(db, Array.from(paths));
+        }
         for (const entry of published) {
           dispatchWebhookEvent(db, ctx, 'entry.published', entry.contentTypeId, {
             entryId: entry.id,
@@ -143,6 +149,11 @@ export default {
             status: entry.status,
           });
         }
+        // Continues whichever cache-purge job has been waiting longest — a manual "Purge
+        // Cache" click, a bulk import, or the enqueue just above, whichever is oldest — one
+        // bounded batch per tick, draining the queue in the background without anyone needing
+        // to keep re-clicking.
+        await processCachePurgeQueue(db);
       })(),
     );
     // Retries failed webhook deliveries on the same 5-minute cadence as scheduled publishing

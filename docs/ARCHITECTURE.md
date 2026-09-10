@@ -822,6 +822,27 @@ cross-colo consistency or a longer TTL than the Cache API provides is needed. Ca
 are invalidated on publish/unpublish (§13) rather than left to expire blindly, so editors see
 their changes reflected promptly instead of waiting out a TTL.
 
+**Bounded, resumable cache-purge queue.** A single Worker invocation has a hard cap on the
+number of subrequests it may make — `cache.delete()` counts against this the same as `fetch()`
+— 50 per invocation on Cloudflare's Free plan, 10,000+ on Paid. A single entry/media write only
+ever needs 1–2 cache-key deletes and stays a direct, synchronous call, but three call sites need
+an unbounded number of them: the manual "Purge Cache" admin action (one list-key per content
+type plus one detail-key per published entry plus one per media file), a bulk entry import (file
+size is caller-controlled), and the scheduled auto-publish sweep (however many entries have a
+due `publishAt` in one 5-minute tick). All three enqueue their cache keys into a `cache_purge_
+jobs` D1 table instead of invalidating them all in one `Promise.all()` — `apps/api/src/lib/
+cache-purge.ts`'s `processCachePurgeJobBatch()` then drains a fixed, conservative batch
+(`CACHE_PURGE_BATCH_SIZE`, currently 25 — comfortably under the Free-plan cap regardless of
+which plan a given deployment is actually on, since the queue's correctness doesn't depend on
+knowing) per call: once synchronously from whichever route enqueued the job (so a normal-sized
+catalog finishes in that same request), and once more per tick from the existing 5-minute Cron
+Trigger (`index.ts`'s `scheduled` handler) to keep draining anything left over. A job's `cursor`
+column makes this resumable by construction — re-running a batch that already ran (say, after a
+mid-batch throw) is always safe, since deleting an already-deleted or never-cached key is a
+harmless no-op. This is a bounded-batching architecture, not a Free-vs-Paid code path: nothing
+here ever checks which plan a deployment is on, and a Paid deployment gets faster convergence
+purely by raising the one `CACHE_PURGE_BATCH_SIZE` constant, never by a different mechanism.
+
 ---
 
 ## 13. Content Lifecycle

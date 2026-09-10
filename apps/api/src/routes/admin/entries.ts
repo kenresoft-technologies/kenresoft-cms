@@ -14,6 +14,7 @@ import type { Entry, EntryRevision, EntryStatus, EntryWithContentType } from '@k
 import { z } from 'zod';
 
 import { recordAudit } from '../../lib/audit';
+import { enqueueCachePurgePaths, processCachePurgeJobBatch } from '../../lib/cache-purge';
 import { getDb } from '../../lib/db';
 import { invalidatePublicEntryCache } from '../../lib/public-cache';
 import { signPreviewToken } from '../../lib/preview-token';
@@ -290,6 +291,12 @@ entriesRoute.openapi(
     let created = 0;
     let updated = 0;
     const errors: { slug: string; error: string }[] = [];
+    // Collected instead of invalidated per-item (as every single-entry write route above does)
+    // — an import file's size is caller-controlled and unbounded, so looping a cache invalidation
+    // call per row here could exceed a Worker invocation's subrequest budget the same way the
+    // manual "Purge Cache" button used to (see lib/cache-purge.ts). Every imported row shares this
+    // one content type, so there's exactly one list-cache path regardless of how many rows import.
+    const purgePaths = new Set<string>();
 
     for (const item of input.entries) {
       try {
@@ -302,7 +309,8 @@ entriesRoute.openapi(
 
         if (existing) updated++;
         else created++;
-        c.executionCtx.waitUntil(invalidateCacheForEntry(db, entry));
+        purgePaths.add(`/api/v1/public/${contentType.slug}`);
+        purgePaths.add(`/api/v1/public/${contentType.slug}/${entry.slug}`);
         dispatchWebhookEvent(
           db,
           c.executionCtx,
@@ -314,6 +322,11 @@ entriesRoute.openapi(
       } catch (err) {
         errors.push({ slug: item.slug, error: err instanceof Error ? err.message : 'Unknown error' });
       }
+    }
+
+    if (purgePaths.size > 0) {
+      const job = await enqueueCachePurgePaths(db, Array.from(purgePaths));
+      c.executionCtx.waitUntil(processCachePurgeJobBatch(db, job));
     }
 
     return c.json({ created, updated, errors }, 200);

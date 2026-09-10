@@ -232,6 +232,13 @@
       "when": 1788971104671,
       "tag": "0032_talented_outlaw_kid",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "6",
+      "when": 1789015141062,
+      "tag": "0033_blue_wilson_fisk",
+      "breakpoints": true
     }
   ]
 }

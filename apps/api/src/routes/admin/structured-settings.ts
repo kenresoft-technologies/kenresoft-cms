@@ -12,7 +12,6 @@ import { recordAudit } from '../../lib/audit';
 import { getDb } from '../../lib/db';
 import { migrateLegacyGlobalVariables } from '../../lib/legacy-settings-migration';
 import { createOpenApiApp } from '../../lib/openapi';
-import { invalidatePublicStructuredSettingsCache } from '../../lib/public-cache';
 import { requireRole } from '../../middleware/require-role';
 import { getStructuredSettings, listStructuredSettings, upsertStructuredSettings } from '../../repositories/structured-settings';
 import type { Bindings } from '../../lib/env';
@@ -121,7 +120,6 @@ structuredSettingsRoute.openapi(
       targetType: 'structured_settings',
       targetId: module,
     });
-    c.executionCtx.waitUntil(invalidatePublicStructuredSettingsCache(module));
     return c.json(toStructuredSettingsRow(row), 200);
   },
 );
@@ -154,7 +152,6 @@ structuredSettingsRoute.openapi(
         targetType: 'structured_settings',
         metadata: { ...report },
       });
-      await Promise.all(report.migratedModules.map((module) => invalidatePublicStructuredSettingsCache(module)));
     }
     return c.json(report, 200);
   },
