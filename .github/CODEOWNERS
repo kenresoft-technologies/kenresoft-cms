@@ -1,3 +1,0 @@
-# Default owners for everything in the repo, unless a later, more specific rule overrides it.
-# See https://docs.github.com/articles/about-codeowners for syntax.
-*       @kenresoft-technologies/maintainers
