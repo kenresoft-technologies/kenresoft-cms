@@ -170,6 +170,45 @@ describe('MediaLibraryPage', () => {
     expect(screen.getByText('photo.png')).toBeInTheDocument();
   });
 
+  it('opens a full-size preview dialog when a grid thumbnail is clicked', async () => {
+    getMock.mockResolvedValue([
+      {
+        id: 'm-1',
+        filename: 'photo.png',
+        contentType: 'image/png',
+        size: 1024,
+        width: 100,
+        height: 50,
+        altText: 'A nice photo',
+      },
+    ]);
+
+    renderPage();
+    await waitFor(() => expect(screen.getByText('photo.png')).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole('button', { name: 'View photo.png full size' }));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('photo.png')).toBeInTheDocument();
+    const image = within(dialog).getByAltText('A nice photo');
+    expect(image).toHaveAttribute('src', expect.stringContaining('/api/v1/admin/media/m-1/file'));
+  });
+
+  it('opens the same preview dialog from the list view filename', async () => {
+    getMock.mockResolvedValue([
+      { id: 'm-1', filename: 'photo.png', contentType: 'image/png', size: 1024, width: 100, height: 50, altText: null },
+    ]);
+
+    renderPage();
+    await waitFor(() => expect(screen.getByText('photo.png')).toBeInTheDocument());
+    await userEvent.click(screen.getByRole('button', { name: 'List view' }));
+
+    await userEvent.click(screen.getByRole('button', { name: 'View photo.png full size' }));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByAltText('photo.png')).toBeInTheDocument();
+  });
+
   it('does not delete when the alert dialog is cancelled', async () => {
     getMock.mockResolvedValue([
       {

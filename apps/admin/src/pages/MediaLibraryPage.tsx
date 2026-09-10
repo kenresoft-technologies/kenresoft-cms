@@ -175,12 +175,32 @@ function MediaThumbnail({ item, className }: { item: Media; className?: string }
   );
 }
 
-function MediaGrid({ items, developerMode }: { items: Media[]; developerMode: boolean }) {
+function MediaGrid({
+  items,
+  developerMode,
+  onPreview,
+}: {
+  items: Media[];
+  developerMode: boolean;
+  onPreview: (item: Media) => void;
+}) {
   return (
     <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
       {items.map((item) => (
         <Card key={item.id} size="sm" className="group overflow-hidden py-0">
-          <div className="relative aspect-square overflow-hidden">
+          <div
+            role="button"
+            tabIndex={0}
+            className="relative block aspect-square w-full cursor-pointer overflow-hidden text-left"
+            onClick={() => onPreview(item)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                onPreview(item);
+              }
+            }}
+            aria-label={`View ${item.filename} full size`}
+          >
             <MediaThumbnail item={item} className="size-full object-cover transition-transform group-hover:scale-105" />
             {/* The dark wash is a hover-only visual flourish; the delete button itself stays
                 rendered and clickable without hovering first, so it's reachable on touch
@@ -188,14 +208,14 @@ function MediaGrid({ items, developerMode }: { items: Media[]; developerMode: bo
                 destructive-red only once hovered/focused. */}
             <div className="pointer-events-none absolute inset-0 bg-black/0 transition-colors group-hover:bg-black/20" />
             {developerMode ? (
-              <div className="absolute top-2 left-2">
+              <div className="absolute top-2 left-2" onClick={(event) => event.stopPropagation()}>
                 <MediaDeveloperPanel
                   item={item}
                   className="bg-background/80 text-foreground hover:bg-background"
                 />
               </div>
             ) : null}
-            <div className="absolute top-2 right-2">
+            <div className="absolute top-2 right-2" onClick={(event) => event.stopPropagation()}>
               <DeleteMediaAlert
                 item={item}
                 trigger={
@@ -229,7 +249,15 @@ function MediaGrid({ items, developerMode }: { items: Media[]; developerMode: bo
   );
 }
 
-function MediaList({ items, developerMode }: { items: Media[]; developerMode: boolean }) {
+function MediaList({
+  items,
+  developerMode,
+  onPreview,
+}: {
+  items: Media[];
+  developerMode: boolean;
+  onPreview: (item: Media) => void;
+}) {
   const deleteMedia = useDeleteMedia();
 
   const columns = useMemo<ColumnDef<Media>[]>(
@@ -238,10 +266,15 @@ function MediaList({ items, developerMode }: { items: Media[]; developerMode: bo
         accessorKey: 'filename',
         header: 'File',
         cell: ({ row }) => (
-          <div className="flex items-center gap-3">
+          <button
+            type="button"
+            className="flex items-center gap-3 text-left"
+            onClick={() => onPreview(row.original)}
+            aria-label={`View ${row.original.filename} full size`}
+          >
             <MediaThumbnail item={row.original} className="size-10 shrink-0 rounded-md object-cover" />
-            <span className="font-medium">{row.original.filename}</span>
-          </div>
+            <span className="font-medium hover:underline">{row.original.filename}</span>
+          </button>
         ),
       },
       {
@@ -296,7 +329,7 @@ function MediaList({ items, developerMode }: { items: Media[]; developerMode: bo
         ),
       },
     ],
-    [developerMode],
+    [developerMode, onPreview],
   );
 
   return (
@@ -325,12 +358,41 @@ function MediaList({ items, developerMode }: { items: Media[]; developerMode: bo
   );
 }
 
+function MediaPreviewDialog({ item, onOpenChange }: { item: Media | null; onOpenChange: (open: boolean) => void }) {
+  return (
+    <Dialog open={item !== null} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-3xl">
+        <DialogHeader>
+          <DialogTitle className="truncate">{item?.filename}</DialogTitle>
+          {item ? (
+            <DialogDescription>
+              {item.width && item.height ? `${item.width}×${item.height} · ` : ''}
+              {formatBytes(item.size)} · {MEDIA_TYPE_LABELS[item.contentType]}
+              {item.altText ? ` · ${item.altText}` : ''}
+            </DialogDescription>
+          ) : null}
+        </DialogHeader>
+        {item ? (
+          <div className="flex max-h-[70vh] items-center justify-center overflow-hidden rounded-md bg-muted">
+            <img
+              src={mediaFileUrl(item.id)}
+              alt={item.altText ?? item.filename}
+              className="max-h-[70vh] w-auto max-w-full object-contain"
+            />
+          </div>
+        ) : null}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function MediaLibraryPage() {
   const developerMode = useDeveloperMode();
   const { data: mediaItems, isPending, error, refetch } = useMediaList();
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
+  const [previewItem, setPreviewItem] = useState<Media | null>(null);
 
   const typeFilteredItems = useMemo(
     () => (mediaItems ?? []).filter((item) => typeFilter === 'all' || item.contentType === typeFilter),
@@ -421,15 +483,17 @@ export function MediaLibraryPage() {
 
           {viewMode === 'grid' ? (
             gridItems.length > 0 ? (
-              <MediaGrid items={gridItems} developerMode={developerMode} />
+              <MediaGrid items={gridItems} developerMode={developerMode} onPreview={setPreviewItem} />
             ) : (
               <p className="py-8 text-center text-sm text-muted-foreground">No media matches your search.</p>
             )
           ) : (
-            <MediaList items={typeFilteredItems} developerMode={developerMode} />
+            <MediaList items={typeFilteredItems} developerMode={developerMode} onPreview={setPreviewItem} />
           )}
         </div>
       ) : null}
+
+      <MediaPreviewDialog item={previewItem} onOpenChange={(open) => !open && setPreviewItem(null)} />
     </div>
   );
 }
