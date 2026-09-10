@@ -20,7 +20,7 @@
     "rename-worker": "node scripts/rename-worker.mjs"
   },
   "devDependencies": {
-    "wrangler": "^4.128.0"
+    "wrangler": "^4.129.0"
   },
   "pnpm": {
     "overrides": {
