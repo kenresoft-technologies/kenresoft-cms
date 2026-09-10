@@ -19,6 +19,18 @@ updates:
       # of major-version bumps needing manual migration work, e.g. better-auth 1.7).
       minor-and-patch:
         update-types: ['minor', 'patch']
+    ignore:
+      # Deliberately pinned to 0.9.x — @cloudflare/vitest-pool-workers 0.22.0 is a real
+      # architecture change (custom Vitest "pool" -> a Vite/Vitest plugin model) that breaks
+      # every one of this repo's ~40 test files' ambient `cloudflare:test` types and config API,
+      # already investigated and rejected twice (CLAUDE.md's "Dependency security updates" and
+      # "Dependabot alert cleanup" entries) — not a bump to make casually. Because it's a 0.x
+      # package, semver treats 0.9 -> 0.22 as a "minor" bump, which would otherwise land silently
+      # inside the minor-and-patch group above alongside genuinely safe updates (see the #43 PR
+      # this ignore rule was added in response to). A real migration to 0.22+ needs its own
+      # dedicated pass, not a routine dependency bump.
+      - dependency-name: '@cloudflare/vitest-pool-workers'
+        update-types: ['version-update:semver-minor', 'version-update:semver-major']
 
   - package-ecosystem: 'github-actions'
     directory: '/'
