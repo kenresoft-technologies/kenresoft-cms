@@ -20,6 +20,18 @@ vi.mock('@/lib/api-client', async () => {
   };
 });
 
+// Without this, MediaLibraryPage's real developer-mode.ts hook mounts better-auth's actual
+// authClient.useSession() — a real nanostores-backed subscription whose store teardown is
+// deferred by nanostores' own STORE_UNMOUNT_DELAY (1000ms), well past this test's own
+// completion. That deferred cleanup (better-auth's cleanupBroadcastSetup) then fires during a
+// later, unrelated test file after this one's jsdom environment is gone, throwing
+// "ReferenceError: window is not defined" as an unhandled exception that fails the whole run —
+// intermittent and file-order-dependent, exactly matching every other page's test file, which
+// all already mock this for the same reason.
+vi.mock('@/lib/auth-client', () => ({
+  authClient: { useSession: () => ({ data: { user: { role: 'admin' } } }) },
+}));
+
 function renderPage() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
