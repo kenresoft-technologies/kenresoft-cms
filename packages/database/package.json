@@ -19,10 +19,10 @@
     "drizzle-orm": "^0.45.2"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^5.20260903.1",
+    "@cloudflare/workers-types": "^5.20260907.1",
     "@kenresoft-cms/config": "workspace:*",
     "drizzle-kit": "^0.31.7",
-    "eslint": "^10.9.1",
+    "eslint": "^10.10.0",
     "typescript": "^5.9.3",
     "wrangler": "^4.129.0"
   }

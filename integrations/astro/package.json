@@ -16,7 +16,7 @@
   "devDependencies": {
     "@kenresoft-cms/config": "workspace:*",
     "@kenresoft-cms/contracts": "workspace:*",
-    "eslint": "^10.9.1",
+    "eslint": "^10.10.0",
     "typescript": "^5.9.3"
   }
 }
