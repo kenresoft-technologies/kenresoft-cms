@@ -23,7 +23,7 @@
     "@kenresoft-cms/config": "workspace:*",
     "drizzle-kit": "^0.31.7",
     "eslint": "^10.9.1",
-    "typescript": "^5.9.3",
+    "typescript": "^7.0.2",
     "wrangler": "^4.128.0"
   }
 }
