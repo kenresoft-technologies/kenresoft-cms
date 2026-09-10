@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from 'react';
-import { AlertCircle, CheckCircle2, Eye, EyeOff, Layers, Loader2 } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { Link } from 'react-router';
 
+import kenresoftLogoMark from '@/assets/kenresoft-cms-logo-mark.svg';
 import { ApiError } from '@/lib/api-client';
 import { useRedeemRecoveryCode } from '@/lib/queries/password-recovery';
 import { ThemeToggle } from '@/components/theme-toggle';
@@ -16,7 +17,7 @@ function BrandMark({ className }: { className?: string }) {
     <div
       className={`flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground ${className ?? ''}`}
     >
-      <Layers className="size-5" />
+      <img src={kenresoftLogoMark} alt="" className="size-5 brightness-0 invert" />
     </div>
   );
 }

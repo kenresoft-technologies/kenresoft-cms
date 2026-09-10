@@ -6,7 +6,6 @@ import {
   Inbox,
   LayoutDashboard,
   LayoutList,
-  Layers,
   LogOut,
   Puzzle,
   ScrollText,
@@ -18,6 +17,7 @@ import {
 } from 'lucide-react';
 import { Link, Navigate, NavLink, Outlet, useLocation } from 'react-router';
 
+import kenresoftLogoMark from '@/assets/kenresoft-cms-logo-mark.svg';
 import { authClient } from '@/lib/auth-client';
 import { usePlugins } from '@/lib/queries/plugins';
 import { roleAtLeast, type UserRole } from '@/lib/types';
@@ -165,7 +165,7 @@ export function AppLayout() {
         <SidebarHeader className="px-3 py-3.5">
           <div className="flex items-center gap-2.5">
             <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-sidebar-primary text-sidebar-primary-foreground shadow-sm">
-              <Layers className="size-4" />
+              <img src={kenresoftLogoMark} alt="" className="size-4 brightness-0 invert" />
             </div>
             <span className="truncate text-[0.95rem] font-semibold tracking-tight group-data-[collapsible=icon]:hidden">
               Kenresoft CMS

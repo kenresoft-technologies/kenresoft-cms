@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from 'react';
-import { AlertCircle, Eye, EyeOff, Layers, Loader2 } from 'lucide-react';
+import { AlertCircle, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { Link, Navigate } from 'react-router';
 
+import kenresoftLogoMark from '@/assets/kenresoft-cms-logo-mark.svg';
 import { authClient } from '@/lib/auth-client';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Button } from '@/components/ui/button';
@@ -21,7 +22,10 @@ function BrandMark({ className }: { className?: string }) {
     <div
       className={`flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground ${className ?? ''}`}
     >
-      <Layers className="size-5" />
+      {/* The logo mark's own stroke is the fixed brand blue (#4c4fe0) — recolored to white via
+          filter rather than shipping a second, white-only asset, since this box is always a
+          colored (primary or translucent-on-primary) background either way. */}
+      <img src={kenresoftLogoMark} alt="" className="size-5 brightness-0 invert" />
     </div>
   );
 }
