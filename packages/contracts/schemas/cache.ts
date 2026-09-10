@@ -1,8 +1,13 @@
 import { z } from 'zod';
 
-export const cachePurgeResultSchema = z.object({
-  entriesPurged: z.number().int(),
-  mediaPurged: z.number().int(),
+// A purge job may need more than one batch to finish (see apps/api/src/lib/cache-purge.ts) —
+// `done: false` means the caller should expect to call the purge route again (or wait for the
+// next scheduled tick) to make further progress on the same job.
+export const cachePurgeJobStatusSchema = z.object({
+  id: z.string(),
+  totalItems: z.number().int(),
+  processedItems: z.number().int(),
+  done: z.boolean(),
 });
 
-export type CachePurgeResult = z.infer<typeof cachePurgeResultSchema>;
+export type CachePurgeJobStatus = z.infer<typeof cachePurgeJobStatusSchema>;

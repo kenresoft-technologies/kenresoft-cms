@@ -16,8 +16,9 @@ landed on `develop`.
   (General/Contact/Social/Navigation/Footer/SEO), distinct from both Content Types/Entries and
   Global Variables (`docs/ARCHITECTURE.md` §6.2 explains when to use which). Settings → Social
   is now a real editor again instead of a redirect to Global Variables, and Contact/Navigation/
-  Footer/SEO sections are new. Publicly readable, edge-cached, per module at
-  `GET /api/v1/public/settings/:module`; `@kenresoft-cms/astro` gained a matching
+  Footer/SEO sections are new. Publicly readable, per module at
+  `GET /api/v1/public/settings/:module` (deliberately not edge-cached — see Fixed below);
+  `@kenresoft-cms/astro` gained a matching
   `cms.settings.general()/.contact()/.social()/.navigation()/.footer()/.seo()`. Requires the new
   database migration (`0032_talented_outlaw_kid.sql`) via `pnpm run update`. If you were already
   using Global Variables for site config (`site_name`, `tagline`, `contact_email`/`phone`/
@@ -54,6 +55,23 @@ landed on `develop`.
 
 ### Fixed
 
+- Structured Settings changes (site navigation, footer, etc.) sometimes never showed up on the
+  public site even after a successful save and a hard reload. Cause: `GET /api/v1/public/
+  settings/:module` used the Cloudflare Cache API for edge caching, but that cache is per-data-
+  center — invalidating it on save only clears the one data center that handled the write, so
+  any other data center already serving a cached copy kept doing so for up to its own 5-minute
+  TTL. Fixed by no longer caching this route at all — it's read once per page render (low
+  traffic) and is admin-edited config an editor expects to see change everywhere immediately, so
+  correctness wins over the saved D1 read.
+- The "Purge Cache" admin button (Settings → API) could fail outright with "Too many subrequests
+  by single Worker invocation" once a deployment had enough published entries/media — it deleted
+  every cache key in one big parallel sweep, which can exceed a Worker invocation's subrequest
+  budget (50 on Cloudflare's Free plan). The same unbounded-sweep pattern also affected bulk
+  entry import and the scheduled auto-publish sweep, just needing more items to trigger. All
+  three now enqueue their cache keys into a new, resumable purge queue and drain it in small,
+  bounded batches — one immediately, the rest automatically over the next few 5-minute Cron
+  Trigger ticks for an unusually large catalog. See `docs/ARCHITECTURE.md` §12. Requires the new
+  database migration (`0033_blue_wilson_fisk.sql`) via `pnpm run update`.
 - `pnpm run update` now pulls the latest code itself (from the `upstream` git remote) as its
   first step, instead of assuming you'd already run `git fetch`/`git merge` by hand — it's a
   genuine single command now. `npm create @kenresoft-cms@latest` also now scaffolds via a real
