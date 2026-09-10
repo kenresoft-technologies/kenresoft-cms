@@ -40,11 +40,11 @@
     "lint": "eslint ."
   },
   "dependencies": {
-    "zod": "^4.4.3"
+    "zod": "^4.5.4"
   },
   "devDependencies": {
     "@kenresoft-cms/config": "workspace:*",
-    "eslint": "^10.9.1",
+    "eslint": "^10.10.0",
     "typescript": "^5.9.3"
   }
 }

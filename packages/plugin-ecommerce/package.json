@@ -11,18 +11,18 @@
     "lint": "eslint ."
   },
   "dependencies": {
-    "@better-auth/utils": "0.4.2",
-    "@hono/zod-openapi": "^1.6.1",
+    "@better-auth/utils": "0.5.0",
+    "@hono/zod-openapi": "^1.6.3",
     "@kenresoft-cms/contracts": "workspace:*",
     "@kenresoft-cms/database": "workspace:*",
     "@kenresoft-cms/plugin-sdk": "workspace:*",
-    "hono": "^4.10.7",
-    "zod": "^4.4.3"
+    "hono": "^4.13.7",
+    "zod": "^4.5.4"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^5.20260903.1",
+    "@cloudflare/workers-types": "^5.20260907.1",
     "@kenresoft-cms/config": "workspace:*",
-    "eslint": "^10.9.1",
+    "eslint": "^10.10.0",
     "typescript": "^5.9.3"
   }
 }
