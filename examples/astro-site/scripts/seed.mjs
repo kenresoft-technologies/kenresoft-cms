@@ -67,8 +67,10 @@ async function main() {
   console.log(`Seeding ${API_URL} ...`);
 
   // 1. Staff account — the FIRST signup on a deployment becomes Owner (docs/ARCHITECTURE.md §10).
-  const email = 'owner@example.com';
-  const password = 'correct-horse-battery-staple';
+  // Overridable via env so this script's own defaults are never the credentials actually left
+  // standing on any real instance, even a throwaway one someone forgets to tear down.
+  const email = process.env.SEED_OWNER_EMAIL ?? 'owner@example.com';
+  const password = process.env.SEED_OWNER_PASSWORD ?? 'correct-horse-battery-staple';
   try {
     await req('POST', '/api/v1/auth/sign-up/email', { email, password, name: 'Site Owner' });
     console.log('Created staff owner account.');
@@ -240,7 +242,15 @@ async function main() {
   console.log('Created commerce products (ceramic mug with 3 variants incl. one sold-out, canvas tote with no variants, one draft product).');
 
   console.log('\nSeed complete.');
-  console.log(`Staff login: ${email} / ${password}`);
+  // Deliberately doesn't echo the password itself, even to a local terminal (CodeQL flagged the
+  // prior version — js/clear-text-logging) — print only where it came from, since it's either
+  // this script's own committed default or a value the caller just set themselves.
+  console.log(`Staff login email: ${email}`);
+  console.log(
+    process.env.SEED_OWNER_PASSWORD
+      ? 'Staff login password: the value you set in SEED_OWNER_PASSWORD.'
+      : "Staff login password: this script's default — see SEED_OWNER_PASSWORD in this file's own source.",
+  );
 }
 
 main().catch((err) => {

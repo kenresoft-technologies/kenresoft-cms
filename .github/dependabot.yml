@@ -1,0 +1,21 @@
+version: 2
+
+updates:
+  # A single pnpm workspace lockfile at the repo root covers every package under apps/*,
+  # packages/*, integrations/*, and examples/* — one root entry is enough, not one per workspace.
+  - package-ecosystem: 'npm'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+    open-pull-requests-limit: 10
+    groups:
+      # Batches routine patch/minor bumps into one PR instead of one-per-package noise; anything
+      # major stays its own PR since those need real review (see this repo's own CLAUDE.md history
+      # of major-version bumps needing manual migration work, e.g. better-auth 1.7).
+      minor-and-patch:
+        update-types: ['minor', 'patch']
+
+  - package-ecosystem: 'github-actions'
+    directory: '/'
+    schedule:
+      interval: 'weekly'

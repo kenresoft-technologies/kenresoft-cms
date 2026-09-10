@@ -148,3 +148,10 @@ BETTER_AUTH_URL = "https://REPLACE_AFTER_FIRST_DEPLOY.workers.dev"
 #   wrangler secret put PAYSTACK_SECRET_KEY
 # Use a test-mode key (starts sk_test_) while developing/testing — Paystack itself decides
 # sandbox-vs-live purely from which key you use, nothing else here needs to change.
+
+# GET /api/v1/openapi.json + /api/v1/docs (the Scalar reference UI) are enabled by default —
+# useful for anyone building against this deployment's API, and Settings → API links to them.
+# They describe every route's shape, including authenticated admin/plugin routes (never actual
+# data). Set to "false" to 404 both, indistinguishable from not existing, if you'd rather not
+# expose that surface to anonymous requests:
+#   API_DOCS_ENABLED = "false"

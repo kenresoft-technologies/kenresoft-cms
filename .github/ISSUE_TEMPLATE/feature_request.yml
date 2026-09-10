@@ -1,0 +1,32 @@
+name: Feature request
+description: Propose a new feature or enhancement
+labels: ['enhancement']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please read [CONTRIBUTING.md](../../CONTRIBUTING.md) first — anything that changes the
+        architecture is expected to be discussed here before a PR is opened.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Describe the use case or gap, not just the feature itself.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: >
+        What you'd like to see. If you've looked at docs/ARCHITECTURE.md or docs/PLUGINS.md and
+        have a view on where this fits (Core vs. a plugin, for example), mention it.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered

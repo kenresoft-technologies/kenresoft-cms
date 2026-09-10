@@ -1,0 +1,62 @@
+name: Bug report
+description: Report something that isn't working as expected
+labels: ['bug']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. If this is a **security vulnerability**,
+        please don't file it here — see [SECURITY.md](../../SECURITY.md) instead.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: A clear description of the bug, and what you expected to happen instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: >
+        Minimal steps to reproduce, ideally against a local `wrangler dev` instance
+        (see docs/DEPLOYMENT.md). Include any relevant request/response bodies or console output.
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version / commit
+      description: The commit hash or release you're running.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      multiple: true
+      options:
+        - apps/api
+        - apps/admin
+        - packages/database (migrations/schema)
+        - packages/contracts
+        - Commerce plugin
+        - integrations/astro
+        - Deploy/setup scripts
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: OS, Node version, browser (for apps/admin issues), local vs. deployed
