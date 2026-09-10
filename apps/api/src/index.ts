@@ -100,6 +100,20 @@ mountPlugins(app);
 // Aggregates every route registered via .openapi() across the top-level app and its mounted
 // OpenAPIHono sub-apps — routes not yet migrated off plain Hono (§ commit sequence) simply
 // don't appear here yet, without breaking anything they still handle requests for.
+//
+// Both routes 404 indistinguishably from not existing when API_DOCS_ENABLED is explicitly set
+// to "false" — an operator opt-out for a deployment that would rather not expose its full,
+// including authenticated-route, API surface to anonymous requests. Defaults to enabled so
+// local dev and every deployment that hasn't touched this setting keep working unchanged.
+app.use('/api/v1/openapi.json', async (c, next) => {
+  if (c.env.API_DOCS_ENABLED === 'false') return c.notFound();
+  await next();
+});
+app.use('/api/v1/docs', async (c, next) => {
+  if (c.env.API_DOCS_ENABLED === 'false') return c.notFound();
+  await next();
+});
+
 app.doc('/api/v1/openapi.json', (c) => ({
   openapi: '3.1.0',
   info: {

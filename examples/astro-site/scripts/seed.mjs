@@ -67,8 +67,10 @@ async function main() {
   console.log(`Seeding ${API_URL} ...`);
 
   // 1. Staff account — the FIRST signup on a deployment becomes Owner (docs/ARCHITECTURE.md §10).
-  const email = 'owner@example.com';
-  const password = 'correct-horse-battery-staple';
+  // Overridable via env so this script's own defaults are never the credentials actually left
+  // standing on any real instance, even a throwaway one someone forgets to tear down.
+  const email = process.env.SEED_OWNER_EMAIL ?? 'owner@example.com';
+  const password = process.env.SEED_OWNER_PASSWORD ?? 'correct-horse-battery-staple';
   try {
     await req('POST', '/api/v1/auth/sign-up/email', { email, password, name: 'Site Owner' });
     console.log('Created staff owner account.');

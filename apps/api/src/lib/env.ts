@@ -43,4 +43,10 @@ export interface Bindings {
   // docs/PLUGINS.md's Commerce section. Paystack's test-mode secret key (`sk_test_...`) and its
   // live key both work here unchanged; which one is configured is entirely an operator choice.
   PAYSTACK_SECRET_KEY?: string;
+  // Gates the public /api/v1/openapi.json + /api/v1/docs (Scalar) routes. Defaults to enabled
+  // (unset or anything other than "false") so local dev and every existing deployment keep
+  // working with zero config — set to "false" to 404 both routes on a deployment that would
+  // rather not expose its full API surface (including authenticated-route shapes) to anonymous
+  // requests. See docs/DEPLOYMENT.md.
+  API_DOCS_ENABLED?: string;
 }

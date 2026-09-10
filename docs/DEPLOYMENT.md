@@ -323,6 +323,21 @@ than `wrangler.toml`'s top level (only relevant if you've set up a split like st
 explicit provisioning plus your own equivalent of `[env.production]` — most deployments don't
 need this flag).
 
+## Public API documentation (optional)
+
+`GET /api/v1/openapi.json` and `GET /api/v1/docs` (a [Scalar](https://scalar.com) reference UI)
+are unauthenticated and enabled by default — useful for anyone building a frontend against your
+deployment, and linked from Settings → API in the admin. They describe every route's request/
+response *shape*, including authenticated admin and plugin routes — never actual data, but still
+more of your API's internal surface than some operators want exposed to anonymous requests.
+
+To disable both (they 404 indistinguishably from not existing), add to `[vars]` in
+`wrangler.toml`:
+
+```toml
+API_DOCS_ENABLED = "false"
+```
+
 ## Automated deploys via GitHub Actions (optional)
 
 `.github/workflows/deploy.yml` can deploy the API Worker, the admin app, and the marketing site
