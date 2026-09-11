@@ -2044,3 +2044,124 @@ rather than silently skipped: a real click-through of the "Import into Structure
 migration against `kenresoft.com`'s own actual production Global Variables data — the live check
 above confirmed the update/deploy path and the new UI render correctly, not that the legacy-import
 button has been run against real production Global Variables yet.
+
+**Staff email verification — a real security gap closed** (2026-09-10) — done. Root cause: a
+staff account created via `Admin → Users → Add user` (or public self-signup) could sign in
+immediately with no proof of email ownership at all — `user.emailVerified` existed in the schema
+(`packages/database/schema/auth.ts`) but was never read or written anywhere, and
+`apps/api/src/lib/auth-options.ts`'s `emailAndPassword` had no `requireEmailVerification`/
+`emailVerification` config for better-auth to enforce it with in the first place. Confirmed by
+reading the installed better-auth **1.7.2** source directly (not assumed from docs) rather than a
+newer version's API — `sign-in.mjs`'s `requireEmailVerification` check, `sign-up.mjs`'s
+`sendOnSignUp` trigger, `email-verification.mjs`'s send/verify/resend endpoints, and
+`context/create-context.mjs`'s `runInBackgroundOrAwait`/`advanced.backgroundTasks` hook were all
+read line-by-line before writing any config against them.
+
+Fixed by turning on better-auth's own native `emailVerification` + `requireEmailVerification`
+support rather than building a second hand-rolled token system — it reuses the existing pluggable
+`getEmailSender` abstraction (`apps/api/src/lib/email`) for delivery, needs no new token-storage
+table (better-auth signs a stateless HS256 JWT with `BETTER_AUTH_SECRET`), and the resend/verify
+HTTP endpoints (`POST /send-verification-email`, `GET /verify-email`) are already covered by the
+existing `AUTH_RATE_LIMITER` (10 POST/60s) since they live under the same `/api/v1/auth/*` mount.
+`createAuth()` (`apps/api/src/lib/auth.ts`) gained an optional second `executionCtx` parameter,
+wired to `advanced.backgroundTasks.handler` — the exact hook better-auth's own sign-up/sign-in/
+resend paths already use internally to avoid blocking a response on email delivery — passed by
+the two call sites whose request can actually trigger a send (`index.ts`'s auth catch-all,
+`admin/users.ts`'s Add User); `require-session.ts` and `admin/security.ts`'s `verifyPassword`
+don't need it and were left unchanged. The verification-email callback deliberately builds its
+own link (`${ADMIN_URL ?? CORS_ORIGINS[0]}/verify-email?token=...`, the exact same construction
+`password-reset.ts` already used for its own link) rather than using better-auth's SDK-provided
+`url` field, which points at this API's own `baseURL`-based redirect endpoint — pointing instead
+at a new Admin SPA page (`apps/admin/src/pages/VerifyEmailPage.tsx`, route `/verify-email`) that
+consumes the token itself via `authClient.verifyEmail({query:{token}})` and renders a real
+loading/success/missing-token/invalid-expired UI, rather than relying on an ambiguous "redirect
+landed with no error query param means success" signal. `LoginPage.tsx` gained a dedicated
+"Verify your email" state (detected via `authError.code === 'EMAIL_NOT_VERIFIED'`) with a
+`authClient.sendVerificationEmail({email})` resend button, both mirroring the deliberately generic
+"if that email needs verifying, we've sent a new link" wording `ForgotPasswordPage.tsx` already
+established for enumeration-safety.
+
+A late design review (mid-implementation, before any code was written) sent the original plan
+back with a specific, harder requirement: no bootstrap-owner exception. The initial draft would
+have auto-verified the very first (owner) signup via `databaseHooks.user.create.before` — reduced
+lock-out risk, but a real security exception nonetheless. The shipped design instead relies on a
+mechanism that already existed for exactly this class of problem: `getEmailSender`'s noop sender
+(unset `EMAIL_PROVIDER`) already logs what it *would* send rather than silently dropping it, so
+an operator who just deployed their own Worker can read their own verification link straight out
+of `wrangler tail`/`wrangler dev`'s own output — no bootstrap exception needed, and no impossible
+deployment state created either. A new migration
+(`packages/database/migrations/0034_grandfather-verified-users.sql`,
+`UPDATE user SET email_verified = 1 WHERE email_verified = 0`) grandfathers every account that
+predates this change — confirmed (not assumed) that `scripts/update.mjs` applies migrations
+*before* redeploying, so the new gate never evaluates pre-existing data before it's marked
+verified. `GET /api/v1/system/status`'s `emailConfigured` flag
+(`apps/api/src/routes/system/recover-owner.ts`) was also tightened while touching this file — it
+previously reported "configured" merely because `EMAIL_PROVIDER` had a recognized value, even if
+`RESEND_API_KEY`/`EMAIL_FROM` (or the Cloudflare `EMAIL` binding/`EMAIL_FROM`) were actually
+missing, which `resend.ts`/`cloudflare.ts` already throw on at real send time — now checks the
+full required set per provider, still a purely static check with no live delivery test.
+
+Fixing this surfaced (and fixed) two real regressions in existing, unrelated code, found only by
+running the real test suite rather than by inspection: (1) the sign-up audit hook
+(`auth.ts`'s `hooks.after`) recorded `auth.sign_up` only when `ctx.context.newSession` existed —
+true before this change (sign-up always auto-signed-in), but `requireEmailVerification` makes
+better-auth's own `shouldSkipAutoSignIn` logic skip that inline session entirely, so `auth.sign_up`
+silently stopped being audited for every new signup until fixed to also read the created user id
+off `ctx.context.returned` (the endpoint's own resolved response body) when no inline session
+exists. (2) Roughly three dozen existing `apps/api` test files' local `authedCookie()`/`signUp()`-
+style helpers assumed sign-up itself always returns a session cookie — true before this change,
+false after (verification-required sign-up returns no session at all, by design). Rather than
+hand-patching ~36 files' near-identical boilerplate independently (real risk of drift/typos at
+that scale), extracted one shared `apps/api/test/helpers/auth.ts` (`signUpVerifiedAndGetCookie()`:
+sign up → extract the real captured token → verify → sign in for real) and mechanically rewrote
+every file's local helper to delegate to it via a one-off Node script
+(reviewed, then deleted — not part of the shipped repo), confirmed correct file-by-file rather
+than trusted blindly. `users-routes.test.ts`'s own Add User test needed a real behavioral update
+beyond the mechanical pass, since its prior assertion ("the temp password signs the new user in
+immediately") was the literal bug this whole change fixes — rewritten to assert the temp password
+is rejected until the real captured verification token is consumed.
+
+New test-infrastructure needed and added: better-auth's verification token is a stateless JWT, not
+a DB row, so the existing "read the token straight out of a table" trick every other auth test
+(password-reset, recovery codes) already used wasn't available. New `apps/api/src/lib/
+email/test.ts` (`EMAIL_PROVIDER=test` in `apps/api/wrangler.test.toml`) is a real in-memory email
+capture point — `getTestEmails()`/`clearTestEmails()`, confirmed empirically (not assumed) that
+its module-scoped state persists across multiple `SELF.fetch` calls within one Vitest-pool-workers
+test file, the same property `beforeEach`'s direct `env.DB.exec(...)` calls already rely on. A
+second, real quirk surfaced and had to be worked around, not avoided: better-auth's real internals
+throw an `APIError` for exactly the negative paths this feature needed to test (unverified
+sign-in, invalid/expired verify-email token) — and, independent of the correctly-returned HTTP
+response, the same error also escapes as a genuinely unhandled promise rejection that fails the
+whole Vitest process on CI (the *exact* class of pre-existing better-auth/better-call quirk
+already documented in this file for a wrong-password test, commit `6b041b9`). Every prior instance
+of this quirk in this codebase was worked around by never exercising the throwing path at all —
+not an option here, since triggering exactly these rejections *is* the behavior under test.
+Instead, `apps/api/test/helpers/auth.ts` gained `withExpectedInternalRejection()`: registers a
+`process.on('unhandledRejection', ...)` listener scoped tightly around just the one risky call,
+removes itself immediately after — real, automated coverage of the actual rejection path instead
+of falling back to "verified only by a manual live pass," confirmed working (exit code 0, zero
+unhandled-error warnings) rather than merely hoped to work.
+
+New tests: `apps/api/test/email-verification.test.ts` (12 tests — self-signup, Add User, unverified
+sign-in rejection + auto-resend, real-token verification, idempotent re-verification, invalid
+token, a hand-crafted expired JWT signed via Web Crypto directly rather than pulling in `jose` as
+a new direct dependency for one test, resend enumeration-safety for both a real and a nonexistent
+address, resend-is-a-no-op for an already-verified address, and explicit proof neither the
+bootstrap owner nor an Add-User-created account receives any exception); two new cases in
+`auth-rate-limit.test.ts` (the rate limiter's method-based, not path-allowlisted, gating already
+covers the new endpoints for free — confirmed rather than assumed); `LoginPage.test.tsx` and
+`UsersPage.test.tsx` gained cases for the new UI states; new `VerifyEmailPage.test.tsx` (4 tests).
+Full verification: clean `pnpm typecheck`/`pnpm lint` workspace-wide, all 58 `apps/api` test files
+passing (individually, per this file's own standing Windows/workerd-flakiness practice — several
+batches hit the documented module-fallback resource-exhaustion pattern on the first attempt,
+confirmed non-code by re-running each file alone, all clean, including a full explicit re-run of
+`commerce-customer-auth`/`commerce-customer-profile`/`commerce-customer-recovery`/
+`commerce-customer-verification-resend` to confirm zero regression to the separate, untouched
+commerce-customer verification system), and the full `apps/admin` suite clean.
+
+Known, deliberately-not-solved technical debt, flagged rather than silently left in place: Add
+User's own separate onboarding email (`apps/api/src/routes/admin/users.ts`) still delivers the
+generated temporary password itself in plaintext by email — kept as-is to stay in scope for this
+change, since the task was fixing the missing verification gate specifically, not redesigning
+onboarding delivery. A claim-link flow (no password ever travels by email at all) would close this
+properly in a future pass.

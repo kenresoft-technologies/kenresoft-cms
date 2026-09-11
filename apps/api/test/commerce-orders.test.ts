@@ -4,6 +4,8 @@ import { createCustomer } from '@kenresoft-cms/plugin-ecommerce/src/repository/c
 import { SELF, env } from 'cloudflare:test';
 import { beforeEach, describe, expect, it } from 'vitest';
 
+import { signUpVerifiedAndGetCookie } from './helpers/auth';
+
 const ADMIN_BASE = 'https://example.com/api/plugins/commerce/v1';
 const CART_BASE = 'https://example.com/api/plugins/commerce/public/v1/cart';
 const CHECKOUT_BASE = 'https://example.com/api/plugins/commerce/public/v1/checkout';
@@ -18,27 +20,17 @@ const SHIPPING_ADDRESS = {
 };
 
 async function freshAdminCookie(email = 'commerce-orders-admin@example.test'): Promise<string> {
-  const response = await SELF.fetch('https://example.com/api/v1/auth/sign-up/email', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password: 'correct horse battery staple', name: 'Admin' }),
-  });
-  const setCookie = response.headers.get('set-cookie');
-  if (!setCookie) throw new Error('sign-up did not return a session cookie');
-  return setCookie.split(';')[0]!;
+  return signUpVerifiedAndGetCookie(email, { password: 'correct horse battery staple', name: 'Admin' });
 }
 
 async function signUpEditor(): Promise<string> {
   // First signup becomes admin (this codebase's own bootstrap rule); a second signup defaults to
   // editor. Promote nobody — this is exactly the role floor being tested.
   await freshAdminCookie('commerce-orders-bootstrap@example.test');
-  const response = await SELF.fetch('https://example.com/api/v1/auth/sign-up/email', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: 'commerce-orders-editor@example.test', password: 'correct horse battery staple', name: 'Editor' }),
+  return signUpVerifiedAndGetCookie('commerce-orders-editor@example.test', {
+    password: 'correct horse battery staple',
+    name: 'Editor',
   });
-  const setCookie = response.headers.get('set-cookie');
-  return setCookie!.split(';')[0]!;
 }
 
 async function createPublishedProduct(adminCookie: string) {

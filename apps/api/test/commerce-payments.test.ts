@@ -7,6 +7,8 @@ import { Hono } from 'hono';
 import { SELF, env } from 'cloudflare:test';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { signUpVerifiedAndGetCookie } from './helpers/auth';
+
 // payments.ts's own logic (idempotent resolution, amount/currency validation, reference-ownership
 // checks, callbackUrl origin validation) is tested here against a hand-injected fake
 // PluginPaymentsService, bypassing SELF.fetch/the full apps/api Worker entirely — mirrors
@@ -46,14 +48,7 @@ function buildTestApp(payments: PluginPaymentsService, logger: PluginLogger = fa
 }
 
 async function freshAdminCookie(): Promise<string> {
-  const response = await SELF.fetch('https://example.com/api/v1/auth/sign-up/email', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: 'commerce-payments-admin@example.test', password: 'correct horse battery staple', name: 'Admin' }),
-  });
-  const setCookie = response.headers.get('set-cookie');
-  if (!setCookie) throw new Error('sign-up did not return a session cookie');
-  return setCookie.split(';')[0]!;
+  return signUpVerifiedAndGetCookie('commerce-payments-admin@example.test', { password: 'correct horse battery staple', name: 'Admin' });
 }
 
 async function createPublishedProduct(adminCookie: string) {

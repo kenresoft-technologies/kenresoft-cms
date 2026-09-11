@@ -8,6 +8,10 @@ export const adminUserSchema = z.object({
   email: z.string(),
   role: z.enum(USER_ROLES),
   disabled: z.boolean(),
+  // Whether this account has completed better-auth's email-verification flow
+  // (apps/api/src/lib/auth.ts) — an account can't sign in until this is true, regardless of
+  // role. Surfaced on the Users page so an owner/admin can see who hasn't verified yet.
+  emailVerified: z.boolean(),
   // Per-user Developer panel grant, independent of role for editor/author (owner/admin always
   // qualify regardless of this value — see apps/admin/src/lib/developer-mode.ts).
   developerToolsAccess: z.boolean(),
@@ -40,10 +44,11 @@ export const createUserSchema = z.object({
   email: z.string().email(),
 });
 
-// A one-time temporary password, not the user's own choice — there's no email sending
-// configured (§9/ASTRO.md's "known limitations"), so an invite can't land as a magic link.
-// The owner is shown this once and shares it with the new user directly; better-auth's own
-// change-password flow (already used by ProfilePage) is how the user replaces it.
+// A one-time temporary password, not the user's own choice — shown to the owner once so they
+// can share it with the new user directly (still delivered by email too, alongside a separate
+// verification email the new user must click before they can sign in at all — see
+// apps/api/src/lib/auth.ts's emailVerification config). better-auth's own change-password flow
+// (already used by ProfilePage) is how the user replaces it after verifying.
 export const createdUserSchema = z.object({
   user: adminUserSchema,
   temporaryPassword: z.string(),

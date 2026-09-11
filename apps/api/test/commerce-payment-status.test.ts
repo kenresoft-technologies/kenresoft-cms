@@ -1,17 +1,12 @@
 import { SELF } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 
+import { signUpVerifiedAndGetCookie } from './helpers/auth';
+
 const SETTINGS_BASE = 'https://example.com/api/plugins/commerce/v1/settings';
 
 async function signUp(email: string): Promise<string> {
-  const response = await SELF.fetch('https://example.com/api/v1/auth/sign-up/email', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password: 'correct horse battery staple', name: 'Test User' }),
-  });
-  const setCookie = response.headers.get('set-cookie');
-  if (!setCookie) throw new Error('sign-up did not return a session cookie');
-  return setCookie.split(';')[0]!;
+  return signUpVerifiedAndGetCookie(email, { password: 'correct horse battery staple', name: 'Test User' });
 }
 
 // Real end-to-end wiring against real D1 — apps/api/test/paystack-provider.test.ts already

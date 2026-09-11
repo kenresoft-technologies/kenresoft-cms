@@ -58,3 +58,8 @@ crons = ["*/5 * * * *"]
 API_VERSION = "v1"
 CORS_ORIGINS = "http://localhost:5173,http://localhost:5174,http://localhost:5175,http://localhost:5176,http://localhost:5177"
 BETTER_AUTH_URL = "http://localhost:8787"
+# In-memory capture sender (apps/api/src/lib/email/test.ts) — lets tests inspect verification/
+# password-reset/onboarding email content via getTestEmails() instead of bypassing the email
+# layer. Never a real deployment value (getEmailSender falls back to the noop sender for
+# anything but "cloudflare"/"resend"/"test").
+EMAIL_PROVIDER = "test"

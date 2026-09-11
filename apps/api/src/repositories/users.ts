@@ -8,6 +8,7 @@ export interface UserWithLastActive {
   email: string;
   role: string;
   disabled: boolean;
+  emailVerified: boolean;
   developerToolsAccess: boolean;
   createdAt: Date;
   lastActiveAt: Date | null;
@@ -36,6 +37,7 @@ export async function listUsersWithLastActive(db: Database): Promise<UserWithLas
     email: row.email,
     role: row.role,
     disabled: row.disabled,
+    emailVerified: row.emailVerified,
     developerToolsAccess: row.developerToolsAccess,
     createdAt: row.createdAt,
     lastActiveAt: lastActiveByUser.get(row.id) ?? null,

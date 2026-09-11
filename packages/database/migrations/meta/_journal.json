@@ -239,6 +239,13 @@
       "when": 1789015141062,
       "tag": "0033_blue_wilson_fisk",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "6",
+      "when": 1789069888904,
+      "tag": "0034_grandfather-verified-users",
+      "breakpoints": true
     }
   ]
 }

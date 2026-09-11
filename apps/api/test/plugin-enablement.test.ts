@@ -7,16 +7,10 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { checkPluginEnablement } from '../src/plugins/enablement';
 import { setPluginEnabled } from '../src/repositories/plugin-enablement';
+import { signUpVerifiedAndGetCookie } from './helpers/auth';
 
 async function authedCookie(email: string): Promise<string> {
-  const response = await SELF.fetch('https://example.com/api/v1/auth/sign-up/email', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password: 'correct horse battery staple', name: 'Test User' }),
-  });
-  const setCookie = response.headers.get('set-cookie');
-  if (!setCookie) throw new Error('sign-up did not return a session cookie');
-  return setCookie.split(';')[0]!;
+  return signUpVerifiedAndGetCookie(email, { password: 'correct horse battery staple', name: 'Test User' });
 }
 
 let cookieCounter = 0;

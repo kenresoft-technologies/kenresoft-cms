@@ -19,6 +19,11 @@ export const authOptions = {
   basePath: '/api/v1/auth',
   emailAndPassword: {
     enabled: true,
+    // Enforced at the authentication layer itself (better-auth's own sign-in handler), not
+    // just an Admin UI redirect — see apps/api/src/lib/auth.ts's `emailVerification` config
+    // for how the verification email is actually sent, and docs/ARCHITECTURE.md's Changelog
+    // for why the first/bootstrap owner gets no exception to this.
+    requireEmailVerification: true,
   },
   advanced: {
     defaultCookieAttributes: {

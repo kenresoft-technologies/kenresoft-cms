@@ -1,6 +1,8 @@
 import { SELF, env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 
+import { signUpVerifiedAndGetCookie } from './helpers/auth';
+
 // Migration 0030 adds `plugin_commerce_order_payments_one_pending_per_order_idx`, a real UNIQUE
 // index enforcing "at most one open ('pending') payment attempt per order." The code that shipped
 // BEFORE this migration (claimPendingPaymentAttempt as a plain check-then-insert) had a genuine
@@ -43,14 +45,7 @@ async function createIndexExpectingFailure(): Promise<boolean> {
 }
 
 async function freshAdminCookie(): Promise<string> {
-  const response = await SELF.fetch('https://example.com/api/v1/auth/sign-up/email', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: 'commerce-migration-safety-admin@example.test', password: 'correct horse battery staple', name: 'Admin' }),
-  });
-  const setCookie = response.headers.get('set-cookie');
-  if (!setCookie) throw new Error('sign-up did not return a session cookie');
-  return setCookie.split(';')[0]!;
+  return signUpVerifiedAndGetCookie('commerce-migration-safety-admin@example.test', { password: 'correct horse battery staple', name: 'Admin' });
 }
 
 async function createPendingOrder(adminCookie: string): Promise<string> {

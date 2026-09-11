@@ -34,4 +34,22 @@ describe('authRateLimit', () => {
     expect(response.status).toBe(200);
     expect(limit).not.toHaveBeenCalled();
   });
+
+  // The middleware is method-based, not an explicit path allow-list — this confirms that
+  // extends automatically to email-verification's own routes without needing route-specific
+  // wiring: POST /send-verification-email (manual resend, and the same request sendOnSignIn's
+  // auto-resend rides on) is rate limited, while GET /verify-email (consuming a token — no
+  // credential-guessing surface) is exempt like every other GET.
+  it('rate limits POST /send-verification-email like any other POST', async () => {
+    const { app, env } = appWith({ success: false });
+    const response = await app.request('/api/v1/auth/send-verification-email', { method: 'POST' }, env);
+    expect(response.status).toBe(429);
+  });
+
+  it('never consults the limiter for GET /verify-email', async () => {
+    const { app, env, limit } = appWith({ success: false });
+    const response = await app.request('/api/v1/auth/verify-email?token=x', { method: 'GET' }, env);
+    expect(response.status).toBe(200);
+    expect(limit).not.toHaveBeenCalled();
+  });
 });

@@ -7,6 +7,49 @@ Status: Proposed / Ready for implementation
 
 ## Changelog
 
+**v0.13 (2026-09-10)** — Closes a real security gap: a staff account created via
+`Admin → Users → Add user` (or via public self-signup) could sign in with its temporary/chosen
+password without ever proving ownership of the email address — `user.emailVerified` existed in
+the schema but was never read or written anywhere. Fixed at the authentication layer itself,
+using better-auth 1.7.2's own native `emailVerification`/`emailAndPassword.requireEmailVerification`
+support (`apps/api/src/lib/auth-options.ts`, `apps/api/src/lib/auth.ts`) rather than a second
+hand-rolled token system — better-auth signs a stateless HS256 JWT with `BETTER_AUTH_SECRET`
+(verified via `jose`), so no new token-storage table was needed, and the resend/verify HTTP
+endpoints (`POST /api/v1/auth/send-verification-email`, `GET /api/v1/auth/verify-email`) come
+from better-auth itself, already covered by the existing `AUTH_RATE_LIMITER`. Delivery reuses the
+existing pluggable email layer (`apps/api/src/lib/email`) — the verification-email callback
+builds its own link (`${ADMIN_URL ?? CORS_ORIGINS[0]}/verify-email?token=...`, the same
+construction pattern `password-reset.ts` already used) pointing at a new Admin SPA page
+(`apps/admin/src/pages/VerifyEmailPage.tsx`, route `/verify-email`) that consumes the token
+itself and renders a real success/failure UI, rather than relying on better-auth's own
+API-hosted redirect flow. `advanced.backgroundTasks` wires better-auth's internal
+`runInBackgroundOrAwait` hook to `ExecutionContext.waitUntil` so a verification-email send never
+blocks the response.
+
+Deliberate policy: **no bootstrap-owner exception** — the very first (owner) signup on a fresh
+deployment goes through the identical unverified-until-verified gate as any other account. This
+was reconsidered from an earlier draft that auto-verified the bootstrap row; the final design
+instead relies on the pre-existing "noop sender logs what it would send" behavior
+(`apps/api/src/lib/email/noop.ts`) — an operator deploying their own fresh Worker can read their
+own verification link from the Worker's logs (`wrangler tail`, or the local `wrangler dev`
+terminal) even with zero email configured, so this creates no "impossible deployment state."
+A new one-time migration (`packages/database/migrations/0034_grandfather-verified-users.sql`,
+`UPDATE user SET email_verified = 1 WHERE email_verified = 0`) grandfathers every account that
+existed before this change shipped, so no existing deployment's users are locked out by the new
+requirement — confirmed that `pnpm run update` applies migrations before redeploying, so this
+runs before the new gate can ever affect pre-existing data.
+
+`GET /api/v1/system/status`'s `emailConfigured` flag (`apps/api/src/routes/system/recover-owner.ts`)
+was tightened to check the full required config per provider (`RESEND_API_KEY`+`EMAIL_FROM`, or
+the `EMAIL` binding+`EMAIL_FROM`), not just that `EMAIL_PROVIDER` has a recognized value — it
+previously reported "configured" even when the provider's own sender would throw at send time.
+Known technical debt, not solved here: Add User's separate onboarding email still delivers the
+temporary password itself in plaintext, rather than a claim-link flow — kept in scope reduction,
+flagged in `apps/api/src/routes/admin/users.ts` for a future pass. A new
+`apps/api/src/lib/email/test.ts` (`EMAIL_PROVIDER=test` in `apps/api/wrangler.test.toml`) gives
+the test suite its first real email-content capture point, since better-auth's stateless JWT
+token can't be read out of a DB table the way password-reset's own token already was.
+
 **v0.12 (2026-09-09)** — Adds **Structured Settings** (§6.2), a third configuration primitive
 alongside Content Types/Entries and Global Variables — prompted by a real production website
 migration that exposed Global Variables being stretched to cover structured, typed site

@@ -74,6 +74,16 @@ describe('UsersPage', () => {
     expect(screen.getByText('Never')).toBeInTheDocument();
   });
 
+  it('shows an Unverified badge for a user whose email is not yet verified', async () => {
+    useSessionMock.mockReturnValue({ data: { user: { role: 'admin', email: 'admin@example.test' } } });
+    getMock.mockResolvedValue([{ ...users[1], emailVerified: false }]);
+
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('Editor User')).toBeInTheDocument());
+    expect(screen.getByText('Unverified')).toBeInTheDocument();
+  });
+
   it('shows the stat cards derived from the user list', async () => {
     useSessionMock.mockReturnValue({ data: { user: { role: 'admin', email: 'admin@example.test' } } });
     getMock.mockResolvedValue(users);

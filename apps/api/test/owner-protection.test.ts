@@ -1,17 +1,11 @@
 import { SELF, env } from 'cloudflare:test';
+import { signUpVerifiedAndGetCookie } from './helpers/auth';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 const PASSWORD = 'correct horse battery staple';
 
 async function authedCookie(email: string): Promise<string> {
-  const response = await SELF.fetch('https://example.com/api/v1/auth/sign-up/email', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password: PASSWORD, name: 'Test User' }),
-  });
-  const setCookie = response.headers.get('set-cookie');
-  if (!setCookie) throw new Error('sign-up did not return a session cookie');
-  return setCookie.split(';')[0]!;
+  return signUpVerifiedAndGetCookie(email, { password: PASSWORD, name: 'Test User' });
 }
 
 async function userId(cookie: string): Promise<string> {
