@@ -128,3 +128,57 @@ export function setVarLine(toml, key, value) {
 export function removeVarLine(toml, key) {
   return toml.replace(new RegExp(`^${key}\\s*=.*\\n?`, 'm'), '');
 }
+
+// `workers_dev` (wrangler's own field controlling the Worker's *.workers.dev subdomain) sits in
+// the preamble, same as `name` above — wrangler treats it as `true` when absent, so "absent" and
+// "true" read the same here.
+export function readWorkersDevEnabled(toml) {
+  const match = toml.slice(0, preambleEnd(toml)).match(/^workers_dev\s*=\s*(true|false)/m);
+  return match ? match[1] === 'true' : true;
+}
+
+export function setWorkersDevEnabled(toml, enabled) {
+  const cut = preambleEnd(toml);
+  const preamble = toml.slice(0, cut);
+  const line = `workers_dev = ${enabled}`;
+  if (/^workers_dev\s*=/m.test(preamble)) {
+    return preamble.replace(/^workers_dev\s*=\s*(true|false)/m, line) + toml.slice(cut);
+  }
+  // Insert right before whatever trailing blank line(s) already separate the preamble from the
+  // first `[section]`, so the file's existing spacing style survives instead of collapsing to no
+  // blank line at all.
+  const trailingNewlines = preamble.match(/\n*$/)[0];
+  const base = preamble.slice(0, preamble.length - trailingNewlines.length);
+  return `${base}\n${line}${trailingNewlines}` + toml.slice(cut);
+}
+
+// A custom-domain route (`[[routes]]` with `custom_domain = true`) can appear anywhere in the
+// file — a new `[[section]]` header always closes whatever table was open before it regardless of
+// position, so appending one at the very end is always syntactically safe (never risks landing
+// inside [vars] or a [[d1_databases]] block).
+//
+// IMPORTANT, confirmed empirically against a real deploy (not from docs, which claim `workers_dev`
+// defaults to `true` unconditionally — that's wrong once any `routes` config exists): the moment a
+// wrangler.toml gains a `[[routes]]` entry, wrangler's own default for an *absent* `workers_dev`
+// flips from enabled to **disabled** ("Because 'workers_dev' is not in your Wrangler file, it will
+// be disabled for this deployment by default"). configureDomain() in configure.mjs accounts for
+// this by explicitly writing `workers_dev = true` right after adding the first route, unless the
+// developer separately confirms they want it disabled — never leaving it implicit once routes
+// exist, since implicit now means "off," not "on."
+export function readCustomDomainRoutes(toml) {
+  const patterns = [];
+  const routeBlockRe = /\[\[routes\]\][^[]*/g;
+  let match;
+  while ((match = routeBlockRe.exec(toml))) {
+    if (/custom_domain\s*=\s*true/.test(match[0])) {
+      const pattern = extractTomlValue(match[0], 'pattern');
+      if (pattern) patterns.push(pattern);
+    }
+  }
+  return patterns;
+}
+
+export function addCustomDomainRoute(toml, pattern) {
+  if (readCustomDomainRoutes(toml).includes(pattern)) return toml;
+  return toml.replace(/\n*$/, '') + `\n\n[[routes]]\npattern = "${pattern}"\ncustom_domain = true\n`;
+}

@@ -17,13 +17,20 @@
 // `pnpm run setup` to pick up new CMS changes, precisely because setup.mjs's ensureAuthSecret()
 // used to (and other steps still do) prompt/act as if this were a first-ever install.
 //
-// Targeted reconfiguration: `pnpm run update -- --auth` / `--email` / `--storage` / `--database`
-// modifies exactly that one configuration category (scripts/lib/configure.mjs) and does NOT pull
-// code, install deps, or touch any other category — the two concerns (picking up new CMS code vs.
-// changing this deployment's own configuration) are deliberately kept separate, per this
-// project's non-negotiable rule that a value only ever changes when explicitly requested. Add
-// `--ci` for non-interactive use (reads `*_NEW` environment variables instead of prompting; an
-// omitted variable always means "leave unchanged" — see configure.mjs).
+// Targeted reconfiguration: `pnpm run update -- --auth` / `--email` / `--storage` / `--database` /
+// `--domain` modifies exactly that one configuration category (scripts/lib/configure.mjs) and
+// does NOT pull code, install deps, or touch any other category — the two concerns (picking up
+// new CMS code vs. changing this deployment's own configuration) are deliberately kept separate,
+// per this project's non-negotiable rule that a value only ever changes when explicitly
+// requested. Add `--ci` for non-interactive use (reads `*_NEW` environment variables instead of
+// prompting; an omitted variable always means "leave unchanged" — see configure.mjs). `--domain`
+// connects a custom domain to the API Worker via `[[routes]]`/`custom_domain = true` (Cloudflare
+// creates the DNS record and route automatically on deploy — no dashboard step needed) and, only
+// if explicitly confirmed afterward, disables the *.workers.dev fallback URL — run `--auth` right
+// after to point BETTER_AUTH_URL at the new domain and rebuild the admin app against it.
+// `--admin-domain` does the same for the Admin Worker's own, separate wrangler.toml, and also
+// refreshes the ADMIN_URL secret (used to build password-reset/verification email links) to match
+// — nothing else does that automatically.
 //
 // Which branch to pull: bare `pnpm run update` follows upstream's actual default branch,
 // auto-detected every run (see lib/git-cli.mjs) — correct for a real install, which should
@@ -40,6 +47,8 @@
 //   pnpm run update -- --email [--ci]
 //   pnpm run update -- --storage
 //   pnpm run update -- --database
+//   pnpm run update -- --domain [--ci]
+//   pnpm run update -- --admin-domain [--ci]
 //   pnpm run update -- --branch develop     # or: UPDATE_BRANCH=develop pnpm run update
 
 import { execFileSync } from 'node:child_process';
@@ -48,10 +57,17 @@ import { dirname, join } from 'node:path';
 
 import { pullLatestCode } from './lib/git-cli.mjs';
 import { runWranglerInherit } from './lib/wrangler-cli.mjs';
-import { buildAndDeployAdmin, checkWorkerOwnership, deployApi } from './lib/deploy-helpers.mjs';
+import { buildAndDeployAdmin, checkWorkerOwnership, deployApi, resolveAdminApiUrl } from './lib/deploy-helpers.mjs';
 import { readDatabaseId, readWorkerName } from './lib/wrangler-toml.mjs';
 import { readInstallStatus, summarizeInstallStatus } from './lib/config-status.mjs';
-import { configureAuth, configureDatabase, configureEmail, configureStorage } from './lib/configure.mjs';
+import {
+  configureAdminDomain,
+  configureAuth,
+  configureDatabase,
+  configureDomain,
+  configureEmail,
+  configureStorage,
+} from './lib/configure.mjs';
 import { closePrompt } from './lib/prompt.mjs';
 import { parseUpdateArgs } from './lib/update-args.mjs';
 
@@ -59,10 +75,17 @@ const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const API_DIR = join(REPO_ROOT, 'apps', 'api');
 const ADMIN_DIR = join(REPO_ROOT, 'apps', 'admin');
 const WRANGLER_TOML_PATH = join(REPO_ROOT, 'wrangler.toml');
+const ADMIN_WRANGLER_TOML_PATH = join(ADMIN_DIR, 'wrangler.toml');
 
-const CONFIGURE_FNS = { auth: configureAuth, email: configureEmail, storage: configureStorage, database: configureDatabase };
+const CONFIGURE_FNS = {
+  auth: configureAuth,
+  email: configureEmail,
+  storage: configureStorage,
+  database: configureDatabase,
+  domain: configureDomain,
+};
 
-async function runTargetedConfigure(configureFn, ci) {
+async function runTargetedConfigure(configureFn, ci, category) {
   console.log('Kenresoft CMS — update configuration\n');
   const status = readInstallStatus({ apiDir: API_DIR, wranglerTomlPath: WRANGLER_TOML_PATH });
   if (!status.database.configured) {
@@ -84,15 +107,48 @@ async function runTargetedConfigure(configureFn, ci) {
     console.log('\nRedeploying the API Worker with the updated configuration...');
     const apiUrl = deployApi({ apiDir: API_DIR, wranglerTomlPath: WRANGLER_TOML_PATH });
     console.log(`✓ Redeployed: ${apiUrl}`);
+    // A Better Auth URL change is the one category the admin app's own build depends on
+    // (VITE_API_URL) — see resolveAdminApiUrl's own comment. Every other category (email,
+    // storage, database) has no bearing on what URL the admin app should call.
+    if (category === 'auth') {
+      console.log('Rebuilding and redeploying the admin app against the updated URL...');
+      const adminApiUrl = resolveAdminApiUrl({ wranglerTomlPath: WRANGLER_TOML_PATH, deployedWorkerUrl: apiUrl });
+      const adminUrl = buildAndDeployAdmin({ repoRoot: REPO_ROOT, adminDir: ADMIN_DIR, apiUrl: adminApiUrl });
+      console.log(`✓ Admin redeployed: ${adminUrl}`);
+    }
   } else {
     console.log('\n✓ Change applied (took effect immediately — no redeploy needed for this field).');
   }
 }
 
+// The Admin Worker's own domain configuration lives in a completely separate wrangler.toml
+// (apps/admin/wrangler.toml) — configureAdminDomain deploys it directly and refreshes ADMIN_URL
+// itself, so unlike every other category it never delegates to a caller-side redeploy step.
+async function runAdminDomainConfigure(ci) {
+  console.log('Kenresoft CMS — update configuration\n');
+  let result;
+  try {
+    result = await configureAdminDomain({
+      adminWranglerTomlPath: ADMIN_WRANGLER_TOML_PATH,
+      adminDir: ADMIN_DIR,
+      apiWranglerTomlPath: WRANGLER_TOML_PATH,
+      apiDir: API_DIR,
+      ci,
+    });
+  } finally {
+    closePrompt();
+  }
+  console.log(result.changed ? '\n✓ Admin domain configuration updated.' : '\nNo changes made.');
+}
+
 async function main() {
   const { ci, branch, category } = parseUpdateArgs(process.argv.slice(2));
+  if (category === 'admin-domain') {
+    await runAdminDomainConfigure(ci);
+    return;
+  }
   if (category) {
-    await runTargetedConfigure(CONFIGURE_FNS[category], ci);
+    await runTargetedConfigure(CONFIGURE_FNS[category], ci, category);
     return;
   }
 

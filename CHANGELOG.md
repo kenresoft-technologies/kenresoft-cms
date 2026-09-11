@@ -12,6 +12,16 @@ landed on `develop`.
 
 ### Added
 
+- `pnpm run update -- --domain` (and the equivalent menu entry in `pnpm run setup`) connects a
+  custom domain to the API Worker without touching the Cloudflare dashboard: it writes a
+  `[[routes]]` entry (`custom_domain = true`) and redeploys, which makes Cloudflare create the
+  DNS record and route for you. Disabling the `*.workers.dev` fallback URL afterward is a
+  separate, explicit confirmation (default: leave it enabled) — connect and verify the custom
+  domain first, then come back and turn off the fallback once you're sure it works.
+  `pnpm run update -- --admin-domain` does the same for the Admin Worker's own, separate
+  `wrangler.toml`, and additionally refreshes the `ADMIN_URL` secret (used to build every
+  password-reset/verification email link) to match — nothing else keeps that in sync
+  automatically.
 - **Structured Settings** — a new configuration primitive for singleton, typed site config
   (General/Contact/Social/Navigation/Footer/SEO), distinct from both Content Types/Entries and
   Global Variables (`docs/ARCHITECTURE.md` §6.2 explains when to use which). Settings → Social
@@ -66,6 +76,32 @@ landed on `develop`.
 
 ### Fixed
 
+- `pnpm run update` (and the equivalent `pnpm run setup` redeploy path) threw "Could not find the
+  deployed Worker URL" on every run once a Worker's `*.workers.dev` route was disabled — even
+  though the deploy itself succeeded. `wrangler deploy`'s own output only ever prints a
+  `*.workers.dev` line when that route is enabled; disabling it (e.g. via the new `--domain`
+  command above) left nothing for the old extraction logic to match. It now also recognizes a
+  `<domain> (custom domain)` line, falling back to that when no `*.workers.dev` line is present.
+- Connecting a custom domain to the Admin Worker never refreshed the `ADMIN_URL` secret (used to
+  build every password-reset/verification email link) — it stayed pinned to whatever
+  `*.workers.dev` URL the very first `pnpm run setup` run happened to set it to. The new
+  `--admin-domain` command above fixes this going forward.
+- `pnpm run update -- --auth`, once it actually changed `BETTER_AUTH_URL` and tried to rebuild the
+  admin app against the new value, threw a `ReferenceError` (an internal variable was never passed
+  into the function that needed it).
+- `pnpm run setup`/`update` always built the admin app against the raw `*.workers.dev` URL
+  `wrangler deploy` prints, even when `BETTER_AUTH_URL` already held a real custom domain — the
+  two could silently drift apart. If the `*.workers.dev` route was ever disabled (e.g. after
+  connecting a custom domain and turning off the fallback), the already-deployed admin app broke
+  outright, since it was still calling the now-unreachable workers.dev URL. Now prefers
+  `BETTER_AUTH_URL` whenever it's a real, non-placeholder value, falling back to the deployed
+  workers.dev URL only on a fresh install with no custom domain configured yet; changing the
+  Better Auth URL via `pnpm run update -- --auth` now also rebuilds and redeploys the admin app
+  so the two can't drift apart again. Also fixed: connecting a custom domain via `[[routes]]`
+  silently disabled the `*.workers.dev` fallback as an unrelated side effect once any route
+  existed (Cloudflare's actual default here differs from its own docs, which claim
+  `workers_dev` defaults to enabled unconditionally) — the new `--domain` command above always
+  writes `workers_dev` explicitly instead of leaving it implicit.
 - Structured Settings changes (site navigation, footer, etc.) sometimes never showed up on the
   public site even after a successful save and a hard reload. Cause: `GET /api/v1/public/
   settings/:module` used the Cloudflare Cache API for edge caching, but that cache is per-data-
