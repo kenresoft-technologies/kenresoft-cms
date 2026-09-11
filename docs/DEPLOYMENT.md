@@ -430,6 +430,30 @@ auto-filled while it's still the pre-deploy placeholder — never once it holds 
 custom domain included — and email configuration is only touched if you pick "change" for it. See
 "Updating configuration" below for the equivalent standalone commands.
 
+By default `update` follows whatever GitHub reports as `upstream`'s actual default branch
+(currently `develop` — the project's own working branch; `main` is reserved for release
+promotion, see `CLAUDE.md`'s branch rules) — correct for a real install, which should always
+track the currently-recommended stable line. A deployment used deliberately for *testing*
+pre-release code — e.g. a staging install that wants to try `develop` before it's promoted to
+`main`, or vice versa — can override this per run:
+
+```bash
+pnpm run update -- --branch develop
+pnpm run update -- --branch main
+```
+
+or set it once so every future `pnpm run update` in that checkout keeps using it without
+repeating the flag:
+
+```bash
+export UPDATE_BRANCH=develop   # add to your shell profile, or a per-checkout .env you source
+pnpm run update
+```
+
+An explicit `--branch` always wins over `UPDATE_BRANCH` if both are given. This only affects the
+plain code-pull update — it's rejected if combined with `--auth`/`--email`/`--storage`/
+`--database`, which never touch git at all.
+
 If your install has no `upstream` remote at all (a raw zip download, or one deliberately
 removed), `update` skips the code-pull step with a note and still redeploys whatever's on disk —
 add the remote yourself to opt back in: `git remote add upstream

@@ -25,12 +25,22 @@
 // `--ci` for non-interactive use (reads `*_NEW` environment variables instead of prompting; an
 // omitted variable always means "leave unchanged" — see configure.mjs).
 //
+// Which branch to pull: bare `pnpm run update` follows upstream's actual default branch,
+// auto-detected every run (see lib/git-cli.mjs) — correct for a real install, which should
+// always track whatever the project currently ships as stable. A deployment deliberately used
+// for *testing* pre-release code (e.g. a staging install that wants to try `develop` before it
+// reaches `main`) can override this per run with `--branch <name>`, or set it once via the
+// `UPDATE_BRANCH` environment variable so every future `pnpm run update` in that checkout keeps
+// using it without repeating the flag — an explicit `--branch` always wins over `UPDATE_BRANCH`
+// if both are given.
+//
 // Usage:
 //   pnpm run update
 //   pnpm run update -- --auth [--ci]
 //   pnpm run update -- --email [--ci]
 //   pnpm run update -- --storage
 //   pnpm run update -- --database
+//   pnpm run update -- --branch develop     # or: UPDATE_BRANCH=develop pnpm run update
 
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -43,25 +53,14 @@ import { readDatabaseId, readWorkerName } from './lib/wrangler-toml.mjs';
 import { readInstallStatus, summarizeInstallStatus } from './lib/config-status.mjs';
 import { configureAuth, configureDatabase, configureEmail, configureStorage } from './lib/configure.mjs';
 import { closePrompt } from './lib/prompt.mjs';
+import { parseUpdateArgs } from './lib/update-args.mjs';
 
 const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const API_DIR = join(REPO_ROOT, 'apps', 'api');
 const ADMIN_DIR = join(REPO_ROOT, 'apps', 'admin');
 const WRANGLER_TOML_PATH = join(REPO_ROOT, 'wrangler.toml');
 
-const CONFIGURE_FLAGS = { '--auth': configureAuth, '--email': configureEmail, '--storage': configureStorage, '--database': configureDatabase };
-
-// Any single run only ever targets one category — running two at once would make the resulting
-// "what changed" summary ambiguous, and each category already has its own confirmation/warning
-// flow that's meant to be read in isolation.
-function parseArgs(argv) {
-  const ci = argv.includes('--ci');
-  const flags = argv.filter((arg) => arg in CONFIGURE_FLAGS);
-  if (flags.length > 1) {
-    throw new Error(`Only one of ${Object.keys(CONFIGURE_FLAGS).join(', ')} may be given at a time.`);
-  }
-  return { ci, configureFn: flags[0] ? CONFIGURE_FLAGS[flags[0]] : null };
-}
+const CONFIGURE_FNS = { auth: configureAuth, email: configureEmail, storage: configureStorage, database: configureDatabase };
 
 async function runTargetedConfigure(configureFn, ci) {
   console.log('Kenresoft CMS — update configuration\n');
@@ -91,16 +90,17 @@ async function runTargetedConfigure(configureFn, ci) {
 }
 
 async function main() {
-  const { ci, configureFn } = parseArgs(process.argv.slice(2));
-  if (configureFn) {
-    await runTargetedConfigure(configureFn, ci);
+  const { ci, branch, category } = parseUpdateArgs(process.argv.slice(2));
+  if (category) {
+    await runTargetedConfigure(CONFIGURE_FNS[category], ci);
     return;
   }
 
   console.log('Kenresoft CMS — update an existing install\n');
   console.log('This never touches your secrets, D1/R2 resources, CORS config, or other application configuration.\n');
+  if (branch) console.log(`Pulling explicitly requested branch: ${branch}\n`);
 
-  await pullLatestCode(REPO_ROOT);
+  await pullLatestCode(REPO_ROOT, { branch });
 
   console.log('\nInstalling dependencies...');
   execFileSync('pnpm', ['install'], { cwd: REPO_ROOT, stdio: 'inherit', shell: true });
