@@ -38,7 +38,14 @@ import {
   writeWorkerName,
 } from './lib/wrangler-toml.mjs';
 import { isFreshInstall, isRealAuthUrl, readInstallStatus, summarizeInstallStatus } from './lib/config-status.mjs';
-import { configureAuth, configureDatabase, configureDomain, configureEmail, configureStorage } from './lib/configure.mjs';
+import {
+  configureAdminDomain,
+  configureAuth,
+  configureDatabase,
+  configureDomain,
+  configureEmail,
+  configureStorage,
+} from './lib/configure.mjs';
 
 const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const API_DIR = join(REPO_ROOT, 'apps', 'api');
@@ -425,10 +432,25 @@ async function runUpdateConfigurationMenu() {
       { value: 'email', label: 'Email (Resend / Cloudflare Email)' },
       { value: 'storage', label: 'Storage (R2)' },
       { value: 'database', label: 'Database (D1)' },
-      { value: 'domain', label: 'Custom domain / workers.dev' },
+      { value: 'domain', label: 'Custom domain / workers.dev (API Worker)' },
+      { value: 'admin-domain', label: 'Custom domain / workers.dev (Admin Worker)' },
       { value: 'done', label: 'Done' },
     ]);
     if (category === 'done') break;
+
+    // configureAdminDomain targets a completely separate wrangler.toml (apps/admin's) and deploys
+    // the Admin Worker itself as part of every step, including refreshing the ADMIN_URL secret —
+    // it never delegates to this loop's own API-Worker-only redeploy block below.
+    if (category === 'admin-domain') {
+      const result = await configureAdminDomain({
+        adminWranglerTomlPath: ADMIN_WRANGLER_TOML_PATH,
+        adminDir: ADMIN_DIR,
+        apiWranglerTomlPath: WRANGLER_TOML_PATH,
+        apiDir: API_DIR,
+      });
+      if (result.changed) anyChanged = true;
+      continue;
+    }
 
     const result = await CONFIGURE_CATEGORIES[category]({ wranglerTomlPath: WRANGLER_TOML_PATH, apiDir: API_DIR, status });
     if (result.changed) {

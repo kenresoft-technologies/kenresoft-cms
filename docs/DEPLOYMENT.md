@@ -486,7 +486,8 @@ pnpm run update -- --auth       # Better Auth URL
 pnpm run update -- --email      # Resend / Cloudflare Email
 pnpm run update -- --storage    # R2 bucket — status only, see below
 pnpm run update -- --database   # D1 database — status only, see below
-pnpm run update -- --domain     # Custom domain / workers.dev — see below
+pnpm run update -- --domain          # Custom domain / workers.dev (API Worker) — see below
+pnpm run update -- --admin-domain    # Custom domain / workers.dev (Admin Worker) — see below
 ```
 
 Each shows the current value first (secrets are always reported as "configured"/"not
@@ -521,6 +522,12 @@ disables it without asking. After connecting a domain, run `pnpm run update -- -
 `BETTER_AUTH_URL` at it and rebuild the admin app against the new address — the admin app's own
 build target doesn't change just because a route was added.
 
+`--admin-domain` does the same thing for the Admin Worker's own, completely separate
+`wrangler.toml` (`apps/admin/wrangler.toml`) — and additionally refreshes the `ADMIN_URL` secret
+(the address every password-reset/verification email links to) to match, since nothing else does
+that automatically. Confirmed as a real, live gap: connecting a custom domain to the admin app
+without this command left every email pointing at its original `*.workers.dev` URL indefinitely.
+
 **Non-interactive / CI use** — add `--ci` and set the corresponding `*_NEW` environment
 variable(s); an **omitted** variable always means "leave unchanged," never "clear" or reset to a
 default, matching the interactive commands' own behavior:
@@ -530,6 +537,7 @@ BETTER_AUTH_URL_NEW=https://cms.example.com pnpm run update -- --auth --ci
 EMAIL_PROVIDER_NEW=resend EMAIL_FROM_NEW=noreply@example.com RESEND_API_KEY_NEW=re_... \
   pnpm run update -- --email --ci
 CUSTOM_DOMAIN_NEW=api.example.com DISABLE_WORKERS_DEV=true pnpm run update -- --domain --ci
+ADMIN_CUSTOM_DOMAIN_NEW=cms.example.com pnpm run update -- --admin-domain --ci
 ```
 
 Only one category may be targeted per invocation — run the command again for a second category

@@ -18,7 +18,8 @@ import {
   setWorkersDevEnabled,
   writeTomlFile,
 } from './wrangler-toml.mjs';
-import { deployApi } from './deploy-helpers.mjs';
+import { deployApi, deployAdminOnly, resolvePublicAdminUrl } from './deploy-helpers.mjs';
+import { parseLocalConfig } from './config-status.mjs';
 
 // ---- pure helpers (unit-tested without wrangler/network access) ----
 
@@ -280,6 +281,91 @@ export async function configureDomain({ wranglerTomlPath, apiDir, status, ci = f
   );
 
   return { changed: true, redeployNeeded: workersDevDisabled };
+}
+
+// ---- Admin custom domain / workers.dev ----
+//
+// Same idea as configureDomain above, but targeting the Admin Worker's own, completely separate
+// wrangler.toml (apps/admin/wrangler.toml) — plus one thing the API side doesn't need: refreshing
+// the ADMIN_URL secret (used to build every password-reset/verification email link) to match.
+// Confirmed as a real, live gap: connecting a custom domain to the admin Worker never touched
+// ADMIN_URL at all, so every email link kept pointing at whatever workers.dev URL the very first
+// `pnpm run setup` run happened to set it to, regardless of any domain connected since. This
+// function deploys the admin Worker itself as part of every step (never delegates to a caller's
+// own generic redeploy, unlike configureAuth/configureEmail/configureDomain above) since it also
+// needs to read back the real deployed URL to refresh ADMIN_URL correctly — callers should treat
+// its `redeployNeeded` as "the API needs no further action," not "nothing was deployed."
+export async function configureAdminDomain({ adminWranglerTomlPath, adminDir, apiWranglerTomlPath, apiDir, ci = false, env = process.env }) {
+  const currentStatus = { domain: parseLocalConfig(readTomlFile(adminWranglerTomlPath)).domain };
+  console.log(`\nCurrent admin domain config: ${describeDomain(currentStatus)}`);
+
+  const refreshAdminUrl = (deployedAdminUrl) => {
+    const publicAdminUrl = resolvePublicAdminUrl({ adminWranglerTomlPath, deployedAdminUrl });
+    runWrangler(['secret', 'put', 'ADMIN_URL', '--config', apiWranglerTomlPath], { cwd: apiDir, input: publicAdminUrl });
+    console.log(`✓ ADMIN_URL updated to ${publicAdminUrl} — new password-reset/verification emails will link there.`);
+  };
+
+  if (ci) {
+    const domainInput = resolveInput(env.ADMIN_CUSTOM_DOMAIN_NEW);
+    if (!domainInput.changed) {
+      console.log('ADMIN_CUSTOM_DOMAIN_NEW not set — leaving admin domain configuration unchanged.');
+      return { changed: false };
+    }
+    let toml = addCustomDomainRoute(readTomlFile(adminWranglerTomlPath), domainInput.value);
+    const disableWorkersDev = String(env.DISABLE_WORKERS_DEV ?? '').toLowerCase() === 'true';
+    toml = setWorkersDevEnabled(toml, !disableWorkersDev);
+    writeTomlFile(adminWranglerTomlPath, toml);
+    const deployedUrl = deployAdminOnly({ adminDir });
+    refreshAdminUrl(deployedUrl);
+    console.log(
+      `✓ Added admin custom domain "${domainInput.value}" (non-interactive)` +
+        (disableWorkersDev ? ', and disabled workers.dev.' : ', workers.dev left enabled.'),
+    );
+    return { changed: true, redeployNeeded: false };
+  }
+
+  const domain = await ask(
+    'Custom domain to connect to the Admin app (e.g. cms.example.com) — its zone must already be ' +
+      'on this Cloudflare account, leave blank to skip',
+  );
+  if (!domain) {
+    console.log('No domain entered — admin domain configuration left unchanged.');
+    return { changed: false };
+  }
+  console.log(
+    '\nThis writes a [[routes]] entry (custom_domain = true) to the Admin Worker and redeploys — ' +
+      "Cloudflare creates the DNS record and route for you on that deploy, nothing to do in the " +
+      "dashboard first, as long as the domain's zone is already on this Cloudflare account.",
+  );
+  if (!(await confirm(`Connect "${domain}" to the admin app now?`, true))) {
+    console.log('Cancelled — admin domain configuration left unchanged.');
+    return { changed: false };
+  }
+
+  // See configureDomain's own comment above for why workers_dev must be written explicitly here.
+  let toml = addCustomDomainRoute(readTomlFile(adminWranglerTomlPath), domain);
+  toml = setWorkersDevEnabled(toml, true);
+  writeTomlFile(adminWranglerTomlPath, toml);
+  console.log(`✓ Added "${domain}" — redeploying so Cloudflare provisions the DNS record and route...`);
+  const deployedUrl = deployAdminOnly({ adminDir });
+  refreshAdminUrl(deployedUrl);
+  console.log(`✓ "${domain}" connected — verify it actually serves the admin app before disabling workers.dev.`);
+
+  if (
+    await confirm(
+      "\nDisable the *.workers.dev fallback URL now? (Only do this once you've confirmed the " +
+        'custom domain actually works.)',
+      false,
+    )
+  ) {
+    writeTomlFile(adminWranglerTomlPath, setWorkersDevEnabled(readTomlFile(adminWranglerTomlPath), false));
+    deployAdminOnly({ adminDir });
+    console.log('✓ workers.dev disabled.');
+  } else {
+    console.log('✓ workers.dev left enabled — reachable at both URLs for now.');
+  }
+
+  return { changed: true, redeployNeeded: false };
 }
 
 // ---- Storage / Database ----

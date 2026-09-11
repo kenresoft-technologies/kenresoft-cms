@@ -1,7 +1,7 @@
 // Pure argv parsing for scripts/update.mjs, split out so it's testable without importing
 // configure.mjs (which pulls in wrangler-cli.mjs/deploy-helpers.mjs — real process-spawning
 // modules) or update.mjs itself (a script whose module body runs `main()` on import).
-export const CONFIGURE_CATEGORIES = ['auth', 'email', 'storage', 'database', 'domain'];
+export const CONFIGURE_CATEGORIES = ['auth', 'email', 'storage', 'database', 'domain', 'admin-domain'];
 
 // Any single run only ever targets one configuration category — running two at once would make
 // the resulting "what changed" summary ambiguous, and each category already has its own
