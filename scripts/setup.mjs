@@ -25,17 +25,20 @@ import { dirname, join } from 'node:path';
 
 import { runWrangler, runWranglerInherit } from './lib/wrangler-cli.mjs';
 import { buildAndDeployAdmin, checkWorkerOwnership, deployApi } from './lib/deploy-helpers.mjs';
-import { ask, closePrompt, confirm } from './lib/prompt.mjs';
+import { ask, closePrompt, confirm, select } from './lib/prompt.mjs';
 import {
   extractTomlValue,
   findTopLevelBlock,
   insertAfterLine,
   readTomlFile,
+  readVarLine,
   readWorkerName,
   replaceLine,
   writeTomlFile,
   writeWorkerName,
 } from './lib/wrangler-toml.mjs';
+import { isFreshInstall, isRealAuthUrl, readInstallStatus, summarizeInstallStatus } from './lib/config-status.mjs';
+import { configureAuth, configureDatabase, configureEmail, configureStorage } from './lib/configure.mjs';
 
 const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const API_DIR = join(REPO_ROOT, 'apps', 'api');
@@ -249,42 +252,6 @@ async function ensureAuthSecret() {
   return secret;
 }
 
-async function maybeSetUpEmail() {
-  const choice = (await ask('Set up password-reset email now? [skip/cloudflare/resend]', 'skip')).toLowerCase();
-  if (choice === 'skip' || !choice) {
-    console.log('Skipping — password reset will still work, it just won\'t send an email (docs/DEPLOYMENT.md).');
-    return;
-  }
-  if (choice !== 'cloudflare' && choice !== 'resend') {
-    console.log(`Unrecognized choice "${choice}" — skipping email setup.`);
-    return;
-  }
-
-  const emailFrom = await ask('Send from which address?', 'noreply@yourdomain.example');
-  let toml = readToml();
-  // Must anchor to line-start and reject a leading "#" — a plain toml.includes('EMAIL_PROVIDER
-  // =') also matched the template's own commented-out example line
-  // ("#   EMAIL_PROVIDER = \"cloudflare\"   # or \"resend\""), silently skipping this insertion
-  // on every run: EMAIL_PROVIDER/EMAIL_FROM were never written, RESEND_API_KEY got set as a
-  // secret regardless, and the app kept using the noop email sender since EMAIL_PROVIDER was
-  // still unset — password-reset (and any other) email silently never sent despite a correctly
-  // configured Resend key.
-  toml = /^EMAIL_PROVIDER\s*=/m.test(toml)
-    ? toml
-    : replaceLine(toml, 'BETTER_AUTH_URL =', `BETTER_AUTH_URL = "https://REPLACE_AFTER_FIRST_DEPLOY.workers.dev"\nEMAIL_PROVIDER = "${choice}"\nEMAIL_FROM = "${emailFrom}"`);
-  writeToml(toml);
-
-  if (choice === 'resend') {
-    const apiKey = await ask('Paste your Resend API key');
-    runWrangler(['secret', 'put', 'RESEND_API_KEY', '--config', WRANGLER_TOML_PATH], { cwd: API_DIR, input: apiKey });
-    console.log('✓ Resend configured.');
-  } else {
-    console.log('Cloudflare Email selected — you still need to add a [[send_email]] binding to');
-    console.log('wrangler.toml and run `wrangler email sending enable` yourself (needs');
-    console.log('interactive domain verification this script can\'t automate). See docs/DEPLOYMENT.md.');
-  }
-}
-
 // Idempotent: re-running `pnpm run setup` against an already-deployed admin Worker must not
 // keep appending the same origin to CORS_ORIGINS every time — parses the existing comma-separated
 // list and only writes back (and reports a change) if `origin` isn't already one of its entries.
@@ -355,12 +322,14 @@ async function ensureWorkerNamesAreOurs() {
   console.log(`✓ Admin Worker will deploy as "${adminName}" (paired rename, same reason as above).`);
 }
 
-async function main() {
-  console.log('Kenresoft CMS — guided setup\n');
-
-  console.log('Checking Cloudflare authentication...');
-  runWranglerInherit(['whoami'], { cwd: API_DIR });
-
+// The full first-install sequence — also safe to run again (every step already preserves an
+// existing, valid value by default: ensureD1()/ensureR2() skip a confirmed-present resource,
+// ensureAuthSecret() only rotates on explicit confirmation, configureEmail() only touches email
+// when the developer picks "change", and BETTER_AUTH_URL is only ever overwritten below while
+// it's still the pre-deploy placeholder — never once a real value, custom domain included, is in
+// place). This is what a fresh install runs automatically, and what "Reconfigure everything"
+// below re-runs on an existing one.
+async function runFullFlow() {
   await ensureD1();
   await ensureR2();
 
@@ -373,15 +342,27 @@ async function main() {
   );
 
   await ensureAuthSecret();
-  await maybeSetUpEmail();
+  await configureEmail({ wranglerTomlPath: WRANGLER_TOML_PATH, apiDir: API_DIR, status: readInstallStatus({ apiDir: API_DIR, wranglerTomlPath: WRANGLER_TOML_PATH }) });
   await ensureWorkerNamesAreOurs();
+
+  const currentAuthUrl = readVarLine(readToml(), 'BETTER_AUTH_URL');
+  const authUrlWasPlaceholder = !isRealAuthUrl(currentAuthUrl);
 
   const firstUrl = deployApi({ apiDir: API_DIR, wranglerTomlPath: WRANGLER_TOML_PATH });
   console.log(`\nFirst deploy done: ${firstUrl}`);
 
-  console.log('Setting BETTER_AUTH_URL to the real deployed URL and redeploying...');
-  writeToml(replaceLine(readToml(), 'BETTER_AUTH_URL =', `BETTER_AUTH_URL = "${firstUrl}"`));
-  const finalUrl = deployApi({ apiDir: API_DIR, wranglerTomlPath: WRANGLER_TOML_PATH });
+  let finalUrl = firstUrl;
+  if (authUrlWasPlaceholder) {
+    // Only the pre-deploy placeholder is ever safe to fill in automatically — a real value
+    // (including a previous run's own *.workers.dev URL, or a custom domain someone edited in by
+    // hand) is a load-bearing config value and is left untouched. Use
+    // `pnpm run update -- --auth` to change it deliberately instead.
+    console.log('Setting BETTER_AUTH_URL to the real deployed URL and redeploying...');
+    writeToml(replaceLine(readToml(), 'BETTER_AUTH_URL =', `BETTER_AUTH_URL = "${firstUrl}"`));
+    finalUrl = deployApi({ apiDir: API_DIR, wranglerTomlPath: WRANGLER_TOML_PATH });
+  } else {
+    console.log(`✓ BETTER_AUTH_URL already configured (${currentAuthUrl}) — leaving it unchanged.`);
+  }
   console.log(`\n✓ API deployed: ${finalUrl}`);
 
   const adminUrl = buildAndDeployAdmin({ repoRoot: REPO_ROOT, adminDir: ADMIN_DIR, apiUrl: finalUrl });
@@ -402,9 +383,94 @@ async function main() {
     console.log('✓ Admin origin already present in CORS_ORIGINS — skipping (running setup again is safe).');
   }
 
-  console.log('\n✓ CMS installed — sign up at the admin URL below (the first account becomes owner):');
+  console.log('\n✓ CMS installed/updated — sign up at the admin URL below (the first account becomes owner):');
   console.log(`  API:   ${finalUrl}`);
   console.log(`  Admin: ${adminUrl}`);
+}
+
+// "Continue without changes" — redeploy current, unmodified configuration. No provisioning, no
+// prompts, nothing in wrangler.toml is touched.
+async function redeployOnly() {
+  console.log('\nApplying any new database migrations...');
+  runWranglerInherit(
+    ['d1', 'migrations', 'apply', 'DB', '--remote', '--config', WRANGLER_TOML_PATH],
+    { cwd: API_DIR },
+  );
+  const apiUrl = deployApi({ apiDir: API_DIR, wranglerTomlPath: WRANGLER_TOML_PATH });
+  console.log(`\n✓ API redeployed: ${apiUrl}`);
+  const adminUrl = buildAndDeployAdmin({ repoRoot: REPO_ROOT, adminDir: ADMIN_DIR, apiUrl });
+  console.log(`✓ Admin redeployed: ${adminUrl}`);
+}
+
+const CONFIGURE_CATEGORIES = { auth: configureAuth, email: configureEmail, storage: configureStorage, database: configureDatabase };
+
+// "Update configuration" — loop letting the developer pick exactly which category(ies) to touch,
+// same functions `pnpm run update -- --auth`/`--email`/etc. use standalone, so the two entry
+// points can never drift into different behavior for the same category.
+async function runUpdateConfigurationMenu() {
+  let anyChanged = false;
+  for (;;) {
+    const status = readInstallStatus({ apiDir: API_DIR, wranglerTomlPath: WRANGLER_TOML_PATH });
+    console.log(`\n${summarizeInstallStatus(status)}`);
+    const category = await select('\nWhich category do you want to update?', [
+      { value: 'auth', label: 'Better Auth URL' },
+      { value: 'email', label: 'Email (Resend / Cloudflare Email)' },
+      { value: 'storage', label: 'Storage (R2)' },
+      { value: 'database', label: 'Database (D1)' },
+      { value: 'done', label: 'Done' },
+    ]);
+    if (category === 'done') break;
+
+    const result = await CONFIGURE_CATEGORIES[category]({ wranglerTomlPath: WRANGLER_TOML_PATH, apiDir: API_DIR, status });
+    if (result.changed) {
+      anyChanged = true;
+      if (result.redeployNeeded) {
+        console.log('\nRedeploying the API Worker with the updated configuration...');
+        deployApi({ apiDir: API_DIR, wranglerTomlPath: WRANGLER_TOML_PATH });
+      }
+    }
+  }
+  console.log(anyChanged ? '\n✓ Configuration updated.' : '\nNo changes made.');
+}
+
+async function main() {
+  console.log('Kenresoft CMS — guided setup\n');
+
+  console.log('Checking Cloudflare authentication...');
+  runWranglerInherit(['whoami'], { cwd: API_DIR });
+
+  const status = readInstallStatus({ apiDir: API_DIR, wranglerTomlPath: WRANGLER_TOML_PATH });
+  if (!isFreshInstall(status)) {
+    console.log('\nExisting installation detected.\n');
+    console.log(summarizeInstallStatus(status));
+    const choice = await select('\nWhat would you like to do?', [
+      { value: 'continue', label: 'Continue without changes' },
+      { value: 'update', label: 'Update configuration' },
+      { value: 'reconfigure', label: 'Reconfigure everything' },
+      { value: 'cancel', label: 'Cancel' },
+    ]);
+    if (choice === 'cancel') {
+      console.log('Cancelled — nothing changed.');
+      closePrompt();
+      return;
+    }
+    if (choice === 'continue') {
+      await redeployOnly();
+      closePrompt();
+      return;
+    }
+    if (choice === 'update') {
+      await runUpdateConfigurationMenu();
+      closePrompt();
+      return;
+    }
+    // 'reconfigure' falls through to the same full flow a fresh install runs — every step in it
+    // already preserves an existing valid value by default (see runFullFlow's own comment), so
+    // "reconfigure everything" really means "walk through every step's own prompts again",
+    // not "discard and regenerate everything unconditionally".
+  }
+
+  await runFullFlow();
   closePrompt();
 }
 

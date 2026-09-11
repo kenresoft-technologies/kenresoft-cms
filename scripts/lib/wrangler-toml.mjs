@@ -97,3 +97,34 @@ export function readDatabaseId(path) {
   const block = findTopLevelBlock(readTomlFile(path), '[[d1_databases]]');
   return block ? extractTomlValue(block.text, 'database_id') : null;
 }
+
+// Generic [vars] editing, replacing the old pattern of anchoring one field's insertion to another
+// field's own line (e.g. inserting EMAIL_PROVIDER/EMAIL_FROM by replacing the whole
+// "BETTER_AUTH_URL =" line) — that pattern is exactly how setting up email used to also silently
+// reset BETTER_AUTH_URL back to the pre-deploy placeholder. Each of these touches exactly the one
+// key it's given and nothing else. Safe against this file's shape specifically because there is
+// exactly one `[vars]` block and no `[env.*.vars]` variants (the project's own history: a stale
+// `[env.production]` block was deliberately removed) — a key is matched anywhere before the next
+// `[section]`, same assumption every other var-editing helper in this file already makes.
+export function hasVarLine(toml, key) {
+  return new RegExp(`^${key}\\s*=`, 'm').test(toml);
+}
+
+export function readVarLine(toml, key) {
+  return toml.match(new RegExp(`^${key}\\s*=\\s*"([^"]*)"`, 'm'))?.[1] ?? null;
+}
+
+export function setVarLine(toml, key, value) {
+  const line = `${key} = "${value}"`;
+  if (hasVarLine(toml, key)) {
+    return toml.replace(new RegExp(`^${key}\\s*=.*$`, 'm'), line);
+  }
+  const varsHeaderIdx = toml.indexOf('[vars]\n');
+  if (varsHeaderIdx === -1) throw new Error('Could not find [vars] in wrangler.toml.');
+  const insertAt = varsHeaderIdx + '[vars]\n'.length;
+  return toml.slice(0, insertAt) + line + '\n' + toml.slice(insertAt);
+}
+
+export function removeVarLine(toml, key) {
+  return toml.replace(new RegExp(`^${key}\\s*=.*\\n?`, 'm'), '');
+}

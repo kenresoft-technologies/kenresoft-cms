@@ -39,7 +39,12 @@ async function confirm(question) {
   }
 }
 
-export async function pullLatestCode(repoRoot) {
+// `branch`, when given, pulls that exact branch instead of auto-detecting upstream's default —
+// e.g. a test/staging deployment that deliberately wants to track `develop` (pre-release code)
+// rather than `main` (whatever a real install's own auto-detection would otherwise resolve to).
+// Left undefined for every normal install, which keeps following upstream's actual default
+// branch automatically, same as before this option existed.
+export async function pullLatestCode(repoRoot, { branch } = {}) {
   if (!existsSync(join(repoRoot, '.git'))) {
     console.log('Not a git repository — skipping the automatic code pull (deploying whatever is on disk).');
     return;
@@ -56,15 +61,28 @@ export async function pullLatestCode(repoRoot) {
   }
 
   console.log('Fetching the latest CMS code from upstream...');
+  // No refspec — fetches every branch upstream has (git's default refspec for a remote is
+  // `+refs/heads/*:refs/remotes/upstream/*`), so both `upstream/main` and `upstream/develop`
+  // land locally regardless of which one ends up merged below.
   runGitInherit(['fetch', 'upstream'], repoRoot);
 
-  // Discover upstream's actual default branch rather than assuming the local branch's own name
-  // matches it — true for a fresh `git clone`-based scaffold, not guaranteed for an older
-  // install (e.g. one whose local branch got renamed, or scaffolded before this repo's default
-  // branch was `develop`).
-  runGit(['remote', 'set-head', 'upstream', '--auto'], repoRoot);
-  const headRef = runGit(['symbolic-ref', 'refs/remotes/upstream/HEAD'], repoRoot).trim();
-  const defaultBranch = headRef.replace('refs/remotes/upstream/', '');
+  let targetBranch = branch;
+  if (targetBranch) {
+    const exists = tryRunGit(['rev-parse', '--verify', `refs/remotes/upstream/${targetBranch}`], repoRoot);
+    if (!exists.ok) {
+      throw new Error(`upstream/${targetBranch} does not exist — check the branch name (e.g. "main" or "develop").`);
+    }
+    console.log(`✓ Using explicitly requested branch: upstream/${targetBranch}`);
+  } else {
+    // Discover upstream's actual default branch rather than assuming the local branch's own name
+    // matches it — true for a fresh `git clone`-based scaffold, not guaranteed for an older
+    // install (e.g. one whose local branch got renamed, or scaffolded before this repo's default
+    // branch was `develop`).
+    runGit(['remote', 'set-head', 'upstream', '--auto'], repoRoot);
+    const headRef = runGit(['symbolic-ref', 'refs/remotes/upstream/HEAD'], repoRoot).trim();
+    targetBranch = headRef.replace('refs/remotes/upstream/', '');
+  }
+  const defaultBranch = targetBranch;
 
   // Local config edits (wrangler.toml's database_id/CORS_ORIGINS, pnpm-lock.yaml) are always
   // uncommitted, expected local state on a real deployment — stash them out of the way so the
