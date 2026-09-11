@@ -24,7 +24,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 import { runWrangler, runWranglerInherit } from './lib/wrangler-cli.mjs';
-import { buildAndDeployAdmin, checkWorkerOwnership, deployApi } from './lib/deploy-helpers.mjs';
+import { buildAndDeployAdmin, checkWorkerOwnership, deployApi, resolveAdminApiUrl } from './lib/deploy-helpers.mjs';
 import { ask, closePrompt, confirm, select } from './lib/prompt.mjs';
 import {
   extractTomlValue,
@@ -38,7 +38,7 @@ import {
   writeWorkerName,
 } from './lib/wrangler-toml.mjs';
 import { isFreshInstall, isRealAuthUrl, readInstallStatus, summarizeInstallStatus } from './lib/config-status.mjs';
-import { configureAuth, configureDatabase, configureEmail, configureStorage } from './lib/configure.mjs';
+import { configureAuth, configureDatabase, configureDomain, configureEmail, configureStorage } from './lib/configure.mjs';
 
 const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const API_DIR = join(REPO_ROOT, 'apps', 'api');
@@ -365,7 +365,8 @@ async function runFullFlow() {
   }
   console.log(`\n✓ API deployed: ${finalUrl}`);
 
-  const adminUrl = buildAndDeployAdmin({ repoRoot: REPO_ROOT, adminDir: ADMIN_DIR, apiUrl: finalUrl });
+  const adminApiUrl = resolveAdminApiUrl({ wranglerTomlPath: WRANGLER_TOML_PATH, deployedWorkerUrl: finalUrl });
+  const adminUrl = buildAndDeployAdmin({ repoRoot: REPO_ROOT, adminDir: ADMIN_DIR, apiUrl: adminApiUrl });
 
   console.log(`\nAdmin deployed: ${adminUrl}`);
 
@@ -398,11 +399,18 @@ async function redeployOnly() {
   );
   const apiUrl = deployApi({ apiDir: API_DIR, wranglerTomlPath: WRANGLER_TOML_PATH });
   console.log(`\n✓ API redeployed: ${apiUrl}`);
-  const adminUrl = buildAndDeployAdmin({ repoRoot: REPO_ROOT, adminDir: ADMIN_DIR, apiUrl });
+  const adminApiUrl = resolveAdminApiUrl({ wranglerTomlPath: WRANGLER_TOML_PATH, deployedWorkerUrl: apiUrl });
+  const adminUrl = buildAndDeployAdmin({ repoRoot: REPO_ROOT, adminDir: ADMIN_DIR, apiUrl: adminApiUrl });
   console.log(`✓ Admin redeployed: ${adminUrl}`);
 }
 
-const CONFIGURE_CATEGORIES = { auth: configureAuth, email: configureEmail, storage: configureStorage, database: configureDatabase };
+const CONFIGURE_CATEGORIES = {
+  auth: configureAuth,
+  email: configureEmail,
+  storage: configureStorage,
+  database: configureDatabase,
+  domain: configureDomain,
+};
 
 // "Update configuration" — loop letting the developer pick exactly which category(ies) to touch,
 // same functions `pnpm run update -- --auth`/`--email`/etc. use standalone, so the two entry
@@ -417,6 +425,7 @@ async function runUpdateConfigurationMenu() {
       { value: 'email', label: 'Email (Resend / Cloudflare Email)' },
       { value: 'storage', label: 'Storage (R2)' },
       { value: 'database', label: 'Database (D1)' },
+      { value: 'domain', label: 'Custom domain / workers.dev' },
       { value: 'done', label: 'Done' },
     ]);
     if (category === 'done') break;
@@ -426,7 +435,15 @@ async function runUpdateConfigurationMenu() {
       anyChanged = true;
       if (result.redeployNeeded) {
         console.log('\nRedeploying the API Worker with the updated configuration...');
-        deployApi({ apiDir: API_DIR, wranglerTomlPath: WRANGLER_TOML_PATH });
+        const apiUrl = deployApi({ apiDir: API_DIR, wranglerTomlPath: WRANGLER_TOML_PATH });
+        // A Better Auth URL change is the one category the admin app's own build depends on
+        // (VITE_API_URL) — see resolveAdminApiUrl's own comment. Every other category (email,
+        // storage, database) has no bearing on what URL the admin app should call.
+        if (category === 'auth') {
+          console.log('Rebuilding and redeploying the admin app against the updated URL...');
+          const adminApiUrl = resolveAdminApiUrl({ wranglerTomlPath: WRANGLER_TOML_PATH, deployedWorkerUrl: apiUrl });
+          buildAndDeployAdmin({ repoRoot: REPO_ROOT, adminDir: ADMIN_DIR, apiUrl: adminApiUrl });
+        }
       }
     }
   }

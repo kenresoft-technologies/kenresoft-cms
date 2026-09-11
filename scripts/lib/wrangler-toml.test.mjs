@@ -1,7 +1,16 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { hasVarLine, readVarLine, removeVarLine, setVarLine } from './wrangler-toml.mjs';
+import {
+  addCustomDomainRoute,
+  hasVarLine,
+  readCustomDomainRoutes,
+  readVarLine,
+  readWorkersDevEnabled,
+  removeVarLine,
+  setVarLine,
+  setWorkersDevEnabled,
+} from './wrangler-toml.mjs';
 
 const TOML = `name = "kenresoft-cms-api"
 
@@ -44,4 +53,39 @@ test('removeVarLine drops the key entirely (used by "disable email")', () => {
   assert.equal(hasVarLine(removed, 'EMAIL_PROVIDER'), false);
   // Unrelated vars survive.
   assert.equal(readVarLine(removed, 'BETTER_AUTH_URL'), readVarLine(TOML, 'BETTER_AUTH_URL'));
+});
+
+test('readWorkersDevEnabled defaults to true when absent, and reads an explicit value', () => {
+  assert.equal(readWorkersDevEnabled(TOML), true);
+  assert.equal(readWorkersDevEnabled(setWorkersDevEnabled(TOML, false)), false);
+  assert.equal(readWorkersDevEnabled(setWorkersDevEnabled(TOML, true)), true);
+});
+
+test('setWorkersDevEnabled inserts once and replaces in place on a second call, never touching [vars]', () => {
+  const disabled = setWorkersDevEnabled(TOML, false);
+  assert.equal((disabled.match(/^workers_dev\s*=/gm) ?? []).length, 1);
+  assert.equal(readVarLine(disabled, 'BETTER_AUTH_URL'), readVarLine(TOML, 'BETTER_AUTH_URL'));
+
+  const reEnabled = setWorkersDevEnabled(disabled, true);
+  assert.equal(readWorkersDevEnabled(reEnabled), true);
+  assert.equal((reEnabled.match(/^workers_dev\s*=/gm) ?? []).length, 1);
+});
+
+test('addCustomDomainRoute appends a [[routes]] block, is idempotent, and supports more than one domain', () => {
+  const once = addCustomDomainRoute(TOML, 'api.example.com');
+  assert.deepEqual(readCustomDomainRoutes(once), ['api.example.com']);
+  // Calling again with the same pattern must not duplicate the block.
+  const twice = addCustomDomainRoute(once, 'api.example.com');
+  assert.equal(twice, once);
+  assert.equal((twice.match(/\[\[routes\]\]/g) ?? []).length, 1);
+
+  const withSecond = addCustomDomainRoute(once, 'cms.example.com');
+  assert.deepEqual(readCustomDomainRoutes(withSecond), ['api.example.com', 'cms.example.com']);
+  // The rest of the file is untouched — this is always appended at the very end.
+  assert.equal(readVarLine(withSecond, 'BETTER_AUTH_URL'), readVarLine(TOML, 'BETTER_AUTH_URL'));
+});
+
+test('readCustomDomainRoutes ignores a [[routes]] block that is not a custom_domain route', () => {
+  const withPlainRoute = TOML + '\n[[routes]]\npattern = "example.com/*"\nzone_name = "example.com"\n';
+  assert.deepEqual(readCustomDomainRoutes(withPlainRoute), []);
 });

@@ -78,3 +78,22 @@ test('summarizeInstallStatus never includes a secret value, only configured/not'
   assert.doesNotMatch(summary, /sk_|re_|[A-Za-z0-9]{32,}/, 'summary must never leak a secret-looking value');
   assert.match(summary, /Email \(resend\) configured/);
 });
+
+test('parseLocalConfig reports no custom domain and workers.dev enabled by default', () => {
+  const local = parseLocalConfig(BASE_TOML);
+  assert.deepEqual(local.domain.customDomains, []);
+  assert.equal(local.domain.workersDevEnabled, true);
+});
+
+test('parseLocalConfig picks up a connected custom domain and a disabled workers.dev', () => {
+  const toml = `workers_dev = false\n${BASE_TOML}\n[[routes]]\npattern = "api.example.com"\ncustom_domain = true\n`;
+  const local = parseLocalConfig(toml);
+  assert.deepEqual(local.domain.customDomains, ['api.example.com']);
+  assert.equal(local.domain.workersDevEnabled, false);
+});
+
+test('summarizeInstallStatus flags the dangerous state: workers.dev disabled with no custom domain connected', () => {
+  const toml = `workers_dev = false\n${BASE_TOML}`;
+  const summary = summarizeInstallStatus(classifyInstallStatus(parseLocalConfig(toml), new Set()));
+  assert.match(summary, /workers\.dev is disabled, so this Worker is unreachable/);
+});

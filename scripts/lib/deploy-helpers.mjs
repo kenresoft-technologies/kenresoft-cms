@@ -4,6 +4,8 @@
 import { execFileSync } from 'node:child_process';
 
 import { runWrangler } from './wrangler-cli.mjs';
+import { readTomlFile, readVarLine } from './wrangler-toml.mjs';
+import { isRealAuthUrl } from './config-status.mjs';
 
 const WORKER_URL_RE = /https:\/\/[a-z0-9.-]+\.workers\.dev/;
 
@@ -53,6 +55,23 @@ export function checkWorkerOwnership({ workerName, cwd, expectedDatabaseId }) {
   return liveDatabaseId === expectedDatabaseId
     ? { status: 'ours' }
     : { status: 'foreign', liveDatabaseId };
+}
+
+// The admin app's own build-time API base URL (VITE_API_URL) should point at this deployment's
+// real public API origin. `deployApi()` above always returns the Worker's raw *.workers.dev URL
+// from `wrangler deploy`'s own output — correct for a fresh install that has no custom domain
+// yet, but wrong once one is configured: BETTER_AUTH_URL already holds the deployment's intended
+// public address (a custom domain, or a previous run's own workers.dev URL) and is the value
+// every other part of this config already treats as authoritative. Confirmed as a real, live
+// incident: disabling the API Worker's workers.dev route (to force traffic through a connected
+// custom domain only) broke the admin app, which had been built against the workers.dev URL
+// `deployApi()` returned even though BETTER_AUTH_URL was already correctly set to the custom
+// domain — this function is what makes those two stay in sync going forward. Only the pre-deploy
+// placeholder falls back to the just-deployed workers.dev URL; any other value already means "use
+// this," the same rule setup.mjs's own BETTER_AUTH_URL-fill-in logic already follows.
+export function resolveAdminApiUrl({ wranglerTomlPath, deployedWorkerUrl }) {
+  const authUrl = readVarLine(readTomlFile(wranglerTomlPath), 'BETTER_AUTH_URL');
+  return isRealAuthUrl(authUrl) ? authUrl : deployedWorkerUrl;
 }
 
 export function deployApi({ apiDir, wranglerTomlPath }) {

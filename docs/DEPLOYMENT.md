@@ -486,6 +486,7 @@ pnpm run update -- --auth       # Better Auth URL
 pnpm run update -- --email      # Resend / Cloudflare Email
 pnpm run update -- --storage    # R2 bucket — status only, see below
 pnpm run update -- --database   # D1 database — status only, see below
+pnpm run update -- --domain     # Custom domain / workers.dev — see below
 ```
 
 Each shows the current value first (secrets are always reported as "configured"/"not
@@ -510,6 +511,16 @@ touched. This is the fix for two things real deployments have hit before this co
 D1 database or R2 bucket moves no data, so there's no safe default action to automate. They print
 the current name/id and explain the manual `wrangler.toml` edit if you genuinely mean to do that.
 
+`--domain` connects a custom domain (e.g. `api.example.com`) to the API Worker without a single
+dashboard click: it writes a `[[routes]]` entry with `custom_domain = true` and redeploys —
+Cloudflare creates the DNS record and route for you on that deploy, as long as the domain's zone
+is already on this Cloudflare account. It then separately, and only if you explicitly confirm,
+offers to disable the `*.workers.dev` fallback URL — connect and verify the custom domain first,
+then come back and disable the fallback once you're sure it's working; this command never
+disables it without asking. After connecting a domain, run `pnpm run update -- --auth` to point
+`BETTER_AUTH_URL` at it and rebuild the admin app against the new address — the admin app's own
+build target doesn't change just because a route was added.
+
 **Non-interactive / CI use** — add `--ci` and set the corresponding `*_NEW` environment
 variable(s); an **omitted** variable always means "leave unchanged," never "clear" or reset to a
 default, matching the interactive commands' own behavior:
@@ -518,6 +529,7 @@ default, matching the interactive commands' own behavior:
 BETTER_AUTH_URL_NEW=https://cms.example.com pnpm run update -- --auth --ci
 EMAIL_PROVIDER_NEW=resend EMAIL_FROM_NEW=noreply@example.com RESEND_API_KEY_NEW=re_... \
   pnpm run update -- --email --ci
+CUSTOM_DOMAIN_NEW=api.example.com DISABLE_WORKERS_DEV=true pnpm run update -- --domain --ci
 ```
 
 Only one category may be targeted per invocation — run the command again for a second category

@@ -17,13 +17,17 @@
 // `pnpm run setup` to pick up new CMS changes, precisely because setup.mjs's ensureAuthSecret()
 // used to (and other steps still do) prompt/act as if this were a first-ever install.
 //
-// Targeted reconfiguration: `pnpm run update -- --auth` / `--email` / `--storage` / `--database`
-// modifies exactly that one configuration category (scripts/lib/configure.mjs) and does NOT pull
-// code, install deps, or touch any other category — the two concerns (picking up new CMS code vs.
-// changing this deployment's own configuration) are deliberately kept separate, per this
-// project's non-negotiable rule that a value only ever changes when explicitly requested. Add
-// `--ci` for non-interactive use (reads `*_NEW` environment variables instead of prompting; an
-// omitted variable always means "leave unchanged" — see configure.mjs).
+// Targeted reconfiguration: `pnpm run update -- --auth` / `--email` / `--storage` / `--database` /
+// `--domain` modifies exactly that one configuration category (scripts/lib/configure.mjs) and
+// does NOT pull code, install deps, or touch any other category — the two concerns (picking up
+// new CMS code vs. changing this deployment's own configuration) are deliberately kept separate,
+// per this project's non-negotiable rule that a value only ever changes when explicitly
+// requested. Add `--ci` for non-interactive use (reads `*_NEW` environment variables instead of
+// prompting; an omitted variable always means "leave unchanged" — see configure.mjs). `--domain`
+// connects a custom domain via `[[routes]]`/`custom_domain = true` (Cloudflare creates the DNS
+// record and route automatically on deploy — no dashboard step needed) and, only if explicitly
+// confirmed afterward, disables the *.workers.dev fallback URL — run `--auth` right after to point
+// BETTER_AUTH_URL at the new domain and rebuild the admin app against it.
 //
 // Which branch to pull: bare `pnpm run update` follows upstream's actual default branch,
 // auto-detected every run (see lib/git-cli.mjs) — correct for a real install, which should
@@ -40,6 +44,7 @@
 //   pnpm run update -- --email [--ci]
 //   pnpm run update -- --storage
 //   pnpm run update -- --database
+//   pnpm run update -- --domain [--ci]
 //   pnpm run update -- --branch develop     # or: UPDATE_BRANCH=develop pnpm run update
 
 import { execFileSync } from 'node:child_process';
@@ -48,10 +53,10 @@ import { dirname, join } from 'node:path';
 
 import { pullLatestCode } from './lib/git-cli.mjs';
 import { runWranglerInherit } from './lib/wrangler-cli.mjs';
-import { buildAndDeployAdmin, checkWorkerOwnership, deployApi } from './lib/deploy-helpers.mjs';
+import { buildAndDeployAdmin, checkWorkerOwnership, deployApi, resolveAdminApiUrl } from './lib/deploy-helpers.mjs';
 import { readDatabaseId, readWorkerName } from './lib/wrangler-toml.mjs';
 import { readInstallStatus, summarizeInstallStatus } from './lib/config-status.mjs';
-import { configureAuth, configureDatabase, configureEmail, configureStorage } from './lib/configure.mjs';
+import { configureAuth, configureDatabase, configureDomain, configureEmail, configureStorage } from './lib/configure.mjs';
 import { closePrompt } from './lib/prompt.mjs';
 import { parseUpdateArgs } from './lib/update-args.mjs';
 
@@ -60,7 +65,13 @@ const API_DIR = join(REPO_ROOT, 'apps', 'api');
 const ADMIN_DIR = join(REPO_ROOT, 'apps', 'admin');
 const WRANGLER_TOML_PATH = join(REPO_ROOT, 'wrangler.toml');
 
-const CONFIGURE_FNS = { auth: configureAuth, email: configureEmail, storage: configureStorage, database: configureDatabase };
+const CONFIGURE_FNS = {
+  auth: configureAuth,
+  email: configureEmail,
+  storage: configureStorage,
+  database: configureDatabase,
+  domain: configureDomain,
+};
 
 async function runTargetedConfigure(configureFn, ci) {
   console.log('Kenresoft CMS — update configuration\n');
@@ -84,6 +95,15 @@ async function runTargetedConfigure(configureFn, ci) {
     console.log('\nRedeploying the API Worker with the updated configuration...');
     const apiUrl = deployApi({ apiDir: API_DIR, wranglerTomlPath: WRANGLER_TOML_PATH });
     console.log(`✓ Redeployed: ${apiUrl}`);
+    // A Better Auth URL change is the one category the admin app's own build depends on
+    // (VITE_API_URL) — see resolveAdminApiUrl's own comment. Every other category (email,
+    // storage, database) has no bearing on what URL the admin app should call.
+    if (category === 'auth') {
+      console.log('Rebuilding and redeploying the admin app against the updated URL...');
+      const adminApiUrl = resolveAdminApiUrl({ wranglerTomlPath: WRANGLER_TOML_PATH, deployedWorkerUrl: apiUrl });
+      const adminUrl = buildAndDeployAdmin({ repoRoot: REPO_ROOT, adminDir: ADMIN_DIR, apiUrl: adminApiUrl });
+      console.log(`✓ Admin redeployed: ${adminUrl}`);
+    }
   } else {
     console.log('\n✓ Change applied (took effect immediately — no redeploy needed for this field).');
   }

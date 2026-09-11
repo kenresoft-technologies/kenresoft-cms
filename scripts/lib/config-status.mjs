@@ -8,7 +8,13 @@
 // (secret existence, requires `wrangler secret list`) layer, since only the local layer's
 // classification logic needs to be exercised by tests without real Cloudflare access.
 import { runWrangler } from './wrangler-cli.mjs';
-import { extractTomlValue, findTopLevelBlock, readTomlFile } from './wrangler-toml.mjs';
+import {
+  extractTomlValue,
+  findTopLevelBlock,
+  readCustomDomainRoutes,
+  readTomlFile,
+  readWorkersDevEnabled,
+} from './wrangler-toml.mjs';
 
 // The literal placeholder wrangler.toml ships with before a first deploy exists — the one value
 // BETTER_AUTH_URL is actually safe to overwrite automatically. Any other value, including a
@@ -49,6 +55,7 @@ export function parseLocalConfig(toml) {
     betterAuthUrl: { value: authUrl, configured: isRealAuthUrl(authUrl) },
     email: { provider: readVar(toml, 'EMAIL_PROVIDER'), from: readVar(toml, 'EMAIL_FROM') },
     corsOrigins,
+    domain: { customDomains: readCustomDomainRoutes(toml), workersDevEnabled: readWorkersDevEnabled(toml) },
   };
 }
 
@@ -111,6 +118,9 @@ export function summarizeInstallStatus(status) {
     status.email.provider
       ? `${status.email.configured ? '✓' : '⚠'} Email (${status.email.provider}) ${status.email.configured ? 'configured' : 'incomplete — check the missing piece below'}`
       : '✗ Email not configured (password-reset/verification mail will not be sent)',
+    status.domain.customDomains.length > 0
+      ? `✓ Custom domain: ${status.domain.customDomains.join(', ')} (workers.dev ${status.domain.workersDevEnabled ? 'also still enabled' : 'disabled'})`
+      : `✗ No custom domain connected (using the *.workers.dev URL${status.domain.workersDevEnabled ? '' : ' — and workers.dev is disabled, so this Worker is unreachable until one is connected'})`,
   ];
   return lines.join('\n');
 }
