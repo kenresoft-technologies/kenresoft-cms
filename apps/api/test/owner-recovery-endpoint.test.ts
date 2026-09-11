@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { systemRoute } from '../src/routes/system/recover-owner';
 import type { Bindings } from '../src/lib/env';
+import { signUpVerifiedAndGetCookie } from './helpers/auth';
 
 const PASSWORD = 'correct horse battery staple';
 const NEW_PASSWORD = 'a completely different passphrase';
@@ -12,14 +13,7 @@ const NEW_PASSWORD = 'a completely different passphrase';
 const CONFIGURED_SECRET = 'test-only-owner-recovery-secret-not-used-outside-vitest-pool-workers';
 
 async function signUp(email: string): Promise<string> {
-  const response = await SELF.fetch('https://example.com/api/v1/auth/sign-up/email', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password: PASSWORD, name: 'Test User' }),
-  });
-  const setCookie = response.headers.get('set-cookie');
-  if (!setCookie) throw new Error('sign-up did not return a session cookie');
-  return setCookie.split(';')[0]!;
+  return signUpVerifiedAndGetCookie(email, { password: PASSWORD, name: 'Test User' });
 }
 
 async function recoverOwner(body: Record<string, unknown>) {

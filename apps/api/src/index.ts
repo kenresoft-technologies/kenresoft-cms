@@ -50,7 +50,7 @@ app.use('*', corsMiddleware);
 app.route('/api/v1/health', healthRoute);
 
 app.use('/api/v1/auth/*', authRateLimit);
-app.on(['GET', 'POST'], '/api/v1/auth/*', (c) => createAuth(c.env).handler(c.req.raw));
+app.on(['GET', 'POST'], '/api/v1/auth/*', (c) => createAuth(c.env, c.executionCtx).handler(c.req.raw));
 
 // A loose baseline (300/60s) across every /api/v1/public/* route, layered under the tighter,
 // purpose-specific limiters forms/password-reset/recovery already have below — this one closes

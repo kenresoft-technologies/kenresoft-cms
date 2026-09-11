@@ -100,7 +100,7 @@ function EmailDeliverySection() {
   return (
     <SettingsSection
       title="Email delivery"
-      description="Whether this deployment can actually send password-reset emails."
+      description="Whether this deployment can actually send password-reset and account-verification emails."
     >
       <div className="flex items-center justify-between gap-4">
         {isPending ? (
@@ -112,8 +112,8 @@ function EmailDeliverySection() {
           <>
             <p className="max-w-md text-sm text-muted-foreground">
               {status?.emailConfigured
-                ? 'A real email provider is configured — password-reset requests deliver normally.'
-                : "No EMAIL_PROVIDER is set for this deployment. Password-reset requests still succeed, but no email is actually sent — set EMAIL_PROVIDER in wrangler.toml (see docs/DEPLOYMENT.md) to enable delivery."}
+                ? 'A real email provider is fully configured — password-reset and account-verification emails deliver normally.'
+                : "Email isn't fully configured for this deployment (EMAIL_PROVIDER, and its required RESEND_API_KEY/EMAIL_FROM or EMAIL binding, must all be set). Password-reset requests and new sign-ups still succeed, but no email is actually sent — set EMAIL_PROVIDER in wrangler.toml (see docs/DEPLOYMENT.md) to enable delivery."}
             </p>
             <Badge
               variant="outline"

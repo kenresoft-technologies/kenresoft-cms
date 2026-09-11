@@ -1,15 +1,9 @@
 import { SELF, env } from 'cloudflare:test';
+import { extractVerificationToken, signUpVerifiedAndGetCookie, withExpectedInternalRejection } from './helpers/auth';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 async function authedCookie(email: string): Promise<string> {
-  const response = await SELF.fetch('https://example.com/api/v1/auth/sign-up/email', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password: 'correct horse battery staple', name: 'Test User' }),
-  });
-  const setCookie = response.headers.get('set-cookie');
-  if (!setCookie) throw new Error('sign-up did not return a session cookie');
-  return setCookie.split(';')[0]!;
+  return signUpVerifiedAndGetCookie(email, { password: 'correct horse battery staple', name: 'Test User' });
 }
 
 async function userId(cookie: string): Promise<string> {
@@ -119,7 +113,7 @@ describe('users routes (real D1)', () => {
     expect(response.status).toBe(401);
   });
 
-  it('creates a user with a temporary password (owner only), who can then sign in with it', async () => {
+  it('creates a user with a temporary password (owner only), unverified, who can only sign in with it after verifying', async () => {
     const ownerCookie = await authedCookie('create-owner@example.test');
     const editorCookie = await authedCookie('create-editor@example.test');
 
@@ -136,9 +130,24 @@ describe('users routes (real D1)', () => {
       body: JSON.stringify({ name: 'New Editor', email: 'new-editor@example.test' }),
     });
     expect(response.status).toBe(201);
-    const body = await response.json<{ user: { email: string; role: string }; temporaryPassword: string }>();
-    expect(body.user).toMatchObject({ email: 'new-editor@example.test', role: 'editor' });
+    const body = await response.json<{ user: { email: string; role: string; emailVerified: boolean }; temporaryPassword: string }>();
+    expect(body.user).toMatchObject({ email: 'new-editor@example.test', role: 'editor', emailVerified: false });
     expect(body.temporaryPassword.length).toBeGreaterThan(16);
+
+    // The temporary password alone does not prove email ownership — sign-in is rejected until
+    // the separate verification email's own token is actually consumed.
+    const blockedSignIn = await withExpectedInternalRejection(() =>
+      SELF.fetch('https://example.com/api/v1/auth/sign-in/email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'new-editor@example.test', password: body.temporaryPassword }),
+      }),
+    );
+    expect(blockedSignIn.status).toBe(403);
+
+    const token = extractVerificationToken('new-editor@example.test');
+    const verifyRes = await SELF.fetch(`https://example.com/api/v1/auth/verify-email?token=${encodeURIComponent(token)}`);
+    expect(verifyRes.status).toBe(200);
 
     const signInRes = await SELF.fetch('https://example.com/api/v1/auth/sign-in/email', {
       method: 'POST',

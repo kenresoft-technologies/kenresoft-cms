@@ -27,6 +27,10 @@ export const router = createBrowserRouter([
     lazy: async () => ({ Component: (await import('@/pages/ResetPasswordPage')).ResetPasswordPage }),
   },
   {
+    path: '/verify-email',
+    lazy: async () => ({ Component: (await import('@/pages/VerifyEmailPage')).VerifyEmailPage }),
+  },
+  {
     path: '/recover-with-code',
     lazy: async () => ({
       Component: (await import('@/pages/RecoverWithCodePage')).RecoverWithCodePage,

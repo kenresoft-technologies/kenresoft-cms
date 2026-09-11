@@ -1,4 +1,5 @@
 import { SELF, env } from 'cloudflare:test';
+import { signUpVerifiedAndGetCookie } from './helpers/auth';
 import { createDb, eq, verification } from '@kenresoft-cms/database';
 import { verifyPassword } from 'better-auth/crypto';
 import { beforeEach, describe, expect, it } from 'vitest';
@@ -12,14 +13,7 @@ const NEW_PASSWORD = 'a completely different passphrase';
 const db = createDb(env.DB);
 
 async function signUp(email: string): Promise<string> {
-  const response = await SELF.fetch('https://example.com/api/v1/auth/sign-up/email', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password: PASSWORD, name: 'Test User' }),
-  });
-  const setCookie = response.headers.get('set-cookie');
-  if (!setCookie) throw new Error('sign-up did not return a session cookie');
-  return setCookie.split(';')[0]!;
+  return signUpVerifiedAndGetCookie(email, { password: PASSWORD, name: 'Test User' });
 }
 
 async function requestReset(email: string) {

@@ -250,15 +250,38 @@ copy button — you don't need to construct it by hand.) Paystack signs every we
 the same secret key used above (there's no separate webhook-signing secret to configure), and this
 deployment verifies that signature before ever acting on a delivery.
 
-## Password recovery & owner recovery
+## Account verification, password recovery & owner recovery
 
-None of this is required to run a deployment — password reset and recovery codes degrade
-gracefully with no configuration at all (`docs/ARCHITECTURE.md` §10.1), and the two
-owner-recovery mechanisms below are entirely opt-in.
+Every email/password account — including the very first signup, which becomes the deployment's
+owner — must verify its email address before it can sign in at all
+(`apps/api/src/lib/auth-options.ts`'s `requireEmailVerification`). There is deliberately no
+bootstrap-owner exception: read on for how to verify your own first account with zero email
+configuration.
 
-**Password-reset email** — set `EMAIL_PROVIDER` in `wrangler.toml`'s `[vars]` to enable actually
-sending the email (it's unset by default, which logs instead of sending — real accounts can
-still request a reset, they just don't receive anything):
+Password reset and recovery codes degrade gracefully with no email configuration at all
+(`docs/ARCHITECTURE.md` §10.1), and the two owner-recovery mechanisms further below are entirely
+opt-in.
+
+**Verifying your own first account with no email configured** — if you haven't set up
+`EMAIL_PROVIDER` yet, the verification email is still "sent," just logged instead of delivered
+(the noop sender, below). Since you're the one who just deployed this Worker, you already have
+the Cloudflare access needed to read that log:
+
+```bash
+wrangler tail          # a live deployment
+# or just watch the terminal running `wrangler dev` for local development
+```
+
+Sign up in the admin app, then look for a logged line containing `/verify-email?token=...` — it's
+already a complete URL pointing at your Admin app's own origin (or `localhost` in local dev).
+Open it in your browser to verify and continue. This only applies to your very first sign-up on a
+fresh deployment; once `EMAIL_PROVIDER` is configured (next section), every account — including
+ones created later via `Admin → Users → Add user` — receives a real, clickable email instead.
+
+**Password-reset and account-verification email** — set `EMAIL_PROVIDER` in `wrangler.toml`'s
+`[vars]` to enable actually sending these emails (it's unset by default, which logs instead of
+sending — real accounts can still request a reset, and new accounts can still sign up, they just
+don't receive anything until this is configured):
 
 - **Cloudflare** (`EMAIL_PROVIDER = "cloudflare"`): add a `[[send_email]]` binding to
   `wrangler.toml`:
@@ -276,8 +299,8 @@ still request a reset, they just don't receive anything):
   ```
 
 Either way, also set `ADMIN_URL` to your deployed `apps/admin` origin — it's what the
-reset-password link in the email points to. Local dev doesn't need this (it falls back to the
-first `CORS_ORIGINS` entry, your local Vite server).
+reset-password link *and* the verification link in these emails point to. Local dev doesn't
+need this (it falls back to the first `CORS_ORIGINS` entry, your local Vite server).
 
 **Break-glass owner recovery** — disabled (404) until you explicitly opt in:
 

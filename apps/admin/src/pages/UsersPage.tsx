@@ -215,9 +215,12 @@ function DeveloperToolsCell({ user, canEdit }: { user: AdminUser; canEdit: boole
   );
 }
 
-// Shown once, right after creation — there's no email sending configured (§9), so this is the
-// only place the temporary password is ever visible. Copy-to-clipboard because reading a
-// 24-character random string aloud or retyping it is exactly the kind of thing that goes wrong.
+// Shown once, right after creation — this is the only place in the admin UI the temporary
+// password is ever visible (it's also emailed to the new user, but never shown again here).
+// The new user still can't sign in with it until they've clicked the separate verification
+// link also sent to their inbox — this password alone doesn't prove or grant verification.
+// Copy-to-clipboard because reading a 24-character random string aloud or retyping it is
+// exactly the kind of thing that goes wrong.
 function TemporaryPasswordDialog({
   created,
   onClose,
@@ -303,8 +306,9 @@ function AddUserDialog({ onCreated }: { onCreated: (result: { user: AdminUser; t
         <DialogHeader>
           <DialogTitle>Add user</DialogTitle>
           <DialogDescription>
-            Creates the account directly with a random temporary password, shown once after you submit —
-            there's no email invite (no email sending is configured yet). New users default to editor.
+            Creates the account with a random temporary password, shown once after you submit. A
+            verification email will also be sent to this address — the new user must verify it before
+            they can sign in. New users default to editor.
           </DialogDescription>
         </DialogHeader>
         <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
@@ -567,6 +571,13 @@ export function UsersPage() {
           row.original.disabled ? (
             <Badge variant="outline" className="gap-1 border-destructive/30 bg-destructive/10 text-destructive">
               Disabled
+            </Badge>
+          ) : !row.original.emailVerified ? (
+            // Can't sign in yet (apps/api/src/lib/auth.ts's requireEmailVerification) — distinct
+            // from "never active," which describes a verified account that just hasn't signed
+            // in since being created.
+            <Badge variant="outline" className="gap-1 border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400">
+              Unverified
             </Badge>
           ) : (
             <StatusBadge status={row.original.lastActiveAt !== null ? 'active' : 'never-active'} />

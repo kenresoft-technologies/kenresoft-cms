@@ -13,6 +13,7 @@ const {
   getSessionMock,
   verifyTotpMock,
   verifyBackupCodeMock,
+  sendVerificationEmailMock,
 } = vi.hoisted(() => ({
   useSessionMock: vi.fn(),
   signInEmailMock: vi.fn(),
@@ -20,6 +21,7 @@ const {
   getSessionMock: vi.fn(),
   verifyTotpMock: vi.fn(),
   verifyBackupCodeMock: vi.fn(),
+  sendVerificationEmailMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth-client', () => ({
@@ -29,6 +31,7 @@ vi.mock('@/lib/auth-client', () => ({
     signUp: { email: signUpEmailMock },
     getSession: getSessionMock,
     twoFactor: { verifyTotp: verifyTotpMock, verifyBackupCode: verifyBackupCodeMock },
+    sendVerificationEmail: sendVerificationEmailMock,
   },
 }));
 
@@ -53,6 +56,7 @@ describe('LoginPage', () => {
     getSessionMock.mockReset();
     verifyTotpMock.mockReset();
     verifyBackupCodeMock.mockReset();
+    sendVerificationEmailMock.mockReset();
     getSessionMock.mockResolvedValue({ data: { user: { email: 'user@example.test' } } });
   });
 
@@ -195,6 +199,45 @@ describe('LoginPage', () => {
 
     expect(verifyBackupCodeMock).toHaveBeenCalledWith({ code: 'abcd1-efgh2' });
     expect(verifyTotpMock).not.toHaveBeenCalled();
+  });
+
+  it('shows a verify-your-email state on EMAIL_NOT_VERIFIED, with a working resend button', async () => {
+    useSessionMock.mockReturnValue({ data: null, isPending: false });
+    signInEmailMock.mockResolvedValue({ error: { code: 'EMAIL_NOT_VERIFIED', message: 'Email not verified' } });
+    sendVerificationEmailMock.mockResolvedValue({ error: null });
+
+    renderLoginPage();
+
+    await userEvent.type(screen.getByLabelText('Email'), 'unverified@example.test');
+    await userEvent.type(screen.getByLabelText('Password'), 'correct horse battery staple');
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+
+    await waitFor(() => expect(screen.getByText('Verify your email')).toBeInTheDocument());
+    // Not the generic red error banner — the dedicated state instead.
+    expect(screen.queryByText('Email not verified')).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Resend verification email' }));
+
+    expect(sendVerificationEmailMock).toHaveBeenCalledWith({ email: 'unverified@example.test' });
+    await waitFor(() =>
+      expect(screen.getByText(/we've sent a new link/i)).toBeInTheDocument(),
+    );
+  });
+
+  it('goes back to the sign-in form from the verify-your-email state', async () => {
+    useSessionMock.mockReturnValue({ data: null, isPending: false });
+    signInEmailMock.mockResolvedValue({ error: { code: 'EMAIL_NOT_VERIFIED', message: 'Email not verified' } });
+
+    renderLoginPage();
+
+    await userEvent.type(screen.getByLabelText('Email'), 'unverified@example.test');
+    await userEvent.type(screen.getByLabelText('Password'), 'correct horse battery staple');
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+
+    await waitFor(() => expect(screen.getByText('Verify your email')).toBeInTheDocument());
+    await userEvent.click(screen.getByRole('button', { name: 'Back to sign in' }));
+
+    expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument();
   });
 
   it('toggles back to sign-in mode', async () => {

@@ -40,6 +40,17 @@ landed on `develop`.
 
 ### Changed
 
+- **Breaking, has a migration**: staff accounts must now verify their email address before they
+  can sign in — a real security gap closed (a newly created account, including one created via
+  `Admin → Users → Add user`, could previously sign in with its temporary/chosen password with
+  no proof of email ownership at all). New accounts (self-signup or Add User) receive a real
+  verification email; the first-ever signup on a fresh deployment gets no exception. The new
+  migration (`0034_grandfather-verified-users.sql`, applied via `pnpm run update`) marks every
+  account that already existed as verified, so nobody on an existing deployment is locked out —
+  only accounts created after you update are affected. `Admin → Users` now shows an "Unverified"
+  badge on any account still awaiting this. See `docs/DEPLOYMENT.md`'s "Account verification,
+  password recovery & owner recovery" section for how to verify your own account if you haven't
+  configured email delivery yet.
 - **Breaking, has a migration**: `Settings.contactEmail`/`Settings.socialLinks` are removed —
   they had no public route of their own and fully duplicated what Global Variables already does
   (public, edge-cached, arbitrary keys, and a "Site Info" template covering exactly this). The

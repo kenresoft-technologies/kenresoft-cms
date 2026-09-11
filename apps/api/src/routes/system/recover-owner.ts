@@ -23,10 +23,17 @@ const statusSchema = z.object({ emailConfigured: z.boolean() });
 
 // Unauthenticated by design — this is deployment-wide, not per-account, so it carries none of
 // the account-enumeration risk that keeps /public/password-reset/request's response generic
-// regardless of input. Lets ForgotPasswordPage/RecoverWithCodePage tell someone up front that
-// password-reset email can't actually be delivered on this deployment (EMAIL_PROVIDER unset),
-// rather than them clicking "Send reset link" and waiting on an email that was never going to
-// arrive. docs/DEPLOYMENT.md's recovery section has the setup steps for enabling real delivery.
+// regardless of input. Lets ForgotPasswordPage/RecoverWithCodePage/LoginPage's verification
+// UI tell someone up front that password-reset and account-verification email can't actually
+// be delivered on this deployment, rather than them waiting on an email that was never going
+// to arrive. docs/DEPLOYMENT.md's recovery section has the setup steps for enabling real
+// delivery.
+//
+// Checks the full required config per provider, not just EMAIL_PROVIDER's own value — setting
+// EMAIL_PROVIDER=resend with no RESEND_API_KEY/EMAIL_FROM (or =cloudflare with no EMAIL
+// binding/EMAIL_FROM) would previously have reported "configured" even though
+// resend.ts/cloudflare.ts already throw at actual send time. Still purely static, no network
+// call — this is not a live delivery test.
 systemRoute.openapi(
   createRoute({
     method: 'get',
@@ -35,13 +42,15 @@ systemRoute.openapi(
     summary: 'Deployment-wide feature availability (currently just email delivery)',
     responses: {
       200: {
-        description: 'Whether this deployment has a real email provider configured.',
+        description: 'Whether this deployment has a real email provider fully configured.',
         content: { 'application/json': { schema: statusSchema } },
       },
     },
   }),
   (c) => {
-    const emailConfigured = c.env.EMAIL_PROVIDER === 'cloudflare' || c.env.EMAIL_PROVIDER === 'resend';
+    const emailConfigured =
+      (c.env.EMAIL_PROVIDER === 'resend' && !!c.env.RESEND_API_KEY && !!c.env.EMAIL_FROM) ||
+      (c.env.EMAIL_PROVIDER === 'cloudflare' && !!c.env.EMAIL && !!c.env.EMAIL_FROM);
     return c.json({ emailConfigured }, 200);
   },
 );

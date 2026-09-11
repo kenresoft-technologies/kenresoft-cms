@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { AlertCircle, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { AlertCircle, Eye, EyeOff, Loader2, MailCheck } from 'lucide-react';
 import { Link, Navigate } from 'react-router';
 
 import kenresoftLogoMark from '@/assets/kenresoft-cms-logo-mark.svg';
@@ -42,6 +42,11 @@ export function LoginPage() {
   const [needsTwoFactor, setNeedsTwoFactor] = useState(false);
   const [useBackupCode, setUseBackupCode] = useState(false);
   const [twoFactorCode, setTwoFactorCode] = useState('');
+  // Set when sign-in is rejected specifically because the account hasn't verified its email
+  // yet (apps/api/src/lib/auth.ts's requireEmailVerification) — a distinct state from the
+  // generic error banner, since the fix here isn't "try again," it's "check your inbox."
+  const [needsVerification, setNeedsVerification] = useState(false);
+  const [resendState, setResendState] = useState<'idle' | 'sending' | 'sent'>('idle');
 
   // Reacts to the same session store AppLayout redirects from — sign-in resolves the HTTP
   // call before the client's session store finishes its own follow-up refresh, so navigating
@@ -69,6 +74,8 @@ export function LoginPage() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
+    setNeedsVerification(false);
+    setResendState('idle');
     setIsSubmitting(true);
 
     // Wrapped in try/catch (missing before, and not just theoretical — this is exactly what
@@ -82,6 +89,14 @@ export function LoginPage() {
           : await authClient.signUp.email({ email, password, name });
 
       if (authError) {
+        // The server already re-sent a fresh verification email itself on this rejection
+        // (emailVerification.sendOnSignIn) — this just switches the UI into the matching
+        // state rather than showing the generic red error banner, and offers a resend button
+        // for whoever didn't get (or lost) that first one.
+        if (authError.code === 'EMAIL_NOT_VERIFIED') {
+          setNeedsVerification(true);
+          return;
+        }
         setError(authError.message ?? (mode === 'sign-in' ? 'Sign in failed' : 'Sign up failed'));
         return;
       }
@@ -123,6 +138,19 @@ export function LoginPage() {
       setError('Could not reach the server. Check your connection and try again.');
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  async function handleResendVerification() {
+    setResendState('sending');
+    try {
+      // Deliberately generic outcome regardless of what actually happened server-side —
+      // better-auth's own unauthenticated send-verification-email endpoint is itself
+      // enumeration-safe (constant-time, same response whether the address exists or is
+      // already verified), so this UI shouldn't claim more certainty than that.
+      await authClient.sendVerificationEmail({ email });
+    } finally {
+      setResendState('sent');
     }
   }
 
@@ -176,7 +204,49 @@ export function LoginPage() {
         </div>
 
         <div className="flex w-full max-w-md flex-col gap-8">
-          {needsTwoFactor ? (
+          {needsVerification ? (
+            <div className="flex flex-col gap-6">
+              <div className="flex flex-col gap-3">
+                <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                  <MailCheck className="size-5" />
+                </div>
+                <h2 className="text-2xl font-semibold tracking-tight">Verify your email</h2>
+                <p className="text-base text-muted-foreground">
+                  Please verify your email address before signing in. We've sent a verification link to{' '}
+                  <span className="font-medium text-foreground">{email}</span> — check your inbox.
+                </p>
+              </div>
+
+              {resendState === 'sent' ? (
+                <div className="flex items-start gap-2.5 rounded-lg border border-success/25 bg-success/10 px-4 py-3 text-sm text-success">
+                  <MailCheck className="mt-0.5 size-4 shrink-0" />
+                  <span>If that email needs verifying, we've sent a new link — check your inbox.</span>
+                </div>
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={resendState === 'sending'}
+                  onClick={() => void handleResendVerification()}
+                  className={`${FIELD_CLASS} gap-2 text-base`}
+                >
+                  {resendState === 'sending' ? <Loader2 className="size-5 animate-spin" /> : null}
+                  {resendState === 'sending' ? 'Sending…' : 'Resend verification email'}
+                </Button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => {
+                  setNeedsVerification(false);
+                  setResendState('idle');
+                }}
+                className="text-center text-sm text-muted-foreground hover:text-foreground"
+              >
+                Back to sign in
+              </button>
+            </div>
+          ) : needsTwoFactor ? (
             <>
               <div className="flex flex-col gap-2">
                 <h2 className="text-3xl font-semibold tracking-tight">Two-factor verification</h2>

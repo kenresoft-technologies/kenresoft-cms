@@ -4,6 +4,8 @@ import { createCustomer } from '@kenresoft-cms/plugin-ecommerce/src/repository/c
 import { SELF, env } from 'cloudflare:test';
 import { beforeEach, describe, expect, it } from 'vitest';
 
+import { signUpVerifiedAndGetCookie } from './helpers/auth';
+
 const ADMIN_BASE = 'https://example.com/api/plugins/commerce/v1';
 const CART_BASE = 'https://example.com/api/plugins/commerce/public/v1/cart';
 
@@ -15,14 +17,7 @@ function extractGuestCartCookie(response: Response): string | undefined {
 }
 
 async function freshAdminCookie(): Promise<string> {
-  const response = await SELF.fetch('https://example.com/api/v1/auth/sign-up/email', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: `commerce-cart-admin@example.test`, password: 'correct horse battery staple', name: 'Admin' }),
-  });
-  const setCookie = response.headers.get('set-cookie');
-  if (!setCookie) throw new Error('sign-up did not return a session cookie');
-  return setCookie.split(';')[0]!;
+  return signUpVerifiedAndGetCookie(`commerce-cart-admin@example.test`, { password: 'correct horse battery staple', name: 'Admin' });
 }
 
 async function createPublishedProduct(adminCookie: string, overrides: Record<string, unknown> = {}) {

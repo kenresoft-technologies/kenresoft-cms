@@ -1,6 +1,8 @@
 import { SELF, env } from 'cloudflare:test';
 import { beforeEach, describe, expect, it } from 'vitest';
 
+import { signUpVerifiedAndGetCookie } from './helpers/auth';
+
 // The CORS allow-list this test config ships (apps/api/wrangler.test.toml's CORS_ORIGINS) —
 // requireTrustedOriginForMutations (packages/plugin-ecommerce/src/lib/origin-check.ts) checks a
 // mutating request's Origin header against exactly this list.
@@ -11,14 +13,7 @@ const CART_BASE = 'https://example.com/api/plugins/commerce/public/v1/cart';
 const AUTH_BASE = 'https://example.com/api/plugins/commerce/public/v1/customer-auth';
 
 async function freshAdminCookie(): Promise<string> {
-  const response = await SELF.fetch('https://example.com/api/v1/auth/sign-up/email', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: 'commerce-origin-admin@example.test', password: 'correct horse battery staple', name: 'Admin' }),
-  });
-  const setCookie = response.headers.get('set-cookie');
-  if (!setCookie) throw new Error('sign-up did not return a session cookie');
-  return setCookie.split(';')[0]!;
+  return signUpVerifiedAndGetCookie('commerce-origin-admin@example.test', { password: 'correct horse battery staple', name: 'Admin' });
 }
 
 async function createPublishedProduct(adminCookie: string) {

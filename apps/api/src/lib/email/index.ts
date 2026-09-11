@@ -1,10 +1,12 @@
 import { createCloudflareEmailSender } from './cloudflare';
 import { noopEmailSender } from './noop';
 import { createResendEmailSender } from './resend';
+import { testEmailSender } from './test';
 import type { Bindings } from '../env';
 import type { EmailSender } from './types';
 
 export type { EmailMessage, EmailSender } from './types';
+export { getTestEmails, clearTestEmails } from './test';
 
 // Selected per-deployment via EMAIL_PROVIDER, not hardcoded — a fork can run entirely on
 // Cloudflare's own product, entirely on Resend, or (the default, unset) with no email sending
@@ -17,6 +19,11 @@ export function getEmailSender(env: Bindings): EmailSender {
       return createCloudflareEmailSender(env);
     case 'resend':
       return createResendEmailSender(env);
+    // Test-pool only (apps/api/wrangler.test.toml) — never a real deployment value. Lets
+    // tests inspect what would have been sent via getTestEmails() instead of bypassing the
+    // email layer entirely.
+    case 'test':
+      return testEmailSender;
     default:
       return noopEmailSender;
   }

@@ -80,6 +80,7 @@ usersRoute.openapi(
       // (bootstrap hook + this very route) already guarantees in practice.
       role: user.role as UserRole,
       disabled: user.disabled,
+      emailVerified: user.emailVerified,
       developerToolsAccess: user.developerToolsAccess,
       createdAt: user.createdAt.toISOString(),
       lastActiveAt: user.lastActiveAt?.toISOString() ?? null,
@@ -97,15 +98,21 @@ function generateTemporaryPassword(): string {
 }
 
 // Admin-only, same as role changes. Creates the account directly via better-auth's own
-// sign-up (the same internal call the public /sign-up/email route makes) with a random
-// temporary password, returned once in this response for the admin to share with the new
-// user directly if needed. It's not a real invite-by-link flow (there's no pending/unclaimed
-// account state — the account is live immediately), but a real onboarding email is still sent
-// via the pluggable email layer (§9) — same "noop unless EMAIL_PROVIDER is set" behavior as
-// password-reset — so the new user isn't only reachable through the admin relaying the
-// temporary password verbally/manually. New signups already default to 'editor' (src/lib/
-// auth.ts's bootstrap hook only grants 'admin' to a literal first-ever signup) — an admin can
-// promote or reassign them afterward via the existing role control.
+// sign-up (the same internal call the public /sign-up/email route makes, which is also what
+// transparently triggers better-auth's own verification email via emailVerification.sendOnSignUp
+// — see apps/api/src/lib/auth.ts) with a random temporary password, returned once in this
+// response for the admin to share with the new user directly if needed. The account is created
+// live immediately but, like any other new account, can't sign in until its email is verified
+// (requireEmailVerification, same file) — the temporary password alone proves nothing about
+// mailbox ownership, only that the admin created the account. A separate onboarding email
+// (below) carries the temporary password itself; both go through the same pluggable email
+// layer (§9), noop-and-logged when EMAIL_PROVIDER is unset. New signups already default to
+// 'editor' (src/lib/auth.ts's bootstrap hook only grants 'owner' to a literal first-ever
+// signup) — an admin can promote or reassign them afterward via the existing role control.
+//
+// Known technical debt, not solved here: this still emails the temporary password itself in
+// plaintext (see below), rather than a claim-link flow that would avoid a password ever
+// travelling by email at all. Kept as-is to stay in scope for this change.
 usersRoute.openapi(
   createRoute({
     method: 'post',
@@ -145,30 +152,42 @@ usersRoute.openapi(
     }
 
     const temporaryPassword = generateTemporaryPassword();
-    const result = await createAuth(c.env).api.signUpEmail({
+    const result = await createAuth(c.env, c.executionCtx).api.signUpEmail({
       body: { name, email, password: temporaryPassword },
     });
+    // better-auth's signUpEmail return type is now a union: a full shape with the
+    // additionalFields (role/etc.) it actually always sets via auth.ts's schema defaults, and a
+    // narrower "verification in progress" shape the compiler infers because
+    // requireEmailVerification is on — the latter never actually happens for signUpEmail
+    // itself (only sign-in is blocked; sign-up always creates the row and returns the real
+    // user), so this is a type-only artifact, not a runtime gap. Cast once via unknown, same
+    // as require-session.ts's identical situation.
+    const newUser = result.user as unknown as { id: string; name: string; email: string; role: string; createdAt: Date | string };
     const response: AdminUser = {
-      id: result.user.id,
-      name: result.user.name,
-      email: result.user.email,
-      // better-auth types the "role" additionalField as plain string (§ same note above on
-      // adminUserSchema) — always present in practice via the schema default.
-      role: result.user.role as UserRole,
+      id: newUser.id,
+      name: newUser.name,
+      email: newUser.email,
+      role: newUser.role as UserRole,
       disabled: false,
+      emailVerified: false,
       developerToolsAccess: false,
-      createdAt: new Date(result.user.createdAt).toISOString(),
+      createdAt: new Date(newUser.createdAt).toISOString(),
       lastActiveAt: null,
     };
 
+    // Separate from, and independent of, better-auth's own verification email
+    // (emailVerification.sendOnSignUp, triggered automatically by signUpEmail above) — this
+    // one is purely the temp-password onboarding notice and never claims signing in is
+    // possible yet or that this email proves mailbox ownership; the verification email is the
+    // only thing that does that.
     const signInUrl = c.env.ADMIN_URL ?? c.env.CORS_ORIGINS.split(',')[0];
     const sender = getEmailSender(c.env);
     c.executionCtx.waitUntil(
       sender.send({
         to: response.email,
         subject: 'Your Kenresoft CMS account',
-        text: `An account was created for you on Kenresoft CMS.\n\nSign in here: ${signInUrl}\nEmail: ${response.email}\nTemporary password: ${temporaryPassword}\n\nYou'll be asked to keep or change this password after signing in — treat it as sensitive until then.`,
-        html: `<p>An account was created for you on Kenresoft CMS.</p><p><a href="${signInUrl}">Sign in here</a></p><p>Email: ${response.email}<br>Temporary password: <code>${temporaryPassword}</code></p><p>Treat this password as sensitive until you've signed in and changed it.</p>`,
+        text: `An account was created for you on Kenresoft CMS.\n\nYou'll receive a separate email with a link to verify your address — you must verify before you can sign in.\n\nOnce verified, sign in here: ${signInUrl}\nEmail: ${response.email}\nTemporary password: ${temporaryPassword}\n\nYou'll be asked to keep or change this password after signing in — treat it as sensitive until then.`,
+        html: `<p>An account was created for you on Kenresoft CMS.</p><p>You'll receive a separate email with a link to verify your address — you must verify before you can sign in.</p><p>Once verified, sign in here: <a href="${signInUrl}">${signInUrl}</a></p><p>Email: ${response.email}<br>Temporary password: <code>${temporaryPassword}</code></p><p>Treat this password as sensitive until you've verified and signed in.</p>`,
       }),
     );
 
@@ -257,6 +276,7 @@ usersRoute.openapi(
       email: updated.email,
       role: updated.role as UserRole,
       disabled: updated.disabled,
+      emailVerified: updated.emailVerified,
       developerToolsAccess: updated.developerToolsAccess,
       createdAt: updated.createdAt.toISOString(),
       lastActiveAt: null,
@@ -407,6 +427,7 @@ usersRoute.openapi(
       email: updated.email,
       role: updated.role as UserRole,
       disabled: updated.disabled,
+      emailVerified: updated.emailVerified,
       developerToolsAccess: updated.developerToolsAccess,
       createdAt: updated.createdAt.toISOString(),
       lastActiveAt: null,
@@ -466,6 +487,7 @@ usersRoute.openapi(
       email: updated.email,
       role: updated.role as UserRole,
       disabled: updated.disabled,
+      emailVerified: updated.emailVerified,
       developerToolsAccess: updated.developerToolsAccess,
       createdAt: updated.createdAt.toISOString(),
       lastActiveAt: null,
