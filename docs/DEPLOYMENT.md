@@ -130,7 +130,12 @@ Two `[vars]` in `wrangler.toml` you'll want to revisit once you have real URLs:
   (`https://REPLACE_AFTER_FIRST_DEPLOY.workers.dev`) is safe to deploy with as-is (it only
   affects redirect/callback URL construction, not cookie security — see the file's own comment)
   — deploy once (step 6), copy the real URL wrangler prints, paste it in here, then deploy again.
-  `pnpm run setup` automates exactly this.
+  `pnpm run setup` automates exactly this **once** — it only ever fills in `BETTER_AUTH_URL`
+  while it's still this placeholder. Once it holds a real value (the auto-filled
+  `*.workers.dev` URL, or a custom domain you've pointed here yourself), rerunning `pnpm run
+  setup` never touches it again. To change it deliberately later — e.g. to move onto a custom
+  domain — use `pnpm run update -- --auth` instead (see "Updating configuration" below), which
+  explains the consequences and asks for confirmation before changing anything.
 
 ## 5. Set secrets
 
@@ -411,11 +416,19 @@ pnpm run update
 That's the whole thing — it pulls the latest code from the `upstream` git remote (both a plain
 `git clone` of this repo and one scaffolded via `npm create @kenresoft-cms@latest` have one
 already), installs dependencies, applies any new database migrations, and redeploys both Workers.
-Deliberately **not** `pnpm run setup` run again: unlike `setup`, `update` never touches your
-`BETTER_AUTH_SECRET`, never re-provisions D1/R2, and never re-prompts for email setup — it's the
-safe subset for an install that already exists. (`setup` itself is also safe to re-run if you
-genuinely need to — it checks before touching `BETTER_AUTH_SECRET` rather than silently
-regenerating it, asking first since rotating it logs out every current user.)
+Deliberately **not** `pnpm run setup` run again: unlike `setup`, bare `pnpm run update` never
+touches your `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, email configuration, D1/R2, or CORS — it's
+the safe subset for an install that already exists, and touches nothing this deployment's own
+configuration already holds.
+
+`pnpm run setup` itself is also safe to re-run — on an existing install it detects that and shows
+a status summary plus a menu (**Continue without changes** / **Update configuration** /
+**Reconfigure everything** / **Cancel**) instead of blindly repeating first-install steps.
+Nothing is changed unless you explicitly select it: `BETTER_AUTH_SECRET` is only rotated after an
+explicit confirmation (rotating it logs out every current user), `BETTER_AUTH_URL` is only ever
+auto-filled while it's still the pre-deploy placeholder — never once it holds a real value,
+custom domain included — and email configuration is only touched if you pick "change" for it. See
+"Updating configuration" below for the equivalent standalone commands.
 
 If your install has no `upstream` remote at all (a raw zip download, or one deliberately
 removed), `update` skips the code-pull step with a note and still redeploys whatever's on disk —
@@ -437,6 +450,55 @@ redeploy would silently overwrite the other deployment's live Worker. If you hit
 `pnpm run setup` again instead: it detects the same collision interactively and picks a new,
 unique name for both Workers (pairing the admin Worker's rename to the API Worker's) rather than
 just refusing.
+
+## Updating configuration
+
+Changing one specific piece of this deployment's configuration — the Better Auth URL, email
+provider, or reviewing storage/database status — without touching code, secrets you didn't ask
+about, or anything else:
+
+```bash
+pnpm run update -- --auth       # Better Auth URL
+pnpm run update -- --email      # Resend / Cloudflare Email
+pnpm run update -- --storage    # R2 bucket — status only, see below
+pnpm run update -- --database   # D1 database — status only, see below
+```
+
+Each shows the current value first (secrets are always reported as "configured"/"not
+configured", never their actual value), then a Keep/Change/Cancel-style menu — nothing is written
+unless you explicitly choose to change it, and only the one field the command names is ever
+touched. This is the fix for two things real deployments have hit before this command existed:
+
+- **`BETTER_AUTH_URL` being silently reset by `pnpm run setup`.** It used to overwrite this on
+  every run, including a rerun after you'd pointed it at a custom domain — because the script had
+  no way to tell "the pre-deploy placeholder, safe to fill in" apart from "a real value someone
+  set on purpose." `setup` now only ever fills it in while it's still the placeholder; use
+  `pnpm run update -- --auth` for every change after that. Changing it warns first — it affects
+  existing sessions, trusted origins/CORS, and any OAuth callback registered against the old
+  value.
+- **Skipping Resend's API-key prompt silently clearing an already-configured key.** Re-running
+  the old email setup and pressing Enter at the API-key prompt (thinking "it's already set, I
+  don't need to re-paste it") wrote an *empty* secret, which reads as unconfigured everywhere the
+  app checks it — `pnpm run update -- --email`'s API-key prompt now explicitly means "leave
+  blank to keep the existing key," and never writes an empty value.
+
+`--storage`/`--database` are deliberately status-only: repointing either binding at a different
+D1 database or R2 bucket moves no data, so there's no safe default action to automate. They print
+the current name/id and explain the manual `wrangler.toml` edit if you genuinely mean to do that.
+
+**Non-interactive / CI use** — add `--ci` and set the corresponding `*_NEW` environment
+variable(s); an **omitted** variable always means "leave unchanged," never "clear" or reset to a
+default, matching the interactive commands' own behavior:
+
+```bash
+BETTER_AUTH_URL_NEW=https://cms.example.com pnpm run update -- --auth --ci
+EMAIL_PROVIDER_NEW=resend EMAIL_FROM_NEW=noreply@example.com RESEND_API_KEY_NEW=re_... \
+  pnpm run update -- --email --ci
+```
+
+Only one category may be targeted per invocation — run the command again for a second category
+rather than combining flags, so each change's own confirmation/warning is easy to reason about in
+isolation (and, in CI, easy to audit from the job log).
 
 ## Renaming a Worker (changing its `*.workers.dev` URL)
 

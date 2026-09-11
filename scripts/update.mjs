@@ -10,14 +10,27 @@
 //   - Does NOT touch CORS_ORIGINS — the admin Worker's URL never changes between deploys of the
 //     same Worker, so there's never a new origin to add on an update.
 //   - Does NOT re-run the interactive email setup prompt.
-// What it does do: pull new code from the "upstream" git remote (see lib/git-cli.mjs), install
-// dependencies, apply any new migrations (Drizzle only applies ones not yet recorded remotely —
-// safe to run every time), and redeploy both Workers with the current code. This is the command
-// an existing deployment should run instead of `pnpm run setup` to pick up new CMS changes,
-// precisely because setup.mjs's ensureAuthSecret() used to (and other steps still do)
-// prompt/act as if this were a first-ever install.
+// What it does do (bare `pnpm run update`, no flags): pull new code from the "upstream" git
+// remote (see lib/git-cli.mjs), install dependencies, apply any new migrations (Drizzle only
+// applies ones not yet recorded remotely — safe to run every time), and redeploy both Workers
+// with the current code. This is the command an existing deployment should run instead of
+// `pnpm run setup` to pick up new CMS changes, precisely because setup.mjs's ensureAuthSecret()
+// used to (and other steps still do) prompt/act as if this were a first-ever install.
 //
-// Usage: pnpm run update
+// Targeted reconfiguration: `pnpm run update -- --auth` / `--email` / `--storage` / `--database`
+// modifies exactly that one configuration category (scripts/lib/configure.mjs) and does NOT pull
+// code, install deps, or touch any other category — the two concerns (picking up new CMS code vs.
+// changing this deployment's own configuration) are deliberately kept separate, per this
+// project's non-negotiable rule that a value only ever changes when explicitly requested. Add
+// `--ci` for non-interactive use (reads `*_NEW` environment variables instead of prompting; an
+// omitted variable always means "leave unchanged" — see configure.mjs).
+//
+// Usage:
+//   pnpm run update
+//   pnpm run update -- --auth [--ci]
+//   pnpm run update -- --email [--ci]
+//   pnpm run update -- --storage
+//   pnpm run update -- --database
 
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -27,15 +40,65 @@ import { pullLatestCode } from './lib/git-cli.mjs';
 import { runWranglerInherit } from './lib/wrangler-cli.mjs';
 import { buildAndDeployAdmin, checkWorkerOwnership, deployApi } from './lib/deploy-helpers.mjs';
 import { readDatabaseId, readWorkerName } from './lib/wrangler-toml.mjs';
+import { readInstallStatus, summarizeInstallStatus } from './lib/config-status.mjs';
+import { configureAuth, configureDatabase, configureEmail, configureStorage } from './lib/configure.mjs';
+import { closePrompt } from './lib/prompt.mjs';
 
 const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const API_DIR = join(REPO_ROOT, 'apps', 'api');
 const ADMIN_DIR = join(REPO_ROOT, 'apps', 'admin');
 const WRANGLER_TOML_PATH = join(REPO_ROOT, 'wrangler.toml');
 
+const CONFIGURE_FLAGS = { '--auth': configureAuth, '--email': configureEmail, '--storage': configureStorage, '--database': configureDatabase };
+
+// Any single run only ever targets one category — running two at once would make the resulting
+// "what changed" summary ambiguous, and each category already has its own confirmation/warning
+// flow that's meant to be read in isolation.
+function parseArgs(argv) {
+  const ci = argv.includes('--ci');
+  const flags = argv.filter((arg) => arg in CONFIGURE_FLAGS);
+  if (flags.length > 1) {
+    throw new Error(`Only one of ${Object.keys(CONFIGURE_FLAGS).join(', ')} may be given at a time.`);
+  }
+  return { ci, configureFn: flags[0] ? CONFIGURE_FLAGS[flags[0]] : null };
+}
+
+async function runTargetedConfigure(configureFn, ci) {
+  console.log('Kenresoft CMS — update configuration\n');
+  const status = readInstallStatus({ apiDir: API_DIR, wranglerTomlPath: WRANGLER_TOML_PATH });
+  if (!status.database.configured) {
+    throw new Error('This install has not been set up yet — run `pnpm run setup` first.');
+  }
+  console.log(summarizeInstallStatus(status));
+
+  let result;
+  try {
+    result = await configureFn({ wranglerTomlPath: WRANGLER_TOML_PATH, apiDir: API_DIR, status, ci });
+  } finally {
+    closePrompt();
+  }
+  if (!result.changed) {
+    console.log('\nNo changes made.');
+    return;
+  }
+  if (result.redeployNeeded) {
+    console.log('\nRedeploying the API Worker with the updated configuration...');
+    const apiUrl = deployApi({ apiDir: API_DIR, wranglerTomlPath: WRANGLER_TOML_PATH });
+    console.log(`✓ Redeployed: ${apiUrl}`);
+  } else {
+    console.log('\n✓ Change applied (took effect immediately — no redeploy needed for this field).');
+  }
+}
+
 async function main() {
+  const { ci, configureFn } = parseArgs(process.argv.slice(2));
+  if (configureFn) {
+    await runTargetedConfigure(configureFn, ci);
+    return;
+  }
+
   console.log('Kenresoft CMS — update an existing install\n');
-  console.log('This never touches your secrets, D1/R2 resources, or CORS config.\n');
+  console.log('This never touches your secrets, D1/R2 resources, CORS config, or other application configuration.\n');
 
   await pullLatestCode(REPO_ROOT);
 

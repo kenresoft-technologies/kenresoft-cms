@@ -2165,3 +2165,90 @@ generated temporary password itself in plaintext by email — kept as-is to stay
 change, since the task was fixing the missing verification gate specifically, not redesigning
 onboarding delivery. A claim-link flow (no password ever travels by email at all) would close this
 properly in a future pass.
+
+**Idempotent, non-destructive setup CLI: fixing the two confirmed config-reset bugs, and adding
+targeted `pnpm run update -- --auth/--email/--storage/--database`** (2026-09-11, on `develop`,
+prompted directly by a report that rerunning `pnpm run setup` could reset a custom Better Auth
+URL and that skipping Resend during a rerun could make a working config look unconfigured) —
+done, root-caused against the actual code rather than assumed, both bugs real and both in
+`scripts/setup.mjs` specifically (`scripts/update.mjs` already never touched config, and
+`deploy.yml` never touches vars/secrets either — confirmed, not assumed, by reading it).
+
+Root cause 1 (`BETTER_AUTH_URL`): `main()` unconditionally ran
+`writeToml(replaceLine(readToml(), 'BETTER_AUTH_URL =', ...))` with the freshly-deployed
+`*.workers.dev` URL on *every* run, with no check for whether the file already held a real value
+(a previous run's own URL, or a hand-edited custom domain) — every rerun silently reverted it.
+A second, independent path to the same bug: `maybeSetUpEmail()` inserted `EMAIL_PROVIDER`/
+`EMAIL_FROM` by finding and rewriting the entire `BETTER_AUTH_URL =` line, resetting it back to
+the pre-deploy placeholder as a side effect of configuring email, unrelated to the field actually
+being edited. Root cause 2 (Resend): the "resend" branch always ran
+`wrangler secret put RESEND_API_KEY` with whatever the API-key prompt returned, including a
+blank answer (`ask()` with no default returns `''`) — a developer re-running setup and pressing
+Enter, assuming the key was already set and didn't need re-entry, silently overwrote a working
+key with an empty secret. Cloudflare accepts an empty value fine; `resend.ts`'s own `!env.
+RESEND_API_KEY` check (and `system/recover-owner.ts`'s `emailConfigured` status) both read that
+as falsy, so a correctly-configured deployment quietly regressed to "not configured" with no
+error anywhere.
+
+Fixed at the actual mechanism, not just the symptom: `scripts/lib/wrangler-toml.mjs` gained
+generic `hasVarLine`/`readVarLine`/`setVarLine`/`removeVarLine` helpers that touch exactly one
+`[vars]` key each — replacing the old pattern of anchoring one field's insertion to a different
+field's own line, which is the literal mechanism behind bug 1's second path. `BETTER_AUTH_URL` is
+now only ever auto-filled while `isRealAuthUrl()` (new `scripts/lib/config-status.mjs`) says it's
+still the placeholder; a real value, custom domain included, is never touched by `setup` again.
+Bug 2's fix is centralized in `scripts/lib/configure.mjs`'s `resolveInput()` — blank/whitespace
+input (interactively) or an unset env var (CI) always means "leave unchanged," enforced once and
+reused by every targeted-configure function rather than reimplemented per call site.
+
+Beyond the two bug fixes, built the read-model and command surface the task asked for: a new
+`scripts/lib/config-status.mjs` classifies every field as configured/unconfigured (`
+readInstallStatus()`, `summarizeInstallStatus()` — masks secrets, only ever reports
+configured/not, never a value) so `pnpm run setup` on an existing install now shows that summary
+and a **Continue without changes / Update configuration / Reconfigure everything / Cancel** menu
+instead of blindly re-running first-install steps; "Continue" just redeploys current config
+(no prompts, nothing written), "Update configuration" loops `scripts/lib/configure.mjs`'s
+per-category functions, and "Reconfigure everything" falls through to the same full flow a fresh
+install runs — safe to do unconditionally now that every step in it (`ensureD1`/`ensureR2`
+already were; `ensureAuthSecret` already was; `configureEmail`/the `BETTER_AUTH_URL` fill-in are
+now) preserves an existing valid value by default. `pnpm run update` gained standalone
+`-- --auth`/`--email`/`--storage`/`--database` flags backed by the same `configure.mjs`
+functions (one category per invocation, by design — keeps each field's own confirmation/warning
+readable in isolation and, in CI, auditable from the job log), plus a `--ci` flag reading
+`BETTER_AUTH_URL_NEW`/`EMAIL_PROVIDER_NEW`/`EMAIL_FROM_NEW`/`RESEND_API_KEY_NEW` non-interactively
+— an omitted variable always means "leave unchanged," the same rule as blank interactive input,
+covered by a dedicated unit test. `--storage`/`--database` are deliberately status-only (report
+name/id, explain the manual `wrangler.toml` edit) rather than automating a rebind — repointing
+either moves no data, so there's no safe default action, matching this project's own standing
+"no safe automatic choice, so don't automate it" precedent (`update.mjs`'s Worker-ownership
+check takes the same stance). Bare `pnpm run update` (no flags) is behaviorally unchanged — code
+pull + migrate + redeploy, still touching no configuration at all.
+
+One incidental bug surfaced and fixed while writing tests for this: `scripts/lib/prompt.mjs`
+created its `readline` interface eagerly at module load, which attaches an open handle to
+`process.stdin` — harmless for the CLI itself, but it silently hung `node --test` (the process
+never exits) the moment any test imported `configure.mjs` for its pure `resolveInput()` helper,
+even though that test never prompts for anything. Fixed by making the interface lazy (created on
+first actual `ask()`/`confirm()`/`select()` call) — confirmed by reproducing the hang first, not
+assumed.
+
+New tests, all pure unit tests run via `node --test scripts/lib` (`pnpm run test:scripts`, folded
+into the root `pnpm test`) — no real Cloudflare access available in this session, so nothing here
+exercises `wrangler` itself; that stays true only after a real interactive/CI run against a live
+account, which this pass could not perform and does not claim to have. 15 tests total:
+`config-status.test.mjs` (placeholder-vs-real Better Auth URL classification, email
+"configured" requiring provider+from+secret together, `isFreshInstall`, and a check that
+`summarizeInstallStatus()` never emits anything secret-shaped), `configure.test.mjs`
+(`resolveInput()` treating blank/whitespace/undefined identically — the direct regression test
+for bug 2), and `wrangler-toml.test.mjs` (the direct regression test for bug 1: setting
+`EMAIL_PROVIDER` must never change `BETTER_AUTH_URL`, plus in-place replace vs. duplicate-line
+checks for `setVarLine`/`removeVarLine`). `docs/DEPLOYMENT.md` gained a new "Updating
+configuration" section documenting the targeted commands, the CI env-var contract, and both root
+causes in plain terms, and its "Updating an existing install"/§4 CORS_ORIGINS-and-BETTER_AUTH_URL
+sections were corrected to stop describing the old, unconditional-overwrite behavior as normal.
+
+Not done in this pass, flagged rather than silently skipped: a real end-to-end run of any of
+this against a live Cloudflare account (no credentials available in this environment) — the
+fixes are verified by direct code inspection plus the unit tests above, not by an actual
+`pnpm run setup`/`update -- --auth` round trip against real infrastructure, unlike this file's
+other entries for this tooling. Whoever next touches these scripts with real Cloudflare access
+should do that pass before relying on this changelog entry as proof it works end to end.
