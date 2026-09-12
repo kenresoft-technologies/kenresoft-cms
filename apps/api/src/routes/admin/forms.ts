@@ -32,6 +32,7 @@ import {
   updateFormField,
 } from '../../repositories/form-fields';
 import {
+  deleteFormSubmission,
   getFormSubmissionById,
   listSubmissionsWithForm,
   updateFormSubmissionStatus,
@@ -524,5 +525,48 @@ formsRoute.openapi(
     const { status } = c.req.valid('json');
     const updated = await updateFormSubmissionStatus(db, submission.id, status);
     return c.json(toFormSubmission(updated), 200);
+  },
+);
+
+// Unlike triage (no role gate above), deleting visitor-submitted data permanently is
+// destructive and irreversible — gated the same as media.deleted/entries delete.
+formsRoute.openapi(
+  createRoute({
+    method: 'delete',
+    path: '/{id}/submissions/{submissionId}',
+    tags: ['Forms'],
+    summary: 'Delete a submission',
+    middleware: requireRole('admin', 'editor'),
+    request: { params: submissionParamsSchema },
+    responses: {
+      204: { description: 'The submission was deleted.' },
+      404: {
+        description: 'No form or submission matching those ids.',
+        content: { 'application/json': { schema: notFoundSchema } },
+      },
+    },
+  }),
+  async (c) => {
+    const { id, submissionId } = c.req.valid('param');
+    const db = getDb(c);
+    const form = await getFormById(db, id);
+    if (!form) {
+      return c.json({ error: 'Form not found' }, 404);
+    }
+
+    const submission = await getFormSubmissionById(db, submissionId);
+    if (!submission || submission.formId !== form.id) {
+      return c.json({ error: 'Submission not found' }, 404);
+    }
+
+    await deleteFormSubmission(db, submissionId);
+    await recordAudit(db, {
+      actorUserId: c.get('user').id,
+      action: 'form_submission.deleted',
+      targetType: 'form_submission',
+      targetId: submissionId,
+      metadata: { formId: id },
+    });
+    return c.body(null, 204);
   },
 );

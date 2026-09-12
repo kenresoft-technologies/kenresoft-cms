@@ -28,3 +28,17 @@ export function useUpdateSubmissionStatusGlobal() {
     },
   });
 }
+
+// Deletion also goes through the per-form endpoint, same reasoning as status updates above.
+export function useDeleteSubmissionGlobal() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ formId, id }: { formId: string; id: string }) =>
+      apiClient.delete(`/api/v1/admin/forms/${formId}/submissions/${id}`),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['submissions'] });
+      void queryClient.invalidateQueries({ queryKey: ['form-submissions'] });
+    },
+  });
+}

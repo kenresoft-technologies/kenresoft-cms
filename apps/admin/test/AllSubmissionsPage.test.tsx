@@ -6,14 +6,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AllSubmissionsPage } from '@/pages/AllSubmissionsPage';
 
-const { getMock, patchMock } = vi.hoisted(() => ({
+const { getMock, patchMock, deleteMock } = vi.hoisted(() => ({
   getMock: vi.fn(),
   patchMock: vi.fn(),
+  deleteMock: vi.fn(),
 }));
 
 vi.mock('@/lib/api-client', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api-client')>('@/lib/api-client');
-  return { ...actual, apiClient: { ...actual.apiClient, get: getMock, patch: patchMock } };
+  return { ...actual, apiClient: { ...actual.apiClient, get: getMock, patch: patchMock, delete: deleteMock } };
 });
 
 function renderPage() {
@@ -65,6 +66,7 @@ describe('AllSubmissionsPage', () => {
   beforeEach(() => {
     getMock.mockReset();
     patchMock.mockReset().mockResolvedValue({});
+    deleteMock.mockReset().mockResolvedValue(undefined);
   });
 
   it('lists submissions from multiple forms, with form and status', async () => {
@@ -143,10 +145,27 @@ describe('AllSubmissionsPage', () => {
     await waitFor(() => expect(screen.getByText('Contact')).toBeInTheDocument());
 
     const row = screen.getByRole('link', { name: 'Contact' }).closest('tr');
-    await userEvent.click(within(row!).getByRole('button', { name: /2026/ }));
+    await userEvent.click(within(row!).getByText(/2026/));
 
     await waitFor(() => expect(screen.getByText('Full name')).toBeInTheDocument());
-    expect(screen.getByText('Jane')).toBeInTheDocument();
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByText('Jane')).toBeInTheDocument();
+  });
+
+  it('deletes a submission after confirming', async () => {
+    mockGet(allSubmissions);
+
+    renderPage();
+    await waitFor(() => expect(screen.getByText('Contact')).toBeInTheDocument());
+
+    const row = screen.getByText('Contact').closest('tr');
+    await userEvent.click(within(row!).getByRole('button', { name: 'Submission actions' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
+
+    const dialog = await screen.findByRole('alertdialog');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
+
+    await waitFor(() => expect(deleteMock).toHaveBeenCalledWith('/api/v1/admin/forms/f-1/submissions/s-1'));
   });
 
   it('bulk-marks selected submissions as archived, spanning different forms', async () => {

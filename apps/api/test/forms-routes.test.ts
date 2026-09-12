@@ -6,6 +6,22 @@ async function authedCookie(email: string): Promise<string> {
   return signUpVerifiedAndGetCookie(email, { password: 'correct horse battery staple', name: 'Test User' });
 }
 
+async function userId(cookie: string): Promise<string> {
+  const response = await SELF.fetch('https://example.com/api/v1/auth/get-session', {
+    headers: { Cookie: cookie },
+  });
+  const body = await response.json<{ user: { id: string } }>();
+  return body.user.id;
+}
+
+async function setRole(adminCookie: string, targetId: string, role: string): Promise<void> {
+  await SELF.fetch(`https://example.com/api/v1/admin/users/${targetId}/role`, {
+    method: 'PATCH',
+    headers: { Cookie: adminCookie, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ role }),
+  });
+}
+
 async function createContactForm(cookie: string) {
   const headers = { Cookie: cookie, 'Content-Type': 'application/json' };
 
@@ -219,6 +235,88 @@ describe('forms routes (real D1)', () => {
       },
     );
     expect(response.status).toBe(404);
+  });
+
+  it('deletes a submission, removing it from the list', async () => {
+    const cookie = await authedCookie('forms-delete-admin@example.test');
+    const form = await createContactForm(cookie);
+
+    await SELF.fetch('https://example.com/api/v1/public/forms/contact/submissions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': 'delete-test-1' },
+      body: JSON.stringify({ name: 'Jane', email: 'jane@example.com' }),
+    });
+    const [submission] = await (
+      await SELF.fetch(`https://example.com/api/v1/admin/forms/${form.id}/submissions`, {
+        headers: { Cookie: cookie },
+      })
+    ).json<{ id: string }[]>();
+
+    const response = await SELF.fetch(
+      `https://example.com/api/v1/admin/forms/${form.id}/submissions/${submission!.id}`,
+      { method: 'DELETE', headers: { Cookie: cookie } },
+    );
+    expect(response.status).toBe(204);
+
+    const remaining = await (
+      await SELF.fetch(`https://example.com/api/v1/admin/forms/${form.id}/submissions`, {
+        headers: { Cookie: cookie },
+      })
+    ).json<{ id: string }[]>();
+    expect(remaining).toHaveLength(0);
+  });
+
+  it('404s deleting a submission that does not belong to the given form', async () => {
+    const cookie = await authedCookie('forms-delete-mismatch-admin@example.test');
+    const formA = await createContactForm(cookie);
+    const formB = await (
+      await SELF.fetch('https://example.com/api/v1/admin/forms', {
+        method: 'POST',
+        headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Other', slug: 'other-delete' }),
+      })
+    ).json<{ id: string }>();
+
+    await SELF.fetch('https://example.com/api/v1/public/forms/contact/submissions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': 'delete-test-2' },
+      body: JSON.stringify({ name: 'Jane', email: 'jane@example.com' }),
+    });
+    const [submission] = await (
+      await SELF.fetch(`https://example.com/api/v1/admin/forms/${formA.id}/submissions`, {
+        headers: { Cookie: cookie },
+      })
+    ).json<{ id: string }[]>();
+
+    const response = await SELF.fetch(
+      `https://example.com/api/v1/admin/forms/${formB.id}/submissions/${submission!.id}`,
+      { method: 'DELETE', headers: { Cookie: cookie } },
+    );
+    expect(response.status).toBe(404);
+  });
+
+  it('rejects a viewer deleting a submission', async () => {
+    const ownerCookie = await authedCookie('forms-delete-viewer-owner@example.test');
+    const form = await createContactForm(ownerCookie);
+    const viewerCookie = await authedCookie('forms-delete-viewer@example.test');
+    await setRole(ownerCookie, await userId(viewerCookie), 'viewer');
+
+    await SELF.fetch('https://example.com/api/v1/public/forms/contact/submissions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': 'delete-test-3' },
+      body: JSON.stringify({ name: 'Jane', email: 'jane@example.com' }),
+    });
+    const [submission] = await (
+      await SELF.fetch(`https://example.com/api/v1/admin/forms/${form.id}/submissions`, {
+        headers: { Cookie: ownerCookie },
+      })
+    ).json<{ id: string }[]>();
+
+    const response = await SELF.fetch(
+      `https://example.com/api/v1/admin/forms/${form.id}/submissions/${submission!.id}`,
+      { method: 'DELETE', headers: { Cookie: viewerCookie } },
+    );
+    expect(response.status).toBe(403);
   });
 
   it('lists every submission across every form, joined with its form name/slug', async () => {
