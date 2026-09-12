@@ -3,12 +3,14 @@ import { ArrowDown, ArrowUp, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { ApiError } from '@/lib/api-client';
+import { usePages } from '@/lib/queries/pages';
 import { useStructuredSettings, useUpdateStructuredSettings } from '@/lib/queries/structured-settings';
 import type { NavigationItem, NavigationSettingsData } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { SettingsSection, SettingsSaveBar } from './shared';
 
@@ -16,6 +18,10 @@ const EMPTY: NavigationSettingsData = { items: [] };
 
 function withNormalizedOrder(items: NavigationItem[]): NavigationItem[] {
   return items.map((item, index) => ({ ...item, order: index }));
+}
+
+function isPageTarget(item: NavigationItem): item is Extract<NavigationItem, { pageId: string }> {
+  return 'pageId' in item;
 }
 
 interface SectionProps {
@@ -27,6 +33,7 @@ interface SectionProps {
 export function NavigationSection({ readOnly }: SectionProps) {
   const { data: row, isPending } = useStructuredSettings('navigation');
   const updateNavigation = useUpdateStructuredSettings('navigation');
+  const { data: pages } = usePages();
 
   const saved = (row?.data as NavigationSettingsData | undefined) ?? EMPTY;
   const [draft, setDraft] = useState<NavigationSettingsData>(saved);
@@ -40,8 +47,41 @@ export function NavigationSection({ readOnly }: SectionProps) {
 
   const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
 
-  function updateItem(index: number, patch: Partial<NavigationItem>) {
-    setDraft({ items: draft.items.map((item, i) => (i === index ? { ...item, ...patch } : item)) });
+  function updateItem(
+    index: number,
+    patch: Partial<{ label: string; visible: boolean; external: boolean; newTab: boolean }>,
+  ) {
+    setDraft({
+      items: draft.items.map((item, i) => (i === index ? ({ ...item, ...patch } as NavigationItem) : item)),
+    });
+  }
+
+  function setItemUrl(index: number, url: string) {
+    setDraft({
+      items: draft.items.map((item, i) => {
+        if (i !== index) return item;
+        const { label, visible, order, external, newTab } = item;
+        return { label, visible, order, external, newTab, url };
+      }),
+    });
+  }
+
+  function setItemPageId(index: number, pageId: string) {
+    setDraft({
+      items: draft.items.map((item, i) => {
+        if (i !== index) return item;
+        const { label, visible, order, external, newTab } = item;
+        return { label, visible, order, external, newTab, pageId };
+      }),
+    });
+  }
+
+  function setItemTargetType(index: number, targetType: 'url' | 'page') {
+    if (targetType === 'page') {
+      setItemPageId(index, pages?.[0]?.id ?? '');
+    } else {
+      setItemUrl(index, '');
+    }
   }
 
   function removeItem(index: number) {
@@ -115,14 +155,54 @@ export function NavigationSection({ readOnly }: SectionProps) {
               />
             </div>
             <div className="flex flex-1 flex-col gap-1">
-              <Label htmlFor={`nav-url-${index}`}>URL</Label>
-              <Input
-                id={`nav-url-${index}`}
-                placeholder="/about or https://..."
+              <Label htmlFor={`nav-target-type-${index}`}>Target</Label>
+              <Select
+                value={isPageTarget(item) ? 'page' : 'url'}
                 disabled={readOnly}
-                value={item.url}
-                onChange={(event) => updateItem(index, { url: event.target.value })}
-              />
+                onValueChange={(value) => setItemTargetType(index, value as 'url' | 'page')}
+              >
+                <SelectTrigger id={`nav-target-type-${index}`}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="url">URL</SelectItem>
+                  <SelectItem value="page">Page</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-1 flex-col gap-1">
+              {isPageTarget(item) ? (
+                <>
+                  <Label htmlFor={`nav-page-${index}`}>Page</Label>
+                  <Select
+                    value={item.pageId}
+                    disabled={readOnly}
+                    onValueChange={(value) => setItemPageId(index, value)}
+                  >
+                    <SelectTrigger id={`nav-page-${index}`}>
+                      <SelectValue placeholder="Select a page" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(pages ?? []).map((page) => (
+                        <SelectItem key={page.id} value={page.id}>
+                          {page.title} ({page.route})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </>
+              ) : (
+                <>
+                  <Label htmlFor={`nav-url-${index}`}>URL</Label>
+                  <Input
+                    id={`nav-url-${index}`}
+                    placeholder="/about or https://..."
+                    disabled={readOnly}
+                    value={item.url}
+                    onChange={(event) => setItemUrl(index, event.target.value)}
+                  />
+                </>
+              )}
             </div>
             <div className="flex items-center gap-1">
               <Button

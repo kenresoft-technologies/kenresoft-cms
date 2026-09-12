@@ -2486,3 +2486,41 @@ suite (37 files, 201 tests) clean in one run, and `live-preview`/`pages-routes`/
 flakiness workaround needed this time. No breaking changes beyond one new nullable field
 (`pagePreviewUrl`) on `Settings`. Per the same phase-gate discipline as Phases 1-4: stopped
 after Phase 5, pending explicit approval before Phase 6 (Navigation `pageId` reference option).
+
+**Site builder Phase 6: Navigation `pageId` reference option** (2026-09-12, on `develop`,
+approved immediately after Phase 5's report) — done: a Navigation item in Structured Settings
+can now target either a literal `url` or a `pageId` referencing a Page, resolved to that Page's
+own `route` at render time. Contracts/UI/SDK change only — no database migration, since
+`structured_settings.data` is already a JSON blob. `navigationItemSchema`
+(`packages/contracts/schemas/structured-settings.ts`) changed from a flat object with a required
+`url` to a `z.union()` of two shapes sharing common fields (`label`/`visible`/`order`/`external`/
+`newTab`), one requiring `url`, the other `pageId` — structurally impossible to have both or
+neither, not just discouraged by convention. Every existing `url`-only saved item keeps
+validating and rendering unmodified; `NavigationItem`'s inferred type is now that union, so every
+consumer must narrow (`'pageId' in item`) before reading either field.
+
+`apps/admin/src/pages/settings/NavigationSection.tsx` gained a "Target" `<Select>` (URL / Page)
+per navigation item; choosing "Page" swaps the URL `<Input>` for a `<Select>` populated from the
+existing `usePages()` hook (Phase 3's admin Pages list — no new query needed), offering
+`"{title} ({route})"` per option. Switching target type rebuilds the item from its common fields
+plus a fresh `url`/`pageId`, so the two target fields are never both present at once.
+`@kenresoft-cms/astro` gained `resolveNavigationItems(items, pages)` (`integrations/astro/src/
+render/resolve-navigation.ts`, a pure function mirroring `resolve-route.ts`'s own precedent) —
+maps a navigation list plus a page list to a flat `{label, href, visible, order, external,
+newTab}[]`; a `pageId` naming a since-deleted Page resolves to `href: null` rather than throwing,
+so a template decides how to handle a dangling reference. A new `client.pages.list()` wraps the
+already-existing `GET /api/v1/public/pages` (Phase 3 built the route; nothing had wrapped it in
+the SDK yet) to supply that page list.
+
+Verified: `pnpm typecheck`/`pnpm lint` clean workspace-wide. New tests passing for real:
+`integrations/astro/test/resolve-navigation.test.ts` (4 pure unit tests), `apps/admin/test/
+NavigationSection.test.tsx` (3 tests — new-item-defaults-to-url, switch-to-Page-and-save, and a
+legacy url-only item rendering unmodified), and one new case in `apps/api/test/
+structured-settings-routes.test.ts` (a mixed url/pageId PUT accepted, an item with neither
+rejected). Regression sweep: the full `apps/admin` suite (38 files, 204 tests) clean in one run;
+`structured-settings-routes`/`structured-settings-public`/`structured-settings-legacy-migration`/
+`pages-routes`/`public-pages`/`health`/`api-docs-gate` (27 tests) all green together in one
+batch. No breaking changes; `examples/astro-site` doesn't consume Structured Settings navigation
+at all, so it's unaffected either way. Per the same phase-gate discipline as Phases 1-5: stopped
+after Phase 6, pending explicit approval before Phase 7 (`<PageRenderer>`/`<BlockRenderer>` and
+the `examples/astro-site` catch-all route).

@@ -5,6 +5,7 @@ import type {
   FormSubmission,
   GeneralSettingsData,
   NavigationSettingsData,
+  PageListItem,
   PublicMedia,
   RoutePatternEntry,
   SeoSettingsData,
@@ -34,6 +35,11 @@ export {
 // `resolveRoute()`/`matchRoutePattern()` are pure functions, independent of the client below;
 // pair them with `client.routePatterns.list()` to build a generic catch-all Astro route.
 export { matchRoutePattern, resolveRoute, type ResolvedRoute } from './render/resolve-route';
+
+// Phase 6 of the schema-driven frontend work (docs/SITE_BUILDER.md §3.7) — resolves a
+// Navigation item's `pageId` reference to that Page's own `route`, alongside its plain `url`
+// items. Pair with `client.pages.list()` below.
+export { resolveNavigationItems, type ResolvedNavigationItem } from './render/resolve-navigation';
 
 export interface KenresoftClientConfig {
   /** Base URL of a Kenresoft CMS deployment, e.g. "http://localhost:8787" in local dev. */
@@ -411,6 +417,15 @@ export interface KenresoftClient {
     list(): Promise<RoutePatternEntry[]>;
   };
   /**
+   * Deliberately narrow, like routePatterns above — id/route/title only, never the full block
+   * tree (fetch one page fully via a future `pages.get()`/`pages.byRoute()`, not added yet since
+   * nothing renders Pages until Phase 7). Feeds `resolveNavigationItems()` above.
+   */
+  pages: {
+    /** Matches GET /api/v1/public/pages exactly (edge-cached). Only published pages. */
+    list(): Promise<PageListItem[]>;
+  };
+  /**
    * Structured Settings (docs/ARCHITECTURE.md §6) — singleton, typed, schema-validated site
    * configuration, distinct from the free-form `globalVariables` above. Each method matches
    * `GET /api/v1/public/settings/:module` exactly (edge-cached the same way) and resolves an
@@ -655,6 +670,12 @@ export function createKenresoftClient(config: KenresoftClientConfig): KenresoftC
       async list() {
         const patterns = await request<RoutePatternEntry[]>('/api/v1/public/route-patterns');
         return patterns ?? [];
+      },
+    },
+    pages: {
+      async list() {
+        const pages = await request<PageListItem[]>('/api/v1/public/pages');
+        return pages ?? [];
       },
     },
     settings: {
