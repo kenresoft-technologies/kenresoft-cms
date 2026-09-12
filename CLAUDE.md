@@ -2449,3 +2449,78 @@ flakiness, confirmed non-regression by re-running each file alone). No breaking 
 one new nullable field (`templateId`) on `Page`. Per the same phase-gate discipline as Phases
 1-3: stopped after Phase 4, pending explicit approval before Phase 5 (Page preview, reusing
 `preview-token.ts` verbatim).
+
+**Site builder Phase 5: Page Live Preview** (2026-09-12, on `develop`, approved immediately
+after Phase 4's report) — done: Page Live Preview, reusing `preview-token.ts` completely
+unmodified — confirming that file's own signing/verification pair was already id-agnostic
+despite an internal field literally named `entryId`. New `GET /api/v1/admin/pages/:id/
+preview-token` and `GET /api/v1/public/preview/pages?route=...&token=...` (a query param, not a
+path param, since a Page's route can contain slashes) mirror the existing entry-preview routes
+line-for-line, including the same "any failure — missing route, missing/garbage/expired/
+mismatched token — collapses to one 404" convention, verified by a direct comparison test. A new
+`settings.pagePreviewUrl` column (migration `0039_nosy_tenebrous.sql`) is a second, independent
+URL template alongside the existing `previewUrl` — a Page has no content-type/slug pair, only a
+literal `route`, so it needed its own placeholder shape (`{route}`) rather than overloading the
+existing field with two incompatible template grammars. `PageEditorPage.tsx` gained a
+`LivePreviewButton`, a direct structural mirror of `EntryEditorPage.tsx`'s own (refuses and
+nudges to save first when the form is dirty, since Live Preview only ever shows what's actually
+persisted).
+
+Honestly incomplete by design, not silently overclaimed: opening a Page's preview link today
+does nothing useful until a frontend actually implements Page rendering at all (Phase 7,
+`<PageRenderer>`/the Astro catch-all route) and checks for `preview_token` the way an
+entry-preview page already does — this phase ships the complete backend/admin-UI half of the
+feature, and both the Settings UI's own helper text and `docs/SITE_BUILDER.md` §21 say so
+plainly rather than implying it works against `examples/astro-site` today (it doesn't render
+Pages at all yet). Deliberately no `@kenresoft-cms/astro` client method for Page preview either,
+for the same reason — adding one with no real consumer would be speculative ahead of Phase 7's
+actual need.
+
+Verified: `pnpm typecheck`/`pnpm lint` clean workspace-wide; all new tests passing for real (5
+API tests, a direct structural mirror of the existing entry-preview test file's five cases, plus
+3 new admin tests for `PageEditorPage.tsx`, which had no dedicated test file before this phase);
+one pre-existing test's fixture (`SettingsPage.test.tsx`'s asserted PUT body) needed a one-line
+update for the new `pagePreviewUrl` field now present. Regression sweep: the full `apps/admin`
+suite (37 files, 201 tests) clean in one run, and `live-preview`/`pages-routes`/`public-pages`/
+`settings-routes`/`health`/`api-docs-gate` all green together in one batch — no isolated-
+flakiness workaround needed this time. No breaking changes beyond one new nullable field
+(`pagePreviewUrl`) on `Settings`. Per the same phase-gate discipline as Phases 1-4: stopped
+after Phase 5, pending explicit approval before Phase 6 (Navigation `pageId` reference option).
+
+**Site builder Phase 6: Navigation `pageId` reference option** (2026-09-12, on `develop`,
+approved immediately after Phase 5's report) — done: a Navigation item in Structured Settings
+can now target either a literal `url` or a `pageId` referencing a Page, resolved to that Page's
+own `route` at render time. Contracts/UI/SDK change only — no database migration, since
+`structured_settings.data` is already a JSON blob. `navigationItemSchema`
+(`packages/contracts/schemas/structured-settings.ts`) changed from a flat object with a required
+`url` to a `z.union()` of two shapes sharing common fields (`label`/`visible`/`order`/`external`/
+`newTab`), one requiring `url`, the other `pageId` — structurally impossible to have both or
+neither, not just discouraged by convention. Every existing `url`-only saved item keeps
+validating and rendering unmodified; `NavigationItem`'s inferred type is now that union, so every
+consumer must narrow (`'pageId' in item`) before reading either field.
+
+`apps/admin/src/pages/settings/NavigationSection.tsx` gained a "Target" `<Select>` (URL / Page)
+per navigation item; choosing "Page" swaps the URL `<Input>` for a `<Select>` populated from the
+existing `usePages()` hook (Phase 3's admin Pages list — no new query needed), offering
+`"{title} ({route})"` per option. Switching target type rebuilds the item from its common fields
+plus a fresh `url`/`pageId`, so the two target fields are never both present at once.
+`@kenresoft-cms/astro` gained `resolveNavigationItems(items, pages)` (`integrations/astro/src/
+render/resolve-navigation.ts`, a pure function mirroring `resolve-route.ts`'s own precedent) —
+maps a navigation list plus a page list to a flat `{label, href, visible, order, external,
+newTab}[]`; a `pageId` naming a since-deleted Page resolves to `href: null` rather than throwing,
+so a template decides how to handle a dangling reference. A new `client.pages.list()` wraps the
+already-existing `GET /api/v1/public/pages` (Phase 3 built the route; nothing had wrapped it in
+the SDK yet) to supply that page list.
+
+Verified: `pnpm typecheck`/`pnpm lint` clean workspace-wide. New tests passing for real:
+`integrations/astro/test/resolve-navigation.test.ts` (4 pure unit tests), `apps/admin/test/
+NavigationSection.test.tsx` (3 tests — new-item-defaults-to-url, switch-to-Page-and-save, and a
+legacy url-only item rendering unmodified), and one new case in `apps/api/test/
+structured-settings-routes.test.ts` (a mixed url/pageId PUT accepted, an item with neither
+rejected). Regression sweep: the full `apps/admin` suite (38 files, 204 tests) clean in one run;
+`structured-settings-routes`/`structured-settings-public`/`structured-settings-legacy-migration`/
+`pages-routes`/`public-pages`/`health`/`api-docs-gate` (27 tests) all green together in one
+batch. No breaking changes; `examples/astro-site` doesn't consume Structured Settings navigation
+at all, so it's unaffected either way. Per the same phase-gate discipline as Phases 1-5: stopped
+after Phase 6, pending explicit approval before Phase 7 (`<PageRenderer>`/`<BlockRenderer>` and
+the `examples/astro-site` catch-all route).

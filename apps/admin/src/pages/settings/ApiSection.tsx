@@ -208,22 +208,35 @@ function LivePreviewSection({ settings, readOnly }: SectionProps) {
 
   const [previewUrl, setPreviewUrl] = useState(settings?.previewUrl ?? '');
   const [savedPreviewUrl, setSavedPreviewUrl] = useState(settings?.previewUrl ?? '');
+  const [pagePreviewUrl, setPagePreviewUrl] = useState(settings?.pagePreviewUrl ?? '');
+  const [savedPagePreviewUrl, setSavedPagePreviewUrl] = useState(settings?.pagePreviewUrl ?? '');
   const [error, setError] = useState<string | null>(null);
 
-  const dirty = previewUrl !== savedPreviewUrl;
+  const dirty = previewUrl !== savedPreviewUrl || pagePreviewUrl !== savedPagePreviewUrl;
 
   async function handleSave() {
     setError(null);
-    const trimmed = previewUrl.trim();
-    if (trimmed && !trimmed.includes('{slug}')) {
-      setError('The template must include a {slug} placeholder');
+    const trimmedEntry = previewUrl.trim();
+    if (trimmedEntry && !trimmedEntry.includes('{slug}')) {
+      setError('The entry template must include a {slug} placeholder');
+      return;
+    }
+    const trimmedPage = pagePreviewUrl.trim();
+    if (trimmedPage && !trimmedPage.includes('{route}')) {
+      setError('The page template must include a {route} placeholder');
       return;
     }
 
     try {
-      await updateSettings.mutateAsync({ ...toSettingsInput(settings), previewUrl: trimmed || null });
-      setPreviewUrl(trimmed);
-      setSavedPreviewUrl(trimmed);
+      await updateSettings.mutateAsync({
+        ...toSettingsInput(settings),
+        previewUrl: trimmedEntry || null,
+        pagePreviewUrl: trimmedPage || null,
+      });
+      setPreviewUrl(trimmedEntry);
+      setSavedPreviewUrl(trimmedEntry);
+      setPagePreviewUrl(trimmedPage);
+      setSavedPagePreviewUrl(trimmedPage);
       toast.success('Settings saved');
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to save settings';
@@ -235,7 +248,7 @@ function LivePreviewSection({ settings, readOnly }: SectionProps) {
   return (
     <SettingsSection
       title="Live Preview"
-      description="The URL template your frontend uses to render one entry, so the Entry Editor's Preview button can open it."
+      description="The URL templates your frontend uses to render one entry or page, so the editor's Preview button can open them."
       footer={
         <SettingsSaveBar
           dirty={dirty}
@@ -244,6 +257,7 @@ function LivePreviewSection({ settings, readOnly }: SectionProps) {
           onSave={() => void handleSave()}
           onDiscard={() => {
             setPreviewUrl(savedPreviewUrl);
+            setPagePreviewUrl(savedPagePreviewUrl);
             setError(null);
           }}
         />
@@ -254,15 +268,15 @@ function LivePreviewSection({ settings, readOnly }: SectionProps) {
         <p className="mt-1">
           Live Preview lets you view a draft (or any unpublished change) exactly as it'll look on
           your real site, before you publish it. It needs your frontend to have a page for
-          rendering one entry, and for that page to check for a <code className="rounded bg-muted px-1 py-0.5 text-xs">preview_token</code>{' '}
-          link parameter — when present, it fetches the entry through the preview endpoint
+          rendering one entry (or Page), and for that page to check for a <code className="rounded bg-muted px-1 py-0.5 text-xs">preview_token</code>{' '}
+          link parameter — when present, it fetches the entry/page through the preview endpoint
           instead of the normal public one, which is the only way this works for a draft that
-          isn't published yet. Below, tell us the URL pattern that page uses on your site.
+          isn't published yet. Below, tell us the URL pattern each one uses on your site.
         </p>
       </div>
 
       <div className="flex flex-col gap-2">
-        <Label htmlFor="settings-preview-url">Preview URL template</Label>
+        <Label htmlFor="settings-preview-url">Entry preview URL template</Label>
         <Input
           id="settings-preview-url"
           placeholder="http://localhost:4321/{contentType}/{slug}"
@@ -278,6 +292,24 @@ function LivePreviewSection({ settings, readOnly }: SectionProps) {
           (this example only reads <code className="rounded bg-muted px-1 py-0.5 text-xs">{'{slug}'}</code>, since it
           has one content type hardcoded to the <code className="rounded bg-muted px-1 py-0.5 text-xs">/blog</code>{' '}
           path).
+        </p>
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <Label htmlFor="settings-page-preview-url">Page preview URL template</Label>
+        <Input
+          id="settings-page-preview-url"
+          placeholder="http://localhost:4321{route}"
+          disabled={readOnly}
+          value={pagePreviewUrl}
+          onChange={(event) => setPagePreviewUrl(event.target.value)}
+        />
+        <p className="text-sm text-muted-foreground">
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">{'{route}'}</code> is replaced with
+          the Page's own <code className="rounded bg-muted px-1 py-0.5 text-xs">route</code> (e.g.{' '}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">/about</code>). This only takes effect
+          once your frontend actually renders Pages — not yet true for{' '}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">examples/astro-site</code>.
         </p>
       </div>
 

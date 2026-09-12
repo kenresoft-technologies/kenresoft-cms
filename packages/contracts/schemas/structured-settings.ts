@@ -34,14 +34,21 @@ export const socialSettingsDataSchema = z.object({
 });
 
 // --- navigation: intentionally simple — one flat, orderable list, no nested menus.
-export const navigationItemSchema = z.object({
+// A target is either a literal `url` or a `pageId` reference to a Page (docs/SITE_BUILDER.md
+// §3.7) — resolved to that Page's own `route` at render time by the Astro SDK. Existing
+// `url`-only rows keep validating unmodified; `pageId` is purely additive.
+const navigationItemBaseSchema = z.object({
   label: z.string().min(1).max(100),
-  url: z.string().min(1).max(500),
   visible: z.boolean(),
   order: z.number().int(),
   external: z.boolean(),
   newTab: z.boolean(),
 });
+
+export const navigationItemSchema = z.union([
+  navigationItemBaseSchema.extend({ url: z.string().min(1).max(500) }),
+  navigationItemBaseSchema.extend({ pageId: z.string().min(1) }),
+]);
 
 export const navigationSettingsDataSchema = z.object({
   items: z.array(navigationItemSchema).max(100),

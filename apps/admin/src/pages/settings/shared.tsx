@@ -27,6 +27,7 @@ export function toSettingsInput(settings: Settings | null): SettingsInput {
     corsOrigin: settings?.corsOrigin ?? null,
     featureFlags: settings?.featureFlags ?? null,
     previewUrl: settings?.previewUrl ?? null,
+    pagePreviewUrl: settings?.pagePreviewUrl ?? null,
   };
 }
 

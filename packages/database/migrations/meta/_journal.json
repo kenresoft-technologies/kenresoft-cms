@@ -274,6 +274,13 @@
       "when": 1789224026499,
       "tag": "0038_faithful_black_knight",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "6",
+      "when": 1789244933817,
+      "tag": "0039_nosy_tenebrous",
+      "breakpoints": true
     }
   ]
 }

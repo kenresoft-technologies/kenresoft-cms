@@ -18,6 +18,11 @@ export const settings = sqliteTable('settings', {
   // actually uses. Substituted verbatim (no templating engine) by
   // apps/admin/src/pages/EntryEditorPage.tsx when building a preview link.
   previewUrl: text('preview_url'),
+  // Phase 5 of the schema-driven frontend work (docs/SITE_BUILDER.md §1.3/§20) — the equivalent
+  // template for Pages, which have no content-type/slug pair, only a single literal `route`,
+  // e.g. "https://mysite.com{route}". Kept as its own column rather than overloading
+  // `previewUrl` with two incompatible placeholder shapes.
+  pagePreviewUrl: text('page_preview_url'),
   createdAt: integer('created_at', { mode: 'timestamp' })
     .notNull()
     .default(sql`(unixepoch())`),

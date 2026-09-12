@@ -114,6 +114,36 @@ describe('structured settings admin routes (real D1)', () => {
     expect(row).toMatchObject({ action: 'structured_settings.updated', target_id: 'seo' });
   });
 
+  it('accepts navigation items with either a url or a pageId target, and rejects one with neither', async () => {
+    const cookie = await authedCookie('ss-nav@example.test');
+    const headers = { Cookie: cookie, 'Content-Type': 'application/json' };
+
+    const ok = await SELF.fetch('https://example.com/api/v1/admin/structured-settings/navigation', {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify({
+        items: [
+          { label: 'Home', url: '/', visible: true, order: 0, external: false, newTab: false },
+          { label: 'About', pageId: 'page-1', visible: true, order: 1, external: false, newTab: false },
+        ],
+      }),
+    });
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toMatchObject({
+      module: 'navigation',
+      data: { items: [{ url: '/' }, { pageId: 'page-1' }] },
+    });
+
+    const bad = await SELF.fetch('https://example.com/api/v1/admin/structured-settings/navigation', {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify({
+        items: [{ label: 'Neither', visible: true, order: 0, external: false, newTab: false }],
+      }),
+    });
+    expect(bad.status).toBe(400);
+  });
+
   it('rejects every structured settings route without a session', async () => {
     const response = await SELF.fetch('https://example.com/api/v1/admin/structured-settings/general');
     expect(response.status).toBe(401);

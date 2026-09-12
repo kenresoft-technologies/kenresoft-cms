@@ -7,6 +7,27 @@ Status: Proposed / Ready for implementation
 
 ## Changelog
 
+**v0.19 (2026-09-12)** — Phase 6 of the schema-driven frontend/site-builder initiative
+(`docs/SITE_BUILDER.md`): Navigation `pageId` reference option. `navigationItemSchema`
+(Structured Settings' `navigation` module, §6.2) is now a `z.union()` accepting either a literal
+`url` or a `pageId` referencing a Page — a contracts/UI/SDK change only, no database migration.
+The admin Navigation section gained a URL/Page target-type selector; `@kenresoft-cms/astro`
+gained a pure `resolveNavigationItems()` helper (resolves a `pageId` to that Page's `route`,
+`null` for a dangling reference) and a `client.pages.list()` wrapper. No breaking changes —
+every existing `url`-only navigation item keeps validating and rendering unmodified. See
+`docs/SITE_BUILDER.md` §22 for the full implementation record.
+
+**v0.18 (2026-09-12)** — Phase 5 of the schema-driven frontend/site-builder initiative
+(`docs/SITE_BUILDER.md`): Page Live Preview, reusing `preview-token.ts` completely unmodified —
+a new `GET /api/v1/admin/pages/:id/preview-token` and a new `GET /api/v1/public/preview/pages
+?route=...&token=...` route (mirroring the existing entry-preview pair exactly), a new
+`settings.pagePreviewUrl` template column (a Page has no content-type/slug pair, only a literal
+`route`, so it needs its own placeholder shape rather than overloading `previewUrl`), and a
+"Live Preview" button on the Page Editor. Ships the complete backend/admin-UI half of the
+feature — opening a preview link only renders something once a frontend implements Page
+rendering at all (Phase 7), which this phase's docs say plainly rather than implying otherwise.
+See `docs/SITE_BUILDER.md` §21 for the full implementation record.
+
 **v0.17 (2026-09-12)** — Phase 4 of the schema-driven frontend/site-builder initiative
 (`docs/SITE_BUILDER.md`): `reusable_blocks` (a live reference, resolved — never copied — at
 render time, referenced from a Page's tree via the new `reusableBlockRef` block type) and
@@ -761,12 +782,37 @@ reorder UI (buttons, not drag-and-drop) — `docs/SITE_BUILDER.md` §14 decision
 drag-and-drop canvas as a later, separate phase (Phase 8) that replaces only this editing UI,
 never the underlying block-tree data model or rendering architecture.
 
-**What this does not do yet**: no Page preview (Phase 5, though `preview-token.ts` is already
-resource-agnostic and needs no change to support it), no Navigation `pageId` reference
-(Phase 6), and no `@kenresoft-cms/astro` `<PageRenderer>`/`registerBlockRenderer()` or
-`examples/astro-site` catch-all route (Phase 7) — a Page can be created and composed in the
-admin UI and fetched via the public API, but nothing renders it as an actual web page yet. See
-`docs/SITE_BUILDER.md` §19 for the full Phase 3 implementation record.
+**What this does not do yet**: no `@kenresoft-cms/astro` `<PageRenderer>`/
+`registerBlockRenderer()` or `examples/astro-site` catch-all route (Phase 7) — a Page can be
+created and composed in the admin UI, previewed (§6.5.1, Phase 5), linked to from Navigation
+(§6.5.2, Phase 6), and fetched via the public API, but nothing renders it as an actual web page
+yet. See `docs/SITE_BUILDER.md` §19 for the full Phase 3 implementation record.
+
+#### 6.5.1 Page Live Preview (Phase 5)
+
+**Status: implemented.** `preview-token.ts` (§1.3) needed zero changes — its signing/
+verification pair was already id-agnostic despite an internal field literally named `entryId`.
+`GET /api/v1/admin/pages/:id/preview-token` and `GET /api/v1/public/preview/pages?route=...
+&token=...` mirror the equivalent entry-preview routes exactly, including the same
+"any failure collapses to one 404" convention. A new `settings.pagePreviewUrl` template
+(distinct from `previewUrl`, since a Page has only a literal `route`, not a content-type/slug
+pair) backs a "Live Preview" button on the Page Editor. Honestly incomplete on its own: opening
+a preview link renders nothing until a frontend actually implements Page rendering at all
+(Phase 7) — this phase ships the complete backend/admin-UI half only. See
+`docs/SITE_BUILDER.md` §21 for the full implementation record.
+
+#### 6.5.2 Navigation `pageId` reference (Phase 6)
+
+**Status: implemented.** Structured Settings' `navigation` module (§6.2) accepts either a
+literal `url` or a `pageId` referencing a Page — `navigationItemSchema` is a `z.union()` of two
+shapes sharing common fields (`label`/`visible`/`order`/`external`/`newTab`), one requiring
+`url`, the other `pageId`; a nav item can never carry both or neither, enforced structurally by
+the schema rather than by convention. No database migration — `structured_settings.data` is
+already a JSON blob. A frontend resolves a `pageId` to that Page's `route` via the new
+`resolveNavigationItems()` pure helper in `@kenresoft-cms/astro`, paired with a new
+`client.pages.list()` wrapper over the existing `GET /api/v1/public/pages`; a `pageId` with no
+matching page (the Page was deleted after the nav item referenced it) resolves to `href: null`
+rather than throwing. See `docs/SITE_BUILDER.md` §22 for the full implementation record.
 
 ### 6.6 Reusable Blocks and Templates (schema-driven frontend, Phase 4)
 
