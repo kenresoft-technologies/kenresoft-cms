@@ -1,4 +1,5 @@
 export * from '../schemas/audit-log';
+export * from '../schemas/blocks';
 export * from '../schemas/cache';
 export * from '../schemas/common';
 export * from '../schemas/content-types';
@@ -13,6 +14,8 @@ export * from '../schemas/global-variables';
 export * from '../schemas/form-submissions';
 export * from '../schemas/forms';
 export * from '../schemas/media';
+export * from '../schemas/page-revisions';
+export * from '../schemas/pages';
 export * from '../schemas/password-recovery';
 export * from '../schemas/plugins';
 export * from '../schemas/route-patterns';

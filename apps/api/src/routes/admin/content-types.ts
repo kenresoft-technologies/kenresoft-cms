@@ -24,6 +24,7 @@ import {
   listContentTypes,
   updateContentType,
 } from '../../repositories/content-types';
+import { findPageMatchingRoutePattern } from '../../repositories/pages';
 import {
   createFieldDefinition,
   deleteFieldDefinition,
@@ -122,6 +123,12 @@ contentTypesRoute.openapi(
       if (collision) {
         return c.json({ error: 'That route pattern is already used by another content type.' }, 400);
       }
+      // §4.3/§16 (docs/SITE_BUILDER.md): the Pages-side half of the same collision check
+      // routes/admin/pages.ts performs in the other direction.
+      const conflictingPage = await findPageMatchingRoutePattern(db, input.routePattern);
+      if (conflictingPage) {
+        return c.json({ error: `That route pattern is already claimed by the page at "${conflictingPage.route}".` }, 400);
+      }
     }
 
     const contentType = await createContentType(db, {
@@ -215,6 +222,10 @@ contentTypesRoute.openapi(
       const collision = await getContentTypeByRoutePattern(db, input.routePattern);
       if (collision && collision.id !== id) {
         return c.json({ error: 'That route pattern is already used by another content type.' }, 400);
+      }
+      const conflictingPage = await findPageMatchingRoutePattern(db, input.routePattern);
+      if (conflictingPage) {
+        return c.json({ error: `That route pattern is already claimed by the page at "${conflictingPage.route}".` }, 400);
       }
     }
 

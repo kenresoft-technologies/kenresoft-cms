@@ -4,11 +4,13 @@
 
 Phase 0 (this document's original architecture assessment) is reviewed and accepted. §14's
 open decisions are resolved (see "§14 decisions — resolved" below). **Phase 1** (field
-presentation metadata + a field-renderer registry) **and Phase 2** (content-type
-`routePattern` + `resolveRoute()` in the SDK) **are implemented**. Phases 3-10 — Pages,
-Blocks, Templates, the visual page builder, and everything else in §13's plan — are **not
-started**. Do not read anything below §2 as describing current behavior; it is the target
-architecture this phase-by-phase plan is building toward.
+presentation metadata + a field-renderer registry), **Phase 2** (content-type
+`routePattern` + `resolveRoute()` in the SDK), and **Phase 3** (the `pages`/`page_revisions`
+data model, admin CRUD + revisions, a basic block-composition editor, and the public Pages
+API) **are implemented**. Phases 4-10 — Templates, Reusable Blocks, Page preview, Navigation
+page references, Astro rendering, the drag-and-drop editor, and everything else in §13's plan
+— are **not started**. Do not read anything below §2 as describing current behavior; it is the
+target architecture this phase-by-phase plan is building toward.
 
 ### §14 decisions — resolved
 
@@ -561,7 +563,7 @@ exist (skipping/collapsing phases where Core already provides the primitive):
 |---|---|---|---|
 | **1** | **Done** (2026-09-12) | Field `presentation` metadata + a real field-renderer registry (admin + SDK) | `field-input.tsx`, `field_definitions` |
 | **2** | **Done** (2026-09-12) | Content-type `routePattern` (exactly one `{slug}` param, per §14) + `resolveRoute()` in the SDK; no Pages yet, not wired into `examples/astro-site` | `content.ts` public route, entries |
-| **3** | Not started | `pages`/`page_revisions` tables, admin Pages CRUD + revision/restore, a small built-in block set, JSON-tree block composition editor (basic add/remove/reorder, not drag-and-drop yet), public Pages route, cache invalidation | Entries/revisions code path as template, `public-cache.ts` |
+| **3** | **Done** (2026-09-12) | `pages`/`page_revisions` tables, admin Pages CRUD + revision/restore, a small built-in block set, JSON-tree block composition editor (basic add/remove/reorder, not drag-and-drop yet), public Pages route, cache invalidation | Entries/revisions code path as template, `public-cache.ts` |
 | **4** | Not started | `reusable_blocks`, `templates` tables + admin UI; Page creation from a template | Phase 3 |
 | **5** | Not started | Page preview (reuses `preview-token.ts` verbatim) | Live Preview (already built) |
 | **6** | Not started | Navigation `pageId` reference option | Structured Settings navigation (already built) |
@@ -825,6 +827,122 @@ one new nullable field (`routePattern`) on `ContentType`; a deployment that neve
 route pattern sees zero behavior change anywhere, including an empty (not different-shaped)
 `route-patterns` public response.
 
-Phase 3 (the `pages`/`page_revisions` tables, admin Pages CRUD + revision/restore, a small
-built-in block set, a basic add/remove/reorder block-composition editor, the public Pages
-route, and cache invalidation) is next, pending explicit approval — not started.
+## 19. Phase 3 — implementation record (2026-09-12)
+
+**Done.** The `pages`/`page_revisions` data model, admin Pages CRUD with revision history/
+restore, a small code-defined built-in block set with per-type config validation, a basic
+add/remove/reorder block-composition editor, the public Pages API, and route-collision checks
+in both directions between Pages and content-type route patterns — exactly the scope in §13's
+table and nothing more (no Templates, Reusable Blocks, Page preview, Navigation `pageId`
+reference, or Astro rendering — all deliberately deferred to Phases 4-7).
+
+- `packages/database/schema/pages.ts`/`page-revisions.ts` (new) — `pages` (`route` unique,
+  `title`, `status`/`publishAt` reusing `ENTRY_STATUSES` and the scheduled-publish sweep
+  verbatim, `blocks` JSON, nullable `seo` JSON, `createdBy`); `page_revisions` (an exact
+  structural mirror of `entry_revisions`). Deliberately **no `templateId` column yet** —
+  Templates ship in Phase 4; adding that FK then is itself an additive nullable column, per
+  this project's own "additive only" migration convention, not something this table needs to
+  anticipate now. Migration `0037_curly_lucky_pierre.sql` (two new tables, zero changes to any
+  existing table).
+- `packages/contracts/schemas/blocks.ts` (new) — `BlockInstance`/`ChildBlockInstance` types,
+  `blockInstanceSchema`, one Zod config schema per built-in block type
+  (`BLOCK_CONFIG_SCHEMAS`), and `validateBlockTree()` (the API-layer walk `blockInstanceSchema`
+  alone can't do: each node's `config` must match its own type's schema, and only `columns` may
+  carry `children` at all). `packages/contracts/schemas/enums.ts` gained `BLOCK_TYPES`
+  (`hero`, `richText`, `image`, `cta`, `columns`, `spacer` — §5's example list, not
+  over-built) and `BLOCK_TYPES_ALLOWING_CHILDREN` (`columns` only).
+  `packages/contracts/schemas/pages.ts`/`page-revisions.ts` (new) — `pageSchema`/
+  `createPageSchema`/`updatePageSchema`/`pageListItemSchema`/`pageRevisionSchema`, plus
+  `pageSeoSchema` (mirrors structured-settings' own `seo` module shape, page-scoped).
+  `packages/contracts/schemas/routing.ts` gained `pageRouteSchema` (a literal route — no
+  `{slug}`, unlike a content-type `routePattern`) and `doesRoutePatternMatchLiteralRoute()`
+  (the shared collision-check primitive both directions use).
+- `apps/api/src/repositories/pages.ts` (new) — CRUD, revision snapshot/restore, and
+  `publishDuePages()`, mirroring `repositories/entries.ts` structurally throughout; plus
+  `findPageMatchingRoutePattern()` for the reverse collision direction.
+  `apps/api/src/routes/admin/pages.ts` (new, `admin`/`editor` write floor — matching the
+  content-type-field floor, not the looser entries floor, since a Page's composition is
+  structural). `apps/api/src/routes/public/pages.ts` (new) — list (id/route/title only) and
+  by-route (a query param, not a path param, since a route can contain slashes), reusing
+  `routes/public/content.ts`'s exact draft-is-nonexistent 404 convention and edge-cache
+  pattern. `apps/api/src/lib/public-cache.ts` gained `invalidatePublicPageCache()`.
+  `apps/api/src/routes/admin/content-types.ts`'s existing route-pattern collision check gained
+  the reverse direction (`findPageMatchingRoutePattern`). `apps/api/src/index.ts` mounts both
+  new route files (before the content catch-all, same ordering discipline as every other named
+  public mount) and extends the scheduled-publishing Cron handler to also call
+  `publishDuePages()` and queue cache purges for any Page it auto-publishes.
+- `apps/admin`: `apps/admin/src/pages/blocks/block-registry.ts` (new) — a flat registry array
+  (`BLOCK_TYPE_REGISTRY`) driving a generic per-block-type config form, following this
+  codebase's own established "flat registry-array + render-function" idiom (§1.9) rather than
+  inventing per-block-type components. `apps/admin/src/pages/blocks/BlockTreeEditor.tsx` (new)
+  — add/remove/move-up/move-down buttons at the top level and, for `columns` blocks, one level
+  of nested children; a controlled `(blocks, onChange)` component so a future Phase 8
+  drag-and-drop editor can replace it without touching the Page/Block data model at all (§14
+  decision #3's explicit requirement). `apps/admin/src/pages/PagesPage.tsx`/
+  `PageEditorPage.tsx` (new) — a list+create-dialog page mirroring `FormsPage.tsx`'s own shape,
+  and an editor with title/route/status fields, the block tree editor, a revision-history
+  panel with restore, and a delete confirmation. Registered in `router.tsx`, `AppLayout.tsx`'s
+  Content nav group, and the command palette.
+- Tests: `apps/api/test/pages-routes.test.ts` (3 tests, real D1 — CRUD + block-tree validation
+  + nesting-on-a-leaf rejection, route collisions in both directions including the same-value
+  no-op exception, revision snapshot/restore) and `apps/api/test/public-pages.test.ts` (2
+  tests — list/by-route, draft-vs-nonexistent 404 parity, empty-list default).
+  `apps/admin/test/BlockTreeEditor.test.tsx` (6 tests) and `apps/admin/test/PagesPage.test.tsx`
+  (3 tests).
+
+**Architectural decisions made during implementation:**
+- **The block tree is capped at two tiers, not truly recursive.** The first draft used a
+  self-referential `z.lazy()` schema for `blockInstanceSchema` — this crashed
+  `GET /api/v1/openapi.json` outright (a 500, confirmed by temporarily wiring an `onError`
+  handler to see the real failure): `@hono/zod-openapi`'s document generator can't serialize a
+  self-referential schema from a plain (non-`@hono/zod-openapi`) zod instance without
+  infinitely expanding it. Fixed by capping the type at exactly two tiers (a block, and that
+  block's own non-nesting children) — every built-in block type in this phase only ever needs
+  one level of nesting (`columns` holding simple children), so no product capability was lost;
+  revisit only if a future block type genuinely needs deeper nesting.
+- **No `templateId` column on `pages` yet**, even though §3.1's original design included one —
+  Templates don't exist until Phase 4, and a nullable FK to a not-yet-existing table can't be
+  added now anyway. Adding it in Phase 4 is itself a trivial additive migration.
+- **Collision checking is a full table scan in both directions** (`findPageMatchingRoutePattern`
+  scans every Page; the reverse direction scans every content type with a route pattern) rather
+  than a smarter indexed lookup — consistent with this codebase's own accepted scale
+  assumptions elsewhere (a self-hosted site's page/content-type count is small), and mirrors
+  the exact reasoning already applied to `isReservedRoutePattern`'s own simple checks.
+  `doesRoutePatternMatchLiteralRoute()` lives in `packages/contracts/schemas/routing.ts`
+  (not duplicated in two route files) since both `routes/admin/pages.ts` and
+  `routes/admin/content-types.ts` need the identical shape-matching logic.
+- **The admin editor's `PageEditorPage`/`BlockTreeEditor` avoid effect-based state syncing** —
+  the first draft used `useEffect` to copy a loaded `Page` query result into local form state,
+  which `eslint-plugin-react-hooks`'s new React Compiler rules flag (`react-hooks/set-state-in-
+  effect`) as cascading-render-prone. Fixed by splitting into an outer loading-gate component
+  and an inner `PageForm` that only mounts once `page` has loaded, initializing state via
+  `useState`'s lazy form directly from the loaded value — the exact pattern
+  `EntryEditorPage.tsx`'s own `EntryForm` already established for the same reason.
+
+**Verification performed**: `pnpm typecheck`/`pnpm lint` clean across `packages/contracts`,
+`packages/database`, `apps/api`, `apps/admin` (zero errors; lint's two new-code failures during
+development — the recursive-schema OpenAPI crash and two React Compiler purity/effect rule
+violations — were both root-caused and fixed, not suppressed). All new tests passing for real:
+5 API tests + 9 admin tests. Regression batches re-run clean: `content-type-route-pattern`,
+`entries-export-import`, `audit-log`, `admin-routes`, `public-routes`, `health`,
+`api-docs-gate`, `scheduled` (which now also exercises `publishDuePages`), `cache-purge`,
+`cache-routes`, `public-cache`, `public-content-rate-limit`, `public-media-routes`,
+`field-reorder`, `repositories`, `role-permissions`, `forms-routes`, `global-variables-routes`,
+`media-routes`, `settings-routes`, `structured-settings-routes`/`-public`/`-legacy-migration`,
+`webhooks-routes`, `users-routes`, `plugin-registry`, `live-preview`, `auth-rate-limit` — 34
+files, all green (individually/in small batches per this project's own standing Windows/
+workerd-flakiness practice; two batches hit the documented module-fallback/zod-locale
+resource-exhaustion pattern on a full-file run, confirmed non-code by re-running each file
+alone or in smaller groups). The full `apps/admin` suite (34 files, 200 tests) was also run;
+two pre-existing files (`SettingsPage.test.tsx`, `ContentTypeDetailPage.test.tsx`) hit this
+project's own already-documented transient-timeout flakiness under one full concurrent run,
+confirmed non-regression by passing cleanly in isolation immediately after.
+
+**No breaking changes**: every existing public/admin API response shape is unchanged; two new
+tables and zero changes to any existing table or column. A deployment that never creates a Page
+sees zero behavior change anywhere — the scheduled sweep's new `publishDuePages()` call is a
+no-op when no Page exists, and the new public routes return an empty list rather than erroring.
+
+Per the same phase-gate discipline as Phases 1-2: stopped after Phase 3, pending explicit
+approval before Phase 4 (`reusable_blocks`/`templates` tables + admin UI, Page creation from a
+template) — not started.

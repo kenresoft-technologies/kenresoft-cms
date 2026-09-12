@@ -2363,3 +2363,52 @@ response shape is unchanged except one new nullable field (`routePattern`) on `C
 deployment that never sets a route pattern sees zero behavior change anywhere. Per the same
 phase-gate discipline as Phase 1: stopped after Phase 2, pending explicit approval before
 Phase 3 (the `pages`/`page_revisions` tables and the rest of the Page/Block system).
+
+**Site builder Phase 3: Pages, Blocks, admin composition editor** (2026-09-12, on `develop`,
+approved immediately after Phase 2's report) — done: the `pages`/`page_revisions` data model,
+admin Pages CRUD with revision history/restore, a small code-defined built-in block set (Hero,
+RichText, Image, CTA, Columns, Spacer) with per-type Zod config validation, a basic add/remove/
+reorder block-composition editor (buttons, not drag-and-drop — Phase 8), the public
+`GET /api/v1/public/pages`/`GET /api/v1/public/pages/by-route` routes reusing the exact
+draft-is-nonexistent 404 convention, and route-collision checks in both directions between
+Pages and content-type route patterns. Migration `0037_curly_lucky_pierre.sql` adds the two new
+tables only — no existing table or column touched. Deliberately **no `templateId` column on
+`pages` yet** (Templates don't exist until Phase 4; that FK is itself a trivial additive
+migration then) and **no Astro rendering** — a Page can be created/composed in the admin UI and
+fetched via the public API, but nothing renders it as an actual page yet (Phase 7).
+
+A real, non-hypothetical bug found and fixed during implementation, not just written up
+after the fact: the first draft of `blockInstanceSchema` used a self-referential `z.lazy()` for
+true recursive nesting, which crashed `GET /api/v1/openapi.json` outright with an opaque empty
+500 — root-caused (not guessed) by temporarily wiring a debug `app.onError()` handler, which
+still returned nothing until traced to `@hono/zod-openapi`'s document generator being unable to
+serialize a self-referential schema from a plain (non-`@hono/zod-openapi`) zod instance without
+infinitely expanding it. Fixed by capping the block tree at exactly two tiers (a block, and
+that block's own non-nesting children) instead of true recursion — every built-in block type
+this phase ships only ever needs one level of nesting (`columns` holding simple children), so
+no real product capability was lost; documented in `docs/SITE_BUILDER.md` §19 as a scope
+narrowing forced by a concrete tooling constraint, not a design preference, revisitable if a
+future block type needs deeper nesting. Two more real issues surfaced by lint (not
+compilation), both fixed rather than suppressed: `BlockTreeEditor`'s field-id generation used
+`Math.random()` directly during render (React Compiler's purity rule) — switched to `useId()`;
+and `PageEditorPage`'s first draft synced a loaded Page into local form state via `useEffect` +
+`setState` (React Compiler's cascading-render rule) — fixed by splitting into an outer
+loading-gate component and an inner form component that initializes state once via `useState`'s
+lazy form, the same pattern `EntryEditorPage.tsx`'s own `EntryForm` already established for
+exactly this reason.
+
+Verified: `pnpm typecheck`/`pnpm lint` clean across `packages/contracts`, `packages/database`,
+`apps/api`, `apps/admin`; all new tests passing for real (5 API + 9 admin), plus a broad
+regression sweep of 26 pre-existing `apps/api` test files (content-type-route-pattern,
+entries-export-import, audit-log, admin-routes, public-routes, health, api-docs-gate, scheduled
+— which now also exercises the new `publishDuePages()` cron path — cache-purge, cache-routes,
+public-cache, public-content-rate-limit, public-media-routes, field-reorder, repositories,
+role-permissions, forms-routes, global-variables-routes, media-routes, settings-routes,
+structured-settings-routes/-public/-legacy-migration, webhooks-routes, users-routes,
+plugin-registry, live-preview, auth-rate-limit) and the full `apps/admin` suite, all re-run
+clean (two pre-existing admin files hit this project's own already-documented transient-timeout
+flakiness under one full concurrent run, confirmed non-regression by passing cleanly alone).
+No breaking changes: every existing API response shape is unchanged, and a deployment that
+never creates a Page sees zero behavior change anywhere. Per the same phase-gate discipline as
+Phases 1-2: stopped after Phase 3, pending explicit approval before Phase 4 (`reusable_blocks`/
+`templates` tables + admin UI, Page creation from a template).

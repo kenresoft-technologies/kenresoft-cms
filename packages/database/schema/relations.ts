@@ -4,6 +4,8 @@ import { contentTypes } from './content-types';
 import { fieldDefinitions } from './field-definitions';
 import { entries } from './entries';
 import { entryRevisions } from './entry-revisions';
+import { pages } from './pages';
+import { pageRevisions } from './page-revisions';
 import { forms } from './forms';
 import { formFields } from './form-fields';
 import { formSubmissions } from './form-submissions';
@@ -34,6 +36,15 @@ export const entriesRelations = relations(entries, ({ one, many }) => ({
 // `relations(user, ...)` call for that table, and drizzle allows only one per table.
 export const entryRevisionsRelations = relations(entryRevisions, ({ one }) => ({
   entry: one(entries, { fields: [entryRevisions.entryId], references: [entries.id] }),
+}));
+
+export const pagesRelations = relations(pages, ({ many }) => ({
+  revisions: many(pageRevisions),
+}));
+
+// No relation defined toward `user` here — same reasoning as entryRevisionsRelations above.
+export const pageRevisionsRelations = relations(pageRevisions, ({ one }) => ({
+  page: one(pages, { fields: [pageRevisions.pageId], references: [pages.id] }),
 }));
 
 export const formsRelations = relations(forms, ({ many }) => ({

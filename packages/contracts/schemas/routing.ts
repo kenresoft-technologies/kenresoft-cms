@@ -40,3 +40,36 @@ export const routePatternSchema = z
   });
 
 export type RoutePattern = z.infer<typeof routePatternSchema>;
+
+// Phase 3 (docs/SITE_BUILDER.md §3.1): a Page's own literal route — "/", "/about",
+// "/services/design". Unlike a content-type routePattern, there is no "{slug}" concept here at
+// all (a Page IS the resource, not a template one entry matches); the only special case is the
+// bare root, which is the one route allowed to have zero segments.
+const PAGE_ROUTE_SHAPE = /^\/$|^\/[a-z0-9]+(?:-[a-z0-9]+)*(?:\/[a-z0-9]+(?:-[a-z0-9]+)*)*$/;
+
+export const pageRouteSchema = z
+  .string()
+  .trim()
+  .max(200)
+  .refine((value) => PAGE_ROUTE_SHAPE.test(value), {
+    message:
+      'Route must start with "/", use only lowercase alphanumeric-and-hyphen segments, and have no trailing slash except the bare root "/".',
+  })
+  .refine((value) => !isReservedRoutePattern(value), {
+    message: 'Route starts with a reserved path segment.',
+  });
+
+export type PageRoute = z.infer<typeof pageRouteSchema>;
+
+// Route collision check (§4.3/§16): true when a literal route (a Page's own `route`) would
+// also be matched by a content type's routePattern — e.g. "/blog/{slug}" matches the literal
+// route "/blog/hello-world". Segment counts must match exactly, and every literal (non-"{slug}")
+// segment of the pattern must match the corresponding route segment verbatim. Shared by both
+// directions of the write-time check: creating/renaming a Page against every existing
+// routePattern, and setting a routePattern against every existing Page's route.
+export function doesRoutePatternMatchLiteralRoute(routePattern: string, literalRoute: string): boolean {
+  const patternSegments = routePattern.split('/').filter((segment) => segment.length > 0);
+  const routeSegments = literalRoute.split('/').filter((segment) => segment.length > 0);
+  if (patternSegments.length !== routeSegments.length) return false;
+  return patternSegments.every((segment, index) => segment === '{slug}' || segment === routeSegments[index]);
+}

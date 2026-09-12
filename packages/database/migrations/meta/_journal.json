@@ -260,6 +260,13 @@
       "when": 1789217126584,
       "tag": "0036_right_stardust",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "6",
+      "when": 1789220900373,
+      "tag": "0037_curly_lucky_pierre",
+      "breakpoints": true
     }
   ]
 }

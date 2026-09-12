@@ -4,6 +4,8 @@ export * from './content-types';
 export * from './field-definitions';
 export * from './entries';
 export * from './entry-revisions';
+export * from './pages';
+export * from './page-revisions';
 export * from './media';
 export * from './forms';
 export * from './form-fields';

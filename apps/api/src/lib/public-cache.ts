@@ -63,3 +63,16 @@ export async function invalidatePublicRoutePatternsCache(): Promise<void> {
   const cache = caches.default;
   await cache.delete(publicCacheKey('/api/v1/public/route-patterns'));
 }
+
+// Phase 3 of the schema-driven frontend work (docs/SITE_BUILDER.md §8) — called from every Page
+// write route and the scheduled sweep, for the route's current value AND (on a rename) its
+// previous value, since either could otherwise keep serving a stale cached response. The
+// by-route key must match exactly what routes/public/pages.ts's cache middleware stores it
+// under (path + query string), not just the path.
+export async function invalidatePublicPageCache(route: string): Promise<void> {
+  const cache = caches.default;
+  await Promise.all([
+    cache.delete(publicCacheKey('/api/v1/public/pages')),
+    cache.delete(publicCacheKey(`/api/v1/public/pages/by-route?route=${encodeURIComponent(route)}`)),
+  ]);
+}
