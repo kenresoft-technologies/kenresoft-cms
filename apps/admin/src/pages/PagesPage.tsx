@@ -6,6 +6,7 @@ import type { ColumnDef } from '@tanstack/react-table';
 
 import { ApiError } from '@/lib/api-client';
 import { useCreatePage, usePages } from '@/lib/queries/pages';
+import { useTemplates } from '@/lib/queries/templates';
 import type { Page } from '@/lib/types';
 import { DataTable } from '@/components/data-table';
 import { EmptyState } from '@/components/empty-state';
@@ -26,7 +27,10 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableHeader, TableHead, TableRow } from '@/components/ui/table';
+
+const NO_TEMPLATE_VALUE = '__none__';
 
 const columns: ColumnDef<Page>[] = [
   {
@@ -62,8 +66,10 @@ function NewPageDialog() {
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState('');
   const [route, setRoute] = useState('');
+  const [templateId, setTemplateId] = useState(NO_TEMPLATE_VALUE);
   const [error, setError] = useState<string | null>(null);
   const createPage = useCreatePage();
+  const { data: templates } = useTemplates();
   const navigate = useNavigate();
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -71,10 +77,16 @@ function NewPageDialog() {
     setError(null);
 
     try {
-      const page = await createPage.mutateAsync({ title, route, blocks: [] });
+      const page = await createPage.mutateAsync({
+        title,
+        route,
+        blocks: [],
+        templateId: templateId === NO_TEMPLATE_VALUE ? undefined : templateId,
+      });
       toast.success('Page created');
       setTitle('');
       setRoute('');
+      setTemplateId(NO_TEMPLATE_VALUE);
       setOpen(false);
       void navigate(`/pages/${page.id}`);
     } catch (err) {
@@ -109,6 +121,24 @@ function NewPageDialog() {
               onChange={(event) => setRoute(event.target.value)}
             />
           </div>
+          {templates && templates.length > 0 ? (
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="page-template">Start from a template</Label>
+              <Select value={templateId} onValueChange={setTemplateId}>
+                <SelectTrigger id="page-template">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_TEMPLATE_VALUE}>Blank page</SelectItem>
+                  {templates.map((template) => (
+                    <SelectItem key={template.id} value={template.id}>
+                      {template.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : null}
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
           <DialogFooter>
             <Button type="submit" disabled={createPage.isPending}>

@@ -10,7 +10,7 @@ import type { BlockType } from '@/lib/types';
 export interface BlockFieldDef {
   key: string;
   label: string;
-  kind: 'text' | 'textarea' | 'url' | 'number' | 'media' | 'richtext';
+  kind: 'text' | 'textarea' | 'url' | 'number' | 'media' | 'richtext' | 'reusableBlock';
   placeholder?: string;
 }
 
@@ -78,6 +78,13 @@ export const BLOCK_TYPE_REGISTRY: BlockTypeDef[] = [
     description: 'Empty vertical space between blocks.',
     allowsChildren: false,
     fields: [{ key: 'height', label: 'Height (px)', kind: 'number', placeholder: '40' }],
+  },
+  {
+    type: 'reusableBlockRef',
+    label: 'Reusable block',
+    description: 'A live reference to a block managed on the Reusable Blocks page — editing it there updates every page using it.',
+    allowsChildren: false,
+    fields: [{ key: 'reusableBlockId', label: 'Reusable block', kind: 'reusableBlock' }],
   },
 ];
 

@@ -2412,3 +2412,40 @@ No breaking changes: every existing API response shape is unchanged, and a deplo
 never creates a Page sees zero behavior change anywhere. Per the same phase-gate discipline as
 Phases 1-2: stopped after Phase 3, pending explicit approval before Phase 4 (`reusable_blocks`/
 `templates` tables + admin UI, Page creation from a template).
+
+**Site builder Phase 4: Reusable Blocks, Templates, and Page-from-template** (2026-09-12, on
+`develop`, approved immediately after Phase 3's report) — done: `reusable_blocks` (a *live*
+reference — never copied — embedded in a Page's tree via a new `reusableBlockRef` block type;
+editing one updates every page using it immediately) and `templates` (a default block
+composition copied *once* into a new Page at creation time, never live-linked afterward), both
+with full admin CRUD, plus a `pages.templateId` bookkeeping column and a "Start from a template"
+option in the admin's New Page dialog. Migration `0038_faithful_black_knight.sql` — two new
+tables and one new nullable FK column, zero changes to any existing table. A `reusable_blocks`
+row's own `type` is restricted (at the API layer) to leaf, non-referencing block types — never
+`columns` (no column to hold children in this table) and never `reusableBlockRef` itself (no
+reference chains). Updating/deleting a reusable block conservatively purges the entire Pages
+cache namespace via the existing `cache_purge_jobs` queue, since this route has no cheap way to
+know which pages embed a given block — correctness over precision, matching how much rarer
+reusable-block edits are expected to be than page edits.
+
+A real, non-hypothetical bug found and fixed while writing the cache-invalidation test: the
+first version of the invalidation helper called `ctx.waitUntil(processCachePurgeJobBatch(...))`
+from *inside* a function that was itself only ever invoked via the caller's own
+`ctx.waitUntil(...)` — a nested `waitUntil` registration inside an already-`waitUntil`'d
+function doesn't reliably drain before the outer one is considered settled, which showed up as
+the test's purge-job-status assertion flaking between `'pending'` and `'completed'`. Fixed by
+awaiting `processCachePurgeJobBatch()` directly inside the one outer `waitUntil`'d function
+instead of registering a second nested one. Documented in `docs/SITE_BUILDER.md` §20 since this
+project's existing scheduled-publish/webhook-retry background-task code happens to already avoid
+this shape by accident, not by a previously-written-down rule.
+
+Verified: `pnpm typecheck`/`pnpm lint` clean workspace-wide (two real issues surfaced by lint
+during development, not suppressed: a `z.enum()` literal-type loss from an over-widened enum
+array annotation, and a DB-row-to-contract-type narrowing gap); all new tests passing for real
+(4 API tests + 9 admin tests); the full `apps/admin` suite (36 files, 198 tests) clean in one
+run, and 25 pre-existing `apps/api` test files all green individually (a batched run hit this
+project's own already-documented Windows/workerd module-resolution resource-exhaustion
+flakiness, confirmed non-regression by re-running each file alone). No breaking changes beyond
+one new nullable field (`templateId`) on `Page`. Per the same phase-gate discipline as Phases
+1-3: stopped after Phase 4, pending explicit approval before Phase 5 (Page preview, reusing
+`preview-token.ts` verbatim).

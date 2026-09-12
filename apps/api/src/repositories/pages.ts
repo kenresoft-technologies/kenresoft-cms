@@ -6,6 +6,7 @@ type PageWriteInput = {
   route?: NewPage['route'] | undefined;
   title?: NewPage['title'] | undefined;
   status?: NewPage['status'] | undefined;
+  templateId?: NewPage['templateId'] | undefined;
   blocks?: NewPage['blocks'] | undefined;
   seo?: NewPage['seo'] | undefined;
   publishAt?: NewPage['publishAt'] | undefined;
@@ -28,7 +29,8 @@ async function snapshotPageRevision(
 
 export async function createPage(
   db: Database,
-  input: Pick<NewPage, 'route' | 'title' | 'blocks'> & Pick<PageWriteInput, 'status' | 'seo' | 'publishAt'>,
+  input: Pick<NewPage, 'route' | 'title' | 'blocks'> &
+    Pick<PageWriteInput, 'status' | 'templateId' | 'seo' | 'publishAt'>,
   createdBy: string | null,
 ): Promise<Page> {
   const [page] = await db.insert(pages).values({ ...input, createdBy }).returning();

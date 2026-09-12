@@ -27,6 +27,7 @@ import {
   restorePageRevision,
   updatePage,
 } from '../../repositories/pages';
+import { getTemplateById } from '../../repositories/templates';
 import type { Bindings } from '../../lib/env';
 import type { AuthedVariables } from '../../middleware/require-session';
 import type { Database, EntryStatus, Page as DbPage, PageRevision as DbPageRevision } from '@kenresoft-cms/database';
@@ -50,6 +51,7 @@ function toPage(row: DbPage): Page {
     title: row.title,
     status: row.status as EntryStatus,
     publishAt: row.publishAt ? row.publishAt.toISOString() : null,
+    templateId: row.templateId,
     blocks: row.blocks.blocks,
     seo: row.seo ?? null,
     createdBy: row.createdBy,
@@ -131,6 +133,10 @@ pagesRoute.openapi(
         description: 'The route is already used by another page or content-type route pattern, or a block in the tree is invalid.',
         content: { 'application/json': { schema: notFoundSchema } },
       },
+      404: {
+        description: 'templateId was given but no template with that id exists.',
+        content: { 'application/json': { schema: notFoundSchema } },
+      },
     },
   }),
   async (c) => {
@@ -138,7 +144,22 @@ pagesRoute.openapi(
     const db = getDb(c);
     const userId = c.get('user').id;
 
-    const blockError = validateBlockTree(input.blocks as BlockInstance[]);
+    // Phase 4 (§3.5): when a template is given and the caller didn't already supply its own
+    // blocks, copy the template's blocks in — a one-time copy, never a live link (unlike
+    // reusable_blocks). templateId itself is still recorded on the page as bookkeeping even
+    // when the caller's own blocks were used instead.
+    let blocks = input.blocks;
+    if (input.templateId) {
+      const template = await getTemplateById(db, input.templateId);
+      if (!template) {
+        return c.json({ error: 'Template not found' }, 404);
+      }
+      if (blocks.length === 0) {
+        blocks = template.blocks.blocks;
+      }
+    }
+
+    const blockError = validateBlockTree(blocks as BlockInstance[]);
     if (blockError) {
       return c.json({ error: blockError }, 400);
     }
@@ -158,7 +179,8 @@ pagesRoute.openapi(
         route: input.route,
         title: input.title,
         status: input.status,
-        blocks: { blocks: input.blocks },
+        templateId: input.templateId ?? null,
+        blocks: { blocks },
         seo: input.seo ?? null,
         publishAt: input.publishAt ?? null,
       },

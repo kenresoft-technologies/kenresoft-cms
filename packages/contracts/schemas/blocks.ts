@@ -93,6 +93,17 @@ export const SPACER_BLOCK_CONFIG = z
   })
   .strict();
 
+// Phase 4 (docs/SITE_BUILDER.md §3.4) — a live reference to a `reusable_blocks` row, resolved
+// (never copied) at render time. `reusableBlockId` isn't verified to reference an existing row
+// at write time, the same accepted gap as `mediaId` above pointing at Media — neither is a hard
+// FK, consistent with this codebase's existing convention of not deep-validating every
+// cross-reference at write time.
+export const REUSABLE_BLOCK_REF_CONFIG = z
+  .object({
+    reusableBlockId: z.string().max(100).optional(),
+  })
+  .strict();
+
 export const BLOCK_CONFIG_SCHEMAS: Record<BlockType, z.ZodTypeAny> = {
   hero: HERO_BLOCK_CONFIG,
   richText: RICH_TEXT_BLOCK_CONFIG,
@@ -100,6 +111,7 @@ export const BLOCK_CONFIG_SCHEMAS: Record<BlockType, z.ZodTypeAny> = {
   cta: CTA_BLOCK_CONFIG,
   columns: COLUMNS_BLOCK_CONFIG,
   spacer: SPACER_BLOCK_CONFIG,
+  reusableBlockRef: REUSABLE_BLOCK_REF_CONFIG,
 };
 
 export function isBlockTypeAllowingChildren(type: BlockType): boolean {

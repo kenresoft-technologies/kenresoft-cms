@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -105,5 +105,26 @@ describe('BlockTreeEditor', () => {
     renderEditor([{ id: 'hero-1', type: 'hero', config: {} }]);
 
     expect(screen.getByRole('button', { name: 'Choose' })).toBeInTheDocument();
+  });
+
+  it('renders a reusable-block picker for a "reusableBlockRef" block, populated from the API', async () => {
+    getMock.mockImplementation((path: string) => {
+      if (path === '/api/v1/admin/reusable-blocks') {
+        return Promise.resolve([
+          { id: 'rb-1', name: 'Global CTA', type: 'cta', config: {}, createdAt: '', updatedAt: '' },
+        ]);
+      }
+      return Promise.resolve([]);
+    });
+
+    renderEditor([{ id: 'ref-1', type: 'reusableBlockRef', config: {} }]);
+
+    expect(cardTitles()).toEqual(['Reusable block']);
+    // Two comboboxes exist once the reusable-blocks list has loaded: the block's own field,
+    // and the "Add block" type picker further down — before that, the field renders a plain
+    // "no reusable blocks yet" message instead of a Select at all.
+    await waitFor(() => expect(screen.getAllByRole('combobox')).toHaveLength(2));
+    await userEvent.click(screen.getAllByRole('combobox')[0]!);
+    expect(await screen.findByRole('option', { name: 'Global CTA' })).toBeInTheDocument();
   });
 });

@@ -6,6 +6,7 @@ import { entries } from './entries';
 import { entryRevisions } from './entry-revisions';
 import { pages } from './pages';
 import { pageRevisions } from './page-revisions';
+import { templates } from './templates';
 import { forms } from './forms';
 import { formFields } from './form-fields';
 import { formSubmissions } from './form-submissions';
@@ -38,13 +39,19 @@ export const entryRevisionsRelations = relations(entryRevisions, ({ one }) => ({
   entry: one(entries, { fields: [entryRevisions.entryId], references: [entries.id] }),
 }));
 
-export const pagesRelations = relations(pages, ({ many }) => ({
+export const pagesRelations = relations(pages, ({ one, many }) => ({
   revisions: many(pageRevisions),
+  template: one(templates, { fields: [pages.templateId], references: [templates.id] }),
 }));
 
 // No relation defined toward `user` here — same reasoning as entryRevisionsRelations above.
 export const pageRevisionsRelations = relations(pageRevisions, ({ one }) => ({
   page: one(pages, { fields: [pageRevisions.pageId], references: [pages.id] }),
+}));
+
+export const templatesRelations = relations(templates, ({ one, many }) => ({
+  contentType: one(contentTypes, { fields: [templates.contentTypeId], references: [contentTypes.id] }),
+  pages: many(pages),
 }));
 
 export const formsRelations = relations(forms, ({ many }) => ({

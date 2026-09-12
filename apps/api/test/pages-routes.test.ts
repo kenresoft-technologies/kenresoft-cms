@@ -42,6 +42,7 @@ describe('admin pages (real D1)', () => {
   beforeEach(async () => {
     await env.DB.exec('DELETE FROM page_revisions');
     await env.DB.exec('DELETE FROM pages');
+    await env.DB.exec('DELETE FROM templates');
     await env.DB.exec('DELETE FROM field_definitions');
     await env.DB.exec('DELETE FROM content_types');
     await env.DB.exec('DELETE FROM session');
@@ -187,5 +188,51 @@ describe('admin pages (real D1)', () => {
       { method: 'POST', headers, body: JSON.stringify({}) },
     );
     expect(missingRevision.status).toBe(404);
+  });
+
+  it('creates a page from a template (copying its blocks once, never live-linked) and 404s on an unknown templateId', async () => {
+    const headers = await authedHeaders('pages-from-template@example.test');
+
+    const template = await (
+      await SELF.fetch('https://example.com/api/v1/admin/templates', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ name: 'Landing', blocks: [heroBlock] }),
+      })
+    ).json<{ id: string }>();
+
+    const missing = await createPage(headers, { route: '/a', title: 'A', templateId: 'does-not-exist' });
+    expect(missing.status).toBe(404);
+
+    const fromTemplate = await (
+      await createPage(headers, { route: '/from-template', title: 'From template', templateId: template.id })
+    ).json<{ templateId: string | null; blocks: unknown[] }>();
+    expect(fromTemplate.templateId).toBe(template.id);
+    expect(fromTemplate.blocks).toEqual([heroBlock]);
+
+    // Explicit blocks in the request win over the template's own default.
+    const spacerBlock = { id: 'spacer-1', type: 'spacer', config: {} };
+    const withOwnBlocks = await (
+      await createPage(headers, {
+        route: '/override',
+        title: 'Override',
+        templateId: template.id,
+        blocks: [spacerBlock],
+      })
+    ).json<{ templateId: string | null; blocks: unknown[] }>();
+    expect(withOwnBlocks.templateId).toBe(template.id);
+    expect(withOwnBlocks.blocks).toEqual([spacerBlock]);
+
+    // Editing the template afterward never affects an already-created page (never live-linked).
+    await SELF.fetch(`https://example.com/api/v1/admin/templates/${template.id}`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify({ blocks: [] }),
+    });
+    const pagesAfterTemplateEdit = await (
+      await SELF.fetch('https://example.com/api/v1/admin/pages', { headers: { Cookie: headers.Cookie! } })
+    ).json<{ route: string; blocks: unknown[] }[]>();
+    const stillPresent = pagesAfterTemplateEdit.find((page) => page.route === '/from-template');
+    expect(stillPresent?.blocks).toEqual([heroBlock]);
   });
 });

@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import {
+  Blocks,
   ClipboardList,
   FileText,
   Images,
   Inbox,
+  Layers,
   LayoutDashboard,
   LayoutList,
   LayoutTemplate,
@@ -59,6 +61,8 @@ const contentItems = [
   { to: '/content-types', label: 'Content types', end: false, icon: LayoutList },
   { to: '/entries', label: 'Entries', end: false, icon: FileText },
   { to: '/pages', label: 'Pages', end: false, icon: LayoutTemplate },
+  { to: '/templates', label: 'Templates', end: false, icon: Layers },
+  { to: '/reusable-blocks', label: 'Reusable blocks', end: false, icon: Blocks },
   { to: '/global-variables', label: 'Global variables', end: false, icon: Variable },
 ];
 

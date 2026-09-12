@@ -152,7 +152,11 @@ export const RESERVED_ROUTE_PREFIXES = ['api', 'admin'] as const;
 // component and only its *content* (config) is admin-authored (§7 security model). Matches
 // §5's example list without over-building. Extending this set (or letting a plugin contribute
 // one, §9) is additive later — never a breaking change to an existing page's stored blocks.
-export const BLOCK_TYPES = ['hero', 'richText', 'image', 'cta', 'columns', 'spacer'] as const;
+// Phase 4 (docs/SITE_BUILDER.md §3.4) added "reusableBlockRef" — a leaf block whose config is
+// `{reusableBlockId}`, resolving to a live reference to a `reusable_blocks` row (never a copy)
+// at render time. It's never itself the *type* of a reusable_blocks row (no reference chains)
+// and never allowed to carry children (see BLOCK_TYPES_ALLOWING_CHILDREN below).
+export const BLOCK_TYPES = ['hero', 'richText', 'image', 'cta', 'columns', 'spacer', 'reusableBlockRef'] as const;
 
 export type BlockType = (typeof BLOCK_TYPES)[number];
 
@@ -160,3 +164,11 @@ export type BlockType = (typeof BLOCK_TYPES)[number];
 // leaf. Checked at the API layer (blocks.ts's validateBlockTree) so an admin can never nest
 // content under a block type that has nowhere to render it.
 export const BLOCK_TYPES_ALLOWING_CHILDREN: readonly BlockType[] = ['columns'];
+
+// A reusable_blocks row's own `type` column (Phase 4, docs/SITE_BUILDER.md §3.4) is restricted
+// to leaf, non-referencing block types: never "columns" (this table has no column to store
+// children in) and never "reusableBlockRef" itself (which would allow a reference chain a
+// renderer would have to detect and break). Kept as a literal tuple (not widened to
+// `readonly BlockType[]`) so `z.enum(REUSABLE_BLOCK_TYPES)` infers the exact literal union
+// rather than a plain `string`.
+export const REUSABLE_BLOCK_TYPES = ['hero', 'richText', 'image', 'cta', 'spacer'] as const;

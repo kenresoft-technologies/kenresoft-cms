@@ -267,6 +267,13 @@
       "when": 1789220900373,
       "tag": "0037_curly_lucky_pierre",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "6",
+      "when": 1789224026499,
+      "tag": "0038_faithful_black_knight",
+      "breakpoints": true
     }
   ]
 }
