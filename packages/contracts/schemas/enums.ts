@@ -136,3 +136,12 @@ export type SocialPlatform = (typeof SOCIAL_PLATFORMS)[number];
 export const WEBHOOK_EVENTS = ['entry.created', 'entry.updated', 'entry.published', 'entry.unpublished', 'entry.deleted'] as const;
 
 export type WebhookEvent = (typeof WEBHOOK_EVENTS)[number];
+
+// Phase 2 of the schema-driven frontend work (docs/SITE_BUILDER.md): a content type's
+// `routePattern` (e.g. "/blog/{slug}") lets a frontend's route resolver recognize a URL as
+// belonging to that content type without a hardcoded route. Its first literal path segment
+// may never be one of these — reserved for the CMS's own API surface (`api`) and a possible
+// future proxied admin path (`admin`); this is the same reserved-path convention §7/§11 of
+// docs/SITE_BUILDER.md documents for the later Pages feature, kept here since route patterns
+// are the first thing in this codebase that needs it.
+export const RESERVED_ROUTE_PREFIXES = ['api', 'admin'] as const;

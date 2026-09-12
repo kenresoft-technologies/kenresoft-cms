@@ -55,3 +55,11 @@ export async function invalidatePublicGlobalVariablesCache(): Promise<void> {
   const cache = caches.default;
   await cache.delete(publicCacheKey('/api/v1/public/global-variables'));
 }
+
+// Phase 2 of the schema-driven frontend work (docs/SITE_BUILDER.md) — like global variables,
+// this is a single list response with no per-item sub-resource, invalidated on any content
+// type create/update that could change its routePattern.
+export async function invalidatePublicRoutePatternsCache(): Promise<void> {
+  const cache = caches.default;
+  await cache.delete(publicCacheKey('/api/v1/public/route-patterns'));
+}

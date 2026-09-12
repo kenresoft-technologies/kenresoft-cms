@@ -3,11 +3,12 @@
 ## Status
 
 Phase 0 (this document's original architecture assessment) is reviewed and accepted. §14's
-open decisions are resolved (see "§14 decisions — resolved" below). **Phase 1 is implemented**
-(field presentation metadata + a field-renderer registry). Phases 2-10 — Pages, Blocks,
-Templates, dynamic routing, the visual page builder, and everything else in §13's plan — are
-**not started**. Do not read anything below §2 as describing current behavior; it is the
-target architecture this phase-by-phase plan is building toward.
+open decisions are resolved (see "§14 decisions — resolved" below). **Phase 1** (field
+presentation metadata + a field-renderer registry) **and Phase 2** (content-type
+`routePattern` + `resolveRoute()` in the SDK) **are implemented**. Phases 3-10 — Pages,
+Blocks, Templates, the visual page builder, and everything else in §13's plan — are **not
+started**. Do not read anything below §2 as describing current behavior; it is the target
+architecture this phase-by-phase plan is building toward.
 
 ### §14 decisions — resolved
 
@@ -559,7 +560,7 @@ exist (skipping/collapsing phases where Core already provides the primitive):
 | Phase | Status | Scope | Depends on existing |
 |---|---|---|---|
 | **1** | **Done** (2026-09-12) | Field `presentation` metadata + a real field-renderer registry (admin + SDK) | `field-input.tsx`, `field_definitions` |
-| **2** | Not started | Content-type `routePattern` (exactly one `{slug}` param, per §14) + `resolveRoute()` in the SDK; no Pages yet — proves Scenario 1/2 for existing content types alone | `content.ts` public route, entries |
+| **2** | **Done** (2026-09-12) | Content-type `routePattern` (exactly one `{slug}` param, per §14) + `resolveRoute()` in the SDK; no Pages yet, not wired into `examples/astro-site` | `content.ts` public route, entries |
 | **3** | Not started | `pages`/`page_revisions` tables, admin Pages CRUD + revision/restore, a small built-in block set, JSON-tree block composition editor (basic add/remove/reorder, not drag-and-drop yet), public Pages route, cache invalidation | Entries/revisions code path as template, `public-cache.ts` |
 | **4** | Not started | `reusable_blocks`, `templates` tables + admin UI; Page creation from a template | Phase 3 |
 | **5** | Not started | Page preview (reuses `preview-token.ts` verbatim) | Live Preview (already built) |
@@ -735,5 +736,95 @@ one new nullable field (`presentation`) on `FieldDefinition`; no existing entry,
 definition, or Astro integration behavior changed for any field that doesn't set
 `presentation`.
 
-Phase 2 (content-type `routePattern`, one required `{slug}` param per the resolved §14
-decision, `resolveRoute()` in the SDK) is next, pending explicit approval — not started.
+## 18. Phase 2 — implementation record (2026-09-12)
+
+**Done.** Content-type `routePattern` (exactly one required `{slug}` param, per §14 decision
+#2) + `resolveRoute()`/`matchRoutePattern()` in `@kenresoft-cms/astro`. Nothing beyond this
+scope: no Pages, no wiring into `examples/astro-site`.
+
+- `packages/database/schema/content-types.ts` — new nullable `routePattern` column plus a
+  unique index (`content_types_route_pattern_unique` — a unique index over a nullable column
+  allows any number of `NULL`s, so content types without a route never collide with each
+  other); migration `0036_right_stardust.sql`.
+- `packages/contracts/schemas/routing.ts` (new) — `routePatternSchema` (shape validation: one
+  `{slug}` at the pattern's end, lowercase-hyphenated literal segments, reserved-prefix
+  rejection) and `RESERVED_ROUTE_PREFIXES` (`packages/contracts/schemas/enums.ts`: `api`,
+  `admin`). `packages/contracts/schemas/route-patterns.ts` (new) — the public listing's
+  response schema, with an explicit doc comment distinguishing it from the still-unresolved
+  "public content-type metadata" question.
+- `apps/api/src/repositories/content-types.ts` — `getContentTypeByRoutePattern()` (the API-
+  layer pre-write collision check, alongside the DB's own unique index) and
+  `listContentTypesWithRoutePattern()`. `apps/api/src/routes/admin/content-types.ts` — create/
+  update both 400 on a route-pattern collision (with a same-value no-op exception on update, so
+  re-saving a content type's own unchanged pattern never false-positives) and invalidate the
+  new public cache entry when a pattern actually changes.
+- `apps/api/src/routes/public/route-patterns.ts` (new) — `GET /api/v1/public/route-patterns`,
+  edge-cached and invalidated the same way `global-variables` is; mounted in `index.ts` before
+  the content catch-all, same ordering discipline as every other named public route.
+- `integrations/astro/src/render/resolve-route.ts` (new) — `matchRoutePattern()` (pure segment
+  comparison, `{slug}` always the pattern's final segment by construction) and `resolveRoute()`
+  (returns `{kind:'entry', contentTypeSlug, slug} | {kind:'notFound'}`, a discriminated union
+  deliberately shaped so a `page` variant can be added later without breaking callers).
+  Re-exported from `integrations/astro/src/index.ts`, alongside a new `client.routePatterns.
+  list()` method.
+- `apps/admin`: `ContentTypeDetailPage.tsx`'s existing `EditContentTypeDialog`/`ContentTypeForm`
+  gained a "Route pattern" field (optional text input, blank → `null`) — the one piece of admin
+  UI this phase needed, since without it there'd be no way for an admin to actually set a
+  content type's route short of a raw API call. Deliberately reused the existing edit form
+  rather than adding a new dialog/page.
+- Tests: `apps/api/test/content-type-route-pattern.test.ts` (6 tests, real D1 — one covers
+  valid-pattern acceptance/round-trip, one loops through every disallowed shape and reserved
+  prefix, one covers create/update collision detection plus the same-value exception, one
+  covers clearing a pattern freeing it for reuse, and two cover the public listing's filtering/
+  sorting/no-session-required behavior) and `integrations/astro/test/resolve-route.test.ts`
+  (13 tests — exact-match/root-pattern/multi-segment-prefix matching, non-matches, an
+  empty-slug trailing-slash rejection, URL-decoding, and `resolveRoute()`'s order-independence).
+  `apps/admin/test/ContentTypeDetailPage.test.tsx` gained two cases for the new field (a
+  successful save, and the server's collision error surfacing in the dialog).
+
+**Architectural decisions made during implementation:**
+- **A dedicated, narrow public endpoint** (`route-patterns`) rather than either (a) reusing/
+  extending the still-unresolved content-type-metadata question, or (b) requiring a developer
+  to hardcode route patterns client-side. Justified because a route pattern discloses
+  categorically less than a field list — it's a URL shape, not internal content-modeling
+  structure — so building it doesn't quietly resolve the bigger, deliberately-deferred
+  question by a side door.
+- **`resolveRoute()` returns identity only (`contentTypeSlug`/`slug`), not the fetched entry**
+  — keeps the function pure and testable with no network dependency; the caller composes it
+  with the existing `entries.get()`.
+- **A real test-infrastructure bug found and fixed while writing the first draft of this file's
+  tests**: an initial version shared one signed-up admin session across many `it()` blocks
+  (via `beforeAll`, or via a module-scoped memoized cookie) to stay under `AUTH_RATE_LIMITER`'s
+  10 POST/60s budget — this passed when run in isolation but hung or failed with spurious 401s
+  once more than one test ran in the same file. Root cause, confirmed by bisecting with `-t`
+  filters: `@cloudflare/vitest-pool-workers`' default `isolatedStorage: true` resets D1
+  (including the `session`/`user` tables) to a fresh snapshot **between every single `it()`**,
+  not just between files — a cookie obtained in one test's body is already stale by the next
+  test, even though the rate limiter's own binding state (confirmed separately) *does* persist
+  file-wide regardless. The fix was neither `beforeAll` nor cross-test cookie reuse, but
+  consolidating each collision/validation scenario group into one `it()` that does exactly one
+  real sign-up and then exercises several assertions sequentially within that single test's
+  body (D1 state *is* shared across requests within one test) — 5 sign-ups (10 POSTs) for the
+  whole file instead of ~18, and no cross-test state assumption at all. Worth recording since
+  the closest existing precedent in this codebase (`commerce-customer-auth.test.ts` et al.)
+  already avoids this exact trap by never sharing a session across `it()` blocks either, but
+  the *reason* — per-test isolated storage, not merely "fresh state is tidier" — wasn't spelled
+  out anywhere before now.
+- **Admin UI added, unlike Phase 1's `presentation`** — because without it, setting a route
+  pattern would require a raw API call; Phase 1's field-presentation metadata had no such
+  gap (no admin workflow needs to set it yet).
+
+**Verification performed**: `pnpm typecheck`/`pnpm lint` clean across `packages/contracts`,
+`packages/database`, `apps/api`, `apps/admin`, `integrations/astro`; all new tests passing,
+run for real (not just written) — 6 API + 13 SDK + 2 admin; the pre-existing
+`ContentTypeDetailPage.test.tsx`/`ContentTypesPage.test.tsx`/`generate-snippets.test.ts` suites
+re-run clean after the `ContentType` type gained `routePattern`.
+
+**No breaking changes**: every existing public/admin API response shape is unchanged except
+one new nullable field (`routePattern`) on `ContentType`; a deployment that never sets a
+route pattern sees zero behavior change anywhere, including an empty (not different-shaped)
+`route-patterns` public response.
+
+Phase 3 (the `pages`/`page_revisions` tables, admin Pages CRUD + revision/restore, a small
+built-in block set, a basic add/remove/reorder block-composition editor, the public Pages
+route, and cache invalidation) is next, pending explicit approval — not started.

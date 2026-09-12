@@ -15,6 +15,8 @@ export * from '../schemas/forms';
 export * from '../schemas/media';
 export * from '../schemas/password-recovery';
 export * from '../schemas/plugins';
+export * from '../schemas/route-patterns';
+export * from '../schemas/routing';
 export * from '../schemas/settings';
 export * from '../schemas/structured-settings';
 export * from '../schemas/users';

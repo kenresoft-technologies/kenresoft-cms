@@ -6,6 +6,7 @@ import type {
   GeneralSettingsData,
   NavigationSettingsData,
   PublicMedia,
+  RoutePatternEntry,
   SeoSettingsData,
   SocialSettingsData,
 } from '@kenresoft-cms/contracts';
@@ -14,7 +15,7 @@ import type {
 // (or anything else @kenresoft-cms/contracts pulls in) at runtime. They exist purely so this
 // client's return types stay in sync with the API's real response shapes instead of a
 // hand-maintained copy — see the "Types" note in docs/ASTRO.md.
-export type { Entry, FormSubmission, PublicMedia };
+export type { Entry, FormSubmission, PublicMedia, RoutePatternEntry };
 
 // Phase 1 of the schema-driven frontend work (docs/SITE_BUILDER.md) — a read-only field
 // renderer registry, independent of the request/response client below. Re-exported here so
@@ -28,6 +29,11 @@ export {
   type FieldRenderResult,
   type RenderableField,
 } from './render/field-renderers';
+
+// Phase 2 of the schema-driven frontend work (docs/SITE_BUILDER.md) — dynamic content routing.
+// `resolveRoute()`/`matchRoutePattern()` are pure functions, independent of the client below;
+// pair them with `client.routePatterns.list()` to build a generic catch-all Astro route.
+export { matchRoutePattern, resolveRoute, type ResolvedRoute } from './render/resolve-route';
 
 export interface KenresoftClientConfig {
   /** Base URL of a Kenresoft CMS deployment, e.g. "http://localhost:8787" in local dev. */
@@ -395,6 +401,16 @@ export interface KenresoftClient {
     list(): Promise<Record<string, string>>;
   };
   /**
+   * Phase 2 of the schema-driven frontend work (docs/SITE_BUILDER.md) — deliberately narrow:
+   * {contentTypeSlug, routePattern} pairs only, never field definitions (see
+   * routes/public/route-patterns.ts's own doc comment on why this is NOT the still-unresolved
+   * "public content-type metadata" question). Feeds `resolveRoute()` below.
+   */
+  routePatterns: {
+    /** Matches GET /api/v1/public/route-patterns exactly (edge-cached). An empty array if no content type has a routePattern set. */
+    list(): Promise<RoutePatternEntry[]>;
+  };
+  /**
    * Structured Settings (docs/ARCHITECTURE.md §6) — singleton, typed, schema-validated site
    * configuration, distinct from the free-form `globalVariables` above. Each method matches
    * `GET /api/v1/public/settings/:module` exactly (edge-cached the same way) and resolves an
@@ -633,6 +649,12 @@ export function createKenresoftClient(config: KenresoftClientConfig): KenresoftC
       async list() {
         const variables = await request<Record<string, string>>('/api/v1/public/global-variables');
         return variables ?? {};
+      },
+    },
+    routePatterns: {
+      async list() {
+        const patterns = await request<RoutePatternEntry[]>('/api/v1/public/route-patterns');
+        return patterns ?? [];
       },
     },
     settings: {

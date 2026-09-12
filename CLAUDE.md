@@ -2307,3 +2307,59 @@ workerd resource-contention flakiness, not a regression; and `examples/astro-sit
 check` (0 errors) plus a full `astro build` re-run clean, confirming the existing Astro example
 is completely unaffected. Per the phase-gate discipline `docs/SITE_BUILDER.md` itself sets:
 implementation stopped after Phase 1, pending explicit approval before Phase 2.
+
+**Site builder Phase 2: dynamic content routing** (2026-09-12, on `develop`, approved
+immediately after Phase 1's report) — done: content-type `routePattern` (exactly one required
+`{slug}` parameter, per `docs/SITE_BUILDER.md` §14 decision #2 — no multi-param/optional/
+wildcard/regex grammar in v1) plus `resolveRoute()`/`matchRoutePattern()` in
+`@kenresoft-cms/astro`. A new nullable `content_types.routePattern` column (migration
+`0036_right_stardust.sql`) with a unique index (nullable-safe — any number of `NULL`s allowed,
+only non-null values enforced unique) backs `routePatternSchema`
+(`packages/contracts/schemas/routing.ts`: leading slash, lowercase-hyphenated literal
+segments, `{slug}` as the mandatory final segment, rejecting the new `RESERVED_ROUTE_PREFIXES`
+— `api`, `admin`). `apps/api/src/routes/admin/content-types.ts`'s create/update both 400 on a
+route-pattern collision (with a same-value exception on update, so re-saving a content type's
+own unchanged pattern never false-positives) and invalidate a new, deliberately narrow public
+endpoint, `GET /api/v1/public/route-patterns` (`{contentTypeSlug, routePattern}` pairs only —
+explicitly NOT the still-unresolved "public content-type metadata" question `docs/ASTRO.md`
+already flags, since a route pattern discloses a URL shape a visitor could already discover,
+not a field list). `integrations/astro/src/render/resolve-route.ts` (new) exposes
+`resolveRoute(pathname, patterns)` → `{kind:'entry', contentTypeSlug, slug} | {kind:'notFound'}`
+(a discriminated union deliberately left room to grow a `page` variant once Pages exist) and
+`matchRoutePattern()`, both pure/unit-tested (13 tests), plus a new `client.routePatterns.
+list()`. `apps/admin`'s existing content-type edit dialog gained the one piece of UI this
+phase actually needed (a "Route pattern" text input) — without it there'd be no way to set a
+pattern short of a raw API call, unlike Phase 1's `presentation` metadata which had no such
+gap yet.
+
+A real test-infrastructure bug was found and fixed while writing this phase's own tests, not
+hypothetical: an initial draft of `apps/api/test/content-type-route-pattern.test.ts` shared
+one signed-up admin session across many `it()` blocks (first via `beforeAll`, then via a
+module-scoped memoized cookie) specifically to stay under `AUTH_RATE_LIMITER`'s 10 POST/60s
+budget across the file's ~18 needed sign-ups — it passed when a single test ran alone but
+hung or produced spurious 401s the moment more than one test ran together. Root-caused by
+bisecting with `-t` filters (never guessed): `@cloudflare/vitest-pool-workers`' default
+`isolatedStorage: true` resets D1 — including the `session`/`user` tables — to a fresh
+snapshot **between every individual `it()`**, not merely between files, while the rate
+limiter's own binding state was separately confirmed to persist file-wide regardless — so a
+cookie obtained in one test's body is already invalid by the next test, no matter how it's
+memoized. Fixed by consolidating each collision/validation scenario group into one `it()`
+that signs up exactly once and runs several assertions sequentially within that single test's
+body (D1 state is shared across requests *within* one test) — 5 sign-ups (10 POSTs) for the
+whole file instead of ~18, with no cross-test state assumption anywhere. This generalizes a
+lesson beyond this one file: every prior `commerce-customer-*` test file already avoided this
+trap by never sharing a session across `it()` blocks, but the *why* — per-test isolated
+storage, not just "fresh state is tidier" — hadn't been written down anywhere in this codebase
+before; recorded here and in `docs/SITE_BUILDER.md` §18 so it doesn't have to be rediscovered
+by bisection again.
+
+Verified: `pnpm typecheck`/`pnpm lint` clean across `packages/contracts`, `packages/database`,
+`apps/api`, `apps/admin`, `integrations/astro`; all new tests passing for real (6 API + 13 SDK
++ 2 admin), plus a regression batch of the pre-existing content-type-adjacent suites
+(`admin-routes`, `public-routes`, `audit-log`, `role-permissions`, `repositories`,
+`dashboard-routes`, `entries-export-import`, `field-presentation`, `field-reorder`) and the
+touched admin fixtures, all re-run clean. No breaking changes: every existing public/admin API
+response shape is unchanged except one new nullable field (`routePattern`) on `ContentType`; a
+deployment that never sets a route pattern sees zero behavior change anywhere. Per the same
+phase-gate discipline as Phase 1: stopped after Phase 2, pending explicit approval before
+Phase 3 (the `pages`/`page_revisions` tables and the rest of the Page/Block system).

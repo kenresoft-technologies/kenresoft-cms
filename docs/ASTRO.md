@@ -278,6 +278,50 @@ building the Pages/Blocks system this registry exists to eventually support, is 
 `docs/SITE_BUILDER.md` (still entirely unimplemented — no Pages, Blocks, Templates, or dynamic
 routing exist in this codebase yet).
 
+## Dynamic content routing (Phase 2 of the schema-driven frontend work)
+
+**Status: implemented, SDK primitive only — not wired into `examples/astro-site` yet.** A
+content type can declare a `routePattern` in the CMS admin (e.g. `/blog/{slug}`) — v1 supports
+exactly one required `{slug}` parameter, nothing richer (no multiple params, optional
+segments, wildcards, regex, or localization segments; see `docs/SITE_BUILDER.md` §14 decision
+#2 for the full reasoning and future-extensibility note).
+
+```ts
+import { resolveRoute } from '@kenresoft-cms/astro';
+
+const patterns = await cms.routePatterns.list(); // [{ contentTypeSlug, routePattern }, ...]
+const result = resolveRoute('/blog/hello-world', patterns);
+// => { kind: 'entry', contentTypeSlug: 'blog', slug: 'hello-world' }
+
+if (result.kind === 'entry') {
+  const entry = await cms.entries.get({ contentType: result.contentTypeSlug, slug: result.slug });
+  // ... render entry, e.g. via renderField() for each of its fields
+}
+```
+
+`client.routePatterns.list()` matches `GET /api/v1/public/route-patterns` — deliberately
+narrow, `{contentTypeSlug, routePattern}` pairs only, never field definitions. **This is not
+the "public content-type metadata" endpoint** the Known limitations section below still flags
+as an unresolved product decision — a route pattern reveals only a URL shape a visitor could
+already discover by requesting the page, a much narrower disclosure than a content type's
+field list.
+
+`resolveRoute()`/`matchRoutePattern()` are pure functions
+(`integrations/astro/src/render/resolve-route.ts`), unit-tested
+(`integrations/astro/test/resolve-route.test.ts`). `resolveRoute()`'s result is a
+discriminated union (`{kind: 'entry', ...} | {kind: 'notFound'}`) deliberately shaped so a
+`page` variant can be added later (once Pages exist, `docs/SITE_BUILDER.md` Phase 3+) without
+breaking existing callers.
+
+**What this does NOT do yet**: `examples/astro-site` has not been changed to use
+`resolveRoute()` — there's no generic catch-all route in the example site. Wiring one in is
+deferred, matching how Phase 1's `renderField()` was also built and tested as a standalone
+primitive before being wired into any real page — a generic renderer for an *arbitrary* new
+content type's fields still needs either the (unresolved) content-type-metadata endpoint or a
+per-content-type-aware fallback, and forcing that decision here would have meant either
+resolving it unilaterally or shipping a half-generic demo Phase 7 (the real Page/Block
+renderer) will likely supersede anyway.
+
 ## Known limitations
 
 - **No public content-type metadata endpoint — by design, not a bug.** A generic Astro page

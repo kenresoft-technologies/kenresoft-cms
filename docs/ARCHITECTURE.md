@@ -7,6 +7,14 @@ Status: Proposed / Ready for implementation
 
 ## Changelog
 
+**v0.15 (2026-09-12)** — Phase 2 of the schema-driven frontend/site-builder initiative
+(`docs/SITE_BUILDER.md`): a nullable `content_types.routePattern` column (§6.4) supporting
+exactly one required `{slug}` parameter (e.g. `/blog/{slug}`), a new deliberately narrow
+public endpoint `GET /api/v1/public/route-patterns`, and `resolveRoute()`/`matchRoutePattern()`
+in `@kenresoft-cms/astro` (`integrations/astro/src/render/resolve-route.ts`). Additive/
+backward-compatible only — still no Pages, Blocks, Templates, or a wired-up generic Astro
+catch-all route; see `docs/SITE_BUILDER.md` for the full plan and remaining phases.
+
 **v0.14 (2026-09-12)** — Phase 1 of the schema-driven frontend/site-builder initiative
 (`docs/SITE_BUILDER.md`): a nullable `field_definitions.presentation` column (§6.3) and a
 read-only field-renderer registry in `@kenresoft-cms/astro`
@@ -641,6 +649,46 @@ frontend — `docs/ASTRO.md`'s Known limitations already flags the absence of a 
 type-metadata endpoint; this phase doesn't change that, it only makes the renderer registry
 itself ready to consume field descriptors once such an endpoint (or a future Page/Block
 system) supplies them.
+
+### 6.4 Dynamic content routing (schema-driven frontend, Phase 2)
+
+**Status: implemented.** A content type can declare a nullable `routePattern` column (e.g.
+`/blog/{slug}`, migration `0036_right_stardust.sql`) so a frontend's route resolver can
+recognize a URL as belonging to that content type without a developer hardcoding a route for
+it. V1 supports **exactly one required `{slug}` parameter and nothing richer** — no multiple
+parameters, optional segments, wildcards, regex, or localization segments (a deliberate,
+resolved decision, `docs/SITE_BUILDER.md` §14 decision #2) — validated by
+`routePatternSchema` (`packages/contracts/schemas/routing.ts`): leading slash, lowercase
+alphanumeric-and-hyphen literal segments only, `{slug}` as the pattern's final segment
+(satisfying "no trailing slash" by construction), no reserved first segment
+(`RESERVED_ROUTE_PREFIXES`: `api`, `admin`), and no duplicate pattern across content types
+(enforced both at the API layer, for a clear 400, and by a DB unique index as defense-in-
+depth — a unique index over a nullable column allows any number of `NULL`s, so content types
+with no route of their own never collide with each other).
+
+A new, deliberately narrow public endpoint, `GET /api/v1/public/route-patterns`, exposes only
+`{contentTypeSlug, routePattern}` pairs — **this is explicitly not the "public content-type
+metadata" endpoint** flagged as an unresolved product decision in `docs/ASTRO.md`'s Known
+limitations (that question is about exposing a content type's *field definitions*, which
+would reveal internal content-modeling structure; a route pattern reveals only a URL shape a
+visitor could already discover by requesting the page). Edge-cached and invalidated the same
+way `global-variables` is (`invalidatePublicRoutePatternsCache()`,
+`apps/api/src/lib/public-cache.ts`).
+
+`@kenresoft-cms/astro`'s `resolveRoute(pathname, patterns)`/`matchRoutePattern(pattern,
+pathname)` (`integrations/astro/src/render/resolve-route.ts`) are pure functions — given the
+patterns from `client.routePatterns.list()`, they resolve a pathname to
+`{kind: 'entry', contentTypeSlug, slug}` or `{kind: 'notFound'}`. The result type is a
+discriminated union specifically so a `page` variant can be added later (Phase 3+) without
+breaking existing callers. Resolution is deterministic regardless of pattern array order,
+since the server-side uniqueness constraint above guarantees at most one pattern can ever
+match a given pathname.
+
+**What this does not do yet**: no Pages exist (Phase 3+, not started), and `examples/astro-
+site` has not been wired to use `resolveRoute()` — the SDK primitive is built and unit-tested
+(`integrations/astro/test/resolve-route.test.ts`) as a foundation, the same scope discipline
+Phase 1 applied to `renderField()`. See `docs/SITE_BUILDER.md` §17 for the full Phase 2
+implementation record.
 
 ### 6.1 Initial content field types
 
