@@ -7,9 +7,10 @@ open decisions are resolved (see "§14 decisions — resolved" below). **Phase 1
 presentation metadata + a field-renderer registry), **Phase 2** (content-type
 `routePattern` + `resolveRoute()` in the SDK), **Phase 3** (the `pages`/`page_revisions`
 data model, admin CRUD + revisions, a basic block-composition editor, and the public Pages
-API), and **Phase 4** (`reusable_blocks`/`templates` tables + admin UI, Page creation from a
-template) **are implemented**. Phases 5-10 — Page preview, Navigation page references, Astro
-rendering, the drag-and-drop editor, and everything else in §13's plan — are **not started**.
+API), **Phase 4** (`reusable_blocks`/`templates` tables + admin UI, Page creation from a
+template), and **Phase 5** (Page Live Preview, reusing `preview-token.ts` verbatim)
+**are implemented**. Phases 6-10 — Navigation page references, Astro rendering, the
+drag-and-drop editor, and everything else in §13's plan — are **not started**.
 Do not read anything below §2 as describing current behavior; it is the
 target architecture this phase-by-phase plan is building toward.
 
@@ -566,7 +567,7 @@ exist (skipping/collapsing phases where Core already provides the primitive):
 | **2** | **Done** (2026-09-12) | Content-type `routePattern` (exactly one `{slug}` param, per §14) + `resolveRoute()` in the SDK; no Pages yet, not wired into `examples/astro-site` | `content.ts` public route, entries |
 | **3** | **Done** (2026-09-12) | `pages`/`page_revisions` tables, admin Pages CRUD + revision/restore, a small built-in block set, JSON-tree block composition editor (basic add/remove/reorder, not drag-and-drop yet), public Pages route, cache invalidation | Entries/revisions code path as template, `public-cache.ts` |
 | **4** | **Done** (2026-09-12) | `reusable_blocks`, `templates` tables + admin UI; Page creation from a template | Phase 3 |
-| **5** | Not started | Page preview (reuses `preview-token.ts` verbatim) | Live Preview (already built) |
+| **5** | **Done** (2026-09-12) | Page preview (reuses `preview-token.ts` verbatim) | Live Preview (already built) |
 | **6** | Not started | Navigation `pageId` reference option | Structured Settings navigation (already built) |
 | **7** | Not started | `@kenresoft-cms/astro` `<PageRenderer>`/`<BlockRenderer>`, `registerBlockRenderer()`, `examples/astro-site` catch-all route | Astro SSR architecture (already proven) |
 | **8** | Not started | Drag-and-drop block editor (dnd-kit — already a dependency), duplicate/undo/redo | Phase 3 UI |
@@ -1068,3 +1069,74 @@ reusable block sees zero behavior change anywhere.
 
 Per the same phase-gate discipline as Phases 1-3: stopped after Phase 4, pending explicit
 approval before Phase 5 (Page preview, reusing `preview-token.ts` verbatim) — not started.
+
+## 21. Phase 5 — implementation record (2026-09-12)
+
+**Done.** Page Live Preview, reusing `preview-token.ts` completely unmodified — confirming §1.3's
+own prediction that the signing/verification pair generalizes to Page preview with zero code
+change to that file itself (its internal payload field is literally named `entryId`, but
+neither `signPreviewToken`/`verifyPreviewToken` cares what kind of id it's handed, so a Page's
+own id passes through it exactly like an entry's always has).
+
+- `apps/api/src/routes/admin/pages.ts` gained `GET /{id}/preview-token` — a structural
+  line-for-line mirror of `routes/admin/entries.ts`'s own (no role gate beyond authentication:
+  generating a token proves and writes nothing).
+- `apps/api/src/routes/public/preview.ts` gained a second route on the same
+  `publicPreviewRoute` app, `GET /pages?route=...&token=...` — a query param (not a path
+  param) for the same reason `routes/public/pages.ts`'s own by-route route already uses one: a
+  Page's `route` can contain slashes that would otherwise compete with the existing
+  `/{contentType}/{slug}` route's own path-segment matching. Reuses `verifyPreviewToken()`
+  unmodified with the Page's own id as the expected id, and the exact same "any failure
+  (missing route, missing/garbage/expired/mismatched token) collapses to one 404" convention
+  entry preview already established — confirmed by a direct comparison test, not just asserted.
+  Never edge-cached, same reasoning as entry preview.
+- **A new `settings.pagePreviewUrl` column** (migration `0039_nosy_tenebrous.sql`, additive) —
+  a second, independent URL template alongside the existing `previewUrl`, since a Page has no
+  content-type/slug pair to substitute, only a single literal `route` (e.g.
+  `http://localhost:4321{route}`). Deliberately a *separate* column rather than overloading
+  `previewUrl` with two incompatible placeholder shapes — an operator's frontend for entries and
+  for pages may not even be the same URL structure. Settings → API → Live Preview now shows both
+  templates side by side, each labeled with which kind of content it applies to.
+- `apps/admin/src/pages/PageEditorPage.tsx` gained a `LivePreviewButton`, a direct structural
+  mirror of `EntryEditorPage.tsx`'s own: generates a fresh token from the *saved* page (refusing
+  and nudging to save first when the form is dirty — Live Preview shows what will actually
+  render right now, which is only true of what's already persisted), substitutes `{route}` into
+  `settings.pagePreviewUrl`, and opens the result in a new tab with `?preview_token=...`
+  appended. `PageEditorPage`'s `PageForm` gained the same `initial*`-versus-current dirty-check
+  pattern `EntryEditorPage`'s `EntryForm` already uses.
+
+**Architectural decisions made during implementation:**
+- **No `@kenresoft-cms/astro` client method for Page preview** (unlike `entries.preview()`,
+  which already exists) — deliberately deferred to Phase 7 alongside `<PageRenderer>` and the
+  rest of the SDK's Page-rendering surface, since nothing in this codebase renders a Page as an
+  actual page yet; adding an SDK method with no real consumer would be speculative ahead of the
+  concrete need.
+- **A genuinely honest limitation, documented rather than hidden**: opening a Page's Live
+  Preview link today only does something useful once an operator's own frontend actually
+  implements Page rendering (Phase 7) and checks for `preview_token` the way an entry-preview
+  page already does — this phase ships the complete backend/admin-UI half of the feature, not a
+  working end-to-end preview against `examples/astro-site` (which doesn't render Pages at all
+  yet). The Settings UI field's own helper text says this plainly rather than implying it works
+  today.
+
+**Verification performed**: `pnpm typecheck`/`pnpm lint` clean workspace-wide. New tests passing
+for real: `apps/api/test/page-live-preview.test.ts` (5 tests, real D1 — a direct structural
+mirror of `live-preview.test.ts`'s own five cases: unchanged normal-route 404 parity, a full
+token-generate-then-preview round trip for both a draft and an already-published page,
+no-token/garbage-token/wrong-page-token rejection, and a 404 for a preview-token request against
+a nonexistent page) and `apps/admin/test/PageEditorPage.test.tsx` (3 tests — the button's
+fetch-token-then-`window.open()` flow, the save-first nudge when the form is dirty, and a plain
+save-through-the-API test covering the editor generally, which had no dedicated test file before
+this phase). One pre-existing test's fixture (`SettingsPage.test.tsx`'s asserted PUT body) needed
+a one-line update for the new `pagePreviewUrl` field now present. Regression sweep: the full
+`apps/admin` suite (37 files, 201 tests) in one clean run, and `live-preview`, `pages-routes`,
+`public-pages`, `settings-routes`, `health`, `api-docs-gate` all green together in one batch
+(no isolated-flakiness workaround needed this time).
+
+**No breaking changes**: every existing public/admin API response shape is unchanged except one
+new nullable field (`pagePreviewUrl`) on `Settings`; a deployment that never sets it sees zero
+behavior change, and the new public preview route is unreachable without a valid, freshly-issued
+token regardless.
+
+Per the same phase-gate discipline as Phases 1-4: stopped after Phase 5, pending explicit
+approval before Phase 6 (Navigation `pageId` reference option) — not started.

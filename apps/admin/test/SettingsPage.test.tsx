@@ -69,6 +69,7 @@ describe('SettingsPage', () => {
         corsOrigin: null,
         featureFlags: null,
         previewUrl: null,
+        pagePreviewUrl: null,
       }),
     );
   });

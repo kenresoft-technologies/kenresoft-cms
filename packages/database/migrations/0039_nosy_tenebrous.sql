@@ -1,0 +1,1 @@
+ALTER TABLE `settings` ADD `page_preview_url` text;

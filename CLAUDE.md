@@ -2449,3 +2449,40 @@ flakiness, confirmed non-regression by re-running each file alone). No breaking 
 one new nullable field (`templateId`) on `Page`. Per the same phase-gate discipline as Phases
 1-3: stopped after Phase 4, pending explicit approval before Phase 5 (Page preview, reusing
 `preview-token.ts` verbatim).
+
+**Site builder Phase 5: Page Live Preview** (2026-09-12, on `develop`, approved immediately
+after Phase 4's report) — done: Page Live Preview, reusing `preview-token.ts` completely
+unmodified — confirming that file's own signing/verification pair was already id-agnostic
+despite an internal field literally named `entryId`. New `GET /api/v1/admin/pages/:id/
+preview-token` and `GET /api/v1/public/preview/pages?route=...&token=...` (a query param, not a
+path param, since a Page's route can contain slashes) mirror the existing entry-preview routes
+line-for-line, including the same "any failure — missing route, missing/garbage/expired/
+mismatched token — collapses to one 404" convention, verified by a direct comparison test. A new
+`settings.pagePreviewUrl` column (migration `0039_nosy_tenebrous.sql`) is a second, independent
+URL template alongside the existing `previewUrl` — a Page has no content-type/slug pair, only a
+literal `route`, so it needed its own placeholder shape (`{route}`) rather than overloading the
+existing field with two incompatible template grammars. `PageEditorPage.tsx` gained a
+`LivePreviewButton`, a direct structural mirror of `EntryEditorPage.tsx`'s own (refuses and
+nudges to save first when the form is dirty, since Live Preview only ever shows what's actually
+persisted).
+
+Honestly incomplete by design, not silently overclaimed: opening a Page's preview link today
+does nothing useful until a frontend actually implements Page rendering at all (Phase 7,
+`<PageRenderer>`/the Astro catch-all route) and checks for `preview_token` the way an
+entry-preview page already does — this phase ships the complete backend/admin-UI half of the
+feature, and both the Settings UI's own helper text and `docs/SITE_BUILDER.md` §21 say so
+plainly rather than implying it works against `examples/astro-site` today (it doesn't render
+Pages at all yet). Deliberately no `@kenresoft-cms/astro` client method for Page preview either,
+for the same reason — adding one with no real consumer would be speculative ahead of Phase 7's
+actual need.
+
+Verified: `pnpm typecheck`/`pnpm lint` clean workspace-wide; all new tests passing for real (5
+API tests, a direct structural mirror of the existing entry-preview test file's five cases, plus
+3 new admin tests for `PageEditorPage.tsx`, which had no dedicated test file before this phase);
+one pre-existing test's fixture (`SettingsPage.test.tsx`'s asserted PUT body) needed a one-line
+update for the new `pagePreviewUrl` field now present. Regression sweep: the full `apps/admin`
+suite (37 files, 201 tests) clean in one run, and `live-preview`/`pages-routes`/`public-pages`/
+`settings-routes`/`health`/`api-docs-gate` all green together in one batch — no isolated-
+flakiness workaround needed this time. No breaking changes beyond one new nullable field
+(`pagePreviewUrl`) on `Settings`. Per the same phase-gate discipline as Phases 1-4: stopped
+after Phase 5, pending explicit approval before Phase 6 (Navigation `pageId` reference option).

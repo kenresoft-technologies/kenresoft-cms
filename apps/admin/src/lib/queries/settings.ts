@@ -17,6 +17,7 @@ export type SettingsInput = {
   corsOrigin: string | null;
   featureFlags: Record<string, boolean> | null;
   previewUrl: string | null;
+  pagePreviewUrl: string | null;
 };
 
 export function useUpdateSettings() {

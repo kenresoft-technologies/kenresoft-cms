@@ -1,9 +1,18 @@
 import { useState } from 'react';
+import { ExternalLink } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router';
 import { toast } from 'sonner';
 
 import { ApiError } from '@/lib/api-client';
-import { useDeletePageById, usePage, usePageRevisions, useRestorePageRevision, useUpdatePage } from '@/lib/queries/pages';
+import {
+  fetchPagePreviewToken,
+  useDeletePageById,
+  usePage,
+  usePageRevisions,
+  useRestorePageRevision,
+  useUpdatePage,
+} from '@/lib/queries/pages';
+import { useSettings } from '@/lib/queries/settings';
 import type { BlockInstance, EntryStatus, Page } from '@/lib/types';
 import { BlockTreeEditor } from '@/pages/blocks/BlockTreeEditor';
 import {
@@ -59,6 +68,49 @@ function RevisionHistoryPanel({ pageId }: { pageId: string }) {
   );
 }
 
+// Mirrors EntryEditorPage.tsx's own LivePreviewButton exactly: builds the live URL from
+// Settings → API's configured pagePreviewUrl template and a freshly generated, page-scoped
+// token, then opens it in a new tab. Built from the *saved* page, not in-progress edits — Live
+// Preview shows what will actually render right now, which is only true of what's persisted.
+function LivePreviewButton({ page, isDirty }: { page: Page; isDirty: boolean }) {
+  const { data: settings } = useSettings();
+  const navigate = useNavigate();
+  const [loading, setLoading] = useState(false);
+
+  async function handlePreview() {
+    if (isDirty) {
+      toast.error('Save your changes first — Live Preview shows what is currently saved.');
+      return;
+    }
+    if (!settings?.pagePreviewUrl) {
+      toast.error('Live Preview needs a Page preview URL template first', {
+        description: 'Set one in Settings → API → Live Preview.',
+        action: { label: 'Open Settings', onClick: () => navigate('/settings?section=api') },
+      });
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const { token } = await fetchPagePreviewToken(page.id);
+      const url = settings.pagePreviewUrl.replace('{route}', page.route);
+      const separator = url.includes('?') ? '&' : '?';
+      window.open(`${url}${separator}preview_token=${encodeURIComponent(token)}`, '_blank', 'noopener,noreferrer');
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Failed to generate a preview link');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Button type="button" variant="outline" disabled={loading} onClick={() => void handlePreview()}>
+      <ExternalLink />
+      {loading ? 'Generating…' : 'Live Preview'}
+    </Button>
+  );
+}
+
 interface PageFormProps {
   page: Page;
 }
@@ -73,10 +125,21 @@ function PageForm({ page }: PageFormProps) {
   const updatePage = useUpdatePage(page.id);
   const deletePage = useDeletePageById();
 
+  const [initialTitle] = useState(page.title);
+  const [initialRoute] = useState(page.route);
+  const [initialStatus] = useState(page.status);
+  const [initialBlocks] = useState(page.blocks);
+
   const [title, setTitle] = useState(page.title);
   const [route, setRoute] = useState(page.route);
   const [status, setStatus] = useState<EntryStatus>(page.status);
   const [blocks, setBlocks] = useState<BlockInstance[]>(page.blocks);
+
+  const isDirty =
+    title !== initialTitle ||
+    route !== initialRoute ||
+    status !== initialStatus ||
+    JSON.stringify(blocks) !== JSON.stringify(initialBlocks);
 
   async function handleSave() {
     try {
@@ -107,6 +170,7 @@ function PageForm({ page }: PageFormProps) {
         actions={
           <>
             <StatusBadge status={status} />
+            <LivePreviewButton page={page} isDirty={isDirty} />
             <Button type="button" onClick={() => void handleSave()} disabled={updatePage.isPending}>
               {updatePage.isPending ? 'Saving…' : 'Save'}
             </Button>

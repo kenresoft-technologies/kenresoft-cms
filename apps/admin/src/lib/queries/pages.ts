@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { apiClient } from '@/lib/api-client';
-import type { BlockInstance, EntryStatus, Page, PageRevision, PageSeo } from '@/lib/types';
+import type { BlockInstance, EntryStatus, Page, PageRevision, PageSeo, PreviewTokenResponse } from '@/lib/types';
 
 type PageWriteInput = {
   route?: string;
@@ -81,4 +81,11 @@ export function useRestorePageRevision(pageId: string) {
       void queryClient.invalidateQueries({ queryKey: ['pages', 'by-id', pageId] });
     },
   });
+}
+
+// Not a useQuery — generated fresh on demand right before opening a preview link (a cached one
+// could easily have already expired by the time it's reused), mirroring
+// queries/entries.ts's own fetchPreviewToken.
+export async function fetchPagePreviewToken(pageId: string): Promise<PreviewTokenResponse> {
+  return apiClient.get<PreviewTokenResponse>(`/api/v1/admin/pages/${pageId}/preview-token`);
 }

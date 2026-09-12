@@ -5,6 +5,7 @@ import {
   idParamSchema,
   pageRevisionSchema,
   pageSchema,
+  previewTokenResponseSchema,
   updatePageSchema,
   validateBlockTree,
 } from '@kenresoft-cms/contracts';
@@ -14,6 +15,7 @@ import { z } from 'zod';
 import { recordAudit } from '../../lib/audit';
 import { getDb } from '../../lib/db';
 import { createOpenApiApp } from '../../lib/openapi';
+import { signPreviewToken } from '../../lib/preview-token';
 import { invalidatePublicPageCache } from '../../lib/public-cache';
 import { requireRole } from '../../middleware/require-role';
 import { listContentTypesWithRoutePattern } from '../../repositories/content-types';
@@ -225,6 +227,34 @@ pagesRoute.openapi(
     const page = await getPageById(db, id);
     if (!page) return c.json({ error: 'Page not found' }, 404);
     return c.json(toPage(page), 200);
+  },
+);
+
+// No role gate beyond authentication — generating a token proves and writes nothing, matching
+// entries' own preview-token route (§7). The token itself, not this route, is what actually
+// gates access to the page's content: routes/public/preview.ts.
+pagesRoute.openapi(
+  createRoute({
+    method: 'get',
+    path: '/{id}/preview-token',
+    tags: ['Pages'],
+    summary: 'Generate a signed, time-limited Live Preview token for this page',
+    request: { params: idParam },
+    responses: {
+      200: {
+        description: 'A token valid for 15 minutes, usable once against the public preview route.',
+        content: { 'application/json': { schema: previewTokenResponseSchema } },
+      },
+      404: { description: 'No page with that id.', content: { 'application/json': { schema: notFoundSchema } } },
+    },
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const db = getDb(c);
+    const page = await getPageById(db, id);
+    if (!page) return c.json({ error: 'Page not found' }, 404);
+    const { token, expiresAt } = await signPreviewToken(c.env.BETTER_AUTH_SECRET, page.id);
+    return c.json({ token, expiresAt: expiresAt.toISOString() }, 200);
   },
 );
 
