@@ -7,6 +7,7 @@ type PageWriteInput = {
   route?: string;
   title?: string;
   status?: EntryStatus;
+  templateId?: string | undefined;
   blocks?: BlockInstance[];
   seo?: PageSeo | null;
   publishAt?: string | null;

@@ -2,6 +2,7 @@ import { useId, useState } from 'react';
 import { ChevronDown, ChevronUp, ImageOff, Plus, Trash2 } from 'lucide-react';
 
 import { mediaFileUrl, useMediaList } from '@/lib/queries/media';
+import { useReusableBlocks } from '@/lib/queries/reusable-blocks';
 import type { BlockInstance, BlockType, ChildBlockInstance } from '@/lib/types';
 import { MediaPickerDialog } from '@/components/media-picker-dialog';
 import { RichTextEditor } from '@/components/rich-text-editor';
@@ -200,7 +201,9 @@ interface BlockConfigFormProps {
   onChange: (config: Record<string, unknown>) => void;
 }
 
-function BlockConfigForm({ fields, config, onChange }: BlockConfigFormProps) {
+// Exported so ReusableBlocksPage can reuse the same per-type config form for a reusable
+// block's own {type, config} pair, rather than duplicating this dispatch a second time.
+export function BlockConfigForm({ fields, config, onChange }: BlockConfigFormProps) {
   function setField(key: string, value: unknown) {
     const next = { ...config };
     if (value === '' || value === undefined || value === null) {
@@ -240,6 +243,16 @@ function BlockConfigFieldInput({
 
   if (fieldDef.kind === 'media') {
     return <MediaConfigField label={fieldDef.label} value={typeof value === 'string' ? value : undefined} onChange={onChange} />;
+  }
+
+  if (fieldDef.kind === 'reusableBlock') {
+    return (
+      <ReusableBlockConfigField
+        label={fieldDef.label}
+        value={typeof value === 'string' ? value : undefined}
+        onChange={onChange}
+      />
+    );
   }
 
   if (fieldDef.kind === 'richtext') {
@@ -337,6 +350,42 @@ function MediaConfigField({
           ) : null}
         </div>
       </div>
+    </div>
+  );
+}
+
+function ReusableBlockConfigField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string | undefined;
+  onChange: (reusableBlockId: string | undefined) => void;
+}) {
+  const { data: reusableBlocks } = useReusableBlocks();
+
+  return (
+    <div className="flex flex-col gap-2">
+      <Label>{label}</Label>
+      {reusableBlocks && reusableBlocks.length > 0 ? (
+        <Select value={value ?? ''} onValueChange={(next) => onChange(next || undefined)}>
+          <SelectTrigger>
+            <SelectValue placeholder="Choose a reusable block…" />
+          </SelectTrigger>
+          <SelectContent>
+            {reusableBlocks.map((block) => (
+              <SelectItem key={block.id} value={block.id}>
+                {block.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      ) : (
+        <p className="text-xs text-muted-foreground">
+          No reusable blocks yet — create one on the Reusable Blocks page first.
+        </p>
+      )}
     </div>
   );
 }

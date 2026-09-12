@@ -22,6 +22,7 @@ function toPage(row: DbPage): Page {
     title: row.title,
     status: row.status as Page['status'],
     publishAt: row.publishAt ? row.publishAt.toISOString() : null,
+    templateId: row.templateId,
     blocks: row.blocks.blocks,
     seo: row.seo ?? null,
     createdBy: row.createdBy,

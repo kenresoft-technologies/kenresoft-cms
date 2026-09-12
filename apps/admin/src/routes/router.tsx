@@ -69,6 +69,14 @@ export const router = createBrowserRouter([
         lazy: async () => ({ Component: (await import('@/pages/PageEditorPage')).PageEditorPage }),
       },
       {
+        path: 'templates',
+        lazy: async () => ({ Component: (await import('@/pages/TemplatesPage')).TemplatesPage }),
+      },
+      {
+        path: 'reusable-blocks',
+        lazy: async () => ({ Component: (await import('@/pages/ReusableBlocksPage')).ReusableBlocksPage }),
+      },
+      {
         path: 'media',
         lazy: async () => ({
           Component: (await import('@/pages/MediaLibraryPage')).MediaLibraryPage,

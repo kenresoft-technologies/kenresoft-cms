@@ -26,6 +26,10 @@ export const pageSchema = z.object({
   title: z.string(),
   status: z.enum(ENTRY_STATUSES),
   publishAt: z.string().nullable(),
+  // Phase 4 (§3.1/§3.5): which template (if any) this page's blocks were copied from at
+  // creation — bookkeeping only, never live-linked; editing the template afterward has no
+  // effect on this page.
+  templateId: z.string().nullable(),
   blocks: z.array(blockInstanceSchema),
   seo: pageSeoSchema.nullable(),
   createdBy: z.string().nullable(),
@@ -54,6 +58,9 @@ export const createPageSchema = z.object({
   route: pageRouteSchema,
   title: z.string().min(1).max(200),
   status: z.enum(ENTRY_STATUSES).optional().default('draft'),
+  // Phase 4: when set and `blocks` is omitted/empty, the server copies this template's own
+  // blocks into the new page (routes/admin/pages.ts) — a one-time copy, not a live link.
+  templateId: z.string().optional(),
   blocks: z.array(blockInstanceSchema).optional().default([]),
   seo: pageSeoSchema.nullable().optional(),
   publishAt: publishAtInputSchema.optional(),

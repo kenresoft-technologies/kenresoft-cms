@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { sqliteTable, text, integer, uniqueIndex, index } from 'drizzle-orm/sqlite-core';
 
+import { templates } from './templates';
 import { user } from './auth';
 // Type-only import, fully erased at build — mirrors field-definitions.ts's own reasoning for
 // not importing runtime enum arrays from packages/contracts into a module that calls
@@ -9,10 +10,7 @@ import type { BlockInstance, EntryStatus, PageSeo } from '@kenresoft-cms/contrac
 
 export type { BlockInstance, EntryStatus, PageSeo };
 
-// Phase 3 of the schema-driven frontend work (docs/SITE_BUILDER.md §3.1). Deliberately no
-// `templateId` column yet — Templates ship in Phase 4 (§13); adding that FK then is itself an
-// additive nullable column, matching this project's own "additive only" migration convention
-// (§10), not something this table needs to anticipate now.
+// Phase 3 of the schema-driven frontend work (docs/SITE_BUILDER.md §3.1).
 export const pages = sqliteTable(
   'pages',
   {
@@ -24,6 +22,12 @@ export const pages = sqliteTable(
     // every content type's own routePattern (§4.3), not just uniqueness among Pages themselves.
     route: text('route').notNull(),
     title: text('title').notNull(),
+    // Phase 4 (§3.1/§3.5): which template, if any, this page's blocks were copied from at
+    // creation time — bookkeeping only, since a template's own content is never live-linked
+    // (copied once, then independently editable). Set null rather than deleting the page if the
+    // template is later removed. Added here, not in Phase 3, since Templates didn't exist yet —
+    // exactly the additive nullable-column migration Phase 3's own record predicted.
+    templateId: text('template_id').references(() => templates.id, { onDelete: 'set null' }),
     // Reuses ENTRY_STATUSES verbatim — same enum, not a new one (§3.1).
     status: text('status').notNull().$type<EntryStatus>().default('draft'),
     // Reuses the existing scheduled-publish sweep verbatim (§3.1/§13) — see

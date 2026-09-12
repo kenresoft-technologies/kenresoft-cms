@@ -7,6 +7,16 @@ Status: Proposed / Ready for implementation
 
 ## Changelog
 
+**v0.17 (2026-09-12)** — Phase 4 of the schema-driven frontend/site-builder initiative
+(`docs/SITE_BUILDER.md`): `reusable_blocks` (a live reference, resolved — never copied — at
+render time, referenced from a Page's tree via the new `reusableBlockRef` block type) and
+`templates` (a default block composition, copied once into a new Page — never live-linked) with
+full admin CRUD (§6.6), a `pages.templateId` bookkeeping column, and Page creation from a
+template in the admin UI. Updating or deleting a reusable block conservatively purges the entire
+Pages cache namespace, since there's no cheap way yet to know which pages embed a given one.
+Additive/backward-compatible only — no Page preview, Navigation page references, or Astro
+rendering yet; see `docs/SITE_BUILDER.md` §20 for the full implementation record.
+
 **v0.16 (2026-09-12)** — Phase 3 of the schema-driven frontend/site-builder initiative
 (`docs/SITE_BUILDER.md`): the `pages`/`page_revisions` tables (§6.5), admin Pages CRUD with
 revision history/restore, a small code-defined built-in block set (Hero, RichText, Image, CTA,
@@ -751,13 +761,38 @@ reorder UI (buttons, not drag-and-drop) — `docs/SITE_BUILDER.md` §14 decision
 drag-and-drop canvas as a later, separate phase (Phase 8) that replaces only this editing UI,
 never the underlying block-tree data model or rendering architecture.
 
-**What this does not do yet**: no Templates or Reusable Blocks (Phase 4), no Page preview
-(Phase 5, though `preview-token.ts` is already resource-agnostic and needs no change to
-support it), no Navigation `pageId` reference (Phase 6), and no `@kenresoft-cms/astro`
-`<PageRenderer>`/`registerBlockRenderer()` or `examples/astro-site` catch-all route (Phase 7) —
-a Page can be created and composed in the admin UI and fetched via the public API, but nothing
-renders it as an actual web page yet. See `docs/SITE_BUILDER.md` §19 for the full Phase 3
-implementation record.
+**What this does not do yet**: no Page preview (Phase 5, though `preview-token.ts` is already
+resource-agnostic and needs no change to support it), no Navigation `pageId` reference
+(Phase 6), and no `@kenresoft-cms/astro` `<PageRenderer>`/`registerBlockRenderer()` or
+`examples/astro-site` catch-all route (Phase 7) — a Page can be created and composed in the
+admin UI and fetched via the public API, but nothing renders it as an actual web page yet. See
+`docs/SITE_BUILDER.md` §19 for the full Phase 3 implementation record.
+
+### 6.6 Reusable Blocks and Templates (schema-driven frontend, Phase 4)
+
+**Status: implemented.** Two related but distinct mechanisms for reusing block content, both
+admin-editable data (§3.4/§3.5) rather than a separate "theme" concept:
+
+- **Reusable Blocks** (`reusable_blocks` table) are a *live reference* — a Page embeds one via a
+  `{type: "reusableBlockRef", config: {reusableBlockId}}` node in its own block tree (a new leaf
+  `BLOCK_TYPES` entry), and editing the reusable block updates every page embedding it
+  immediately, since nothing is ever copied. A `reusable_blocks` row's own `type` is restricted
+  to leaf, non-container, non-referencing block types (`REUSABLE_BLOCK_TYPES`) — never
+  `columns` (this table has no column to hold children) and never `reusableBlockRef` itself (no
+  reference chains). The cost of the live-reference model: updating or deleting one
+  conservatively purges the *entire* Pages public-cache namespace (queued through the existing
+  `cache_purge_jobs` mechanism, §12), since there's no cheap way yet to know which pages
+  actually embed a given block — accepted as correctness-over-precision, matching how rarely
+  reusable-block edits are expected relative to page edits.
+- **Templates** (`templates` table) are the opposite: a default block composition **copied
+  once** into a new Page at creation time (`pages.templateId` records which template, purely as
+  bookkeeping — never a live link), optionally scoped to one content type
+  (`contentTypeId`, nullable = general-purpose) with an `isDefault` flag for future
+  auto-selection. Editing a template afterward has zero effect on pages already created from it.
+
+Both ship with straightforward admin CRUD (`admin`/`editor` gated, matching Pages) and no
+revision history — neither has the same "point-in-time published state" concept a Page or Entry
+does. See `docs/SITE_BUILDER.md` §20 for the full Phase 4 implementation record.
 
 ### 6.1 Initial content field types
 

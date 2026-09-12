@@ -5,11 +5,12 @@
 Phase 0 (this document's original architecture assessment) is reviewed and accepted. §14's
 open decisions are resolved (see "§14 decisions — resolved" below). **Phase 1** (field
 presentation metadata + a field-renderer registry), **Phase 2** (content-type
-`routePattern` + `resolveRoute()` in the SDK), and **Phase 3** (the `pages`/`page_revisions`
+`routePattern` + `resolveRoute()` in the SDK), **Phase 3** (the `pages`/`page_revisions`
 data model, admin CRUD + revisions, a basic block-composition editor, and the public Pages
-API) **are implemented**. Phases 4-10 — Templates, Reusable Blocks, Page preview, Navigation
-page references, Astro rendering, the drag-and-drop editor, and everything else in §13's plan
-— are **not started**. Do not read anything below §2 as describing current behavior; it is the
+API), and **Phase 4** (`reusable_blocks`/`templates` tables + admin UI, Page creation from a
+template) **are implemented**. Phases 5-10 — Page preview, Navigation page references, Astro
+rendering, the drag-and-drop editor, and everything else in §13's plan — are **not started**.
+Do not read anything below §2 as describing current behavior; it is the
 target architecture this phase-by-phase plan is building toward.
 
 ### §14 decisions — resolved
@@ -564,7 +565,7 @@ exist (skipping/collapsing phases where Core already provides the primitive):
 | **1** | **Done** (2026-09-12) | Field `presentation` metadata + a real field-renderer registry (admin + SDK) | `field-input.tsx`, `field_definitions` |
 | **2** | **Done** (2026-09-12) | Content-type `routePattern` (exactly one `{slug}` param, per §14) + `resolveRoute()` in the SDK; no Pages yet, not wired into `examples/astro-site` | `content.ts` public route, entries |
 | **3** | **Done** (2026-09-12) | `pages`/`page_revisions` tables, admin Pages CRUD + revision/restore, a small built-in block set, JSON-tree block composition editor (basic add/remove/reorder, not drag-and-drop yet), public Pages route, cache invalidation | Entries/revisions code path as template, `public-cache.ts` |
-| **4** | Not started | `reusable_blocks`, `templates` tables + admin UI; Page creation from a template | Phase 3 |
+| **4** | **Done** (2026-09-12) | `reusable_blocks`, `templates` tables + admin UI; Page creation from a template | Phase 3 |
 | **5** | Not started | Page preview (reuses `preview-token.ts` verbatim) | Live Preview (already built) |
 | **6** | Not started | Navigation `pageId` reference option | Structured Settings navigation (already built) |
 | **7** | Not started | `@kenresoft-cms/astro` `<PageRenderer>`/`<BlockRenderer>`, `registerBlockRenderer()`, `examples/astro-site` catch-all route | Astro SSR architecture (already proven) |
@@ -946,3 +947,124 @@ no-op when no Page exists, and the new public routes return an empty list rather
 Per the same phase-gate discipline as Phases 1-2: stopped after Phase 3, pending explicit
 approval before Phase 4 (`reusable_blocks`/`templates` tables + admin UI, Page creation from a
 template) — not started.
+
+## 20. Phase 4 — implementation record (2026-09-12)
+
+**Done.** `reusable_blocks`/`templates` tables, admin CRUD for both, and Page creation from a
+template — exactly §13's scoped items.
+
+- `packages/database/schema/reusable-blocks.ts` (new) — `id`, `name`, `type` (a `BlockType`,
+  restricted at the API layer), `config` (JSON). `packages/database/schema/templates.ts` (new)
+  — `id`, `name`, nullable `contentTypeId` (FK, `onDelete: 'set null'` — deleting the content
+  type doesn't delete the template, since its blocks/name stay meaningful as a general-purpose
+  template afterward), `blocks` (JSON), `isDefault` (a plain boolean flag, deliberately with no
+  uniqueness enforcement across a scope — matching this project's own "keep the first
+  implementation intentionally simple" precedent; an admin can currently mark more than one
+  template default within the same scope, an accepted simplification not a bug). `pages.ts`
+  gained the `templateId` column §3.1 originally specified but Phase 3 deferred (Templates
+  didn't exist yet) — exactly the trivial additive migration that record predicted. Migration
+  `0038_faithful_black_knight.sql`: two new tables plus one new nullable FK column, zero changes
+  to any existing column.
+- `packages/contracts/schemas/enums.ts` — `BLOCK_TYPES` gained `reusableBlockRef` (a leaf block
+  whose config is `{reusableBlockId}`, resolving to a *live* reference — never copied — at
+  render time, §3.4) and a new `REUSABLE_BLOCK_TYPES` (the leaf, non-referencing subset a
+  `reusable_blocks` row's own `type` is restricted to: never `columns` — this table has no
+  column to store children in — and never `reusableBlockRef` itself, which would allow a
+  reference chain a renderer would have to detect and break).
+  `packages/contracts/schemas/blocks.ts` gained `REUSABLE_BLOCK_REF_CONFIG` (added to
+  `BLOCK_CONFIG_SCHEMAS`, so `validateBlockTree()` needed no changes at all — the existing
+  per-type dispatch already covers a new entry in that map). `packages/contracts/schemas/
+  reusable-blocks.ts`/`templates.ts` (new) — response/create/update schemas.
+  `packages/contracts/schemas/pages.ts` gained `templateId` on `pageSchema` and an optional
+  `templateId` on `createPageSchema` (§4.3 below).
+- `apps/api/src/repositories/reusable-blocks.ts`/`templates.ts` (new) — plain CRUD, no
+  revisioning for either (not in §13's scope for this phase — reusable blocks are live
+  references with no history concept yet, and templates are copied-once starting points, not
+  something whose own edit history matters the way a Page's does).
+  `apps/api/src/routes/admin/reusable-blocks.ts`/`templates.ts` (new), both `admin`/`editor`
+  gated like Pages. `routes/admin/pages.ts`'s create handler: when `templateId` is given and the
+  request's own `blocks` is empty/omitted, the template's blocks are copied in server-side
+  (`blocks.length === 0` check) — explicit caller-supplied blocks always win over the template's
+  default, and `templateId` is recorded on the page either way as bookkeeping (never a live
+  link — editing the template afterward has zero effect on pages already created from it, §3.5).
+  A `templateId` naming a nonexistent template 404s.
+- **Cache invalidation for reusable blocks, exactly as §8/§16 already specified**: updating or
+  deleting a reusable block conservatively purges the *entire* Pages cache namespace (the list
+  key plus every page's own by-route key), queued through the existing `cache_purge_jobs`
+  mechanism (`invalidateAllPageCaches()`, `routes/admin/reusable-blocks.ts`) rather than
+  building an unproven per-page usage tracker — this route has no cheap way to know which pages
+  actually embed a given reusable block, and reusable-block edits are expected to be rare
+  relative to page edits.
+- `apps/admin`: `pages/blocks/block-registry.ts` gained a `reusableBlockRef` entry (a
+  `reusableBlock`-kind field) and a `reusableBlock` field kind in `BlockTreeEditor.tsx`'s
+  generic config-field dispatch (a `<Select>` populated from `useReusableBlocks()`, showing each
+  block's own name). `BlockConfigForm` was exported from `BlockTreeEditor.tsx` so
+  `ReusableBlocksPage.tsx` could reuse the exact same per-type config form for a reusable
+  block's own `{type, config}` pair instead of a second implementation.
+  `pages/ReusableBlocksPage.tsx` (new) — list + create/edit dialog (name, a type `<Select>`
+  restricted to `REUSABLE_BLOCK_TYPES`, the shared config form), no revision history (matches
+  the API's own scope). `pages/TemplatesPage.tsx` (new) — list + create/edit dialog (name, a
+  content-type scope `<Select>` with a "general-purpose" option, an `isDefault` checkbox, the
+  full `BlockTreeEditor`). `PagesPage.tsx`'s existing "New page" dialog gained an optional
+  "Start from a template" `<Select>` (rendered only once at least one template exists) that
+  passes `templateId` through to the same `createPage` call Phase 3 already had. Registered in
+  `router.tsx`, `AppLayout.tsx`'s Content nav group, and the command palette.
+- Tests: `apps/api/test/templates-routes.test.ts` (2 tests, real D1 — CRUD, block-tree
+  validation, content-type scoping) and `apps/api/test/reusable-blocks-routes.test.ts` (2 tests
+  — CRUD, the `columns`/`reusableBlockRef` type restriction, and a cache-purge-job-queued
+  assertion after an update). `apps/api/test/pages-routes.test.ts` gained a fourth test covering
+  template-based page creation end to end: copying a template's blocks, a 404 on an unknown
+  `templateId`, explicit request blocks overriding the template default, and confirming an
+  already-created page is unaffected by a later template edit (never live-linked).
+  `apps/admin/test/ReusableBlocksPage.test.tsx`/`TemplatesPage.test.tsx` (3 tests each) and a
+  new case in `BlockTreeEditor.test.tsx` covering the `reusableBlockRef` field's picker.
+
+**Architectural decisions made during implementation:**
+- **A nested `ctx.waitUntil()` call inside an already-`waitUntil`'d function doesn't reliably
+  drain before the outer one is considered settled** — found while writing the reusable-blocks
+  cache-invalidation test, not assumed: the first version of `invalidateAllPageCaches()` called
+  `ctx.waitUntil(processCachePurgeJobBatch(...))` from *inside* a function that was itself only
+  ever invoked via the caller's own `ctx.waitUntil(...)`, and the test asserting the purge job
+  reached `'completed'` status flaked between `'pending'` and `'completed'` depending on timing.
+  Fixed by awaiting `processCachePurgeJobBatch()` directly inside the one outer `waitUntil`'d
+  function instead of registering a second, nested one — the whole function's promise (enqueue
+  *and* process) is what the caller's single `waitUntil()` actually waits on. Worth recording:
+  this project's existing scheduled-publish sweep (`index.ts`) and webhook-retry code both use a
+  similar "one `waitUntil` per logical background task" shape already, which is exactly why they
+  never hit this — the bug only appears when a `waitUntil`'d function itself tries to hand off a
+  *second* piece of async work to another `waitUntil` call rather than just awaiting it.
+- **`isDefault` has no uniqueness enforcement across a scope** — a deliberate simplification,
+  not an oversight: enforcing "at most one default per content type / per general scope" would
+  need either a partial unique index (SQLite supports this, but scoping it correctly against a
+  nullable `contentTypeId` needs care) or application-level unset-the-others-first logic on
+  every write. Neither is justified yet since nothing in this phase actually *reads* `isDefault`
+  to auto-select a template anywhere — it exists as admin-facing labeling only, wired up for the
+  first time when a future phase actually needs to pick "the" default template for a scope.
+- **No revision history for Templates or Reusable Blocks** — §13 never asked for it, and neither
+  entity has the same "point-in-time published state" concept a Page or Entry does: a
+  Template's content only ever matters at the moment a Page copies it, and a Reusable Block's
+  current state *is* what every embedding page shows right now, with no separate "draft/
+  published" distinction to revert between.
+- **`templateId` is set-once at creation, not updatable via `PATCH /pages/:id`** — matching the
+  bookkeeping-only nature described in §3.1/§3.5; nothing in this phase's scope needed to
+  re-apply a different template's blocks to an already-existing page, and adding that now would
+  be speculative.
+
+**Verification performed**: `pnpm typecheck`/`pnpm lint` clean across every touched package
+(two real issues surfaced and fixed during development, not suppressed: a `z.enum()` literal-
+type loss from an over-eagerly-widened `REUSABLE_BLOCK_TYPES` annotation, and a DB-row-to-
+contract-type narrowing gap for `ReusableBlock.type`). All new tests passing for real (4 new API
+tests + 9 new admin tests, including the `pages-routes.test.ts` extension). Regression sweep:
+the full `apps/admin` suite (36 files, 198 tests) in one clean run, and 25 pre-existing `apps/
+api` test files (content-type-route-pattern, health, api-docs-gate, dashboard-routes, audit-log,
+admin-routes, scheduled, cache-purge, cache-routes, entries-export-import) — all green
+individually (a batched run hit this project's own already-documented Windows/workerd module-
+resolution resource-exhaustion flakiness, confirmed non-regression by re-running each file alone
+immediately after, all clean).
+
+**No breaking changes**: every existing public/admin API response shape is unchanged except one
+new nullable field (`templateId`) on `Page`; a deployment that never creates a template or
+reusable block sees zero behavior change anywhere.
+
+Per the same phase-gate discipline as Phases 1-3: stopped after Phase 4, pending explicit
+approval before Phase 5 (Page preview, reusing `preview-token.ts` verbatim) — not started.
