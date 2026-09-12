@@ -60,6 +60,7 @@ function toFieldDefinition(row: DbFieldDefinition): FieldDefinition {
     required: row.required,
     sortOrder: row.sortOrder,
     config: row.config ?? null,
+    presentation: row.presentation ?? null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };

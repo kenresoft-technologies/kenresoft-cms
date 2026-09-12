@@ -10,12 +10,14 @@
     ".": "./src/index.ts"
   },
   "scripts": {
+    "test": "node --experimental-strip-types --test test/*.test.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint ."
   },
   "devDependencies": {
     "@kenresoft-cms/config": "workspace:*",
     "@kenresoft-cms/contracts": "workspace:*",
+    "@types/node": "^26.4.1",
     "eslint": "^10.9.1",
     "typescript": "^5.9.3"
   }

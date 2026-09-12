@@ -1,0 +1,1 @@
+ALTER TABLE `field_definitions` ADD `presentation` text;

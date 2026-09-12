@@ -7,6 +7,14 @@ Status: Proposed / Ready for implementation
 
 ## Changelog
 
+**v0.14 (2026-09-12)** — Phase 1 of the schema-driven frontend/site-builder initiative
+(`docs/SITE_BUILDER.md`): a nullable `field_definitions.presentation` column (§6.3) and a
+read-only field-renderer registry in `@kenresoft-cms/astro`
+(`integrations/astro/src/render/field-renderers.ts`), plus a light refactor of
+`apps/admin/src/components/field-input.tsx`'s field-type dispatch into an explicit registry
+object (no behavior change). Additive/backward-compatible only — no Pages, Blocks, Templates,
+or dynamic routing yet; see `docs/SITE_BUILDER.md` for the full plan and remaining phases.
+
 **v0.13 (2026-09-10)** — Closes a real security gap: a staff account created via
 `Admin → Users → Add user` (or via public self-signup) could sign in with its temporary/chosen
 password without ever proving ownership of the email address — `user.emailVerified` existed in
@@ -600,6 +608,39 @@ one for a given value is the mistake this section exists to prevent:
 A value migrating from Global Variables into a new Structured Settings module (as `contact`/
 `social`/`footer` did, §16) is expected as the CMS's schema-worthy configuration surface grows —
 Global Variables remains the correct home for anything that never earns a stable schema.
+
+### 6.3 Field presentation metadata (schema-driven frontend, Phase 1)
+
+**Status: implemented.** `field_definitions` has a nullable `presentation` JSON column
+(migration `0035_glorious_wendell_rand.sql`), deliberately kept separate from `fieldType`,
+`required`, and `config` — those three describe the field's *data shape and validation*;
+`presentation` describes only how a value is *displayed*, and is never consulted by
+validation, storage, or the admin field-editing form itself. A field with `presentation:
+null` (every field created before this change, and any created without setting it) renders
+exactly as it always has.
+
+`presentation` is an optional object of plain strings (`renderer`, `format`, `label`,
+`displayMode`, `variant`, `alignment`), validated by `fieldPresentationSchema`
+(`packages/contracts/schemas/field-definitions.ts`) with `.strict()` so an unrecognized key is
+rejected at write time rather than silently ignored. `renderer` is the one field a frontend
+consults today: `@kenresoft-cms/astro`'s `resolveFieldRenderer()` (`integrations/astro/src/
+render/field-renderers.ts`) resolves it, in order, against (1) a developer-registered
+renderer under that name, (2) the built-in default renderer for the field's `fieldType`, then
+(3) a safe stringifying fallback — never code execution: a renderer name is only ever a `Map`
+lookup key into a registry of already-compiled, developer-registered functions, so an admin
+entering an arbitrary string as `presentation.renderer` can at most cause a fallback to the
+default renderer, never arbitrary behavior. See `docs/ASTRO.md`'s "Field rendering (Phase 1)"
+section for the full renderer API and precedence rules.
+
+This is Phase 1 of the larger schema-driven-frontend/site-builder initiative tracked in
+`docs/SITE_BUILDER.md` — that document is the architecture plan for Pages, Blocks, Templates,
+and dynamic routing; **none of those exist yet**. Phase 1 only establishes the field-level
+renderer-registry foundation those later phases will build on. There is not yet a public API
+endpoint exposing a content type's field definitions (including `presentation`) to a
+frontend — `docs/ASTRO.md`'s Known limitations already flags the absence of a public content-
+type-metadata endpoint; this phase doesn't change that, it only makes the renderer registry
+itself ready to consume field descriptors once such an endpoint (or a future Page/Block
+system) supplies them.
 
 ### 6.1 Initial content field types
 

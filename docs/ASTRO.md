@@ -237,6 +237,47 @@ pass both ran against it), but a production Astro deployment alongside it — `a
 deployed home yet either — is still not provisioned or tested. Getting there is genuinely a
 distinct next phase, not a small extension of this one.
 
+## Field rendering (Phase 1 of the schema-driven frontend work)
+
+**Status: implemented, foundation only.** `@kenresoft-cms/astro` exports a small, read-only
+field-renderer registry (`integrations/astro/src/render/field-renderers.ts`), independent of
+`apps/admin`'s editing components — this package renders *static display output* for a
+visitor, not editable widgets for an admin.
+
+```ts
+import { renderField, registerFieldRenderer } from '@kenresoft-cms/astro';
+
+// Given a field descriptor and a raw value, resolve the right display shape:
+const result = renderField({ fieldType: 'rich_text', label: 'Body' }, entry.data.body);
+// => { kind: 'html', value: '<p>...</p>' }
+
+// Override how a field type — or a specific field via its `presentation.renderer` name —
+// is displayed:
+registerFieldRenderer('richText', (field, value) => ({ kind: 'html', value: myTransform(value) }));
+```
+
+`renderField()` returns one of a closed set of shapes (`text`, `html`, `number`, `boolean`,
+`date`, `link`, `image`, `relation`, `list`, `empty`) — deliberately not raw markup, so a
+template decides how each `kind` actually renders. `rich_text` is the one exception
+(`{kind: 'html', value}`): that value is already trusted, editor-authored HTML, the same trust
+boundary this example site's own `set:html` usage on the blog page already relies on — this
+renderer introduces no new one.
+
+**Resolution order** (a field's `presentation.renderer`, if set on the `FieldDefinition` →
+that name's registered renderer → the built-in default for the field's `fieldType` → a safe
+text-stringifying fallback) is documented in full, with the security reasoning for why a
+renderer name can never cause code execution, in the doc comment above
+`resolveFieldRenderer()` in that same file and in `docs/ARCHITECTURE.md` §6.3.
+
+**What this does NOT do yet**: there is no `client.contentTypes.fields()` call and no public
+API endpoint that returns a content type's field definitions (including `presentation`) to a
+frontend — see "No public content-type metadata endpoint" immediately below, which this phase
+doesn't change. `renderField()` is ready to consume a `{fieldType, label, presentation}`
+descriptor from wherever a caller already has one; wiring it to an actual CMS fetch, and
+building the Pages/Blocks system this registry exists to eventually support, is tracked in
+`docs/SITE_BUILDER.md` (still entirely unimplemented — no Pages, Blocks, Templates, or dynamic
+routing exist in this codebase yet).
+
 ## Known limitations
 
 - **No public content-type metadata endpoint — by design, not a bug.** A generic Astro page

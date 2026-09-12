@@ -16,6 +16,19 @@ import type {
 // hand-maintained copy — see the "Types" note in docs/ASTRO.md.
 export type { Entry, FormSubmission, PublicMedia };
 
+// Phase 1 of the schema-driven frontend work (docs/SITE_BUILDER.md) — a read-only field
+// renderer registry, independent of the request/response client below. Re-exported here so
+// `import { renderField, registerFieldRenderer } from '@kenresoft-cms/astro'` works without a
+// consumer needing to know about the internal `render/` module layout.
+export {
+  registerFieldRenderer,
+  renderField,
+  resolveFieldRenderer,
+  type FieldRenderer,
+  type FieldRenderResult,
+  type RenderableField,
+} from './render/field-renderers';
+
 export interface KenresoftClientConfig {
   /** Base URL of a Kenresoft CMS deployment, e.g. "http://localhost:8787" in local dev. */
   url: string;

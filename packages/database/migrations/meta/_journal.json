@@ -246,6 +246,13 @@
       "when": 1789069888904,
       "tag": "0034_grandfather-verified-users",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "6",
+      "when": 1789215426818,
+      "tag": "0035_glorious_wendell_rand",
+      "breakpoints": true
     }
   ]
 }

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactElement } from 'react';
 import { Check, ChevronsUpDown, ImageOff, X } from 'lucide-react';
 
 import { useContentType } from '@/lib/queries/content-types';
@@ -267,27 +267,25 @@ function ReferenceField({ field, value, onChange }: FieldInputProps) {
   );
 }
 
-export function FieldInput({ field, value, onChange }: FieldInputProps) {
-  if (field.fieldType === 'boolean') {
-    return <BooleanField field={field} value={value} onChange={onChange} />;
-  }
-  if (field.fieldType === 'rich_text') {
-    return <RichTextField field={field} value={value} onChange={onChange} />;
-  }
-  if (field.fieldType === 'textarea') {
-    return <TextAreaField field={field} value={value} onChange={onChange} />;
-  }
-  if (field.fieldType === 'select') {
-    return <SelectField field={field} value={value} onChange={onChange} />;
-  }
-  if (field.fieldType === 'multi_select') {
-    return <MultiSelectField field={field} value={value} onChange={onChange} />;
-  }
-  if (field.fieldType === 'media') {
-    return <MediaField field={field} value={value} onChange={onChange} />;
-  }
-  if (field.fieldType === 'reference') {
-    return <ReferenceField field={field} value={value} onChange={onChange} />;
-  }
-  return <PlainInputField field={field} value={value} onChange={onChange} />;
+// A field-type-keyed editing-widget registry — the same "registry keyed by type" shape the
+// read-only renderer registry in integrations/astro/src/render/field-renderers.ts uses for
+// display, kept as two separate registries (not one shared one) since editing and display
+// are different concerns with different component models (React inputs vs. plain data).
+// This is a pure refactor of the previous if/else-if chain — every field type resolves to
+// exactly the same component it did before; no behavior change.
+type FieldInputComponent = (props: FieldInputProps) => ReactElement;
+
+const FIELD_INPUT_REGISTRY: Partial<Record<FieldInputProps['field']['fieldType'], FieldInputComponent>> = {
+  boolean: BooleanField,
+  rich_text: RichTextField,
+  textarea: TextAreaField,
+  select: SelectField,
+  multi_select: MultiSelectField,
+  media: MediaField,
+  reference: ReferenceField,
+};
+
+export function FieldInput(props: FieldInputProps) {
+  const Component = FIELD_INPUT_REGISTRY[props.field.fieldType] ?? PlainInputField;
+  return <Component {...props} />;
 }

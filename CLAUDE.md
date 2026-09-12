@@ -2252,3 +2252,58 @@ fixes are verified by direct code inspection plus the unit tests above, not by a
 `pnpm run setup`/`update -- --auth` round trip against real infrastructure, unlike this file's
 other entries for this tooling. Whoever next touches these scripts with real Cloudflare access
 should do that pass before relying on this changelog entry as proof it works end to end.
+
+**Schema-driven frontend / site builder — Phase 0 (planning) and Phase 1 (implementation)**
+(2026-09-12, on `develop`) — a large new initiative, tracked in its own `docs/SITE_BUILDER.md`
+rather than duplicated here in full: evolving Kenresoft CMS from API-first-headless into a
+platform that *also* supports schema-driven, no-developer-required page/content rendering
+(Pages, Blocks, Templates, dynamic routing, a frontend rendering SDK) alongside — never
+replacing — the existing headless capability. Phase 0 was a full repository audit against ten
+specific questions (content model, API structure, public caching, contracts patterns, the
+plugin platform, the Astro integration, navigation, admin UI patterns, RBAC, migrations) before
+any design work, producing a target architecture, entity model, phased plan, and three explicit
+open decisions rather than deciding them unilaterally. Those three were then resolved by direct
+instruction: Pages/Blocks/Templates/routing ship in **Core**, not a plugin (the existing plugin
+architecture is preserved and will later let plugins extend this system, not a second plugin
+architecture); v1 route patterns support **exactly one required `{slug}` parameter**
+(`/blog/{slug}`), deliberately no richer grammar yet; the **visual page builder is a committed,
+phased product requirement** — Phase 3 ships the Page/Block data model and a basic add/remove/
+reorder UI, Phase 8 later replaces only the editing UI (drag-and-drop, undo/redo, etc.) with no
+rewrite of the underlying data/rendering model.
+
+Phase 1 (field presentation metadata + a field-renderer registry) is done — the only phase
+implemented so far; Phases 2-10 (Pages, Blocks, Templates, routing, the visual builder itself)
+are not started. A new nullable `field_definitions.presentation` column (migration
+`0035_glorious_wendell_rand.sql`) is deliberately separate from `fieldType`/`required`/`config`
+— it affects only *display*, never validation or storage, and `presentation: null` (every
+existing field) renders exactly as before. `packages/contracts/schemas/field-definitions.ts`'s
+new `fieldPresentationSchema` is `.strict()` (string-only keys: `renderer, format, label,
+displayMode, variant, alignment`) so an unrecognized key 400s rather than being silently
+stored. `apps/admin/src/components/field-input.tsx`'s field-type `if/else if` dispatch became
+an explicit registry object — a behavior-preserving refactor, no admin UI was added to edit
+`presentation` (out of scope; no consumer needs it yet). The real new piece is
+`integrations/astro/src/render/field-renderers.ts` — `renderField()`/`resolveFieldRenderer()`/
+`registerFieldRenderer()`, resolving in strict precedence order (an explicit
+`presentation.renderer` name, if registered → the built-in default for the field's `fieldType`
+→ a safe text-stringifying fallback) and returning a closed display-shape union
+(`text/html/number/boolean/date/link/image/relation/list/empty`) rather than raw markup, so a
+template — not this package — decides how each kind renders. Security requirement verified
+directly by test: a renderer name is only ever a `Map` lookup key into already-compiled,
+developer-registered functions — never `eval`'d or dynamically imported — so an admin can never
+cause code execution via `presentation.renderer`, only a fallback to the default renderer.
+
+`integrations/astro` had no test infrastructure at all before this — rather than adding Vitest
+for one pure-logic module with no HTTP/DOM surface, it now uses Node's own
+`--experimental-strip-types --test` runner (17 tests), matching the existing `scripts/lib`
+pure-function-testing precedent elsewhere in this repo rather than inventing a new pattern.
+`apps/api/test/field-presentation.test.ts` (5 tests, real D1) covers omitted/null/round-trip/
+invalid-key-rejected/unaffected-by-unrelated-update. Verified beyond compilation: the full
+`pnpm typecheck`/`pnpm lint` pass across every touched package; the new and adjacent existing
+`apps/api` test files passing against real D1; `apps/admin`'s two touched fixtures
+(`field-input.test.tsx`, `generate-snippets.test.ts`) passing directly, with four unrelated
+admin test files' transient 5000ms timeouts under one full 32-file concurrent run confirmed to
+pass cleanly in isolation immediately after — this repo's own already-documented Windows/
+workerd resource-contention flakiness, not a regression; and `examples/astro-site`'s `astro
+check` (0 errors) plus a full `astro build` re-run clean, confirming the existing Astro example
+is completely unaffected. Per the phase-gate discipline `docs/SITE_BUILDER.md` itself sets:
+implementation stopped after Phase 1, pending explicit approval before Phase 2.
