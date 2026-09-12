@@ -136,3 +136,27 @@ export type SocialPlatform = (typeof SOCIAL_PLATFORMS)[number];
 export const WEBHOOK_EVENTS = ['entry.created', 'entry.updated', 'entry.published', 'entry.unpublished', 'entry.deleted'] as const;
 
 export type WebhookEvent = (typeof WEBHOOK_EVENTS)[number];
+
+// Phase 2 of the schema-driven frontend work (docs/SITE_BUILDER.md): a content type's
+// `routePattern` (e.g. "/blog/{slug}") lets a frontend's route resolver recognize a URL as
+// belonging to that content type without a hardcoded route. Its first literal path segment
+// may never be one of these — reserved for the CMS's own API surface (`api`) and a possible
+// future proxied admin path (`admin`); this is the same reserved-path convention §7/§11 of
+// docs/SITE_BUILDER.md documents for the later Pages feature, kept here since route patterns
+// are the first thing in this codebase that needs it.
+export const RESERVED_ROUTE_PREFIXES = ['api', 'admin'] as const;
+
+// Phase 3 of the schema-driven frontend work (docs/SITE_BUILDER.md §3.3/§5): a Page's
+// composition tree is built from a small, code-defined set of block types — never an
+// admin-definable type — so a block's *behavior* is always a trusted, developer-registered
+// component and only its *content* (config) is admin-authored (§7 security model). Matches
+// §5's example list without over-building. Extending this set (or letting a plugin contribute
+// one, §9) is additive later — never a breaking change to an existing page's stored blocks.
+export const BLOCK_TYPES = ['hero', 'richText', 'image', 'cta', 'columns', 'spacer'] as const;
+
+export type BlockType = (typeof BLOCK_TYPES)[number];
+
+// Only container-shaped block types may hold a `children` array (§3.3) — everything else is a
+// leaf. Checked at the API layer (blocks.ts's validateBlockTree) so an admin can never nest
+// content under a block type that has nowhere to render it.
+export const BLOCK_TYPES_ALLOWING_CHILDREN: readonly BlockType[] = ['columns'];

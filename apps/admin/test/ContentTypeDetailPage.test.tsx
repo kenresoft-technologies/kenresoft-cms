@@ -4,18 +4,20 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { ApiError } from '@/lib/api-client';
 import { ContentTypeDetailPage } from '@/pages/ContentTypeDetailPage';
 
-const { getMock, postMock } = vi.hoisted(() => ({
+const { getMock, postMock, patchMock } = vi.hoisted(() => ({
   getMock: vi.fn(),
   postMock: vi.fn(),
+  patchMock: vi.fn(),
 }));
 
 vi.mock('@/lib/api-client', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api-client')>('@/lib/api-client');
   return {
     ...actual,
-    apiClient: { ...actual.apiClient, get: getMock, post: postMock },
+    apiClient: { ...actual.apiClient, get: getMock, post: postMock, patch: patchMock },
   };
 });
 
@@ -42,6 +44,7 @@ describe('ContentTypeDetailPage', () => {
   beforeEach(() => {
     getMock.mockReset();
     postMock.mockReset();
+    patchMock.mockReset();
   });
 
   it('fetches the content type and its fields scoped by contentTypeId', async () => {
@@ -139,6 +142,64 @@ describe('ContentTypeDetailPage', () => {
         required: false,
         config: { options: ['open', 'closed'] },
       }),
+    );
+  });
+
+  it('edits a content type, including its route pattern, through the edit dialog', async () => {
+    getMock.mockImplementation((path: string) => {
+      if (path.endsWith('/fields')) return Promise.resolve([]);
+      return Promise.resolve({ id: 'ct-1', name: 'Blog Post', slug: 'blog-post', routePattern: null });
+    });
+    patchMock.mockResolvedValue({
+      id: 'ct-1',
+      name: 'Blog Post',
+      slug: 'blog-post',
+      routePattern: '/blog/{slug}',
+    });
+
+    renderPage();
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Blog Post' })).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    const dialog = screen.getByRole('dialog');
+    // userEvent.type interprets a bare "{" as special-key syntax (closing "}" alone is
+    // literal), so a real "{slug}" is typed as "{{slug}" — see testing-library/user-event's
+    // own docs on escaping curly braces.
+    await userEvent.type(within(dialog).getByLabelText('Route pattern'), '/blog/{{slug}');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save changes' }));
+
+    await waitFor(() =>
+      expect(patchMock).toHaveBeenCalledWith('/api/v1/admin/content-types/ct-1', {
+        name: 'Blog Post',
+        slug: 'blog-post',
+        description: null,
+        routePattern: '/blog/{slug}',
+      }),
+    );
+  });
+
+  it('surfaces the server-side collision error when saving a duplicate route pattern', async () => {
+    getMock.mockImplementation((path: string) => {
+      if (path.endsWith('/fields')) return Promise.resolve([]);
+      return Promise.resolve({ id: 'ct-1', name: 'Blog Post', slug: 'blog-post', routePattern: null });
+    });
+    patchMock.mockRejectedValue(
+      new ApiError(400, 'That route pattern is already used by another content type.'),
+    );
+
+    renderPage();
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Blog Post' })).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    const dialog = screen.getByRole('dialog');
+    // userEvent.type interprets a bare "{" as special-key syntax (closing "}" alone is
+    // literal), so a real "{slug}" is typed as "{{slug}" — see testing-library/user-event's
+    // own docs on escaping curly braces.
+    await userEvent.type(within(dialog).getByLabelText('Route pattern'), '/blog/{{slug}');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save changes' }));
+
+    await waitFor(() =>
+      expect(screen.getByText('That route pattern is already used by another content type.')).toBeInTheDocument(),
     );
   });
 });

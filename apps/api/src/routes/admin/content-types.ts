@@ -15,13 +15,16 @@ import { z } from 'zod';
 import { recordAudit } from '../../lib/audit';
 import { getDb } from '../../lib/db';
 import { createOpenApiApp } from '../../lib/openapi';
+import { invalidatePublicRoutePatternsCache } from '../../lib/public-cache';
 import { requireRole } from '../../middleware/require-role';
 import {
   createContentType,
   getContentTypeById,
+  getContentTypeByRoutePattern,
   listContentTypes,
   updateContentType,
 } from '../../repositories/content-types';
+import { findPageMatchingRoutePattern } from '../../repositories/pages';
 import {
   createFieldDefinition,
   deleteFieldDefinition,
@@ -45,6 +48,7 @@ function toContentType(row: DbContentType): ContentType {
     name: row.name,
     slug: row.slug,
     description: row.description,
+    routePattern: row.routePattern,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -60,6 +64,7 @@ function toFieldDefinition(row: DbFieldDefinition): FieldDefinition {
     required: row.required,
     sortOrder: row.sortOrder,
     config: row.config ?? null,
+    presentation: row.presentation ?? null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -103,14 +108,33 @@ contentTypesRoute.openapi(
         description: 'The created content type.',
         content: { 'application/json': { schema: contentTypeSchema } },
       },
+      400: {
+        description: 'The route pattern is already used by another content type.',
+        content: { 'application/json': { schema: notFoundSchema } },
+      },
     },
   }),
   async (c) => {
     const input = c.req.valid('json');
     const db = getDb(c);
+
+    if (input.routePattern) {
+      const collision = await getContentTypeByRoutePattern(db, input.routePattern);
+      if (collision) {
+        return c.json({ error: 'That route pattern is already used by another content type.' }, 400);
+      }
+      // §4.3/§16 (docs/SITE_BUILDER.md): the Pages-side half of the same collision check
+      // routes/admin/pages.ts performs in the other direction.
+      const conflictingPage = await findPageMatchingRoutePattern(db, input.routePattern);
+      if (conflictingPage) {
+        return c.json({ error: `That route pattern is already claimed by the page at "${conflictingPage.route}".` }, 400);
+      }
+    }
+
     const contentType = await createContentType(db, {
       ...input,
       description: input.description ?? null,
+      routePattern: input.routePattern ?? null,
     });
     await recordAudit(db, {
       actorUserId: c.get('user').id,
@@ -119,6 +143,9 @@ contentTypesRoute.openapi(
       targetId: contentType.id,
       metadata: { name: contentType.name, slug: contentType.slug },
     });
+    if (contentType.routePattern) {
+      await invalidatePublicRoutePatternsCache();
+    }
     return c.json(toContentType(contentType), 201);
   },
 );
@@ -172,6 +199,10 @@ contentTypesRoute.openapi(
         description: 'The updated content type.',
         content: { 'application/json': { schema: contentTypeSchema } },
       },
+      400: {
+        description: 'The route pattern is already used by another content type.',
+        content: { 'application/json': { schema: notFoundSchema } },
+      },
       404: {
         description: 'No content type with that id.',
         content: { 'application/json': { schema: notFoundSchema } },
@@ -187,6 +218,17 @@ contentTypesRoute.openapi(
     }
 
     const input = c.req.valid('json');
+    if (input.routePattern && input.routePattern !== existing.routePattern) {
+      const collision = await getContentTypeByRoutePattern(db, input.routePattern);
+      if (collision && collision.id !== id) {
+        return c.json({ error: 'That route pattern is already used by another content type.' }, 400);
+      }
+      const conflictingPage = await findPageMatchingRoutePattern(db, input.routePattern);
+      if (conflictingPage) {
+        return c.json({ error: `That route pattern is already claimed by the page at "${conflictingPage.route}".` }, 400);
+      }
+    }
+
     const updated = await updateContentType(db, id, input);
     await recordAudit(db, {
       actorUserId: c.get('user').id,
@@ -195,6 +237,9 @@ contentTypesRoute.openapi(
       targetId: id,
       metadata: { ...input },
     });
+    if ('routePattern' in input && input.routePattern !== existing.routePattern) {
+      await invalidatePublicRoutePatternsCache();
+    }
     return c.json(toContentType(updated!), 200);
   },
 );

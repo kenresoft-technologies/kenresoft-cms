@@ -256,11 +256,13 @@ function EditContentTypeDialog({
   name,
   slug,
   description,
+  routePattern,
 }: {
   contentTypeId: string;
   name: string;
   slug: string;
   description: string | null;
+  routePattern: string | null;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -286,6 +288,7 @@ function EditContentTypeDialog({
             name={name}
             slug={slug}
             description={description}
+            routePattern={routePattern}
             onDone={() => setOpen(false)}
           />
         ) : null}
@@ -302,17 +305,20 @@ function ContentTypeForm({
   name,
   slug,
   description,
+  routePattern,
   onDone,
 }: {
   contentTypeId: string;
   name: string;
   slug: string;
   description: string | null;
+  routePattern: string | null;
   onDone: () => void;
 }) {
   const [nameValue, setNameValue] = useState(name);
   const [slugValue, setSlugValue] = useState(slug);
   const [descriptionValue, setDescriptionValue] = useState(description ?? '');
+  const [routePatternValue, setRoutePatternValue] = useState(routePattern ?? '');
   const [error, setError] = useState<string | null>(null);
   const updateContentType = useUpdateContentType(contentTypeId);
 
@@ -324,6 +330,7 @@ function ContentTypeForm({
         name: nameValue,
         slug: slugValue,
         description: descriptionValue || null,
+        routePattern: routePatternValue.trim() || null,
       });
       toast.success('Content type updated');
       onDone();
@@ -351,6 +358,21 @@ function ContentTypeForm({
           value={descriptionValue}
           onChange={(e) => setDescriptionValue(e.target.value)}
         />
+      </div>
+      <div className="flex flex-col gap-2">
+        <Label htmlFor="content-type-edit-route-pattern">Route pattern</Label>
+        <Input
+          id="content-type-edit-route-pattern"
+          placeholder="/blog/{slug}"
+          value={routePatternValue}
+          onChange={(e) => setRoutePatternValue(e.target.value)}
+        />
+        <p className="text-xs text-muted-foreground">
+          Optional. Lets a frontend resolve a URL like "/blog/my-post" to an entry of this
+          content type without a developer wiring a specific route for it. Leave blank if this
+          content type isn't addressed by its own URL. Must end with exactly one "{'{slug}'}"
+          parameter, e.g. "/blog/{'{slug}'}".
+        </p>
       </div>
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
       <DialogFooter>
@@ -511,6 +533,7 @@ export function ContentTypeDetailPage() {
                 name={contentType.name}
                 slug={contentType.slug}
                 description={contentType.description}
+                routePattern={contentType.routePattern}
               />
             ) : null}
             {canManageFields && contentTypeId ? (

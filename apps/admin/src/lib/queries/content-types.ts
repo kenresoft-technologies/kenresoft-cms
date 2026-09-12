@@ -24,7 +24,7 @@ export function useCreateContentType() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (input: { name: string; slug: string; description?: string | null }) =>
+    mutationFn: (input: { name: string; slug: string; description?: string | null; routePattern?: string | null }) =>
       apiClient.post<ContentType>('/api/v1/admin/content-types', input),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: contentTypesKey });
@@ -36,7 +36,7 @@ export function useUpdateContentType(contentTypeId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (input: { name?: string; slug?: string; description?: string | null }) =>
+    mutationFn: (input: { name?: string; slug?: string; description?: string | null; routePattern?: string | null }) =>
       apiClient.patch<ContentType>(`/api/v1/admin/content-types/${contentTypeId}`, input),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: contentTypesKey });

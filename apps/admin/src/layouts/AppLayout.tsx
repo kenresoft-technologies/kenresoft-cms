@@ -6,6 +6,7 @@ import {
   Inbox,
   LayoutDashboard,
   LayoutList,
+  LayoutTemplate,
   LogOut,
   Puzzle,
   ScrollText,
@@ -57,6 +58,7 @@ const overviewItems = [{ to: '/', label: 'Dashboard', end: true, icon: LayoutDas
 const contentItems = [
   { to: '/content-types', label: 'Content types', end: false, icon: LayoutList },
   { to: '/entries', label: 'Entries', end: false, icon: FileText },
+  { to: '/pages', label: 'Pages', end: false, icon: LayoutTemplate },
   { to: '/global-variables', label: 'Global variables', end: false, icon: Variable },
 ];
 

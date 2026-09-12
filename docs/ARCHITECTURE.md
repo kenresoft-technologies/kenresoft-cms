@@ -7,6 +7,33 @@ Status: Proposed / Ready for implementation
 
 ## Changelog
 
+**v0.16 (2026-09-12)** — Phase 3 of the schema-driven frontend/site-builder initiative
+(`docs/SITE_BUILDER.md`): the `pages`/`page_revisions` tables (§6.5), admin Pages CRUD with
+revision history/restore, a small code-defined built-in block set (Hero, RichText, Image, CTA,
+Columns, Spacer) with per-type config validation, a basic add/remove/reorder block-composition
+editor (buttons, not drag-and-drop — Phase 8), the public `GET /api/v1/public/pages`/`GET
+/api/v1/public/pages/by-route` routes (same draft-is-nonexistent convention as Entries), and
+route-collision checks in both directions between Pages and content-type route patterns.
+Additive/backward-compatible only — no Templates, Reusable Blocks, Page preview, or a wired-up
+Astro rendering side yet; see `docs/SITE_BUILDER.md` §19 for the full implementation record and
+remaining phases.
+
+**v0.15 (2026-09-12)** — Phase 2 of the schema-driven frontend/site-builder initiative
+(`docs/SITE_BUILDER.md`): a nullable `content_types.routePattern` column (§6.4) supporting
+exactly one required `{slug}` parameter (e.g. `/blog/{slug}`), a new deliberately narrow
+public endpoint `GET /api/v1/public/route-patterns`, and `resolveRoute()`/`matchRoutePattern()`
+in `@kenresoft-cms/astro` (`integrations/astro/src/render/resolve-route.ts`). Additive/
+backward-compatible only — still no Pages, Blocks, Templates, or a wired-up generic Astro
+catch-all route; see `docs/SITE_BUILDER.md` for the full plan and remaining phases.
+
+**v0.14 (2026-09-12)** — Phase 1 of the schema-driven frontend/site-builder initiative
+(`docs/SITE_BUILDER.md`): a nullable `field_definitions.presentation` column (§6.3) and a
+read-only field-renderer registry in `@kenresoft-cms/astro`
+(`integrations/astro/src/render/field-renderers.ts`), plus a light refactor of
+`apps/admin/src/components/field-input.tsx`'s field-type dispatch into an explicit registry
+object (no behavior change). Additive/backward-compatible only — no Pages, Blocks, Templates,
+or dynamic routing yet; see `docs/SITE_BUILDER.md` for the full plan and remaining phases.
+
 **v0.13 (2026-09-10)** — Closes a real security gap: a staff account created via
 `Admin → Users → Add user` (or via public self-signup) could sign in with its temporary/chosen
 password without ever proving ownership of the email address — `user.emailVerified` existed in
@@ -600,6 +627,137 @@ one for a given value is the mistake this section exists to prevent:
 A value migrating from Global Variables into a new Structured Settings module (as `contact`/
 `social`/`footer` did, §16) is expected as the CMS's schema-worthy configuration surface grows —
 Global Variables remains the correct home for anything that never earns a stable schema.
+
+### 6.3 Field presentation metadata (schema-driven frontend, Phase 1)
+
+**Status: implemented.** `field_definitions` has a nullable `presentation` JSON column
+(migration `0035_glorious_wendell_rand.sql`), deliberately kept separate from `fieldType`,
+`required`, and `config` — those three describe the field's *data shape and validation*;
+`presentation` describes only how a value is *displayed*, and is never consulted by
+validation, storage, or the admin field-editing form itself. A field with `presentation:
+null` (every field created before this change, and any created without setting it) renders
+exactly as it always has.
+
+`presentation` is an optional object of plain strings (`renderer`, `format`, `label`,
+`displayMode`, `variant`, `alignment`), validated by `fieldPresentationSchema`
+(`packages/contracts/schemas/field-definitions.ts`) with `.strict()` so an unrecognized key is
+rejected at write time rather than silently ignored. `renderer` is the one field a frontend
+consults today: `@kenresoft-cms/astro`'s `resolveFieldRenderer()` (`integrations/astro/src/
+render/field-renderers.ts`) resolves it, in order, against (1) a developer-registered
+renderer under that name, (2) the built-in default renderer for the field's `fieldType`, then
+(3) a safe stringifying fallback — never code execution: a renderer name is only ever a `Map`
+lookup key into a registry of already-compiled, developer-registered functions, so an admin
+entering an arbitrary string as `presentation.renderer` can at most cause a fallback to the
+default renderer, never arbitrary behavior. See `docs/ASTRO.md`'s "Field rendering (Phase 1)"
+section for the full renderer API and precedence rules.
+
+This is Phase 1 of the larger schema-driven-frontend/site-builder initiative tracked in
+`docs/SITE_BUILDER.md` — that document is the architecture plan for Pages, Blocks, Templates,
+and dynamic routing; **none of those exist yet**. Phase 1 only establishes the field-level
+renderer-registry foundation those later phases will build on. There is not yet a public API
+endpoint exposing a content type's field definitions (including `presentation`) to a
+frontend — `docs/ASTRO.md`'s Known limitations already flags the absence of a public content-
+type-metadata endpoint; this phase doesn't change that, it only makes the renderer registry
+itself ready to consume field descriptors once such an endpoint (or a future Page/Block
+system) supplies them.
+
+### 6.4 Dynamic content routing (schema-driven frontend, Phase 2)
+
+**Status: implemented.** A content type can declare a nullable `routePattern` column (e.g.
+`/blog/{slug}`, migration `0036_right_stardust.sql`) so a frontend's route resolver can
+recognize a URL as belonging to that content type without a developer hardcoding a route for
+it. V1 supports **exactly one required `{slug}` parameter and nothing richer** — no multiple
+parameters, optional segments, wildcards, regex, or localization segments (a deliberate,
+resolved decision, `docs/SITE_BUILDER.md` §14 decision #2) — validated by
+`routePatternSchema` (`packages/contracts/schemas/routing.ts`): leading slash, lowercase
+alphanumeric-and-hyphen literal segments only, `{slug}` as the pattern's final segment
+(satisfying "no trailing slash" by construction), no reserved first segment
+(`RESERVED_ROUTE_PREFIXES`: `api`, `admin`), and no duplicate pattern across content types
+(enforced both at the API layer, for a clear 400, and by a DB unique index as defense-in-
+depth — a unique index over a nullable column allows any number of `NULL`s, so content types
+with no route of their own never collide with each other).
+
+A new, deliberately narrow public endpoint, `GET /api/v1/public/route-patterns`, exposes only
+`{contentTypeSlug, routePattern}` pairs — **this is explicitly not the "public content-type
+metadata" endpoint** flagged as an unresolved product decision in `docs/ASTRO.md`'s Known
+limitations (that question is about exposing a content type's *field definitions*, which
+would reveal internal content-modeling structure; a route pattern reveals only a URL shape a
+visitor could already discover by requesting the page). Edge-cached and invalidated the same
+way `global-variables` is (`invalidatePublicRoutePatternsCache()`,
+`apps/api/src/lib/public-cache.ts`).
+
+`@kenresoft-cms/astro`'s `resolveRoute(pathname, patterns)`/`matchRoutePattern(pattern,
+pathname)` (`integrations/astro/src/render/resolve-route.ts`) are pure functions — given the
+patterns from `client.routePatterns.list()`, they resolve a pathname to
+`{kind: 'entry', contentTypeSlug, slug}` or `{kind: 'notFound'}`. The result type is a
+discriminated union specifically so a `page` variant can be added later (Phase 3+) without
+breaking existing callers. Resolution is deterministic regardless of pattern array order,
+since the server-side uniqueness constraint above guarantees at most one pattern can ever
+match a given pathname.
+
+**What this does not do yet**: no Pages exist (Phase 3+, not started), and `examples/astro-
+site` has not been wired to use `resolveRoute()` — the SDK primitive is built and unit-tested
+(`integrations/astro/test/resolve-route.test.ts`) as a foundation, the same scope discipline
+Phase 1 applied to `renderField()`. See `docs/SITE_BUILDER.md` §17 for the full Phase 2
+implementation record.
+
+### 6.5 Pages and Blocks (schema-driven frontend, Phase 3)
+
+**Status: implemented (data model, admin, public API) — not yet rendered by a frontend.** A
+Page (`pages` table) is a routed, block-composed unit distinct from Entries: `route` (a literal
+path like `/about` or `/services/design` — no `{slug}` parameter, unlike a content type's
+`routePattern`), `title`, `status`/`publishAt` (reusing `ENTRY_STATUSES` and the existing
+scheduled-publish sweep verbatim), a `blocks` JSON tree, and an optional page-scoped `seo`
+override. `page_revisions` is a structural mirror of `entry_revisions` — every write snapshots
+the pre-write state first, so restore is always available (`GET`/`POST .../revisions/
+{id}/restore`).
+
+**Blocks are code-defined, not admin-definable** (`packages/contracts/schemas/blocks.ts`,
+`BLOCK_TYPES`: `hero`, `richText`, `image`, `cta`, `columns`, `spacer`) — an admin can configure
+an *instance* of a registered block type, never introduce a new one, which is the direct answer
+to "a block's behavior is trusted code, its content is admin-authored data" (mirrors the same
+trust boundary rich-text's `dangerouslySetInnerHTML`/`set:html` already establishes). Each
+block type has its own Zod config schema, validated server-side (`validateBlockTree()`) in
+addition to the envelope shape `blockInstanceSchema` checks. The tree is deliberately **capped
+at two tiers** (a block, and that block's own non-nesting children) rather than a true
+recursive structure — `@hono/zod-openapi`'s document generator cannot serialize a
+self-referential `z.lazy()` schema from a plain (non-`@hono/zod-openapi`) zod instance without
+infinitely expanding it, confirmed empirically when the OpenAPI doc route crashed outright with
+the first, fully-recursive version of this schema. Only `columns` (§ container block types)
+carries `children`; every other built-in type is a leaf. This is a scope narrowing forced by a
+real tooling constraint, not a design preference — revisit if a future block type genuinely
+needs deeper nesting.
+
+**Route-collision checks run in both directions** at write time: creating/renaming a Page
+checks every content type's `routePattern` for a shape match against the literal route
+(`doesRoutePatternMatchLiteralRoute()`, `packages/contracts/schemas/routing.ts` — segment
+counts must match, with `{slug}` matching any literal segment), and setting a content type's
+`routePattern` checks every existing Page's route the same way. Either direction 400s on a
+match, keeping route resolution deterministic once a frontend needs to choose between "is this
+a Page or a content-type entry" (Phase 7).
+
+Admin routes (`/api/v1/admin/pages`) are gated `admin`/`editor` — the same floor as content-type
+field management, since a Page's composition is closer to structure than day-to-day entry
+editing. Public routes (`GET /api/v1/public/pages` — id/route/title only, never the full block
+tree; `GET /api/v1/public/pages/by-route?route=...` — a query param, not a path param, since a
+route can contain slashes that would otherwise compete with the content-type catch-all's own
+wildcard) reuse the exact draft-is-nonexistent 404 convention `routes/public/content.ts`
+established, edge-cached and invalidated (`invalidatePublicPageCache()`,
+`apps/api/src/lib/public-cache.ts`) the same way.
+
+The admin editor (`apps/admin/src/pages/PageEditorPage.tsx`,
+`apps/admin/src/pages/blocks/BlockTreeEditor.tsx`) is deliberately a structured add/remove/
+reorder UI (buttons, not drag-and-drop) — `docs/SITE_BUILDER.md` §14 decision #3 commits to a
+drag-and-drop canvas as a later, separate phase (Phase 8) that replaces only this editing UI,
+never the underlying block-tree data model or rendering architecture.
+
+**What this does not do yet**: no Templates or Reusable Blocks (Phase 4), no Page preview
+(Phase 5, though `preview-token.ts` is already resource-agnostic and needs no change to
+support it), no Navigation `pageId` reference (Phase 6), and no `@kenresoft-cms/astro`
+`<PageRenderer>`/`registerBlockRenderer()` or `examples/astro-site` catch-all route (Phase 7) —
+a Page can be created and composed in the admin UI and fetched via the public API, but nothing
+renders it as an actual web page yet. See `docs/SITE_BUILDER.md` §19 for the full Phase 3
+implementation record.
 
 ### 6.1 Initial content field types
 

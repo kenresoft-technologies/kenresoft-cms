@@ -6,7 +6,7 @@ export async function createFieldDefinition(
   db: Database,
   input: Pick<
     NewFieldDefinition,
-    'contentTypeId' | 'name' | 'label' | 'fieldType' | 'required' | 'sortOrder' | 'config'
+    'contentTypeId' | 'name' | 'label' | 'fieldType' | 'required' | 'sortOrder' | 'config' | 'presentation'
   >,
 ): Promise<FieldDefinition> {
   const [field] = await db.insert(fieldDefinitions).values(input).returning();

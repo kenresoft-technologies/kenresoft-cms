@@ -14,6 +14,7 @@ import { dispatchWebhookEvent, retryFailedWebhookDeliveries } from './lib/webhoo
 import { mountPlugins } from './plugins/mount';
 import { getContentTypeById } from './repositories/content-types';
 import { publishDueEntries } from './repositories/entries';
+import { publishDuePages } from './repositories/pages';
 import { auditLogRoute } from './routes/admin/audit-log';
 import { cacheRoute } from './routes/admin/cache';
 import { contentTypesRoute } from './routes/admin/content-types';
@@ -22,6 +23,7 @@ import { entriesRoute } from './routes/admin/entries';
 import { formsRoute } from './routes/admin/forms';
 import { globalVariablesRoute } from './routes/admin/global-variables';
 import { mediaRoute } from './routes/admin/media';
+import { pagesRoute } from './routes/admin/pages';
 import { pluginsRoute } from './routes/admin/plugins';
 import { securityRoute } from './routes/admin/security';
 import { settingsRoute } from './routes/admin/settings';
@@ -34,9 +36,11 @@ import { publicContentRoute } from './routes/public/content';
 import { publicFormsRoute } from './routes/public/forms';
 import { publicGlobalVariablesRoute } from './routes/public/global-variables';
 import { publicMediaRoute } from './routes/public/media';
+import { publicPagesRoute } from './routes/public/pages';
 import { publicPasswordResetRoute } from './routes/public/password-reset';
 import { publicPreviewRoute } from './routes/public/preview';
 import { publicRecoveryRoute } from './routes/public/recovery';
+import { publicRoutePatternsRoute } from './routes/public/route-patterns';
 import { publicStructuredSettingsRoute } from './routes/public/structured-settings';
 import { systemRoute } from './routes/system/recover-owner';
 import type { Bindings } from './lib/env';
@@ -66,6 +70,8 @@ app.route('/api/v1/public/password-reset', publicPasswordResetRoute);
 app.route('/api/v1/public/recovery', publicRecoveryRoute);
 app.route('/api/v1/public/preview', publicPreviewRoute);
 app.route('/api/v1/public/settings', publicStructuredSettingsRoute);
+app.route('/api/v1/public/route-patterns', publicRoutePatternsRoute);
+app.route('/api/v1/public/pages', publicPagesRoute);
 app.route('/api/v1/public', publicContentRoute);
 
 // Not under /admin (unauthenticated by design) or /public (not a normal content route) —
@@ -80,6 +86,7 @@ app.route('/api/v1/admin/audit-log', auditLogRoute);
 app.route('/api/v1/admin/cache', cacheRoute);
 app.route('/api/v1/admin/content-types', contentTypesRoute);
 app.route('/api/v1/admin/entries', entriesRoute);
+app.route('/api/v1/admin/pages', pagesRoute);
 app.route('/api/v1/admin/media', mediaRoute);
 app.route('/api/v1/admin/forms', formsRoute);
 app.route('/api/v1/admin/global-variables', globalVariablesRoute);
@@ -162,6 +169,16 @@ export default {
             slug: entry.slug,
             status: entry.status,
           });
+        }
+        // Pages reuse this same sweep verbatim (docs/SITE_BUILDER.md §3.1/§13) — a due draft
+        // Page transitions to published on the same cadence as a due draft Entry.
+        const publishedPages = await publishDuePages(db);
+        if (publishedPages.length > 0) {
+          const pagePaths = new Set<string>(['/api/v1/public/pages']);
+          for (const page of publishedPages) {
+            pagePaths.add(`/api/v1/public/pages/by-route?route=${encodeURIComponent(page.route)}`);
+          }
+          await enqueueCachePurgePaths(db, Array.from(pagePaths));
         }
         // Continues whichever cache-purge job has been waiting longest — a manual "Purge
         // Cache" click, a bulk import, or the enqueue just above, whichever is oldest — one

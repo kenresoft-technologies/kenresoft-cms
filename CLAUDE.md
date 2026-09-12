@@ -2252,3 +2252,163 @@ fixes are verified by direct code inspection plus the unit tests above, not by a
 `pnpm run setup`/`update -- --auth` round trip against real infrastructure, unlike this file's
 other entries for this tooling. Whoever next touches these scripts with real Cloudflare access
 should do that pass before relying on this changelog entry as proof it works end to end.
+
+**Schema-driven frontend / site builder — Phase 0 (planning) and Phase 1 (implementation)**
+(2026-09-12, on `develop`) — a large new initiative, tracked in its own `docs/SITE_BUILDER.md`
+rather than duplicated here in full: evolving Kenresoft CMS from API-first-headless into a
+platform that *also* supports schema-driven, no-developer-required page/content rendering
+(Pages, Blocks, Templates, dynamic routing, a frontend rendering SDK) alongside — never
+replacing — the existing headless capability. Phase 0 was a full repository audit against ten
+specific questions (content model, API structure, public caching, contracts patterns, the
+plugin platform, the Astro integration, navigation, admin UI patterns, RBAC, migrations) before
+any design work, producing a target architecture, entity model, phased plan, and three explicit
+open decisions rather than deciding them unilaterally. Those three were then resolved by direct
+instruction: Pages/Blocks/Templates/routing ship in **Core**, not a plugin (the existing plugin
+architecture is preserved and will later let plugins extend this system, not a second plugin
+architecture); v1 route patterns support **exactly one required `{slug}` parameter**
+(`/blog/{slug}`), deliberately no richer grammar yet; the **visual page builder is a committed,
+phased product requirement** — Phase 3 ships the Page/Block data model and a basic add/remove/
+reorder UI, Phase 8 later replaces only the editing UI (drag-and-drop, undo/redo, etc.) with no
+rewrite of the underlying data/rendering model.
+
+Phase 1 (field presentation metadata + a field-renderer registry) is done — the only phase
+implemented so far; Phases 2-10 (Pages, Blocks, Templates, routing, the visual builder itself)
+are not started. A new nullable `field_definitions.presentation` column (migration
+`0035_glorious_wendell_rand.sql`) is deliberately separate from `fieldType`/`required`/`config`
+— it affects only *display*, never validation or storage, and `presentation: null` (every
+existing field) renders exactly as before. `packages/contracts/schemas/field-definitions.ts`'s
+new `fieldPresentationSchema` is `.strict()` (string-only keys: `renderer, format, label,
+displayMode, variant, alignment`) so an unrecognized key 400s rather than being silently
+stored. `apps/admin/src/components/field-input.tsx`'s field-type `if/else if` dispatch became
+an explicit registry object — a behavior-preserving refactor, no admin UI was added to edit
+`presentation` (out of scope; no consumer needs it yet). The real new piece is
+`integrations/astro/src/render/field-renderers.ts` — `renderField()`/`resolveFieldRenderer()`/
+`registerFieldRenderer()`, resolving in strict precedence order (an explicit
+`presentation.renderer` name, if registered → the built-in default for the field's `fieldType`
+→ a safe text-stringifying fallback) and returning a closed display-shape union
+(`text/html/number/boolean/date/link/image/relation/list/empty`) rather than raw markup, so a
+template — not this package — decides how each kind renders. Security requirement verified
+directly by test: a renderer name is only ever a `Map` lookup key into already-compiled,
+developer-registered functions — never `eval`'d or dynamically imported — so an admin can never
+cause code execution via `presentation.renderer`, only a fallback to the default renderer.
+
+`integrations/astro` had no test infrastructure at all before this — rather than adding Vitest
+for one pure-logic module with no HTTP/DOM surface, it now uses Node's own
+`--experimental-strip-types --test` runner (17 tests), matching the existing `scripts/lib`
+pure-function-testing precedent elsewhere in this repo rather than inventing a new pattern.
+`apps/api/test/field-presentation.test.ts` (5 tests, real D1) covers omitted/null/round-trip/
+invalid-key-rejected/unaffected-by-unrelated-update. Verified beyond compilation: the full
+`pnpm typecheck`/`pnpm lint` pass across every touched package; the new and adjacent existing
+`apps/api` test files passing against real D1; `apps/admin`'s two touched fixtures
+(`field-input.test.tsx`, `generate-snippets.test.ts`) passing directly, with four unrelated
+admin test files' transient 5000ms timeouts under one full 32-file concurrent run confirmed to
+pass cleanly in isolation immediately after — this repo's own already-documented Windows/
+workerd resource-contention flakiness, not a regression; and `examples/astro-site`'s `astro
+check` (0 errors) plus a full `astro build` re-run clean, confirming the existing Astro example
+is completely unaffected. Per the phase-gate discipline `docs/SITE_BUILDER.md` itself sets:
+implementation stopped after Phase 1, pending explicit approval before Phase 2.
+
+**Site builder Phase 2: dynamic content routing** (2026-09-12, on `develop`, approved
+immediately after Phase 1's report) — done: content-type `routePattern` (exactly one required
+`{slug}` parameter, per `docs/SITE_BUILDER.md` §14 decision #2 — no multi-param/optional/
+wildcard/regex grammar in v1) plus `resolveRoute()`/`matchRoutePattern()` in
+`@kenresoft-cms/astro`. A new nullable `content_types.routePattern` column (migration
+`0036_right_stardust.sql`) with a unique index (nullable-safe — any number of `NULL`s allowed,
+only non-null values enforced unique) backs `routePatternSchema`
+(`packages/contracts/schemas/routing.ts`: leading slash, lowercase-hyphenated literal
+segments, `{slug}` as the mandatory final segment, rejecting the new `RESERVED_ROUTE_PREFIXES`
+— `api`, `admin`). `apps/api/src/routes/admin/content-types.ts`'s create/update both 400 on a
+route-pattern collision (with a same-value exception on update, so re-saving a content type's
+own unchanged pattern never false-positives) and invalidate a new, deliberately narrow public
+endpoint, `GET /api/v1/public/route-patterns` (`{contentTypeSlug, routePattern}` pairs only —
+explicitly NOT the still-unresolved "public content-type metadata" question `docs/ASTRO.md`
+already flags, since a route pattern discloses a URL shape a visitor could already discover,
+not a field list). `integrations/astro/src/render/resolve-route.ts` (new) exposes
+`resolveRoute(pathname, patterns)` → `{kind:'entry', contentTypeSlug, slug} | {kind:'notFound'}`
+(a discriminated union deliberately left room to grow a `page` variant once Pages exist) and
+`matchRoutePattern()`, both pure/unit-tested (13 tests), plus a new `client.routePatterns.
+list()`. `apps/admin`'s existing content-type edit dialog gained the one piece of UI this
+phase actually needed (a "Route pattern" text input) — without it there'd be no way to set a
+pattern short of a raw API call, unlike Phase 1's `presentation` metadata which had no such
+gap yet.
+
+A real test-infrastructure bug was found and fixed while writing this phase's own tests, not
+hypothetical: an initial draft of `apps/api/test/content-type-route-pattern.test.ts` shared
+one signed-up admin session across many `it()` blocks (first via `beforeAll`, then via a
+module-scoped memoized cookie) specifically to stay under `AUTH_RATE_LIMITER`'s 10 POST/60s
+budget across the file's ~18 needed sign-ups — it passed when a single test ran alone but
+hung or produced spurious 401s the moment more than one test ran together. Root-caused by
+bisecting with `-t` filters (never guessed): `@cloudflare/vitest-pool-workers`' default
+`isolatedStorage: true` resets D1 — including the `session`/`user` tables — to a fresh
+snapshot **between every individual `it()`**, not merely between files, while the rate
+limiter's own binding state was separately confirmed to persist file-wide regardless — so a
+cookie obtained in one test's body is already invalid by the next test, no matter how it's
+memoized. Fixed by consolidating each collision/validation scenario group into one `it()`
+that signs up exactly once and runs several assertions sequentially within that single test's
+body (D1 state is shared across requests *within* one test) — 5 sign-ups (10 POSTs) for the
+whole file instead of ~18, with no cross-test state assumption anywhere. This generalizes a
+lesson beyond this one file: every prior `commerce-customer-*` test file already avoided this
+trap by never sharing a session across `it()` blocks, but the *why* — per-test isolated
+storage, not just "fresh state is tidier" — hadn't been written down anywhere in this codebase
+before; recorded here and in `docs/SITE_BUILDER.md` §18 so it doesn't have to be rediscovered
+by bisection again.
+
+Verified: `pnpm typecheck`/`pnpm lint` clean across `packages/contracts`, `packages/database`,
+`apps/api`, `apps/admin`, `integrations/astro`; all new tests passing for real (6 API + 13 SDK
++ 2 admin), plus a regression batch of the pre-existing content-type-adjacent suites
+(`admin-routes`, `public-routes`, `audit-log`, `role-permissions`, `repositories`,
+`dashboard-routes`, `entries-export-import`, `field-presentation`, `field-reorder`) and the
+touched admin fixtures, all re-run clean. No breaking changes: every existing public/admin API
+response shape is unchanged except one new nullable field (`routePattern`) on `ContentType`; a
+deployment that never sets a route pattern sees zero behavior change anywhere. Per the same
+phase-gate discipline as Phase 1: stopped after Phase 2, pending explicit approval before
+Phase 3 (the `pages`/`page_revisions` tables and the rest of the Page/Block system).
+
+**Site builder Phase 3: Pages, Blocks, admin composition editor** (2026-09-12, on `develop`,
+approved immediately after Phase 2's report) — done: the `pages`/`page_revisions` data model,
+admin Pages CRUD with revision history/restore, a small code-defined built-in block set (Hero,
+RichText, Image, CTA, Columns, Spacer) with per-type Zod config validation, a basic add/remove/
+reorder block-composition editor (buttons, not drag-and-drop — Phase 8), the public
+`GET /api/v1/public/pages`/`GET /api/v1/public/pages/by-route` routes reusing the exact
+draft-is-nonexistent 404 convention, and route-collision checks in both directions between
+Pages and content-type route patterns. Migration `0037_curly_lucky_pierre.sql` adds the two new
+tables only — no existing table or column touched. Deliberately **no `templateId` column on
+`pages` yet** (Templates don't exist until Phase 4; that FK is itself a trivial additive
+migration then) and **no Astro rendering** — a Page can be created/composed in the admin UI and
+fetched via the public API, but nothing renders it as an actual page yet (Phase 7).
+
+A real, non-hypothetical bug found and fixed during implementation, not just written up
+after the fact: the first draft of `blockInstanceSchema` used a self-referential `z.lazy()` for
+true recursive nesting, which crashed `GET /api/v1/openapi.json` outright with an opaque empty
+500 — root-caused (not guessed) by temporarily wiring a debug `app.onError()` handler, which
+still returned nothing until traced to `@hono/zod-openapi`'s document generator being unable to
+serialize a self-referential schema from a plain (non-`@hono/zod-openapi`) zod instance without
+infinitely expanding it. Fixed by capping the block tree at exactly two tiers (a block, and
+that block's own non-nesting children) instead of true recursion — every built-in block type
+this phase ships only ever needs one level of nesting (`columns` holding simple children), so
+no real product capability was lost; documented in `docs/SITE_BUILDER.md` §19 as a scope
+narrowing forced by a concrete tooling constraint, not a design preference, revisitable if a
+future block type needs deeper nesting. Two more real issues surfaced by lint (not
+compilation), both fixed rather than suppressed: `BlockTreeEditor`'s field-id generation used
+`Math.random()` directly during render (React Compiler's purity rule) — switched to `useId()`;
+and `PageEditorPage`'s first draft synced a loaded Page into local form state via `useEffect` +
+`setState` (React Compiler's cascading-render rule) — fixed by splitting into an outer
+loading-gate component and an inner form component that initializes state once via `useState`'s
+lazy form, the same pattern `EntryEditorPage.tsx`'s own `EntryForm` already established for
+exactly this reason.
+
+Verified: `pnpm typecheck`/`pnpm lint` clean across `packages/contracts`, `packages/database`,
+`apps/api`, `apps/admin`; all new tests passing for real (5 API + 9 admin), plus a broad
+regression sweep of 26 pre-existing `apps/api` test files (content-type-route-pattern,
+entries-export-import, audit-log, admin-routes, public-routes, health, api-docs-gate, scheduled
+— which now also exercises the new `publishDuePages()` cron path — cache-purge, cache-routes,
+public-cache, public-content-rate-limit, public-media-routes, field-reorder, repositories,
+role-permissions, forms-routes, global-variables-routes, media-routes, settings-routes,
+structured-settings-routes/-public/-legacy-migration, webhooks-routes, users-routes,
+plugin-registry, live-preview, auth-rate-limit) and the full `apps/admin` suite, all re-run
+clean (two pre-existing admin files hit this project's own already-documented transient-timeout
+flakiness under one full concurrent run, confirmed non-regression by passing cleanly alone).
+No breaking changes: every existing API response shape is unchanged, and a deployment that
+never creates a Page sees zero behavior change anywhere. Per the same phase-gate discipline as
+Phases 1-2: stopped after Phase 3, pending explicit approval before Phase 4 (`reusable_blocks`/
+`templates` tables + admin UI, Page creation from a template).

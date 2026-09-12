@@ -12,6 +12,8 @@
 // sidesteps that entirely — confirmed by grepping the built bundle for ZodError/ZodObject/
 // ZodType before and after (present via the barrel, absent via this direct path).
 export {
+  BLOCK_TYPES,
+  BLOCK_TYPES_ALLOWING_CHILDREN,
   ENTRY_STATUSES,
   FIELD_TYPES,
   FORM_FIELD_TYPES,
@@ -31,6 +33,9 @@ export {
 export type {
   AdminUser,
   AuditLogEntryWithActor,
+  BlockInstance,
+  BlockType,
+  ChildBlockInstance,
   ContentType,
   ContentTypeExport,
   DashboardStats,
@@ -58,6 +63,10 @@ export type {
   MediaContentType,
   NavigationItem,
   NavigationSettingsData,
+  Page,
+  PageListItem,
+  PageRevision,
+  PageSeo,
   PluginSummary,
   PreviewTokenResponse,
   SeoSettingsData,

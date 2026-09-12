@@ -7,7 +7,11 @@
     // tsconfig's lib is ES2022-only (apps/api gets these from @cloudflare/workers-types
     // instead, apps/admin from its own DOM-including tsconfig), so this package adds DOM on
     // top rather than changing the shared base for everyone.
-    "lib": ["ES2022", "DOM"]
+    "lib": ["ES2022", "DOM"],
+    // test/ only — imports its subject module by its real .ts path so it runs directly under
+    // Node's own type-stripping test runner (`node --experimental-strip-types --test`, see
+    // package.json's "test" script) with no build step. Safe alongside noEmit: true.
+    "allowImportingTsExtensions": true
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts", "test/**/*.ts"]
 }

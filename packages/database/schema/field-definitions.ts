@@ -6,9 +6,9 @@ import { contentTypes } from './content-types';
 // runtime value, and this module calls sqliteTable(...) at module scope (a side effect that
 // would drag drizzle-orm into the browser bundle if the array were imported from here
 // directly). This is a type-only import, fully erased at build.
-import type { FieldType } from '@kenresoft-cms/contracts';
+import type { FieldPresentation, FieldType } from '@kenresoft-cms/contracts';
 
-export type { FieldType };
+export type { FieldPresentation, FieldType };
 
 export const fieldDefinitions = sqliteTable(
   'field_definitions',
@@ -27,6 +27,12 @@ export const fieldDefinitions = sqliteTable(
     // Type-specific config (e.g. select options, reference target, max length) — validated
     // at the API layer with Zod (§9), not constrained at the DB layer.
     config: text('config', { mode: 'json' }).$type<Record<string, unknown>>(),
+    // How this field's value is displayed by a frontend renderer — deliberately a separate,
+    // optional column from `config` above (docs/SITE_BUILDER.md §3.6): never consulted by
+    // validation or storage, only by a renderer registry resolving which component/format to
+    // use. Null (the default for every existing row) means "use the default renderer for
+    // this fieldType" — see integrations/astro/src/render/field-renderers.ts.
+    presentation: text('presentation', { mode: 'json' }).$type<FieldPresentation>(),
     createdAt: integer('created_at', { mode: 'timestamp' })
       .notNull()
       .default(sql`(unixepoch())`),
