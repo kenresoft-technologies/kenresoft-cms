@@ -73,6 +73,13 @@ landed on `develop`.
   /api/v1/admin/settings`, switch it to `GET /api/v1/public/global-variables`
   (`globalVariables.list()` on the `@kenresoft-cms/astro` client) instead — see
   `docs/ASTRO.md`'s "Where public site config lives".
+- Form submissions can now be deleted from the admin — a new `DELETE
+  /api/v1/admin/forms/:id/submissions/:submissionId` route (admin/editor gated, audit-logged),
+  with a delete action (single-row and bulk) on both the per-form and unified Submissions pages.
+  The submissions table also gained a "Submitted by" column, derived from each submission's own
+  data (matching common field-name spellings like `name`/`email`) so the sender is visible
+  without opening every row individually, and rows are now clickable anywhere to open the preview
+  instead of only the exact date text.
 
 ### Fixed
 

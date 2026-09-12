@@ -42,3 +42,7 @@ export async function updateFormSubmissionStatus(
   const [row] = await db.update(formSubmissions).set({ status }).where(eq(formSubmissions.id, id)).returning();
   return row!;
 }
+
+export async function deleteFormSubmission(db: Database, id: string): Promise<void> {
+  await db.delete(formSubmissions).where(eq(formSubmissions.id, id));
+}

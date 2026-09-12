@@ -6,14 +6,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { FormSubmissionsPage } from '@/pages/FormSubmissionsPage';
 
-const { getMock, patchMock } = vi.hoisted(() => ({
+const { getMock, patchMock, deleteMock } = vi.hoisted(() => ({
   getMock: vi.fn(),
   patchMock: vi.fn(),
+  deleteMock: vi.fn(),
 }));
 
 vi.mock('@/lib/api-client', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api-client')>('@/lib/api-client');
-  return { ...actual, apiClient: { ...actual.apiClient, get: getMock, patch: patchMock } };
+  return { ...actual, apiClient: { ...actual.apiClient, get: getMock, patch: patchMock, delete: deleteMock } };
 });
 
 function renderPage() {
@@ -43,6 +44,7 @@ describe('FormSubmissionsPage', () => {
   beforeEach(() => {
     getMock.mockReset();
     patchMock.mockReset();
+    deleteMock.mockReset();
   });
 
   it('lists submissions with their status', async () => {
@@ -82,11 +84,48 @@ describe('FormSubmissionsPage', () => {
     renderPage();
     await waitFor(() => expect(screen.getByText('New')).toBeInTheDocument());
 
-    await userEvent.click(screen.getByRole('button', { name: /2026/ }));
+    await userEvent.click(screen.getByText(/2026/));
 
     const dialog = await screen.findByRole('dialog');
     expect(dialog).toHaveTextContent('Email address');
     expect(dialog).toHaveTextContent('jane@example.com');
+  });
+
+  it('shows the sender name and email at a glance in the table', async () => {
+    getMock.mockImplementation((path: string) => {
+      if (path.endsWith('/submissions')) {
+        return Promise.resolve([{ ...submission, data: { name: 'Jane Doe', email: 'jane@example.com' } }]);
+      }
+      if (path.endsWith('/fields')) return Promise.resolve([]);
+      return Promise.resolve({ id: 'f-1', name: 'Contact', slug: 'contact' });
+    });
+
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('Jane Doe')).toBeInTheDocument());
+    expect(screen.getByText('jane@example.com')).toBeInTheDocument();
+  });
+
+  it('deletes a submission after confirming', async () => {
+    deleteMock.mockResolvedValue(undefined);
+    getMock.mockImplementation((path: string) => {
+      if (path.endsWith('/submissions')) return Promise.resolve([submission]);
+      if (path.endsWith('/fields')) return Promise.resolve([]);
+      return Promise.resolve({ id: 'f-1', name: 'Contact', slug: 'contact' });
+    });
+
+    renderPage();
+    await waitFor(() => expect(screen.getByText('New')).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole('button', { name: 'Submission actions' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
+
+    const dialog = await screen.findByRole('alertdialog');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
+
+    await waitFor(() =>
+      expect(deleteMock).toHaveBeenCalledWith('/api/v1/admin/forms/f-1/submissions/sub-1'),
+    );
   });
 
   it('filters submissions by status', async () => {

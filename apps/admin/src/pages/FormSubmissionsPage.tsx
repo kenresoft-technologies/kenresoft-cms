@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Archive, Inbox, MailOpen, MoreHorizontal } from 'lucide-react';
+import { Archive, Inbox, MailOpen, MoreHorizontal, Trash2 } from 'lucide-react';
 import { useParams } from 'react-router';
 import { toast } from 'sonner';
 import type { ColumnDef } from '@tanstack/react-table';
@@ -7,7 +7,12 @@ import type { ColumnDef } from '@tanstack/react-table';
 import { ApiError } from '@/lib/api-client';
 import { useForm } from '@/lib/queries/forms';
 import { useFormFields } from '@/lib/queries/form-fields';
-import { useFormSubmissions, useUpdateFormSubmissionStatus } from '@/lib/queries/form-submissions';
+import {
+  useDeleteFormSubmission,
+  useFormSubmissions,
+  useUpdateFormSubmissionStatus,
+} from '@/lib/queries/form-submissions';
+import { getSubmissionSender } from '@/lib/submission-sender';
 import type { FormSubmission, FormSubmissionStatus } from '@/lib/types';
 import { DataTable } from '@/components/data-table';
 import { EmptyState } from '@/components/empty-state';
@@ -16,6 +21,16 @@ import { PageHeader } from '@/components/page-header';
 import { StatusBadge } from '@/components/status-badge';
 import { SubmissionValue } from '@/components/submission-value';
 import { TableSkeleton } from '@/components/table-skeleton';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -28,6 +43,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -70,7 +86,15 @@ function ViewSubmissionDialog({
   );
 }
 
-function SubmissionActions({ formId, submission }: { formId: string; submission: FormSubmission }) {
+function SubmissionActions({
+  formId,
+  submission,
+  onRequestDelete,
+}: {
+  formId: string;
+  submission: FormSubmission;
+  onRequestDelete: (submission: FormSubmission) => void;
+}) {
   const updateStatus = useUpdateFormSubmissionStatus(formId);
 
   function setStatus(status: FormSubmissionStatus) {
@@ -106,6 +130,11 @@ function SubmissionActions({ formId, submission }: { formId: string; submission:
             Archive
           </DropdownMenuItem>
         ) : null}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem variant="destructive" onClick={() => onRequestDelete(submission)}>
+          <Trash2 />
+          Delete
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -116,10 +145,27 @@ export function FormSubmissionsPage() {
   const { data: form } = useForm(formId ?? '');
   const { data: fields } = useFormFields(formId ?? '');
   const { data: submissions, isPending, error, refetch } = useFormSubmissions(formId ?? '');
+  const deleteSubmission = useDeleteFormSubmission(formId ?? '');
   const [viewing, setViewing] = useState<FormSubmission | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<FormSubmission | FormSubmission[] | null>(null);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
 
   const fieldLabels = useMemo(() => new Map((fields ?? []).map((field) => [field.name, field.label])), [fields]);
+
+  async function handleConfirmDelete() {
+    if (!pendingDelete) return;
+    const targets = Array.isArray(pendingDelete) ? pendingDelete : [pendingDelete];
+
+    const results = await Promise.allSettled(targets.map((submission) => deleteSubmission.mutateAsync(submission.id)));
+    const failed = results.filter((result) => result.status === 'rejected').length;
+
+    if (failed === 0) {
+      toast.success(targets.length === 1 ? 'Submission deleted' : `${targets.length} submissions deleted`);
+    } else {
+      toast.error(`${failed} of ${targets.length} submissions failed to delete`);
+    }
+    setPendingDelete(null);
+  }
 
   const filteredSubmissions = useMemo(
     () =>
@@ -135,10 +181,22 @@ export function FormSubmissionsPage() {
         sortingFn: (rowA, rowB) =>
           new Date(rowA.original.createdAt).getTime() - new Date(rowB.original.createdAt).getTime(),
         cell: ({ row }) => (
-          <button type="button" className="font-medium hover:underline" onClick={() => setViewing(row.original)}>
-            {new Date(row.original.createdAt).toLocaleString()}
-          </button>
+          <span className="font-medium">{new Date(row.original.createdAt).toLocaleString()}</span>
         ),
+      },
+      {
+        id: 'sender',
+        header: 'Submitted by',
+        cell: ({ row }) => {
+          const { name, email } = getSubmissionSender(row.original.data);
+          if (!name && !email) return <span className="text-muted-foreground">—</span>;
+          return (
+            <div className="flex flex-col">
+              {name ? <span className="text-sm">{name}</span> : null}
+              {email ? <span className="text-xs text-muted-foreground">{email}</span> : null}
+            </div>
+          );
+        },
       },
       {
         accessorKey: 'status',
@@ -149,7 +207,10 @@ export function FormSubmissionsPage() {
         id: 'actions',
         header: '',
         enableSorting: false,
-        cell: ({ row }) => (formId ? <SubmissionActions formId={formId} submission={row.original} /> : null),
+        cell: ({ row }) =>
+          formId ? (
+            <SubmissionActions formId={formId} submission={row.original} onRequestDelete={setPendingDelete} />
+          ) : null,
       },
     ],
     [formId],
@@ -197,6 +258,8 @@ export function FormSubmissionsPage() {
           data={filteredSubmissions}
           searchPlaceholder="Search submissions…"
           onRefresh={() => void refetch()}
+          onRowClick={(row) => setViewing(row)}
+          enableRowSelection
           toolbar={
             <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as StatusFilter)}>
               <SelectTrigger size="sm" className="w-36" aria-label="Filter by status">
@@ -210,6 +273,19 @@ export function FormSubmissionsPage() {
               </SelectContent>
             </Select>
           }
+          bulkActions={(selected, clearSelection) => (
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => {
+                setPendingDelete(selected);
+                clearSelection();
+              }}
+            >
+              <Trash2 />
+              Delete
+            </Button>
+          )}
         />
       ) : null}
 
@@ -221,6 +297,26 @@ export function FormSubmissionsPage() {
           if (!open) setViewing(null);
         }}
       />
+
+      <AlertDialog open={pendingDelete !== null} onOpenChange={(open) => !open && setPendingDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {Array.isArray(pendingDelete) ? `Delete ${pendingDelete.length} submissions?` : 'Delete this submission?'}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently removes {Array.isArray(pendingDelete) ? 'these submissions' : 'this submission'}.
+              This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" onClick={() => void handleConfirmDelete()}>
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

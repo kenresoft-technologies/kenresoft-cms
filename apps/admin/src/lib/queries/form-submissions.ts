@@ -28,3 +28,15 @@ export function useUpdateFormSubmissionStatus(formId: string) {
     },
   });
 }
+
+export function useDeleteFormSubmission(formId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => apiClient.delete(`/api/v1/admin/forms/${formId}/submissions/${id}`),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['form-submissions', formId] });
+      void queryClient.invalidateQueries({ queryKey: ['submissions'] });
+    },
+  });
+}
