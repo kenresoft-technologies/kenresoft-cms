@@ -249,11 +249,11 @@ function PageForm({ page }: PageFormProps) {
   );
 }
 
-// Phase 3 of the schema-driven frontend work (docs/SITE_BUILDER.md §14 decision #3): a
-// structured editor (title/route/status fields, plus BlockTreeEditor's add/remove/reorder
-// blocks) — deliberately not a drag-and-drop canvas yet (that's Phase 8, replacing only this
-// component's editing UI, never the underlying Page/Block model this page already saves
-// through the same admin API a Phase 8 editor would also call).
+// A structured editor (title/route/status fields, plus BlockTreeEditor's drag-and-drop add/
+// remove/reorder/duplicate/undo-redo blocks, Phase 8 of the schema-driven frontend work) —
+// saves through the same admin API this page already used before Phase 8 replaced only
+// BlockTreeEditor's own editing UI, never the underlying Page/Block model (docs/SITE_BUILDER.md
+// §14 decision #3).
 export function PageEditorPage() {
   const { pageId } = useParams<{ pageId: string }>();
   const { data: page, isPending } = usePage(pageId!);

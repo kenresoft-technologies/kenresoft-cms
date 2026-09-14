@@ -12,7 +12,7 @@
     "build": "pnpm -r --filter=./packages/* --filter=./apps/* build",
     "dev": "pnpm -r --parallel dev",
     "test": "pnpm -r test && pnpm run test:scripts",
-    "test:scripts": "node --test scripts/lib",
+    "test:scripts": "node --test \"scripts/lib/**/*.test.mjs\"",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
     "clean": "pnpm -r clean",

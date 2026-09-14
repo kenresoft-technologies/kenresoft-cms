@@ -377,6 +377,17 @@ describe('admin routes (real D1)', () => {
     expect(updateRes.status).toBe(200);
     expect(await updateRes.json()).toMatchObject({ label: 'Post title', required: true, name: 'title' });
 
+    // A label-only PATCH must never touch `required` — a real, previously-undiscovered bug
+    // (docs/SITE_BUILDER.md §24's follow-up pass) had `updateFieldDefinitionSchema` silently
+    // default an omitted `required` to `false`, silently un-requiring a field on any partial
+    // update that didn't explicitly resend it.
+    const labelOnlyRes = await SELF.fetch(
+      `https://example.com/api/v1/admin/content-types/${contentType.id}/fields/${field.id}`,
+      { method: 'PATCH', headers, body: JSON.stringify({ label: 'Post title again' }) },
+    );
+    expect(labelOnlyRes.status).toBe(200);
+    expect(await labelOnlyRes.json()).toMatchObject({ label: 'Post title again', required: true });
+
     const deleteRes = await SELF.fetch(
       `https://example.com/api/v1/admin/content-types/${contentType.id}/fields/${field.id}`,
       { method: 'DELETE', headers: { Cookie: cookie } },

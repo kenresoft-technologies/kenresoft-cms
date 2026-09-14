@@ -24,7 +24,19 @@ export const createReusableBlockSchema = z.object({
   config: z.record(z.string(), z.unknown()).optional().default({}),
 });
 
-export const updateReusableBlockSchema = createReusableBlockSchema.partial();
+// A production-hardening fix (docs/SITE_BUILDER.md §24's follow-up pass): this used to be
+// `createReusableBlockSchema.partial()` — `.partial()` only widens each field's *type* to
+// optional, it does not strip an already-present `.default(...)`, so a PATCH that omits
+// `config` entirely (e.g. renaming a reusable block) still parsed to `config: {}` rather than
+// `undefined`, silently wiping the block's config on write. A hand-written schema, matching
+// `updatePageSchema`'s already-correct pattern, is the fix — no field here has a `.default()`,
+// so an omitted field parses to real `undefined`, correctly distinguishable from an
+// explicitly-sent value.
+export const updateReusableBlockSchema = z.object({
+  name: z.string().min(1).max(200).optional(),
+  type: reusableBlockTypeSchema.optional(),
+  config: z.record(z.string(), z.unknown()).optional(),
+});
 
 export type CreateReusableBlockInput = z.infer<typeof createReusableBlockSchema>;
 export type UpdateReusableBlockInput = z.infer<typeof updateReusableBlockSchema>;

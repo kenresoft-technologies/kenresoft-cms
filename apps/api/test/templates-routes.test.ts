@@ -55,15 +55,20 @@ describe('admin templates (real D1)', () => {
     ).json<{ id: string }[]>();
     expect(list.some((t) => t.id === created.id)).toBe(true);
 
+    // A name/isDefault-only PATCH (omitting `blocks` entirely) must never touch the block
+    // composition — a real, previously-undiscovered bug (docs/SITE_BUILDER.md §24's follow-up
+    // pass) had `updateTemplateSchema` silently default an omitted `blocks` to `[]`, wiping the
+    // entire template on every partial update that didn't explicitly resend it.
     const updated = await (
       await SELF.fetch(`https://example.com/api/v1/admin/templates/${created.id}`, {
         method: 'PATCH',
         headers,
         body: JSON.stringify({ name: 'Landing page (v2)', isDefault: true }),
       })
-    ).json<{ name: string; isDefault: boolean }>();
+    ).json<{ name: string; isDefault: boolean; blocks: unknown[] }>();
     expect(updated.name).toBe('Landing page (v2)');
     expect(updated.isDefault).toBe(true);
+    expect(updated.blocks).toHaveLength(1);
 
     const deleteRes = await SELF.fetch(`https://example.com/api/v1/admin/templates/${created.id}`, {
       method: 'DELETE',

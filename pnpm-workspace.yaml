@@ -11,6 +11,20 @@ packages:
 overrides:
   qs: ^6.16.0
   esbuild: ^0.28.1
+  # undici/sharp/ws: these three overrides apply everywhere EXCEPT one place, confirmed
+  # empirically (2026-09-14) — @cloudflare/vitest-pool-workers@0.9.14's own pinned
+  # wrangler@4.44.0 bundles miniflare@4.20251011.0, whose dependencies list an exact/narrow
+  # undici@7.14.0 / sharp@^0.33.5 / ws@8.18.0. Neither a flat override, a `parent>child`
+  # path-selector override, nor a full lockfile regeneration from scratch changed that
+  # resolution — and checking the *latest* published vitest-pool-workers (0.11.1, pinning
+  # wrangler@4.56.0/miniflare@4.20251217.0) confirmed via `npm view` that upstream still
+  # pins the identical undici@7.14.0/sharp@^0.33.5/ws@8.18.0 trio itself, so this isn't a
+  # version we're merely behind on — it's the current published state of the whole 4.x
+  # miniflare line. This is the same already-documented, accepted devDependency-only risk as
+  # the `wrangler` CVE below: never invoked with an affected code path by anything in this
+  # repo (it only simulates the Workers runtime for local test runs), and genuinely fixing it
+  # means the 0.22.x-line Vite/Vitest-plugin rewrite already investigated and rejected
+  # elsewhere in this project's history as a real breaking migration, not a version bump.
   undici: ^7.29.0
   sharp: ^0.35.4
   ws: ^8.21.0

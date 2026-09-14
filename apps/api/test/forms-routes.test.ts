@@ -395,6 +395,17 @@ describe('forms routes (real D1)', () => {
     expect(updateRes.status).toBe(200);
     expect(await updateRes.json()).toMatchObject({ name: 'message', required: true });
 
+    // A label-only PATCH must never touch `required` — a real, previously-undiscovered bug
+    // (docs/SITE_BUILDER.md §24's follow-up pass) had `updateFormFieldSchema` silently default
+    // an omitted `required` to `false`, silently un-requiring a field on any partial update
+    // that didn't explicitly resend it.
+    const labelOnlyRes = await SELF.fetch(
+      `https://example.com/api/v1/admin/forms/${form.id}/fields/${messageField.id}`,
+      { method: 'PATCH', headers, body: JSON.stringify({ label: 'Your message' }) },
+    );
+    expect(labelOnlyRes.status).toBe(200);
+    expect(await labelOnlyRes.json()).toMatchObject({ label: 'Your message', required: true });
+
     const deleteRes = await SELF.fetch(
       `https://example.com/api/v1/admin/forms/${form.id}/fields/${messageField.id}`,
       { method: 'DELETE', headers: { Cookie: cookie } },
