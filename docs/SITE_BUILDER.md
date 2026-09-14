@@ -9,10 +9,11 @@ presentation metadata + a field-renderer registry), **Phase 2** (content-type
 data model, admin CRUD + revisions, a basic block-composition editor, and the public Pages
 API), **Phase 4** (`reusable_blocks`/`templates` tables + admin UI, Page creation from a
 template), **Phase 5** (Page Live Preview, reusing `preview-token.ts` verbatim), and
-**Phase 6** (Navigation `pageId` reference option), and **Phase 7** (Astro rendering —
+**Phase 6** (Navigation `pageId` reference option), **Phase 7** (Astro rendering —
 `resolveSiteRoute()` in the SDK, `examples/astro-site`'s `<PageRenderer>`/`<BlockRenderer>`
-and catch-all route) **are implemented**. Phases 8-10 — the drag-and-drop editor and
-everything else in §13's plan — are **not started**.
+and catch-all route), and **Phase 8** (drag-and-drop block editor, duplicate, undo/redo)
+**are implemented**. Phases 9-10 — plugin-contributed block types, patterns/presets, and the
+production hardening pass — are **not started**.
 Do not read anything below §2 as describing current behavior; it is the
 target architecture this phase-by-phase plan is building toward.
 
@@ -572,7 +573,7 @@ exist (skipping/collapsing phases where Core already provides the primitive):
 | **5** | **Done** (2026-09-12) | Page preview (reuses `preview-token.ts` verbatim) | Live Preview (already built) |
 | **6** | **Done** (2026-09-12) | Navigation `pageId` reference option | Structured Settings navigation (already built) |
 | **7** | **Done** (2026-09-14) | `resolveSiteRoute()` in the SDK, a developer-override block-renderer registry, `examples/astro-site`'s own `<PageRenderer>`/`<BlockRenderer>`/built-in block components + catch-all route | Astro SSR architecture (already proven) |
-| **8** | Not started | Drag-and-drop block editor (dnd-kit — already a dependency), duplicate/undo/redo | Phase 3 UI |
+| **8** | **Done** (2026-09-14) | Drag-and-drop block editor (dnd-kit — already a dependency), duplicate/undo/redo | Phase 3 UI |
 | **9** | Not started | Plugin-contributed block types (`PluginRegistration.blockTypes?`) | Plugin SDK, once a second real consumer exists |
 | **10** | Not started | Patterns/presets, production hardening pass (perf/security/cache re-verification at scale) | All of the above |
 
@@ -1298,3 +1299,73 @@ Per the user's explicit "continue with phase 7 after phase 6" instruction (autho
 continuation straight from Phase 6 into Phase 7 without a separate approval gate between them,
 but not phrased as blanket authorization beyond Phase 7): stopped after Phase 7, pending
 explicit approval before Phase 8 (the drag-and-drop visual block editor) — not started.
+
+## 24. Phase 8 — implementation record (2026-09-14)
+
+**Scope shipped**: exactly the phase table's own row 8 scope — drag-and-drop reordering
+(dnd-kit, already a dependency), duplicate, and undo/redo — replacing Phase 3's button-based
+add/remove/reorder editing UI in `BlockTreeEditor.tsx`. Per §14 decision #3's own explicit
+requirement, the underlying `(blocks, onChange)` controlled-component contract and the Page/
+Block data model are completely unchanged; this phase touches editing UI only.
+
+**Drag-and-drop**: one `DndContext` wraps the whole block tree, with two independent
+`SortableContext`s sharing it — top-level blocks, and (inside a container block like `columns`)
+that block's own children — mirroring the exact pattern `ContentTypeDetailPage.tsx`'s field
+list already established (`PointerSensor` only, `activationConstraint: {distance: 4}`, no
+keyboard sensor). `handleDragEnd` resolves which of the two lists a dragged id belongs to
+before reordering; blocks never move between the two lists, since there's no cross-container
+concept to support under the existing two-tier nesting cap (§19) — a plain lookup is correct
+here, not full multi-container dnd-kit machinery. The chevron up/down buttons and their
+`onMoveUp`/`onMoveDown` props are gone, replaced by a `GripVertical` drag handle — the same UX
+change `ContentTypeDetailPage.tsx` already made for fields, kept consistent rather than leaving
+two different reorder idioms in the admin.
+
+**Duplicate**: a `Copy` button per block (and per child) inserts a deep clone — a fresh `id`
+for the block itself and, if it has children, a fresh `id` for each child too — directly after
+the original. Cloning never needs to walk deeper than one level, matching the two-tier nesting
+cap this system has held since Phase 3.
+
+**Undo/redo**: `BlockTreeEditor` now owns a `history`/`future` stack of `blocks` snapshots
+internally. Every mutation (add/remove/duplicate/reorder/config edit, including inside a
+container's children) funnels through one `emitChange()` that pushes the current state onto
+`history`, clears `future`, and calls the parent's `onChange` — so `PageEditorPage`/
+`TemplatesPage` (both already just pass `blocks`/`setBlocks` straight through) see no contract
+change at all. `undo()`/`redo()` pop/push between the two stacks. Deliberately scoped to the
+current editing session only (the stack resets on remount, which already happens per-page via
+`PageEditorPage`'s `key={page.id}`) rather than persisted — undo/redo is an editing convenience,
+not something that needs to survive navigating away and back. No keyboard shortcuts (Ctrl+Z/
+Ctrl+Shift+Z) — toolbar buttons only, avoiding the real risk of a global shortcut listener
+capturing keystrokes meant for the title field or the rich-text editor nested inside the same
+form.
+
+**Deliberately not built**: a "layers" panel (a flat tree view of every block for quick
+navigation) and a distinct "responsive preview" mode, both mentioned in this document's original
+Phase 8 sketch prose (§14 decision #3) but not listed in the phase table's own row 8 scope —
+the table is what every prior phase actually followed, and building UI beyond it here would be
+speculative ahead of a concrete need. Live Preview (Phase 5) already covers seeing a page at
+real size in a real browser tab, which is most of what a "responsive preview" would offer
+anyway.
+
+**A real test-infrastructure adjustment, not a bug**: the existing "reorders two blocks with
+the move-down/move-up buttons" test in `BlockTreeEditor.test.tsx` no longer has buttons to
+click, so it was replaced with duplicate and undo/redo tests instead (both button-clickable and
+directly testable). The drag gesture itself isn't unit-tested — matching this codebase's own
+existing precedent: `ContentTypeDetailPage.tsx`'s dnd-kit field-reorder list has never had a
+drag-simulation test either, since jsdom can't drive dnd-kit's real pointer-sensor sequence.
+
+**Verification performed**: `pnpm --filter @kenresoft-cms/admin typecheck` (via `tsc --noEmit -p
+tsconfig.json`) clean; `pnpm eslint` on the changed files clean. `BlockTreeEditor.test.tsx`
+(now 7 tests — add/remove/duplicate/undo-redo/nested-child/leaf-block-has-no-children/media-
+picker/reusable-block-picker) plus a regression run of `PageEditorPage.test.tsx`,
+`PagesPage.test.tsx`, `ReusableBlocksPage.test.tsx`, and `TemplatesPage.test.tsx` (5 files, 20
+tests total) all passing — the latter three confirm every existing consumer of
+`BlockTreeEditor`/`BlockConfigForm` (Pages, Reusable Blocks, Templates) keeps working unmodified
+through the same `(blocks, onChange)`/`(fields, config, onChange)` contracts.
+
+**No breaking changes**: no API, contract, or database change of any kind — this phase is
+entirely `apps/admin` editing-UI code. Every page that composes a block tree (Page Editor,
+Templates) gains drag-and-drop/duplicate/undo-redo automatically, with no per-page changes
+needed, since all three already delegated to `BlockTreeEditor` as a single shared component.
+
+Per the same phase-gate discipline as Phases 1-7: stopped after Phase 8, pending explicit
+approval before Phase 9 (plugin-contributed block types) — not started.

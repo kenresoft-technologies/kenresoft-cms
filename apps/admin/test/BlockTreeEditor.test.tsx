@@ -37,10 +37,13 @@ function cardTitles(): string[] {
   return Array.from(document.querySelectorAll('p.font-medium')).map((el) => el.textContent ?? '');
 }
 
-// Phase 3 of the schema-driven frontend work (docs/SITE_BUILDER.md §14 decision #3) — a basic
-// add/remove/reorder editor (buttons, not drag-and-drop). These tests exercise the actual
-// controlled-component contract (`blocks` in, `onChange` out) a future Phase 8 drag-and-drop
-// editor would also need to satisfy.
+// Phase 8 of the schema-driven frontend work (docs/SITE_BUILDER.md §14 decision #3) added
+// drag-and-drop reordering, duplicate, and undo/redo on top of Phase 3's add/remove editor.
+// Drag-and-drop itself isn't exercised here — matching this codebase's own existing precedent
+// (ContentTypeDetailPage's dnd-kit field-reorder list has no such test either), since
+// jsdom can't drive dnd-kit's real pointer-sensor drag sequence; these tests instead cover the
+// actual controlled-component contract (`blocks` in, `onChange` out) plus the new
+// button-clickable duplicate/undo/redo affordances.
 describe('BlockTreeEditor', () => {
   beforeEach(() => {
     getMock.mockReset();
@@ -66,18 +69,31 @@ describe('BlockTreeEditor', () => {
     expect(cardTitles()).toEqual([]);
   });
 
-  it('reorders two blocks with the move-down/move-up buttons', async () => {
-    renderEditor([
-      { id: 'b-1', type: 'hero', config: { heading: 'First' } },
-      { id: 'b-2', type: 'spacer', config: {} },
-    ]);
+  it('duplicates a block, inserting the copy right after the original', async () => {
+    renderEditor([{ id: 'b-1', type: 'hero', config: { heading: 'First' } }]);
 
-    expect(cardTitles()).toEqual(['Hero', 'Spacer']);
+    expect(cardTitles()).toEqual(['Hero']);
+    await userEvent.click(screen.getByRole('button', { name: /duplicate hero/i }));
 
-    const downButtons = screen.getAllByRole('button').filter((button) => button.querySelector('svg.lucide-chevron-down'));
-    await userEvent.click(downButtons[0]!);
+    expect(cardTitles()).toEqual(['Hero', 'Hero']);
+  });
 
-    expect(cardTitles()).toEqual(['Spacer', 'Hero']);
+  it('undoes and redoes a remove', async () => {
+    renderEditor([{ id: 'b-1', type: 'hero', config: {} }]);
+
+    expect(cardTitles()).toEqual(['Hero']);
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled();
+
+    const [removeButton] = screen.getAllByRole('button').filter((button) => button.querySelector('svg.lucide-trash2'));
+    await userEvent.click(removeButton!);
+    expect(cardTitles()).toEqual([]);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(cardTitles()).toEqual(['Hero']);
+    expect(screen.getByRole('button', { name: 'Redo' })).not.toBeDisabled();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Redo' }));
+    expect(cardTitles()).toEqual([]);
   });
 
   it('adds a nested child block only inside a Columns block', async () => {

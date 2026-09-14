@@ -2614,3 +2614,59 @@ site's new files) is purely additive. Per the user's "continue with phase 7 afte
 instruction (authorizing a continuation straight from Phase 6 into Phase 7 specifically, not
 phrased as blanket authorization beyond it): stopped after Phase 7, pending explicit approval
 before Phase 8 (the drag-and-drop visual block editor).
+
+**Site builder Phase 8: drag-and-drop block editor** (2026-09-14, on `develop`, approved
+immediately after Phase 7's report) — done: `BlockTreeEditor.tsx` (the one shared component
+`PageEditorPage.tsx` and `TemplatesPage.tsx` both already composed a block tree through) gained
+drag-and-drop reordering, duplicate, and undo/redo, replacing Phase 3's button-based add/remove/
+reorder UI. Per `docs/SITE_BUILDER.md` §14 decision #3's own explicit requirement, the
+underlying `(blocks, onChange)` controlled-component contract and the Page/Block data model are
+completely unchanged — this phase is `apps/admin` editing-UI code only, no API/contract/
+database change anywhere.
+
+Drag-and-drop uses dnd-kit (already a dependency) via one `DndContext` wrapping the whole tree,
+with two independent `SortableContext`s sharing it — top-level blocks, and a container block's
+own children — mirroring the exact pattern `ContentTypeDetailPage.tsx`'s field-reorder list
+already established (`PointerSensor` only, `activationConstraint: {distance: 4}`, no keyboard
+sensor, same drag-handle UX). `handleDragEnd` resolves which of the two lists a dragged id
+belongs to before reordering; a block never moves between the two lists, since there's no
+cross-container concept to support under the existing two-tier nesting cap — a plain lookup is
+correct here, not full multi-container dnd-kit machinery. The chevron up/down buttons are gone,
+replaced by a `GripVertical` drag handle, keeping the admin's reorder idiom consistent with the
+one `ContentTypeDetailPage.tsx` already uses for fields rather than leaving two different
+patterns side by side.
+
+Duplicate is a `Copy` button per block (and per child) that deep-clones with a fresh `id` for
+the block itself and, if it has children, a fresh `id` for each child too — inserted directly
+after the original. Undo/redo is a `history`/`future` snapshot stack owned entirely inside
+`BlockTreeEditor`: every mutation (add/remove/duplicate/reorder/config edit) funnels through one
+`emitChange()` that pushes the current state onto `history`, clears `future`, and calls the
+parent's `onChange` — so neither `PageEditorPage` nor `TemplatesPage` needed any change at all,
+both already just pass `blocks`/`setBlocks` straight through. Deliberately scoped to the current
+editing session (the stack resets on remount, which already happens per-page via
+`PageEditorPage`'s `key={page.id}`) rather than persisted, and deliberately toolbar-buttons-only
+— no Ctrl+Z/Ctrl+Shift+Z global keyboard shortcuts, avoiding the real risk of capturing
+keystrokes meant for the title field or the rich-text editor nested in the same form.
+
+Deliberately not built: a "layers" panel and a distinct "responsive preview" mode — both
+appeared in this document's original Phase 8 sketch prose but not in the phase table's own row
+8 scope (the table is what every prior phase actually followed), so building beyond it here
+would have been speculative ahead of a concrete need; Live Preview (Phase 5) already covers
+seeing a page at real size in a real browser tab, which is most of what "responsive preview"
+would offer anyway.
+
+A real test-infrastructure adjustment, not a bug: `BlockTreeEditor.test.tsx`'s old "reorders two
+blocks with the move-down/move-up buttons" test had no buttons left to click, so it was replaced
+with duplicate and undo/redo tests (both button-clickable and directly testable). The drag
+gesture itself isn't unit-tested, matching this codebase's own existing precedent —
+`ContentTypeDetailPage.tsx`'s dnd-kit field-reorder list has never had a drag-simulation test
+either, since jsdom can't drive dnd-kit's real pointer-sensor sequence.
+
+Verified: `pnpm --filter @kenresoft-cms/admin typecheck` (`tsc --noEmit -p tsconfig.json`)
+clean; `pnpm eslint` on every changed file clean. `BlockTreeEditor.test.tsx` (now 7 tests) plus
+a regression run of `PageEditorPage.test.tsx`, `PagesPage.test.tsx`,
+`ReusableBlocksPage.test.tsx`, and `TemplatesPage.test.tsx` (5 files, 20 tests total) all
+passing — the latter three confirm every existing consumer of `BlockTreeEditor`/
+`BlockConfigForm` keeps working unmodified through the same contracts. No breaking changes of
+any kind. Per the same phase-gate discipline as Phases 1-7: stopped after Phase 8, pending
+explicit approval before Phase 9 (plugin-contributed block types).

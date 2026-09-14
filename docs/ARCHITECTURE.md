@@ -7,6 +7,16 @@ Status: Proposed / Ready for implementation
 
 ## Changelog
 
+**v0.21 (2026-09-14)** — Phase 8 of the schema-driven frontend/site-builder initiative
+(`docs/SITE_BUILDER.md`): `BlockTreeEditor.tsx`'s editing UI gained drag-and-drop reordering
+(dnd-kit, mirroring `ContentTypeDetailPage.tsx`'s existing field-reorder pattern), duplicate,
+and undo/redo, replacing Phase 3's button-based add/remove/reorder UI. Per §14 decision #3's
+own requirement, the underlying `(blocks, onChange)` controlled-component contract and the
+Page/Block data model are completely unchanged — this is `apps/admin` editing-UI code only, no
+API/contract/database change. Every page composing a block tree (Page Editor, Templates) gains
+the new UI automatically, since both already delegate to the one shared `BlockTreeEditor`
+component. See `docs/SITE_BUILDER.md` §24 for the full implementation record.
+
 **v0.20 (2026-09-14)** — Phase 7 of the schema-driven frontend/site-builder initiative
 (`docs/SITE_BUILDER.md`): real rendering of a Page's block tree, closing §6.5's "not yet
 rendered by a frontend" gap. Deliberately deviates from this document's own original Phase 7
@@ -796,10 +806,10 @@ established, edge-cached and invalidated (`invalidatePublicPageCache()`,
 `apps/api/src/lib/public-cache.ts`) the same way.
 
 The admin editor (`apps/admin/src/pages/PageEditorPage.tsx`,
-`apps/admin/src/pages/blocks/BlockTreeEditor.tsx`) is deliberately a structured add/remove/
-reorder UI (buttons, not drag-and-drop) — `docs/SITE_BUILDER.md` §14 decision #3 commits to a
-drag-and-drop canvas as a later, separate phase (Phase 8) that replaces only this editing UI,
-never the underlying block-tree data model or rendering architecture.
+`apps/admin/src/pages/blocks/BlockTreeEditor.tsx`) now supports drag-and-drop reordering,
+duplicate, and undo/redo (Phase 8, §6.5.4) — per `docs/SITE_BUILDER.md` §14 decision #3, this
+replaced only the editing UI itself, never the underlying block-tree data model or rendering
+architecture.
 
 A Page can be created and composed in the admin UI, previewed (§6.5.1, Phase 5), linked to from
 Navigation (§6.5.2, Phase 6), fetched via the public API, and — as of Phase 7 (§6.5.3) — rendered
@@ -857,6 +867,20 @@ block's current type/config through a new `GET /api/v1/public/reusable-blocks/:i
 (edge-cached, invalidated on write) — closing a gap no earlier phase had needed to close, since
 only admin-authenticated CRUD for reusable blocks existed before. See `docs/SITE_BUILDER.md` §23
 for the full implementation record.
+
+#### 6.5.4 Drag-and-drop block editor (Phase 8)
+
+**Status: implemented.** `BlockTreeEditor.tsx` (the shared component `PageEditorPage.tsx` and
+`TemplatesPage.tsx` both compose a block tree through) gained drag-and-drop reordering via
+dnd-kit — one `DndContext` wraps the whole tree, with an independent `SortableContext` for
+top-level blocks and another per container block's own children; a dragged block never moves
+between the two, matching the two-tier nesting cap (§6.5) that already forbids that shape.
+Duplicate deep-clones a block (and, if it has one, its children) with fresh ids, inserted
+directly after the original. Undo/redo is a `history`/`future` snapshot stack owned entirely
+inside `BlockTreeEditor`, scoped to the current editing session — every mutation funnels
+through one `emitChange()` so the component's `(blocks, onChange)` contract to its parent is
+unchanged. No API, contract, or database change. See `docs/SITE_BUILDER.md` §24 for the full
+implementation record.
 
 ### 6.6 Reusable Blocks and Templates (schema-driven frontend, Phase 4)
 
