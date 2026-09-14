@@ -12,8 +12,10 @@ template), **Phase 5** (Page Live Preview, reusing `preview-token.ts` verbatim),
 **Phase 6** (Navigation `pageId` reference option), **Phase 7** (Astro rendering —
 `resolveSiteRoute()` in the SDK, `examples/astro-site`'s `<PageRenderer>`/`<BlockRenderer>`
 and catch-all route), and **Phase 8** (drag-and-drop block editor, duplicate, undo/redo)
-**are implemented**. Phases 9-10 — plugin-contributed block types, patterns/presets, and the
-production hardening pass — are **not started**.
+**are implemented**. **Phase 10**'s production hardening pass is also done (§25 — found and
+fixed a real cross-route data-loss bug). Phase 9 (plugin-contributed block types) and Phase
+10's "patterns/presets" half remain **not started**, both deliberately deferred pending a
+concrete need or design.
 Do not read anything below §2 as describing current behavior; it is the
 target architecture this phase-by-phase plan is building toward.
 
@@ -575,7 +577,7 @@ exist (skipping/collapsing phases where Core already provides the primitive):
 | **7** | **Done** (2026-09-14) | `resolveSiteRoute()` in the SDK, a developer-override block-renderer registry, `examples/astro-site`'s own `<PageRenderer>`/`<BlockRenderer>`/built-in block components + catch-all route | Astro SSR architecture (already proven) |
 | **8** | **Done** (2026-09-14) | Drag-and-drop block editor (dnd-kit — already a dependency), duplicate/undo/redo | Phase 3 UI |
 | **9** | Not started | Plugin-contributed block types (`PluginRegistration.blockTypes?`) | Plugin SDK, once a second real consumer exists |
-| **10** | Not started | Patterns/presets, production hardening pass (perf/security/cache re-verification at scale) | All of the above |
+| **10** | **Partially done** (hardening pass only, 2026-09-14) | ~~Patterns/presets~~ (still undesigned), production hardening pass (perf/security/cache re-verification — found and fixed a real cross-route data-loss bug, see §25) | All of the above |
 
 Each phase ends with the same acceptance-test discipline as every other feature in this
 codebase (§12) — no phase is marked done on compilation alone, matching this project's own
@@ -1369,3 +1371,99 @@ needed, since all three already delegated to `BlockTreeEditor` as a single share
 
 Per the same phase-gate discipline as Phases 1-7: stopped after Phase 8, pending explicit
 approval before Phase 9 (plugin-contributed block types) — not started.
+
+## 25. Phase 10 (hardening pass only) — implementation record (2026-09-14)
+
+**Scope**: with the user's explicit sign-off, Phase 9 (plugin-contributed block types) stays
+genuinely not-started — no plugin currently needs a block type, and §9 itself says not to build
+this speculatively. Phase 10's "patterns/presets" half was also deliberately skipped (it has no
+design anywhere in this document, unlike every other phase, which each got a `§3.x` design
+subsection before implementation began — building it now would have been speculative in the
+same way). What's actually done here is Phase 10's other half: a production hardening pass —
+re-verifying perf/security/cache behavior across everything Phases 1-8 shipped, fixing anything
+real it found.
+
+**A real, serious, previously-undiscovered data-loss bug, found across four routes, not
+hypothetical**: `updateReusableBlockSchema`, `updateTemplateSchema`,
+`updateFieldDefinitionSchema`, and `updateFormFieldSchema` were all derived via
+`createXSchema.partial()` (or `.omit({...}).partial()`), and each of their corresponding create
+schemas has at least one field with `.optional().default(...)`. `.partial()` only widens a
+field's *type* to optional — it does not strip an already-present `.default(...)` — so a PATCH
+that genuinely omits that one field still parses to the default value, not `undefined`,
+silently overwriting real data on every partial update that didn't happen to resend it:
+- `reusable_blocks.config` reset to `{}` on any update omitting `config` (e.g. a rename).
+- `templates.blocks` reset to `[]` and `isDefault` reset to `false` on any update omitting
+  either — confirmed as an *actual* write, not just a type-level footgun: `routes/admin/
+  templates.ts`'s own `input.blocks ? {...} : undefined` guard, written under the (violated)
+  assumption that an omitted field parses to `undefined`, doesn't catch it either, since `[]` is
+  truthy in JavaScript.
+- `field_definitions.required` and `form_fields.required` both reset to `false` on any update
+  omitting `required` — the more concerning pair, since a silently-un-required field is a
+  content-integrity/validation gap, not just a display regression.
+
+None of this had shipped a visible bug, confirmed by checking every actual caller: the admin UI
+(`ReusableBlocksPage.tsx`, `TemplatesPage.tsx`, `ContentTypeDetailPage.tsx`'s field dialog, the
+form-field builder) always resends every field on every save, masking the defect completely in
+practice. It's real regardless — a bare `PATCH` from any other caller (a script, an external
+integration, a future UI change that only sends what actually changed, which is the more natural
+way to implement a PATCH endpoint) would silently corrupt data with no error of any kind. Found
+by direct code audit (reading every schema `.partial()` is called on and checking its base
+schema for `.default()`), not by a failing test — confirmed with a standalone Zod repro
+(`updateTemplateSchema.safeParse({name: 'x'})` → `{name: 'x', blocks: [], isDefault: false}`,
+not `{name: 'x'}`) before touching any route code.
+
+**Fixed** by replacing all four `.partial()`-derived schemas with hand-written ones (matching
+`updatePageSchema`'s already-correct pattern — no field has a `.default()`, so an omitted field
+parses to real `undefined`). A full audit of every other `.partial()` use in the workspace
+(`content-types.ts`, `forms.ts`, `packages/plugin-ecommerce`) confirmed none of their base
+schemas have any defaulted field, so they were already safe and needed no change — the fix was
+scoped to exactly the four affected files, not applied blanket.
+
+**A second, smaller, real gap fixed in the same pass**: `reusable_blocks.config` was validated
+only as an untyped `z.record()` — unlike Pages/Templates, which run every block's config through
+`BLOCK_CONFIG_SCHEMAS[type]` via `validateBlockTree()` (per-type `.strict()` shape, length/type
+limits). A reusable block's config is rendered through the exact same per-type block component
+as a Page's own inline block, so it should be held to the same shape guarantee. Fixed by adding
+`validateReusableBlockConfig()` to the admin create/update routes, validating the *merged*
+type+config (not just whichever fields one PATCH happens to include) so a `type` change without
+an accompanying `config` is correctly rejected rather than silently storing a mismatched pair.
+
+**Everything else audited and confirmed already correct, no change needed**: the
+`PUBLIC_CONTENT_RATE_LIMITER` (applied broadly to `/api/v1/public/*` before the route-specific
+mounts) already covers every Phase 1-8 public route, including the new Phase 7 reusable-blocks
+route. Page route-rename cache invalidation correctly purges both the old and new route.
+`invalidateAllPageCaches()`'s full-namespace purge on a reusable-block edit is bounded by the
+existing `cache_purge_jobs` batch-processing queue, not a synchronous unbounded sweep — already
+scale-safe by construction. `BlockRenderer.astro`'s handling of a dangling `reusableBlockRef` (a
+deleted reusable block) and `resolveBlockRenderer()`'s registry (a plain `Map` lookup, never
+`eval`'d or dynamically imported) were both re-confirmed safe by direct inspection. The SDK's
+`reusableBlocks.get()` correctly returns `null` on a 404, matching every other consumer's
+null-safe handling.
+
+**Verification performed**: `pnpm typecheck`/`pnpm lint` clean workspace-wide. New/strengthened
+regression tests added directly targeting the fixed bug — a name-only PATCH now asserts `config`/
+`blocks`/`required` survive unchanged in `reusable-blocks-routes.test.ts`,
+`templates-routes.test.ts`, `admin-routes.test.ts`, and `forms-routes.test.ts` — plus a new test
+covering the config-schema-validation fix (create and update, including the merged-type-change
+case). Every file consuming any of the four fixed schemas (confirmed exhaustive by grepping the
+whole codebase for each import) passing individually: `reusable-blocks-routes`,
+`templates-routes`, `admin-routes`, `forms-routes`, `audit-log`, `field-presentation`,
+`field-reorder`, `content-type-route-pattern`, `pages-routes`, `public-reusable-blocks` (10
+files, all green). This pass hit a worse variant of this codebase's own standing Windows/
+workerd-flakiness note than previously documented — even 6-file batches reliably failed after
+several hours of continuous testing, traced partly to ~440 stale `miniflare-*` temp directories
+never cleaned up across the session (cleared, but batches above ~2 files still failed
+afterward). Verified via single-file/2-file runs instead, which stayed reliable throughout; a
+full single-pass run of the entire `apps/api` suite (66 files) was not obtained this session —
+flagged honestly rather than claimed, open for a fresher environment to confirm. The full
+`apps/admin` suite (38 files, 205 tests, a different non-workerd runtime unaffected by this) ran
+clean in one pass.
+
+**No breaking changes to any valid caller**: every existing caller that already resends full
+payloads (the entire shipped admin UI) behaves identically before and after — the fix only
+changes behavior for a payload that omits a field with the now-removed default, which is exactly
+the corruption case being closed, not a supported use anyone depended on.
+
+Per the same phase-gate discipline as every prior phase: stopped after this hardening pass,
+pending explicit direction on Phase 9 (plugin-contributed block types, still deliberately
+deferred) and the "patterns/presets" half of Phase 10 (still deliberately undesigned).

@@ -7,6 +7,24 @@ Status: Proposed / Ready for implementation
 
 ## Changelog
 
+**v0.22 (2026-09-14)** — a production hardening pass over the schema-driven frontend/
+site-builder initiative (Phase 10's hardening half, `docs/SITE_BUILDER.md` §25; the
+"patterns/presets" half and Phase 9's plugin-contributed block types both stay deliberately
+not started, per §9's own explicit deferral and direct user sign-off). Found and fixed a real,
+previously-undiscovered data-loss bug spanning four update schemas
+(`updateReusableBlockSchema`, `updateTemplateSchema`, `updateFieldDefinitionSchema`,
+`updateFormFieldSchema`): each was derived via `createXSchema.partial()`, which widens a
+field's type to optional but does not strip an already-present `.default(...)` on the base
+schema — so a PATCH genuinely omitting that one field still silently wrote the default (`{}`,
+`[]`, or `false`) over real data. Never visible in the shipped admin UI (every caller already
+resends full payloads), but a real defect for any other caller sending a genuinely partial
+update. Fixed by replacing all four with hand-written schemas (no `.default()`, matching
+`updatePageSchema`'s already-correct pattern); every other `.partial()` use in the workspace was
+audited and confirmed unaffected. A second, smaller gap closed in the same pass: reusable
+blocks' `config` is now validated against its own block type's schema
+(`BLOCK_CONFIG_SCHEMAS`), matching what Pages/Templates already enforce. See
+`docs/SITE_BUILDER.md` §25 for the full implementation record.
+
 **v0.21 (2026-09-14)** — Phase 8 of the schema-driven frontend/site-builder initiative
 (`docs/SITE_BUILDER.md`): `BlockTreeEditor.tsx`'s editing UI gained drag-and-drop reordering
 (dnd-kit, mirroring `ContentTypeDetailPage.tsx`'s existing field-reorder pattern), duplicate,
