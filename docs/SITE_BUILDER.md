@@ -9,8 +9,10 @@ presentation metadata + a field-renderer registry), **Phase 2** (content-type
 data model, admin CRUD + revisions, a basic block-composition editor, and the public Pages
 API), **Phase 4** (`reusable_blocks`/`templates` tables + admin UI, Page creation from a
 template), **Phase 5** (Page Live Preview, reusing `preview-token.ts` verbatim), and
-**Phase 6** (Navigation `pageId` reference option) **are implemented**. Phases 7-10 — Astro
-rendering, the drag-and-drop editor, and everything else in §13's plan — are **not started**.
+**Phase 6** (Navigation `pageId` reference option), and **Phase 7** (Astro rendering —
+`resolveSiteRoute()` in the SDK, `examples/astro-site`'s `<PageRenderer>`/`<BlockRenderer>`
+and catch-all route) **are implemented**. Phases 8-10 — the drag-and-drop editor and
+everything else in §13's plan — are **not started**.
 Do not read anything below §2 as describing current behavior; it is the
 target architecture this phase-by-phase plan is building toward.
 
@@ -569,7 +571,7 @@ exist (skipping/collapsing phases where Core already provides the primitive):
 | **4** | **Done** (2026-09-12) | `reusable_blocks`, `templates` tables + admin UI; Page creation from a template | Phase 3 |
 | **5** | **Done** (2026-09-12) | Page preview (reuses `preview-token.ts` verbatim) | Live Preview (already built) |
 | **6** | **Done** (2026-09-12) | Navigation `pageId` reference option | Structured Settings navigation (already built) |
-| **7** | Not started | `@kenresoft-cms/astro` `<PageRenderer>`/`<BlockRenderer>`, `registerBlockRenderer()`, `examples/astro-site` catch-all route | Astro SSR architecture (already proven) |
+| **7** | **Done** (2026-09-14) | `resolveSiteRoute()` in the SDK, a developer-override block-renderer registry, `examples/astro-site`'s own `<PageRenderer>`/`<BlockRenderer>`/built-in block components + catch-all route | Astro SSR architecture (already proven) |
 | **8** | Not started | Drag-and-drop block editor (dnd-kit — already a dependency), duplicate/undo/redo | Phase 3 UI |
 | **9** | Not started | Plugin-contributed block types (`PluginRegistration.blockTypes?`) | Plugin SDK, once a second real consumer exists |
 | **10** | Not started | Patterns/presets, production hardening pass (perf/security/cache re-verification at scale) | All of the above |
@@ -1197,3 +1199,102 @@ Structured Settings navigation at all, so it's completely unaffected either way.
 Per the same phase-gate discipline as Phases 1-5: stopped after Phase 6, pending explicit
 approval before Phase 7 (`@kenresoft-cms/astro` `<PageRenderer>`/`<BlockRenderer>` and the
 `examples/astro-site` catch-all route) — not started.
+
+## 23. Phase 7 — implementation record (2026-09-14)
+
+**Scope shipped**: real rendering of a Page's block tree through `examples/astro-site`, plus
+the SDK-level primitives needed to resolve a request path to either a Page or an existing
+content entry.
+
+**A deliberate architectural deviation from this document's own original Phase 7 sketch**, not
+a silent substitution: §13's plan (and the phase table above, before this record) described
+`@kenresoft-cms/astro` itself shipping `<PageRenderer>`/`<BlockRenderer>` and built-in block
+components. Implementing this surfaced a real conflict with an already-established, explicit
+design precedent — Phase 1's `field-renderers.ts` documents in its own top comment that
+`@kenresoft-cms/astro` has "no Astro/React/JSX dependency at all... a plain fetch-wrapper
+client," specifically so it stays usable from any frontend framework, not just Astro. Real
+Astro components (`.astro` files, `Astro.self`, dynamic-tag component resolution) cannot live
+in a framework-agnostic package without breaking that property. Resolved by keeping the SDK
+itself framework-agnostic and moving all actual rendering code into `examples/astro-site`:
+
+- `integrations/astro/src/render/resolve-route.ts` gained `resolveSiteRoute(pathname, pages,
+  patterns)` — additive, layers an exact-match Page-route check (`{kind:'page', route}`) on top
+  of the existing Phase 2 `resolveRoute()` (entry/notFound), which is otherwise completely
+  unchanged (signature, tests, behavior).
+- `integrations/astro/src/render/block-renderers.ts` (new) — `registerBlockRenderer()`/
+  `resolveBlockRenderer()`, a registry holding **only developer-supplied overrides**, never
+  built-in defaults. This is deliberate, not an oversight: §6 requires "an explicit override
+  always wins regardless of import order," which a single shared map relying on last-write-wins
+  import ordering can't guarantee — keeping overrides in their own map, checked before an app's
+  own built-in map, makes override-wins structural rather than order-dependent.
+- `examples/astro-site/src/components/blocks/` (new) — `HeroBlock`, `RichTextBlock` (a thin
+  wrapper over the pre-existing `cms/RichText.astro`), `ImageBlock`, `CtaBlock`, `SpacerBlock`,
+  `ColumnsBlock`, `BlockRenderer.astro` (resolves a block's type — checking
+  `resolveBlockRenderer()` first, then a local `BUILT_IN_BLOCKS` map — and recurses into
+  `columns` children via `Astro.self`), and `PageRenderer.astro` (walks `page.blocks`).
+- `examples/astro-site/src/pages/[...route].astro` (new) — the catch-all route: fetches
+  `cms.pages.list()` + `cms.routePatterns.list()`, calls `resolveSiteRoute()`, 404s on
+  `notFound`, renders via `<PageRenderer>` on a `page` match (with `?preview_token=` support
+  mirroring `blog/[slug].astro`'s existing preview-banner pattern), and deliberately still 404s
+  on an `entry` match — this example already has purpose-built per-content-type templates
+  (`blog/[slug].astro`, etc.), so generic entry rendering here would double-render or diverge
+  from those. Astro's own static/named-route-before-rest-parameter-catch-all precedence means
+  adding this file doesn't risk breaking any existing hand-authored page; the one caveat (a Page
+  created at a route colliding with an existing static file is silently unreachable) is
+  documented inline and in `docs/ASTRO.md`, not silently accepted.
+- **A real, previously-undiscovered gap closed**: rendering a `reusableBlockRef` block needs the
+  referenced block's current type/config at render time (Phase 4's "live reference" semantics),
+  but no public route for reusable blocks existed at all — every prior phase only built
+  admin-authenticated CRUD. New `GET /api/v1/public/reusable-blocks/:id`
+  (`apps/api/src/routes/public/reusable-blocks.ts`), edge-cached and invalidated on write
+  (`invalidatePublicReusableBlockCache()` in `apps/api/src/lib/public-cache.ts`, called from the
+  existing PATCH/DELETE handlers), mirroring `routes/public/media.ts`'s pattern exactly.
+  `@kenresoft-cms/astro` gained `reusableBlocks.get({id})`; `BlockRenderer.astro` special-cases
+  a `reusableBlockRef` block by fetching through it before resolving a component.
+
+**A real, non-hypothetical test bug found and fixed while writing this phase's own test file,
+not assumed environmental**: `apps/api/test/public-reusable-blocks.test.ts` initially hung
+indefinitely (traced to an unhandled `TypeError: fetch failed`/`ECONNREFUSED` rejection) —
+first suspected as the project's own well-documented Windows/workerd resource-contention
+flakiness, since several concurrent `wrangler dev`/vitest processes really were competing for
+ports at the time. After clearing every stray process and confirming an unrelated test file
+(`health.test.ts`) ran instantly in the same clean environment, the hang reproduced anyway,
+isolated to this one file specifically — proving it wasn't environmental. Root-caused by
+bisecting with `vitest --reporter=verbose`: the file's public GET responses populate the route's
+edge cache via `ctx.waitUntil(cache.put(...))` (mirroring `routes/public/media.ts`'s pattern),
+and two of the test's `SELF.fetch()` calls never read the response body — exactly the gotcha
+`public-media-routes.test.ts`'s own comment already documents ("leaving this response's body
+unread left that background write... hanging indefinitely under
+`@cloudflare/vitest-pool-workers`"), just not yet hit by this specific new file. Fixed by
+consuming both previously-unread bodies (`.text()`); the file then passes cleanly and
+consistently (2/2, ~650ms). Worth recording here since it's a second, independent instance of a
+gotcha this codebase had already named once but not generalized into a shared test-writing rule.
+
+**Verification performed**: `pnpm --filter @kenresoft-cms/astro typecheck`/`test` clean (41/41,
+including all new `resolveSiteRoute`/block-renderers tests); `examples/astro-site`'s `astro
+check` (0 errors/warnings/hints across 52 files) and `astro build` (server output via
+`@astrojs/cloudflare`) both clean; `pnpm typecheck`/`pnpm lint` clean workspace-wide.
+`apps/api/test/public-reusable-blocks.test.ts` (2 tests — the public route's shape/404, and
+cache invalidation on update) passing against real D1, per the fix above. The full `apps/admin`
+suite (38 files, 204 tests) passed clean in one run; a first concurrent run alongside the
+still-diagnosing `apps/api` test produced 10 transient 5000ms timeouts, confirmed as this
+project's own already-documented resource-contention flakiness (not a regression) by re-running
+the suite alone with zero other processes running and getting a clean pass. A live `wrangler
+dev` end-to-end round trip (create a Page with blocks via the admin API, fetch the rendered
+route through a real deployed instance) was attempted earlier in this phase but repeatedly hit
+genuine environmental Windows/workerd resource contention (multiple concurrent `wrangler dev`/
+vitest processes, then a bare D1 `select 1` failing against a clean single instance); a
+`wrangler deploy --dry-run` confirmed the actual Worker bundle itself is sound. That live pass
+was not re-attempted after the unrelated test-infra fix above — the failing signal there was
+already correctly diagnosed as environmental before the real bug was found, and re-litigating it
+wasn't warranted once the actual code path (typecheck/lint/real-D1 tests/`astro check`/`astro
+build`) was fully green.
+
+**No breaking changes**: `resolveRoute()`'s existing signature/behavior/tests are untouched; the
+new public reusable-blocks route and SDK additions are all purely additive; a deployment that
+never creates a Page or reusable block sees zero behavior change anywhere.
+
+Per the user's explicit "continue with phase 7 after phase 6" instruction (authorizing a
+continuation straight from Phase 6 into Phase 7 without a separate approval gate between them,
+but not phrased as blanket authorization beyond Phase 7): stopped after Phase 7, pending
+explicit approval before Phase 8 (the drag-and-drop visual block editor) — not started.

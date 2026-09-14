@@ -1,0 +1,78 @@
+---
+// The generic Page/content-type catch-all — Phase 7 of the schema-driven frontend work
+// (docs/SITE_BUILDER.md §5). Only reached for a pathname that doesn't match one of this
+// example's own hand-authored static routes (about.astro, contact.astro, blog/[slug].astro,
+// etc.) — Astro's own routing precedence always tries a static/dynamic-with-named-params route
+// before a rest-parameter catch-all like this one, so those pages continue to work completely
+// unchanged; this file is what makes a brand-new CMS Page or a brand-new content type with a
+// `routePattern` reachable with ZERO Astro source changes (the actual product goal this whole
+// phased effort has been building toward, per docs/SITE_BUILDER.md's own opening scenarios).
+//
+// Known limitation specific to this example (not a CMS behavior): if a Page is ever created in
+// the admin at a route that collides with one of this site's own static files (e.g. "/about"),
+// the static file always wins — this catch-all is never even reached for that path. A real
+// deployment managing its "About" content as a CMS Page instead would simply not also ship a
+// static about.astro.
+import { createKenresoftClient, resolveSiteRoute } from '@kenresoft-cms/astro';
+import BaseLayout from '../layouts/BaseLayout.astro';
+import PageRenderer from '../components/blocks/PageRenderer.astro';
+
+const cms = createKenresoftClient({ url: import.meta.env.PUBLIC_KENRESOFT_CMS_URL });
+
+const routeParam = Astro.params.route;
+const pathname = `/${routeParam ?? ''}`;
+const previewToken = Astro.url.searchParams.get('preview_token');
+
+const [pages, patterns] = await Promise.all([cms.pages.list(), cms.routePatterns.list()]);
+const resolved = resolveSiteRoute(pathname, pages, patterns);
+
+if (resolved.kind === 'notFound') {
+  return new Response(null, { status: 404, statusText: 'Not Found' });
+}
+
+// A content-type entry at this route is deliberately NOT rendered generically here — this
+// example already has purpose-built templates per content type (blog/[slug].astro, shop/
+// [slug].astro, categories/[slug].astro), and a routePattern existing for one of those content
+// types would otherwise double-render it through a second, generic path. This catch-all's real
+// job for entries is limited to a content type with NO hand-authored template of its own —
+// which, for this example, means there's genuinely nothing to render yet beyond a 404, since
+// every content type this site actually uses already has one. A frontend without hand-authored
+// per-content-type pages would render the entry generically here instead.
+if (resolved.kind === 'entry') {
+  return new Response(null, { status: 404, statusText: 'Not Found' });
+}
+
+const page = previewToken
+  ? await cms.pages.preview({ route: resolved.route, token: previewToken }).catch(() => null)
+  : await cms.pages.resolve({ route: resolved.route }).catch(() => null);
+
+if (!page) {
+  return new Response(null, { status: 404, statusText: 'Not Found' });
+}
+---
+
+<BaseLayout
+  title={page.seo?.title ?? page.title}
+  description={page.seo?.description ?? undefined}
+  canonicalUrl={new URL(page.route, Astro.site ?? Astro.url).toString()}
+  noIndex={Boolean(previewToken)}
+>
+  {previewToken ? (
+    <div class="preview-banner">
+      Preview mode — viewing a {page.status} page. This banner never appears without a valid preview link.
+    </div>
+  ) : null}
+  <PageRenderer page={page} cms={cms} />
+</BaseLayout>
+
+<style>
+  .preview-banner {
+    background: var(--warning-bg);
+    color: color-mix(in oklch, var(--warning) 70%, var(--ink));
+    text-align: center;
+    padding: var(--space-3) var(--space-4);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    border-bottom: 1px solid var(--warning-border);
+  }
+</style>

@@ -313,14 +313,60 @@ discriminated union (`{kind: 'entry', ...} | {kind: 'notFound'}`) deliberately s
 `page` variant can be added later (once Pages exist, `docs/SITE_BUILDER.md` Phase 3+) without
 breaking existing callers.
 
-**What this does NOT do yet**: `examples/astro-site` has not been changed to use
-`resolveRoute()` — there's no generic catch-all route in the example site. Wiring one in is
-deferred, matching how Phase 1's `renderField()` was also built and tested as a standalone
-primitive before being wired into any real page — a generic renderer for an *arbitrary* new
-content type's fields still needs either the (unresolved) content-type-metadata endpoint or a
-per-content-type-aware fallback, and forcing that decision here would have meant either
-resolving it unilaterally or shipping a half-generic demo Phase 7 (the real Page/Block
-renderer) will likely supersede anyway.
+`examples/astro-site` now wires this in via `resolveSiteRoute()` (Phase 7 below), layering an
+exact-match Page route check on top of the same `resolveRoute()` content-type resolution — see
+the next section.
+
+## Page/Block rendering (Phase 7 of the schema-driven frontend work)
+
+**Status: implemented.** `examples/astro-site` gained `src/pages/[...route].astro`, a generic
+catch-all reached only for a pathname that doesn't match one of the site's own hand-authored
+static routes (Astro's routing always prefers a static/named-param route over a rest-parameter
+catch-all). It resolves the path via `resolveSiteRoute(pathname, pages, patterns)` — a new
+layer on top of Phase 2's `resolveRoute()` that checks a Page's exact literal `route` first
+(Pages have no `{slug}` grammar), falling back to content-type pattern matching:
+
+```ts
+import { createKenresoftClient, resolveSiteRoute } from '@kenresoft-cms/astro';
+
+const cms = createKenresoftClient({ url: PUBLIC_KENRESOFT_CMS_URL });
+const [pages, patterns] = await Promise.all([cms.pages.list(), cms.routePatterns.list()]);
+const result = resolveSiteRoute(pathname, pages, patterns);
+// => { kind: 'page', route } | { kind: 'entry', contentTypeSlug, slug } | { kind: 'notFound' }
+```
+
+For a `page` result, the full Page is fetched via the new `cms.pages.resolve({ route })` (or
+`cms.pages.preview({ route, token })` when a `?preview_token=` is present, mirroring the
+existing entry-preview flow exactly) and rendered through `<PageRenderer page={page} cms={cms} />`.
+
+**A deliberate, documented deviation from `docs/SITE_BUILDER.md`'s original §5 sketch**: that
+document imagined `@kenresoft-cms/astro` itself shipping `<PageRenderer>`/`<BlockRenderer>` and a
+built-in Hero/RichText/Image/CTA/Columns/Spacer component set. In practice, `@kenresoft-cms/astro`
+has no Astro/React/JSX dependency at all (the same reasoning `renderField()`'s own doc comment
+already gives for why field rendering returns a plain data shape rather than markup) — a real
+component is inherently framework-specific. So the SDK ships only the framework-agnostic half:
+`registerBlockRenderer(blockType, component)`/`resolveBlockRenderer(blockType)`
+(`integrations/astro/src/render/block-renderers.ts`), a developer-override registry holding
+`unknown` component references. The actual built-in components —
+`examples/astro-site/src/components/blocks/{Hero,RichText,Image,Cta,Columns,Spacer}Block.astro`,
+plus `BlockRenderer.astro` (resolves one block: `resolveBlockRenderer(type) ?? BUILT_IN_BLOCKS[type]`,
+so an explicit override always wins regardless of import order — the override and the built-in
+map are two separate objects a caller combines itself, never one mutable map where later
+registration could silently clobber an earlier one) and `PageRenderer.astro` — live in
+`examples/astro-site` instead, the one real Astro consumer that can hold `.astro` files at all.
+A `reusableBlockRef` block is special-cased in `BlockRenderer.astro`: it fetches the referenced
+block's live type/config via the new `cms.reusableBlocks.get({ id })` (backed by a new public
+`GET /api/v1/public/reusable-blocks/:id`, since rendering a live reference needs the referenced
+block's current data, not a copy) before resolving a component for it — a dangling reference (the
+reusable block was deleted) or an unrecognized block type both silently render nothing rather
+than failing the whole page.
+
+**What this does NOT do yet**: no drag-and-drop visual editor (Phase 8 — the underlying
+data/rendering model built here is designed not to need a rewrite when that ships); no
+plugin-contributed block types (Phase 9). A route collision between a Page and one of this
+example's own static files (e.g. an admin creating a Page at `/about`) is a known,
+example-specific limitation — the static file always wins and the CMS Page is never reached; see
+the code comment at the top of `[...route].astro`.
 
 ## Known limitations
 

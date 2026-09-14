@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { matchRoutePattern, resolveRoute, type RoutePatternEntry } from '../src/render/resolve-route.ts';
+import { matchRoutePattern, resolveRoute, resolveSiteRoute, type RoutePatternEntry } from '../src/render/resolve-route.ts';
 
 describe('matchRoutePattern', () => {
   it('matches a single-segment pattern and extracts the slug', () => {
@@ -79,6 +79,35 @@ describe('resolveRoute', () => {
       kind: 'entry',
       contentTypeSlug: 'blog',
       slug: 'hello-world',
+    });
+  });
+});
+
+describe('resolveSiteRoute', () => {
+  const pages = [{ route: '/about' }, { route: '/contact' }];
+  const patterns: RoutePatternEntry[] = [{ contentTypeSlug: 'blog', routePattern: '/blog/{slug}' }];
+
+  it('resolves an exact Page route match before checking content-type patterns', () => {
+    assert.deepEqual(resolveSiteRoute('/about', pages, patterns), { kind: 'page', route: '/about' });
+  });
+
+  it('falls back to resolveRoute() for a path that matches no Page', () => {
+    assert.deepEqual(resolveSiteRoute('/blog/hello-world', pages, patterns), {
+      kind: 'entry',
+      contentTypeSlug: 'blog',
+      slug: 'hello-world',
+    });
+  });
+
+  it('resolves to notFound when neither a Page nor a content-type pattern matches', () => {
+    assert.deepEqual(resolveSiteRoute('/does-not-exist', pages, patterns), { kind: 'notFound' });
+  });
+
+  it('a Page route always wins over a content-type pattern that would also match the same path', () => {
+    const collidingPages = [{ route: '/blog/hello-world' }];
+    assert.deepEqual(resolveSiteRoute('/blog/hello-world', collidingPages, patterns), {
+      kind: 'page',
+      route: '/blog/hello-world',
     });
   });
 });

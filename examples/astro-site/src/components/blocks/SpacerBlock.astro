@@ -1,0 +1,13 @@
+---
+// Config shape mirrors SPACER_BLOCK_CONFIG (packages/contracts/schemas/blocks.ts).
+import type { BlockInstance } from '@kenresoft-cms/astro';
+
+interface Props {
+  config: BlockInstance['config'];
+}
+
+const { config } = Astro.props;
+const height = typeof config.height === 'number' ? config.height : 40;
+---
+
+<div class="spacer-block" style={`height: ${height}px`} aria-hidden="true" />

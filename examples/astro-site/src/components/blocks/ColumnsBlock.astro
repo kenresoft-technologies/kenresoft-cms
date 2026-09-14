@@ -1,0 +1,31 @@
+---
+// Config shape mirrors COLUMNS_BLOCK_CONFIG (packages/contracts/schemas/blocks.ts) — this
+// block's own config carries no content beyond how many columns to lay out; its actual content
+// is whatever child blocks BlockRenderer.astro renders into the default slot.
+import type { BlockInstance } from '@kenresoft-cms/astro';
+
+interface Props {
+  config: BlockInstance['config'];
+}
+
+const { config } = Astro.props;
+const columnCount = typeof config.columnCount === 'number' ? config.columnCount : 2;
+---
+
+<div class="columns-block" style={`--column-count: ${columnCount}`}>
+  <slot />
+</div>
+
+<style>
+  .columns-block {
+    display: grid;
+    grid-template-columns: repeat(var(--column-count, 2), minmax(0, 1fr));
+    gap: var(--space-6);
+  }
+
+  @media (max-width: 640px) {
+    .columns-block {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

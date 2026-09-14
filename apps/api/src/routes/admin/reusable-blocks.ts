@@ -12,6 +12,7 @@ import { recordAudit } from '../../lib/audit';
 import { enqueueCachePurgePaths, processCachePurgeJobBatch } from '../../lib/cache-purge';
 import { getDb } from '../../lib/db';
 import { createOpenApiApp } from '../../lib/openapi';
+import { invalidatePublicReusableBlockCache } from '../../lib/public-cache';
 import { requireRole } from '../../middleware/require-role';
 import { listPages } from '../../repositories/pages';
 import {
@@ -170,6 +171,7 @@ reusableBlocksRoute.openapi(
     const input = c.req.valid('json');
     const block = await updateReusableBlock(db, id, input);
     c.executionCtx.waitUntil(invalidateAllPageCaches(db));
+    c.executionCtx.waitUntil(invalidatePublicReusableBlockCache(id));
     await recordAudit(db, {
       actorUserId: c.get('user').id,
       action: 'reusable_block.updated',
@@ -205,6 +207,7 @@ reusableBlocksRoute.openapi(
 
     await deleteReusableBlock(db, id);
     c.executionCtx.waitUntil(invalidateAllPageCaches(db));
+    c.executionCtx.waitUntil(invalidatePublicReusableBlockCache(id));
     await recordAudit(db, {
       actorUserId: c.get('user').id,
       action: 'reusable_block.deleted',

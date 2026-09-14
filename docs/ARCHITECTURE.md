@@ -7,6 +7,25 @@ Status: Proposed / Ready for implementation
 
 ## Changelog
 
+**v0.20 (2026-09-14)** — Phase 7 of the schema-driven frontend/site-builder initiative
+(`docs/SITE_BUILDER.md`): real rendering of a Page's block tree, closing §6.5's "not yet
+rendered by a frontend" gap. Deliberately deviates from this document's own original Phase 7
+sketch (SDK-shipped `<PageRenderer>`/`<BlockRenderer>` components): `@kenresoft-cms/astro`
+stays framework-agnostic (Phase 1's own established design principle) and gained only
+`resolveSiteRoute()` (layers an exact-match Page-route check on top of Phase 2's unchanged
+`resolveRoute()`) and a developer-override-only block-renderer registry
+(`registerBlockRenderer()`/`resolveBlockRenderer()`); the actual Astro components and the
+`examples/astro-site` catch-all route (`[...route].astro`) live in the example site itself. A
+new `GET /api/v1/public/reusable-blocks/:id` route closes a previously-undiscovered gap: a
+`reusableBlockRef` block needs its referenced block's live type/config at render time, and no
+public route for reusable blocks existed until now. A real test-infrastructure bug was found and
+fixed verifying this route's own test file: an unread `SELF.fetch()` response body left the
+cache middleware's `ctx.waitUntil(cache.put(...))` background write hanging under
+`@cloudflare/vitest-pool-workers` — the same class of gotcha `public-media-routes.test.ts`'s own
+comment already names, just not yet hit by this new file. No breaking changes — every addition
+is purely additive, and `resolveRoute()`'s existing signature/behavior is untouched. See
+`docs/SITE_BUILDER.md` §23 for the full implementation record.
+
 **v0.19 (2026-09-12)** — Phase 6 of the schema-driven frontend/site-builder initiative
 (`docs/SITE_BUILDER.md`): Navigation `pageId` reference option. `navigationItemSchema`
 (Structured Settings' `navigation` module, §6.2) is now a `z.union()` accepting either a literal
@@ -782,11 +801,10 @@ reorder UI (buttons, not drag-and-drop) — `docs/SITE_BUILDER.md` §14 decision
 drag-and-drop canvas as a later, separate phase (Phase 8) that replaces only this editing UI,
 never the underlying block-tree data model or rendering architecture.
 
-**What this does not do yet**: no `@kenresoft-cms/astro` `<PageRenderer>`/
-`registerBlockRenderer()` or `examples/astro-site` catch-all route (Phase 7) — a Page can be
-created and composed in the admin UI, previewed (§6.5.1, Phase 5), linked to from Navigation
-(§6.5.2, Phase 6), and fetched via the public API, but nothing renders it as an actual web page
-yet. See `docs/SITE_BUILDER.md` §19 for the full Phase 3 implementation record.
+A Page can be created and composed in the admin UI, previewed (§6.5.1, Phase 5), linked to from
+Navigation (§6.5.2, Phase 6), fetched via the public API, and — as of Phase 7 (§6.5.3) — rendered
+as an actual web page by `examples/astro-site`. See `docs/SITE_BUILDER.md` §19 for the full
+Phase 3 implementation record.
 
 #### 6.5.1 Page Live Preview (Phase 5)
 
@@ -813,6 +831,32 @@ already a JSON blob. A frontend resolves a `pageId` to that Page's `route` via t
 `client.pages.list()` wrapper over the existing `GET /api/v1/public/pages`; a `pageId` with no
 matching page (the Page was deleted after the nav item referenced it) resolves to `href: null`
 rather than throwing. See `docs/SITE_BUILDER.md` §22 for the full implementation record.
+
+#### 6.5.3 Astro rendering (Phase 7)
+
+**Status: implemented.** `resolveSiteRoute(pathname, pages, patterns)`
+(`integrations/astro/src/render/resolve-route.ts`) resolves an incoming request path to a Page
+(exact-match on `route`), an entry (via the existing, unchanged Phase 2 `resolveRoute()`), or
+`notFound`. `@kenresoft-cms/astro` deliberately stays framework-agnostic (Phase 1's
+`field-renderers.ts` established this precedent) — it exposes only a developer-override block-
+renderer registry (`registerBlockRenderer()`/`resolveBlockRenderer()`, holding overrides in a
+map separate from an app's own built-in map so an explicit override always wins regardless of
+import order, per §6's requirement), never real Astro components. The actual rendering lives in
+`examples/astro-site`: `<PageRenderer>`/`<BlockRenderer>` and one component per built-in block
+type (`HeroBlock`, `RichTextBlock`, `ImageBlock`, `CtaBlock`, `ColumnsBlock`, `SpacerBlock`), a
+`BUILT_IN_BLOCKS` map checked only after `resolveBlockRenderer()` finds no override, and a
+`[...route].astro` catch-all that 404s on `notFound`, renders a Page match, and deliberately
+still 404s on an `entry` match (this example already has purpose-built per-content-type
+templates, so generic entry rendering would double-render). Astro's own routing precedence
+(static/named routes always win over a rest-parameter catch-all) means this addition can't break
+any existing hand-authored page; the one caveat — a Page at a route colliding with an existing
+static file is silently unreachable — is documented, not silently accepted.
+
+A `reusableBlockRef` block (§6.6) is resolved by `BlockRenderer.astro` fetching the referenced
+block's current type/config through a new `GET /api/v1/public/reusable-blocks/:id` route
+(edge-cached, invalidated on write) — closing a gap no earlier phase had needed to close, since
+only admin-authenticated CRUD for reusable blocks existed before. See `docs/SITE_BUILDER.md` §23
+for the full implementation record.
 
 ### 6.6 Reusable Blocks and Templates (schema-driven frontend, Phase 4)
 

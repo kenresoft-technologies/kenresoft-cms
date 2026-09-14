@@ -76,3 +76,12 @@ export async function invalidatePublicPageCache(route: string): Promise<void> {
     cache.delete(publicCacheKey(`/api/v1/public/pages/by-route?route=${encodeURIComponent(route)}`)),
   ]);
 }
+
+// Phase 7 of the schema-driven frontend work (docs/SITE_BUILDER.md) — a reusable block has
+// exactly one public cache key (its own `GET /public/reusable-blocks/:id`), unlike Pages'
+// invalidateAllPageCaches() sweep, since rendering a `reusableBlockRef` only ever reads this
+// one resource directly, never joined into a page's own cached response.
+export async function invalidatePublicReusableBlockCache(id: string): Promise<void> {
+  const cache = caches.default;
+  await cache.delete(publicCacheKey(`/api/v1/public/reusable-blocks/${id}`));
+}

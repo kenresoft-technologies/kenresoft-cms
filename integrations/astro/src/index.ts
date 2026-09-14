@@ -1,16 +1,22 @@
 import type {
+  BlockInstance,
+  ChildBlockInstance,
   ContactSettingsData,
   Entry,
   FooterSettingsData,
   FormSubmission,
   GeneralSettingsData,
   NavigationSettingsData,
+  Page,
   PageListItem,
   PublicMedia,
+  ReusableBlock,
   RoutePatternEntry,
   SeoSettingsData,
   SocialSettingsData,
 } from '@kenresoft-cms/contracts';
+
+export type { BlockInstance, ChildBlockInstance, Page, ReusableBlock };
 
 // Type-only imports — erased at compile time, so this package never actually depends on zod
 // (or anything else @kenresoft-cms/contracts pulls in) at runtime. They exist purely so this
@@ -34,7 +40,18 @@ export {
 // Phase 2 of the schema-driven frontend work (docs/SITE_BUILDER.md) — dynamic content routing.
 // `resolveRoute()`/`matchRoutePattern()` are pure functions, independent of the client below;
 // pair them with `client.routePatterns.list()` to build a generic catch-all Astro route.
-export { matchRoutePattern, resolveRoute, type ResolvedRoute } from './render/resolve-route';
+export {
+  matchRoutePattern,
+  resolveRoute,
+  resolveSiteRoute,
+  type ResolvedRoute,
+  type ResolvedSiteRoute,
+} from './render/resolve-route';
+
+// Phase 7 of the schema-driven frontend work (docs/SITE_BUILDER.md §6) — the developer-override
+// half of block rendering; see block-renderers.ts's own top comment for why the built-in
+// default components live in examples/astro-site instead of here.
+export { registerBlockRenderer, resolveBlockRenderer, type BlockComponent } from './render/block-renderers';
 
 // Phase 6 of the schema-driven frontend work (docs/SITE_BUILDER.md §3.7) — resolves a
 // Navigation item's `pageId` reference to that Page's own `route`, alongside its plain `url`
@@ -339,6 +356,26 @@ export interface MediaUrlOptions {
   id: string;
 }
 
+export interface ResolvePageOptions {
+  /** The Page's literal route, e.g. "/about" — not a `{slug}` pattern. */
+  route: string;
+}
+
+export interface PreviewPageOptions extends ResolvePageOptions {
+  /**
+   * A signed, page-scoped token from `GET /api/v1/admin/pages/:id/preview-token` (Kenresoft
+   * CMS's Page Editor's "Live Preview" button generates one and appends it to the link it
+   * opens) — an expired/invalid/wrong-page token 404s (`null`) exactly like a nonexistent
+   * route does through `pages.resolve()`. Never the normal path for rendering published Pages.
+   */
+  token: string;
+}
+
+export interface GetReusableBlockOptions {
+  /** A reusable block's own id — typically a `config.reusableBlockId` on a `reusableBlockRef` block. */
+  id: string;
+}
+
 export interface SubmitFormOptions {
   /** The form's slug, not its display name — e.g. "contact". */
   formSlug: string;
@@ -417,13 +454,34 @@ export interface KenresoftClient {
     list(): Promise<RoutePatternEntry[]>;
   };
   /**
-   * Deliberately narrow, like routePatterns above — id/route/title only, never the full block
-   * tree (fetch one page fully via a future `pages.get()`/`pages.byRoute()`, not added yet since
-   * nothing renders Pages until Phase 7). Feeds `resolveNavigationItems()` above.
+   * `list()` is deliberately narrow, like routePatterns above — id/route/title only, never the
+   * full block tree; feeds `resolveNavigationItems()` above and sitemap-style generation.
+   * `resolve()`/`preview()` fetch one Page fully, for actual rendering (Phase 7 — see
+   * `resolveSiteRoute()`/`<PageRenderer>` in `examples/astro-site`).
    */
   pages: {
     /** Matches GET /api/v1/public/pages exactly (edge-cached). Only published pages. */
     list(): Promise<PageListItem[]>;
+    /**
+     * A published Page by its exact route, or null if there's no Page there, or the Page at
+     * that route is a draft — a draft 404s exactly like a nonexistent route (§7, mirroring
+     * entries).
+     */
+    resolve(options: ResolvePageOptions): Promise<Page | null>;
+    /**
+     * Fetches one Page regardless of draft/published status, given a valid preview token for
+     * it — see `PreviewPageOptions.token`. Powers Page Live Preview; not used for normal
+     * rendering.
+     */
+    preview(options: PreviewPageOptions): Promise<Page | null>;
+  };
+  reusableBlocks: {
+    /**
+     * A reusable block's own type/config by id, resolved live (never cached beyond the normal
+     * edge TTL) since it's a *live reference* (§3.4) — editing it changes what every page
+     * embedding it renders next time. Returns null for an unknown id.
+     */
+    get(options: GetReusableBlockOptions): Promise<ReusableBlock | null>;
   };
   /**
    * Structured Settings (docs/ARCHITECTURE.md §6) — singleton, typed, schema-validated site
@@ -676,6 +734,19 @@ export function createKenresoftClient(config: KenresoftClientConfig): KenresoftC
       async list() {
         const pages = await request<PageListItem[]>('/api/v1/public/pages');
         return pages ?? [];
+      },
+      resolve({ route }) {
+        return request<Page>(`/api/v1/public/pages/by-route?route=${encodeURIComponent(route)}`);
+      },
+      preview({ route, token }) {
+        return request<Page>(
+          `/api/v1/public/preview/pages?route=${encodeURIComponent(route)}&token=${encodeURIComponent(token)}`,
+        );
+      },
+    },
+    reusableBlocks: {
+      get({ id }) {
+        return request<ReusableBlock>(`/api/v1/public/reusable-blocks/${id}`);
       },
     },
     settings: {

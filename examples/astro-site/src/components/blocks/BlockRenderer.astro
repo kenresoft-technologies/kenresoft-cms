@@ -1,0 +1,63 @@
+---
+// Walks one BlockInstance node — Phase 7 of the schema-driven frontend work
+// (docs/SITE_BUILDER.md §5/§6). Resolution order for a block's own `type` (mirroring
+// resolveFieldRenderer()'s documented precedence in @kenresoft-cms/astro, applied here since
+// the actual component map is necessarily Astro-specific — see that package's
+// block-renderers.ts for why): 1) a developer-registered override via
+// `registerBlockRenderer()`, checked first so it ALWAYS wins regardless of import order; 2)
+// this file's own built-in default for that type; 3) nothing rendered, for an unrecognized
+// type (never throws — a page with one bad/future block type still renders everything else).
+//
+// `reusableBlockRef` is special-cased here (not a component in BUILT_IN_BLOCKS) because
+// resolving it requires an async fetch of the referenced block's own live type/config
+// (§3.4/§8's live-reference model) before this function even knows what to render next — a
+// dangling reference (the reusable block was deleted) silently renders nothing, the same
+// "don't fail the whole page over one bad block" policy as an unrecognized type.
+import { resolveBlockRenderer } from '@kenresoft-cms/astro';
+import type { BlockInstance, ChildBlockInstance, KenresoftClient } from '@kenresoft-cms/astro';
+import CtaBlock from './CtaBlock.astro';
+import HeroBlock from './HeroBlock.astro';
+import ImageBlock from './ImageBlock.astro';
+import RichTextBlock from './RichTextBlock.astro';
+import SpacerBlock from './SpacerBlock.astro';
+import ColumnsBlock from './ColumnsBlock.astro';
+
+const BUILT_IN_BLOCKS: Record<string, unknown> = {
+  hero: HeroBlock,
+  richText: RichTextBlock,
+  image: ImageBlock,
+  cta: CtaBlock,
+  columns: ColumnsBlock,
+  spacer: SpacerBlock,
+};
+
+interface Props {
+  block: BlockInstance | ChildBlockInstance;
+  cms: KenresoftClient;
+}
+
+const { block, cms } = Astro.props;
+
+let resolvedType: string | null = block.type;
+let resolvedConfig: BlockInstance['config'] = block.config;
+
+if (block.type === 'reusableBlockRef') {
+  const reusableBlockId = typeof block.config.reusableBlockId === 'string' ? block.config.reusableBlockId : null;
+  const resolved = reusableBlockId ? await cms.reusableBlocks.get({ id: reusableBlockId }) : null;
+  resolvedType = resolved?.type ?? null;
+  resolvedConfig = resolved?.config ?? {};
+}
+
+const Component = resolvedType ? ((resolveBlockRenderer(resolvedType) ?? BUILT_IN_BLOCKS[resolvedType]) as any) : null;
+const children = 'children' in block ? block.children : undefined;
+// Astro.self — the documented way for a component to reference itself recursively — is what
+// lets ColumnsBlock's own children render through this exact same resolution logic rather than
+// a second, hand-duplicated block-walking function.
+const Self = Astro.self;
+---
+
+{Component ? (
+  <Component config={resolvedConfig} cms={cms}>
+    {children?.map((child) => <Self block={child} cms={cms} />)}
+  </Component>
+) : null}

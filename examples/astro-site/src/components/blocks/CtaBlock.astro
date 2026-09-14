@@ -1,0 +1,58 @@
+---
+// Config shape mirrors CTA_BLOCK_CONFIG (packages/contracts/schemas/blocks.ts).
+import type { BlockInstance } from '@kenresoft-cms/astro';
+
+interface Props {
+  config: BlockInstance['config'];
+}
+
+const { config } = Astro.props;
+const heading = typeof config.heading === 'string' ? config.heading : null;
+const buttonLabel = typeof config.buttonLabel === 'string' ? config.buttonLabel : null;
+const buttonUrl = typeof config.buttonUrl === 'string' ? config.buttonUrl : null;
+---
+
+{heading || (buttonLabel && buttonUrl) ? (
+  <section class="cta-block">
+    {heading ? <h2>{heading}</h2> : null}
+    {buttonLabel && buttonUrl ? (
+      <a class="cta-button" href={buttonUrl}>
+        {buttonLabel}
+      </a>
+    ) : null}
+  </section>
+) : null}
+
+<style>
+  .cta-block {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-4);
+    text-align: center;
+    padding: var(--space-10) var(--space-6);
+    border-radius: var(--radius);
+    background: var(--surface-muted);
+  }
+
+  .cta-block h2 {
+    margin: 0;
+    font-size: var(--text-2xl);
+    font-weight: 600;
+  }
+
+  .cta-button {
+    display: inline-block;
+    padding: var(--space-3) var(--space-6);
+    border-radius: var(--radius);
+    background: var(--brand);
+    color: var(--brand-foreground);
+    font-weight: 600;
+    text-decoration: none;
+    transition: background 0.15s ease;
+  }
+
+  .cta-button:hover {
+    background: var(--brand-hover);
+  }
+</style>
