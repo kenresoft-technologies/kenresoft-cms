@@ -2524,3 +2524,93 @@ batch. No breaking changes; `examples/astro-site` doesn't consume Structured Set
 at all, so it's unaffected either way. Per the same phase-gate discipline as Phases 1-5: stopped
 after Phase 6, pending explicit approval before Phase 7 (`<PageRenderer>`/`<BlockRenderer>` and
 the `examples/astro-site` catch-all route).
+
+**Site builder Phase 7: Astro rendering** (2026-09-14, on `develop`, continued straight from
+Phase 6 per direct instruction — "continue with phase 7 after phase 6") — done: a Page's block
+tree now actually renders through `examples/astro-site`, closing the last gap in the Page
+system (creatable/composable/previewable/linkable since Phases 3-6, but never rendered).
+
+A real, deliberately-made architectural deviation from `docs/SITE_BUILDER.md`'s own original
+Phase 7 sketch, not a silent substitution: the plan called for `@kenresoft-cms/astro` itself to
+ship `<PageRenderer>`/`<BlockRenderer>` and built-in block components. Implementing that would
+have broken an already-established, explicit design precedent from Phase 1 — `field-
+renderers.ts`'s own top comment documents that the SDK has "no Astro/React/JSX dependency at
+all... a plain fetch-wrapper client," specifically so it stays usable from any frontend
+framework. Real `.astro` components can't live there without breaking that. Resolved by keeping
+the SDK framework-agnostic and moving all actual rendering into `examples/astro-site` instead:
+`integrations/astro/src/render/resolve-route.ts` gained `resolveSiteRoute(pathname, pages,
+patterns)` — additive, layers an exact-match Page-route check on top of the completely
+unchanged Phase 2 `resolveRoute()` — and a new `integrations/astro/src/render/
+block-renderers.ts` exposes only a developer-override registry (`registerBlockRenderer()`/
+`resolveBlockRenderer()`), holding overrides in a map kept separate from an app's own built-in
+map so an explicit override always wins regardless of import order, matching
+`docs/SITE_BUILDER.md` §6's explicit requirement rather than relying on import-order-dependent
+last-write-wins semantics on one shared map. `examples/astro-site/src/components/blocks/` (new)
+holds the real components: `HeroBlock`, `RichTextBlock` (thin wrapper over the pre-existing
+`cms/RichText.astro`), `ImageBlock`, `CtaBlock`, `ColumnsBlock`, `SpacerBlock`,
+`BlockRenderer.astro` (resolves a block's type via `resolveBlockRenderer()` first, then a local
+`BUILT_IN_BLOCKS` map, recursing into `columns` children through `Astro.self`), and
+`PageRenderer.astro`. A new `examples/astro-site/src/pages/[...route].astro` catch-all fetches
+`cms.pages.list()`/`cms.routePatterns.list()` in parallel, calls `resolveSiteRoute()`, 404s on
+`notFound`, renders a `page` match via `<PageRenderer>` (with `?preview_token=` support
+mirroring `blog/[slug].astro`'s existing pattern), and deliberately still 404s on an `entry`
+match — this example already has purpose-built per-content-type templates (blog, shop,
+categories), so generic entry rendering here would risk double-rendering or diverging from
+them. Astro's own routing precedence (static/named routes always win over a rest-parameter
+catch-all) means this addition can't break any existing hand-authored page in the example;
+the one real caveat this creates — a Page created at a route colliding with an existing static
+file is silently unreachable — is documented inline and in `docs/ASTRO.md`, not silently
+accepted.
+
+Implementing `reusableBlockRef` rendering (Phase 4's live-reference block type) surfaced a real,
+previously-undiscovered gap: rendering it needs the referenced block's current type/config at
+render time, but no public route for reusable blocks existed at all — every prior phase only
+ever built admin-authenticated CRUD for them. Closed with a new
+`GET /api/v1/public/reusable-blocks/:id` (`apps/api/src/routes/public/reusable-blocks.ts`),
+edge-cached and invalidated on write (`invalidatePublicReusableBlockCache()`, `apps/api/src/
+lib/public-cache.ts`, wired into the existing admin PATCH/DELETE handlers), mirroring
+`routes/public/media.ts`'s pattern exactly. `@kenresoft-cms/astro` gained
+`reusableBlocks.get({id})`; `BlockRenderer.astro` special-cases a `reusableBlockRef` block by
+fetching through it before resolving a component to render.
+
+A real, non-hypothetical test bug was found and fixed while getting this phase's own new test
+file to pass, not assumed environmental: `apps/api/test/public-reusable-blocks.test.ts` hung
+indefinitely, surfacing as an unhandled `TypeError: fetch failed`/`ECONNREFUSED` rejection.
+First suspected as this project's own well-documented Windows/workerd resource-contention
+flakiness, since several concurrent `wrangler dev`/vitest processes really were competing for
+local ports at the time (confirmed via multiple accumulated zombie `workerd.exe` processes,
+killed by PID). But after clearing every stray process and confirming an unrelated file
+(`health.test.ts`) ran instantly clean in that same environment, the hang reproduced anyway,
+isolated to this one file — proving it wasn't environmental after all. Root-caused with `vitest
+--reporter=verbose`: the file's public GET responses populate the route's edge cache via
+`ctx.waitUntil(cache.put(...))` (the same pattern `routes/public/media.ts` already uses), and
+two of the test's `SELF.fetch()` calls never read the response body — exactly the gotcha
+`public-media-routes.test.ts`'s own comment already names ("leaving this response's body unread
+left that background write... hanging indefinitely under `@cloudflare/vitest-pool-workers`"),
+just not yet hit by this new file. Fixed by consuming both previously-unread bodies; the file
+then passes cleanly and consistently (2/2, ~650ms). A live `wrangler dev` end-to-end round trip
+(create a Page with blocks via the admin API, fetch the rendered route through a real deployed
+instance) was separately attempted earlier in this phase and did hit genuine environmental
+Windows/workerd resource contention (a bare D1 `select 1` failing against a clean single
+instance, confirmed via `wrangler deploy --dry-run` that the Worker bundle itself was sound) —
+that attempt wasn't re-run once the real test bug above was found and fixed, since the actual
+code path was by then fully green through typecheck/lint/real-D1 tests/`astro check`/`astro
+build`.
+
+Verified: `pnpm --filter @kenresoft-cms/astro typecheck`/`test` clean (41/41, including all new
+`resolveSiteRoute`/block-renderers tests); `examples/astro-site`'s `astro check` (0 errors/
+warnings/hints, 52 files) and `astro build` (server output via `@astrojs/cloudflare`) both
+clean; `pnpm typecheck`/`pnpm lint` clean workspace-wide (lint output unchanged from this
+project's existing baseline warnings — 0 errors); `apps/api/test/public-reusable-blocks.test.ts`
+(2 tests) passing against real D1 per the fix above. The full `apps/admin` suite (38 files, 204
+tests) passed clean in one run; a first attempt run concurrently alongside the still-diagnosing
+`apps/api` test produced 10 transient 5000ms test timeouts, confirmed non-regression (this
+project's own already-documented resource-contention flakiness) by re-running the same suite
+alone with zero other processes running and getting a clean pass.
+
+No breaking changes: `resolveRoute()`'s existing signature/behavior/tests are completely
+untouched; every other addition (the new public route, the SDK's new exports, the example
+site's new files) is purely additive. Per the user's "continue with phase 7 after phase 6"
+instruction (authorizing a continuation straight from Phase 6 into Phase 7 specifically, not
+phrased as blanket authorization beyond it): stopped after Phase 7, pending explicit approval
+before Phase 8 (the drag-and-drop visual block editor).

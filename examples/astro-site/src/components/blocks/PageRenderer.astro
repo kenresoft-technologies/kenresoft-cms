@@ -1,0 +1,24 @@
+---
+// Renders a whole Page's block tree — Phase 7 of the schema-driven frontend work
+// (docs/SITE_BUILDER.md §5). One BlockRenderer per top-level block; each block resolves its
+// own type and, for `columns`, recurses into its own children — see BlockRenderer.astro.
+import type { KenresoftClient, Page } from '@kenresoft-cms/astro';
+import BlockRenderer from './BlockRenderer.astro';
+
+interface Props {
+  page: Page;
+  cms: KenresoftClient;
+}
+
+const { page, cms } = Astro.props;
+---
+
+<div class="page-blocks">
+  {page.blocks.map((block) => <BlockRenderer block={block} cms={cms} />)}
+</div>
+
+<style>
+  .page-blocks > :global(* + *) {
+    margin-top: var(--space-10);
+  }
+</style>

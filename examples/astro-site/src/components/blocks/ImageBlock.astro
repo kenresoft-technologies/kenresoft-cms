@@ -1,0 +1,52 @@
+---
+// Config shape mirrors IMAGE_BLOCK_CONFIG (packages/contracts/schemas/blocks.ts). Fetches the
+// media item's real alt text/dimensions via the public media-metadata endpoint, same as
+// blog/[slug].astro's featured-image handling — a block-level `altText` override wins when set.
+import type { BlockInstance, KenresoftClient } from '@kenresoft-cms/astro';
+
+interface Props {
+  config: BlockInstance['config'];
+  cms: KenresoftClient;
+}
+
+const { config, cms } = Astro.props;
+const mediaId = typeof config.mediaId === 'string' ? config.mediaId : null;
+const caption = typeof config.caption === 'string' ? config.caption : null;
+const configAltText = typeof config.altText === 'string' ? config.altText : null;
+
+const imageUrl = mediaId ? cms.media.url({ id: mediaId }) : null;
+const meta = mediaId ? await cms.media.get({ id: mediaId }) : null;
+---
+
+{imageUrl ? (
+  <figure class="image-block">
+    <img
+      src={imageUrl}
+      alt={configAltText ?? meta?.altText ?? ''}
+      width={meta?.width ?? undefined}
+      height={meta?.height ?? undefined}
+      loading="lazy"
+    />
+    {caption ? <figcaption>{caption}</figcaption> : null}
+  </figure>
+) : null}
+
+<style>
+  .image-block {
+    margin: 0;
+  }
+
+  .image-block img {
+    width: 100%;
+    height: auto;
+    border-radius: var(--radius);
+    background: var(--surface-muted);
+  }
+
+  .image-block figcaption {
+    margin-top: var(--space-2);
+    font-size: var(--text-sm);
+    color: var(--ink-muted);
+    text-align: center;
+  }
+</style>

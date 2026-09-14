@@ -1,0 +1,16 @@
+---
+// Config shape mirrors RICH_TEXT_BLOCK_CONFIG (packages/contracts/schemas/blocks.ts). Reuses
+// the existing RichText.astro component (already built for entry `rich_text` fields) rather
+// than duplicating its markup/styles/set:html trust-boundary note.
+import type { BlockInstance } from '@kenresoft-cms/astro';
+import RichText from '../cms/RichText.astro';
+
+interface Props {
+  config: BlockInstance['config'];
+}
+
+const { config } = Astro.props;
+const html = typeof config.html === 'string' ? config.html : '';
+---
+
+{html ? <RichText html={html} /> : null}

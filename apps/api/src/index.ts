@@ -42,6 +42,7 @@ import { publicPagesRoute } from './routes/public/pages';
 import { publicPasswordResetRoute } from './routes/public/password-reset';
 import { publicPreviewRoute } from './routes/public/preview';
 import { publicRecoveryRoute } from './routes/public/recovery';
+import { publicReusableBlocksRoute } from './routes/public/reusable-blocks';
 import { publicRoutePatternsRoute } from './routes/public/route-patterns';
 import { publicStructuredSettingsRoute } from './routes/public/structured-settings';
 import { systemRoute } from './routes/system/recover-owner';
@@ -74,6 +75,7 @@ app.route('/api/v1/public/preview', publicPreviewRoute);
 app.route('/api/v1/public/settings', publicStructuredSettingsRoute);
 app.route('/api/v1/public/route-patterns', publicRoutePatternsRoute);
 app.route('/api/v1/public/pages', publicPagesRoute);
+app.route('/api/v1/public/reusable-blocks', publicReusableBlocksRoute);
 app.route('/api/v1/public', publicContentRoute);
 
 // Not under /admin (unauthenticated by design) or /public (not a normal content route) —
