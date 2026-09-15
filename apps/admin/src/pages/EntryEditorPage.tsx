@@ -254,14 +254,22 @@ function EntryForm({ contentTypeId, contentTypeSlug, entryId, fields, entry }: E
 
     try {
       if (isNew) {
-        await createEntry.mutateAsync(payload);
+        const created = await createEntry.mutateAsync(payload);
         toast.success('Entry created');
+        // Land on the new entry's own editor rather than the list, so it behaves exactly like
+        // an update from here on (stays on the page, can keep editing/see revision history).
+        justSavedRef.current = true;
+        void navigate(`/content-types/${contentTypeId}/entries/${created.id}`, { replace: true });
       } else {
+        // Deliberately stay on the page instead of navigating back to the list — bouncing an
+        // editor away from what they're working on every time they hit Save is bad UX. The
+        // update invalidates the entry query, which changes EntryForm's `key` (entryId +
+        // updatedAt) and remounts it with the freshly saved values as the new initial state,
+        // resetting isDirty without any manual bookkeeping here.
         await updateEntry.mutateAsync(payload);
         toast.success('Entry saved');
+        justSavedRef.current = true;
       }
-      justSavedRef.current = true;
-      void navigate(`/content-types/${contentTypeId}/entries`);
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to save entry';
       setError(message);
