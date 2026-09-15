@@ -425,13 +425,16 @@ only patched `examples/astro-site`'s own page code by hand-branching between `en
 deploy or fork (see `docs/DEPLOYMENT.md` §7), so the fix never reached anyone building a real
 site. The real fix is at the SDK level: `entries.get()`/`pages.resolve()` (`@kenresoft-cms/astro`
 0.3.0+) now accept an optional `previewToken` directly — pass it and they transparently hit the
-preview route instead of a second manual branch. This is what both `examples/astro-site` and the
-CLI starter template were updated to use, and it's what reaches *your* project too: once you
-`pnpm update @kenresoft-cms/astro` (or a fresh `npm create @kenresoft-cms@latest ... --astro`
-picks up the current template), the same one-line change — add `previewToken:
-Astro.url.searchParams.get('preview_token')` to an existing `entries.get()`/`pages.resolve()`
-call — gets you Live Preview in your own templates too, without waiting on this repo's example
-code or reading its source. See `integrations/astro/README.md`'s "Live Preview (draft rendering)"
+preview route instead of a second manual branch. Both `examples/astro-site` and the CLI starter
+template were updated to use it, and it reaches *your own* project the same way: a fresh
+`npm create @kenresoft-cms@latest ... --astro` picks up the current, already-fixed starter, and an
+existing project gets it via `pnpm add @kenresoft-cms/astro@latest` (**not** plain
+`pnpm update @kenresoft-cms/astro` — a caret range like `^0.2.0` never resolves past its own minor
+version, so a bare `update` can't cross 0.2 → 0.3; `@latest` both installs 0.3.0 and rewrites the
+range). From there, the same one-line change — add
+`previewToken: Astro.url.searchParams.get('preview_token')` to an existing `entries.get()`/
+`pages.resolve()` call — gets you Live Preview in your own templates too, without waiting on this
+repo's example code or reading its source. See `integrations/astro/README.md`'s "Live Preview (draft rendering)"
 section for the exact snippet. `entries.preview()`/`pages.preview()` still exist unchanged for
 callers that already have a token in hand and prefer an explicit call.
 

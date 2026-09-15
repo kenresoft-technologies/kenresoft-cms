@@ -21,7 +21,11 @@ landed on `develop`.
   this was first demonstrated on. `npm create @kenresoft-cms@latest my-site -- --astro`'s
   `blog/[slug].astro` template was updated to use it (0.2.2), so a freshly scaffolded starter has
   working Live Preview out of the box. See `integrations/astro/README.md`'s "Live Preview (draft
-  rendering)" section. Update an existing project with `pnpm update @kenresoft-cms/astro`.
+  rendering)" section. Update an existing project with `pnpm add @kenresoft-cms/astro@latest` (or
+  `npm install`/`yarn add` the same way) — plain `pnpm update @kenresoft-cms/astro` won't reach
+  0.3.0 from an existing `^0.2.0` dependency range; a caret range on a 0.x package only resolves
+  within its own minor version, so crossing 0.2→0.3 needs `@latest` (or an equivalent explicit
+  version), not a bare update.
 - `@kenresoft-cms/astro` is now published on npm — `npm install @kenresoft-cms/astro` works
   directly in your own, separately-hosted Astro project against your own CMS deployment; it
   previously had to be copied or vendored by hand. See `integrations/astro/README.md`'s
