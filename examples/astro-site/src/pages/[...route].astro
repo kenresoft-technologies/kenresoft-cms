@@ -13,38 +13,49 @@
 // the static file always wins — this catch-all is never even reached for that path. A real
 // deployment managing its "About" content as a CMS Page instead would simply not also ship a
 // static about.astro.
-import { createKenresoftClient, resolveSiteRoute } from '@kenresoft-cms/astro';
+import { createKenresoftClient, getPreviewToken, resolveSiteRoute } from '@kenresoft-cms/astro';
 import BaseLayout from '../layouts/BaseLayout.astro';
 import PageRenderer from '../components/blocks/PageRenderer.astro';
 
-const cms = createKenresoftClient({ url: import.meta.env.PUBLIC_KENRESOFT_CMS_URL });
+// previewToken, bound once at client creation, is picked up automatically by every
+// pages.resolve() call made through this client — see KenresoftClientConfig.previewToken's own
+// doc comment for why this is the recommended, global way to wire up Live Preview.
+const previewToken = getPreviewToken(Astro.url);
+const cms = createKenresoftClient({ url: import.meta.env.PUBLIC_KENRESOFT_CMS_URL, previewToken });
 
 const routeParam = Astro.params.route;
 const pathname = `/${routeParam ?? ''}`;
-const previewToken = Astro.url.searchParams.get('preview_token');
 
-const [pages, patterns] = await Promise.all([cms.pages.list(), cms.routePatterns.list()]);
-const resolved = resolveSiteRoute(pathname, pages, patterns);
+let page;
+if (previewToken) {
+  // A Page's Live Preview link (Settings → API → Live Preview → "Page preview URL") always
+  // lands here with the Page's own literal route + token — the entry-preview template is a
+  // separate setting, and an entry preview never reaches this generic catch-all in the first
+  // place, since every content type with its own detail page (blog, shop, categories) matches
+  // its own static Astro route first. So a token here always means "preview this exact route
+  // as a Page" — go straight to pages.resolve() (the client above is already bound to this
+  // token) instead of first resolving the route against cms.pages.list(), which only ever
+  // returns *published* pages and would 404 a draft before this preview branch even ran,
+  // defeating the entire point of Live Preview.
+  page = await cms.pages.resolve({ route: pathname }).catch(() => null);
+} else {
+  const [pages, patterns] = await Promise.all([cms.pages.list(), cms.routePatterns.list()]);
+  const resolved = resolveSiteRoute(pathname, pages, patterns);
 
-if (resolved.kind === 'notFound') {
-  return new Response(null, { status: 404, statusText: 'Not Found' });
+  // A content-type entry at this route is deliberately NOT rendered generically here — this
+  // example already has purpose-built templates per content type (blog/[slug].astro, shop/
+  // [slug].astro, categories/[slug].astro), and a routePattern existing for one of those content
+  // types would otherwise double-render it through a second, generic path. This catch-all's real
+  // job for entries is limited to a content type with NO hand-authored template of its own —
+  // which, for this example, means there's genuinely nothing to render yet beyond a 404, since
+  // every content type this site actually uses already has one. A frontend without hand-authored
+  // per-content-type pages would render the entry generically here instead.
+  if (resolved.kind === 'notFound' || resolved.kind === 'entry') {
+    return new Response(null, { status: 404, statusText: 'Not Found' });
+  }
+
+  page = await cms.pages.resolve({ route: resolved.route }).catch(() => null);
 }
-
-// A content-type entry at this route is deliberately NOT rendered generically here — this
-// example already has purpose-built templates per content type (blog/[slug].astro, shop/
-// [slug].astro, categories/[slug].astro), and a routePattern existing for one of those content
-// types would otherwise double-render it through a second, generic path. This catch-all's real
-// job for entries is limited to a content type with NO hand-authored template of its own —
-// which, for this example, means there's genuinely nothing to render yet beyond a 404, since
-// every content type this site actually uses already has one. A frontend without hand-authored
-// per-content-type pages would render the entry generically here instead.
-if (resolved.kind === 'entry') {
-  return new Response(null, { status: 404, statusText: 'Not Found' });
-}
-
-const page = previewToken
-  ? await cms.pages.preview({ route: resolved.route, token: previewToken }).catch(() => null)
-  : await cms.pages.resolve({ route: resolved.route }).catch(() => null);
 
 if (!page) {
   return new Response(null, { status: 404, statusText: 'Not Found' });

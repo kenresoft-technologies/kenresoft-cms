@@ -1,22 +1,24 @@
 ---
 import Layout from '../../layouts/Layout.astro';
-import { cms } from '../../lib/cms';
 
 // This starter defaults to output: 'server' (astro.config.mjs), so every route already renders
 // on demand and this line is a no-op today. If you ever switch to output: 'static', keep this —
 // without it, a dynamic route only gets a real page for whatever getStaticPaths() returned at
 // build time, so a draft's slug (never in that list) 404s before this page's code even runs,
-// breaking Live Preview regardless of the previewToken handling below. See docs/ASTRO.md's "Live
-// Preview requires the page to render on demand" section (in the Kenresoft CMS repo).
+// breaking Live Preview regardless of the automatic previewToken handling below. See
+// docs/ASTRO.md's "Live Preview requires the page to render on demand" section (in the
+// Kenresoft CMS repo).
 export const prerender = false;
 
+// Astro.locals.cms (middleware.ts) is already bound to this request's own ?preview_token= if
+// one is present — the Entry Editor's "Live Preview" button appends it — so this plain
+// entries.get() call transparently renders a draft (or any status) through this same template
+// instead of 404ing, with no branch needed here. previewToken is still read directly below only
+// to decide whether to show the banner.
+const cms = Astro.locals.cms;
 const { slug } = Astro.params;
-// Passing previewToken through opts this page into your CMS's Live Preview: the Entry Editor's
-// "Live Preview" button appends ?preview_token=... to this exact URL, and entries.get() renders
-// the draft (or any status) through this same template instead of 404ing — with no separate
-// branch needed. Omit the param entirely and it behaves exactly like a plain published-only fetch.
 const previewToken = Astro.url.searchParams.get('preview_token');
-const post = slug ? await cms.entries.get({ contentType: 'blog-post', slug, previewToken }) : null;
+const post = slug ? await cms.entries.get({ contentType: 'blog-post', slug }) : null;
 
 if (!post) {
   return new Response(null, { status: 404, statusText: 'Not Found' });

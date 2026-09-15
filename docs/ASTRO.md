@@ -424,9 +424,22 @@ const result = resolveSiteRoute(pathname, pages, patterns);
 // => { kind: 'page', route } | { kind: 'entry', contentTypeSlug, slug } | { kind: 'notFound' }
 ```
 
-For a `page` result, the full Page is fetched via the new `cms.pages.resolve({ route })` (or
-`cms.pages.preview({ route, token })` when a `?preview_token=` is present, mirroring the
-existing entry-preview flow exactly) and rendered through `<PageRenderer page={page} cms={cms} />`.
+For a `page` result, the full Page is fetched via `cms.pages.resolve({ route })` and rendered
+through `<PageRenderer page={page} cms={cms} />`.
+
+**A real bug, found and fixed after this was first written**: a `?preview_token=` request was
+originally handled by first resolving the route through `resolveSiteRoute()` (the flow above),
+*then* calling `pages.resolve({ route, previewToken })`/`pages.preview({ route, token })` for a
+`page` result. That's backwards for the one case Live Preview actually exists for — `cms.pages
+.list()` only ever returns *published* pages, so a draft Page's route is never in that list,
+`resolveSiteRoute()` returns `notFound` for it, and the catch-all 404s before the preview branch
+is ever reached. Fixed by checking for a token *first*: when one is present, skip the published-
+only `pages.list()`/`routePatterns.list()` lookup entirely and call
+`cms.pages.resolve({ route: pathname, previewToken })` directly against the raw pathname — safe
+to do unconditionally, since a Page preview link (from Settings → API → Live Preview → "Page
+preview URL") only ever points at this catch-all with a literal route, never an entry preview
+link (entries route through their own dedicated per-content-type pages, which Astro always
+matches before falling through here).
 
 **A deliberate, documented deviation from `docs/SITE_BUILDER.md`'s original §5 sketch**: that
 document imagined `@kenresoft-cms/astro` itself shipping `<PageRenderer>`/`<BlockRenderer>` and a
@@ -459,32 +472,59 @@ the code comment at the top of `[...route].astro`.
 
 ## Live Preview
 
-Every entry-backed template in `examples/astro-site` (`blog/[slug].astro`, `about.astro`,
-`contact.astro`, `categories/[slug].astro`) and the `npm create @kenresoft-cms@latest ... --astro`
-starter's `blog/[slug].astro` checks for a `?preview_token=` query param and passes it straight
-into `cms.entries.get({ ..., previewToken })`, so a draft (or any status) renders through the real
-template exactly like a published entry — the Entry Editor's "Live Preview" button works out of
-the box. Commerce's `shop/[slug].astro` (product pages) is **not** covered — products aren't
-Entries and have no preview-token route of their own.
+**Global, zero-per-page-code default (`@kenresoft-cms/astro` 0.4.0+, current recommendation).**
+`createKenresoftClient({ previewToken })` binds a client to one request's Live Preview token —
+every `entries.get()`/`pages.resolve()` call made through it picks that up automatically, with no
+`?preview_token=` handling in the page itself. Paired with `getPreviewToken(input)` (accepts
+`Astro.url`, an absolute URL string, or `Astro.request`; returns `null` when the param is absent
+— always safe to pass straight through) and Astro middleware, this makes Live Preview work
+everywhere for free:
 
-**Where the actual fix lives, and why it reaches real developers.** The first version of this
-only patched `examples/astro-site`'s own page code by hand-branching between `entries.get()`/
-`entries.preview()` in each template — but that example is explicitly not something developers
-deploy or fork (see `docs/DEPLOYMENT.md` §7), so the fix never reached anyone building a real
-site. The real fix is at the SDK level: `entries.get()`/`pages.resolve()` (`@kenresoft-cms/astro`
-0.3.0+) now accept an optional `previewToken` directly — pass it and they transparently hit the
-preview route instead of a second manual branch. Both `examples/astro-site` and the CLI starter
-template were updated to use it, and it reaches *your own* project the same way: a fresh
-`npm create @kenresoft-cms@latest ... --astro` picks up the current, already-fixed starter, and an
-existing project gets it via `pnpm add @kenresoft-cms/astro@latest` (**not** plain
-`pnpm update @kenresoft-cms/astro` — a caret range like `^0.2.0` never resolves past its own minor
-version, so a bare `update` can't cross 0.2 → 0.3; `@latest` both installs 0.3.0 and rewrites the
-range). From there, the same one-line change — add
-`previewToken: Astro.url.searchParams.get('preview_token')` to an existing `entries.get()`/
-`pages.resolve()` call — gets you Live Preview in your own templates too, without waiting on this
-repo's example code or reading its source. See `integrations/astro/README.md`'s "Live Preview (draft rendering)"
-section for the exact snippet. `entries.preview()`/`pages.preview()` still exist unchanged for
-callers that already have a token in hand and prefer an explicit call.
+```ts
+// src/middleware.ts
+import { defineMiddleware } from 'astro:middleware';
+import { createKenresoftClient, getPreviewToken } from '@kenresoft-cms/astro';
+
+export const onRequest = defineMiddleware((context, next) => {
+  context.locals.cms = createKenresoftClient({
+    url: import.meta.env.PUBLIC_KENRESOFT_CMS_URL,
+    previewToken: getPreviewToken(context.url),
+  });
+  return next();
+});
+```
+
+Every page that then reads `Astro.locals.cms.entries.get({ contentType, slug })` (no
+`previewToken` argument at all) transparently renders a draft when the request carries one. Both
+`examples/astro-site` (its `blog/[slug].astro` and the Page-rendering `[...route].astro`, the only
+two files that ever handled preview tokens) and the `npm create @kenresoft-cms@latest ... --astro`
+starter (a new `src/middleware.ts`, `blog/[slug].astro` reading from `Astro.locals.cms`) were
+updated to this pattern. Passing `previewToken: null` — at client creation or on one call —
+always forces normal published-only rendering even when a client-level default is set; an
+individual call's own explicit `previewToken` still overrides the client default either way. See
+`integrations/astro/README.md`'s "Live Preview (draft rendering)" section for the full picture,
+including the equivalent no-middleware, per-call form.
+
+**A real, found-and-fixed bug specific to the Page-rendering catch-all** (`[...route].astro` in
+both `examples/astro-site` and this site — see the "Page/Block rendering" section above for the
+full writeup): the original implementation resolved a Page's route against `cms.pages.list()`
+*before* ever checking for a preview token — but `pages.list()` only ever returns *published*
+pages, so a draft Page's route was never in that list and the catch-all 404'd before the preview
+branch could run at all, defeating the entire point of Live Preview for a draft Page specifically
+(published-Page preview, and every entry preview, were unaffected). Fixed by checking for a token
+first and calling `pages.resolve({ route: pathname })` directly against the raw pathname in that
+case, skipping the published-only list lookup entirely.
+
+Every entry-backed template — `blog/[slug].astro`, `about.astro`, `contact.astro`,
+`categories/[slug].astro` in `examples/astro-site` — supports Live Preview this way. Commerce's
+`shop/[slug].astro` (product pages) is **not** covered — products aren't Entries and have no
+preview-token route of their own.
+
+**Reaching an existing project.** This package is still 0.x, so a caret range like `^0.3.0`
+never resolves past its own minor version — a bare `pnpm update @kenresoft-cms/astro` can't cross
+0.3 → 0.4. Install explicitly instead: `pnpm add @kenresoft-cms/astro@latest` (or the npm/yarn
+equivalent), then adopt the middleware pattern above (or the simpler per-call form) in your own
+templates — without waiting on this repo's example code or reading its source.
 
 ## Known limitations
 

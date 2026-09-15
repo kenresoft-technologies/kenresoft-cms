@@ -12,6 +12,20 @@ landed on `develop`.
 
 ### Added
 
+- `@kenresoft-cms/astro` 0.4.0: `createKenresoftClient({ previewToken })` binds a client to one
+  request's Live Preview session — every `entries.get()`/`pages.resolve()` call made through it
+  picks up that token automatically, with no `?preview_token=` handling in the page itself. Paired
+  with the new `getPreviewToken(input)` helper (accepts `Astro.url`, an absolute URL string, or
+  `Astro.request`) and Astro middleware storing the client on `context.locals.cms`, this makes
+  Live Preview work across an entire site for free — the actual "handle it from the published
+  package, not per-page" version of 0.3.0's `previewToken` option below. `examples/astro-site`
+  (`blog/[slug].astro`, `[...route].astro`) and the `npm create @kenresoft-cms@latest ... --astro`
+  starter (a new `src/middleware.ts`) were both updated to this pattern. Fixed along the way: a
+  real bug in `[...route].astro`'s Page-preview handling — resolving a Page's route against
+  `cms.pages.list()` *before* checking for a preview token meant a **draft** Page's route (never
+  in that published-only list) 404'd before the preview branch could ever run, defeating Live
+  Preview for exactly the case it exists for. Published-Page preview and every entry preview were
+  unaffected. See `integrations/astro/README.md`'s "Live Preview (draft rendering)" section.
 - `@kenresoft-cms/astro` 0.3.0: `entries.get()`/`pages.resolve()` now accept an optional
   `previewToken` — pass `Astro.url.searchParams.get('preview_token')` (the param Kenresoft CMS's
   Live Preview button appends) straight through and they transparently render a draft/any-status
