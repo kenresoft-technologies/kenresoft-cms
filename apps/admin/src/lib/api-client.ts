@@ -1,5 +1,10 @@
 export const API_URL = import.meta.env.VITE_API_URL;
 
+interface ValidationIssue {
+  path?: (string | number)[];
+  message?: string;
+}
+
 export class ApiError extends Error {
   status: number;
 
@@ -9,13 +14,36 @@ export class ApiError extends Error {
   }
 }
 
+// Every validation-error response across this API shares one shape: { error: 'Validation
+// failed', issues: [{ path, message }, ...] } — both @hono/zod-openapi's own defaultHook
+// (createOpenApiApp) and the hand-rolled public form-submission validator produce it. The
+// top-level `error` string alone ("Validation failed") told the admin user nothing about what
+// was actually wrong, even though the API had already sent the real field-level detail — this
+// folds that detail into the thrown error's own message so every existing `err.message` call
+// site becomes descriptive for free, with no need to touch each one individually.
+function formatValidationIssues(issues: unknown): string | null {
+  if (!Array.isArray(issues) || issues.length === 0) return null;
+  const parts = (issues as ValidationIssue[])
+    .map((issue) => {
+      const field = Array.isArray(issue.path) && issue.path.length > 0 ? issue.path.join('.') : null;
+      const message = typeof issue.message === 'string' ? issue.message : null;
+      if (field && message) return `${field}: ${message}`;
+      return field ?? message;
+    })
+    .filter((part): part is string => Boolean(part));
+  return parts.length > 0 ? parts.join('; ') : null;
+}
+
 async function handleResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     const body = await response.json().catch(() => null);
-    const message =
+    const baseMessage =
       body && typeof body === 'object' && 'error' in body && typeof body.error === 'string'
         ? body.error
         : `Request failed with status ${response.status}`;
+    const issueDetail =
+      body && typeof body === 'object' && 'issues' in body ? formatValidationIssues(body.issues) : null;
+    const message = issueDetail ? `${baseMessage}: ${issueDetail}` : baseMessage;
     throw new ApiError(response.status, message);
   }
 

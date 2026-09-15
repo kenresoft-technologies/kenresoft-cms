@@ -8,6 +8,7 @@ import { EntryDeveloperPanel } from '@/components/developer-panel/entry-develope
 import { EntryRevisionHistory } from '@/components/entry-revision-history';
 import { FieldInput } from '@/components/field-input';
 import { ApiError } from '@/lib/api-client';
+import { buildPreviewUrl } from '@/lib/preview-url';
 import { useContentType } from '@/lib/queries/content-types';
 import { useCreateEntry, useDeleteEntry, useEntry, useUpdateEntry, fetchPreviewToken } from '@/lib/queries/entries';
 import { useFieldDefinitions } from '@/lib/queries/field-definitions';
@@ -136,9 +137,10 @@ function LivePreviewButton({
     setLoading(true);
     try {
       const { token } = await fetchPreviewToken(entry.id);
-      const url = settings.previewUrl
-        .replace('{contentType}', encodeURIComponent(contentTypeSlug))
-        .replace('{slug}', encodeURIComponent(entry.slug));
+      const url = buildPreviewUrl(settings.previewUrl, {
+        contentType: encodeURIComponent(contentTypeSlug),
+        slug: encodeURIComponent(entry.slug),
+      });
       const separator = url.includes('?') ? '&' : '?';
       window.open(`${url}${separator}preview_token=${encodeURIComponent(token)}`, '_blank', 'noopener,noreferrer');
     } catch (err) {

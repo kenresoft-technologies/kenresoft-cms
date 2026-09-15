@@ -4,6 +4,7 @@ import { useNavigate, useParams } from 'react-router';
 import { toast } from 'sonner';
 
 import { ApiError } from '@/lib/api-client';
+import { buildPreviewUrl } from '@/lib/preview-url';
 import {
   fetchPagePreviewToken,
   useDeletePageById,
@@ -93,7 +94,7 @@ function LivePreviewButton({ page, isDirty }: { page: Page; isDirty: boolean }) 
     setLoading(true);
     try {
       const { token } = await fetchPagePreviewToken(page.id);
-      const url = settings.pagePreviewUrl.replace('{route}', page.route);
+      const url = buildPreviewUrl(settings.pagePreviewUrl, { route: page.route });
       const separator = url.includes('?') ? '&' : '?';
       window.open(`${url}${separator}preview_token=${encodeURIComponent(token)}`, '_blank', 'noopener,noreferrer');
     } catch (err) {

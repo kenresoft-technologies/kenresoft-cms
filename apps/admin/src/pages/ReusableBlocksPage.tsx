@@ -90,7 +90,7 @@ function ReusableBlockDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>{trigger}</DialogTrigger>
-      <DialogContent>
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>{isEditing ? 'Edit reusable block' : 'New reusable block'}</DialogTitle>
           <DialogDescription>
