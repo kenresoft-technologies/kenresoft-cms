@@ -126,10 +126,15 @@ function PageForm({ page }: PageFormProps) {
   const updatePage = useUpdatePage(page.id);
   const deletePage = useDeletePageById();
 
-  const [initialTitle] = useState(page.title);
-  const [initialRoute] = useState(page.route);
-  const [initialStatus] = useState(page.status);
-  const [initialBlocks] = useState(page.blocks);
+  // Setters ARE used, unlike a plain lazy-initial-value useState — a successful save re-syncs
+  // these to the just-saved values (see handleSave below), so isDirty correctly goes back to
+  // false instead of staying permanently true after the first edit+save (a Page's own save,
+  // unlike an entry's, doesn't navigate away — so the same PageForm instance keeps comparing
+  // against a stale pre-save baseline forever).
+  const [initialTitle, setInitialTitle] = useState(page.title);
+  const [initialRoute, setInitialRoute] = useState(page.route);
+  const [initialStatus, setInitialStatus] = useState(page.status);
+  const [initialBlocks, setInitialBlocks] = useState(page.blocks);
 
   const [title, setTitle] = useState(page.title);
   const [route, setRoute] = useState(page.route);
@@ -145,6 +150,10 @@ function PageForm({ page }: PageFormProps) {
   async function handleSave() {
     try {
       await updatePage.mutateAsync({ title, route, status, blocks });
+      setInitialTitle(title);
+      setInitialRoute(route);
+      setInitialStatus(status);
+      setInitialBlocks(blocks);
       toast.success('Page saved');
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : 'Failed to save page');
