@@ -127,7 +127,14 @@ function validateBlockConfig(block: ChildBlockInstance): string | null {
   const configSchema = BLOCK_CONFIG_SCHEMAS[block.type];
   const result = configSchema.safeParse(block.config);
   if (!result.success) {
-    return `Block "${block.id}" (${block.type}) has an invalid config: ${result.error.issues[0]?.message ?? 'invalid'}`;
+    const issue = result.error.issues[0];
+    // Naming the field (issue.path), not just the constraint that failed, is the whole point
+    // here — "Too big: expected string to have <=500 characters" alone leaves the editor
+    // guessing which of a block's several string fields (e.g. hero's heading/subheading/
+    // description/buttonLabel) actually needs trimming.
+    const field = issue && issue.path.length > 0 ? issue.path.join('.') : null;
+    const detail = issue?.message ?? 'invalid';
+    return `Block "${block.id}" (${block.type}) has an invalid config: ${field ? `${field} — ${detail}` : detail}`;
   }
   return null;
 }
