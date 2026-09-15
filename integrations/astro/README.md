@@ -148,6 +148,15 @@ and needs no code change from the snippet above. `entries.preview()`/`pages.prev
 exist as explicit standalone calls when you already have a token in hand and don't need the
 published-vs-draft branch collapsed into one call.
 
+> **⚠ If your site (or this one page) uses static output (`output: 'static'` + `getStaticPaths()`),
+> Live Preview will 404 every draft no matter what the code above does.** A dynamic route only
+> gets a real page for the params `getStaticPaths()` returned at build time — a draft's slug was
+> never in that list, so Astro 404s the request itself before this page's code ever runs. Add
+> `export const prerender = false;` to the top of this one page's frontmatter (requires an
+> on-demand-capable adapter, e.g. `@astrojs/cloudflare`/`@astrojs/node` — the rest of your site can
+> stay fully static) or switch the whole site to `output: 'server'`. See `docs/ASTRO.md`'s "Live
+> Preview requires the page to render on demand" section for the full explanation and snippet.
+
 ## Media/content integration
 
 ```ts

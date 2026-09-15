@@ -2,6 +2,14 @@
 import Layout from '../../layouts/Layout.astro';
 import { cms } from '../../lib/cms';
 
+// This starter defaults to output: 'server' (astro.config.mjs), so every route already renders
+// on demand and this line is a no-op today. If you ever switch to output: 'static', keep this —
+// without it, a dynamic route only gets a real page for whatever getStaticPaths() returned at
+// build time, so a draft's slug (never in that list) 404s before this page's code even runs,
+// breaking Live Preview regardless of the previewToken handling below. See docs/ASTRO.md's "Live
+// Preview requires the page to render on demand" section (in the Kenresoft CMS repo).
+export const prerender = false;
+
 const { slug } = Astro.params;
 // Passing previewToken through opts this page into your CMS's Live Preview: the Entry Editor's
 // "Live Preview" button appends ?preview_token=... to this exact URL, and entries.get() renders
