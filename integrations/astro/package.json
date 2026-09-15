@@ -1,6 +1,6 @@
 {
   "name": "@kenresoft-cms/astro",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "type": "module",
   "description": "Typed client for a Kenresoft CMS deployment's public API. The first-class Astro integration referenced in docs/ASTRO.md — not Astro-specific at the code level (it's a thin fetch wrapper over the public REST API), but built and documented as Astro's officially supported way in.",
   "license": "MIT",

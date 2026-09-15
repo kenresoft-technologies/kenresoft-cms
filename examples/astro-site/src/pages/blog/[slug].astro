@@ -1,18 +1,20 @@
 ---
-import { createKenresoftClient } from '@kenresoft-cms/astro';
+import { createKenresoftClient, getPreviewToken } from '@kenresoft-cms/astro';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 
-const cms = createKenresoftClient({ url: import.meta.env.PUBLIC_KENRESOFT_CMS_URL });
+// previewToken, bound once at client creation, is picked up automatically by every
+// entries.get()/pages.resolve() call made through this client — see
+// KenresoftClientConfig.previewToken's own doc comment for why this is the recommended, global
+// way to wire up Live Preview, no per-call ?preview_token= threading needed.
+const previewToken = getPreviewToken(Astro.url);
+const cms = createKenresoftClient({ url: import.meta.env.PUBLIC_KENRESOFT_CMS_URL, previewToken });
 
 // Fetched per-request, not via getStaticPaths — see astro.config.mjs's comment on why this
 // site moved to SSR. A missing/unpublished slug 404s exactly like the public API itself does —
 // unless a Live Preview token is present (Kenresoft CMS's Entry Editor "Preview" button appends
 // one), in which case a draft (or any status) renders instead, through this exact same template.
 const { slug } = Astro.params;
-const previewToken = Astro.url.searchParams.get('preview_token');
-const entry = slug
-  ? await cms.entries.get({ contentType: 'blog-post', slug, previewToken }).catch(() => null)
-  : null;
+const entry = slug ? await cms.entries.get({ contentType: 'blog-post', slug }).catch(() => null) : null;
 
 if (!entry) {
   return new Response(null, { status: 404, statusText: 'Not Found' });

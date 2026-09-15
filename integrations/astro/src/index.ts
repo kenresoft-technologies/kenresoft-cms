@@ -63,7 +63,21 @@ export interface KenresoftClientConfig {
   url: string;
   /** Override for testing — defaults to the global fetch. */
   fetch?: typeof fetch;
+  /**
+   * Binds this client instance to one request's Live Preview session — every
+   * `entries.get()`/`pages.resolve()` call made through it automatically uses this as its
+   * `previewToken`, with no need to pass it per call. The intended, global way to wire up Live
+   * Preview: create one client per request (e.g. in Astro middleware, stored on
+   * `context.locals`) with `previewToken: getPreviewToken(context.url)`, and every page that
+   * reads from `context.locals` gets Live Preview for free — no page needs to know about
+   * `?preview_token=` at all. A call's own explicit `previewToken` (including `null`, to force
+   * published-only even when this default is set) still overrides this default when given.
+   * See `getPreviewToken()` below and `integrations/astro/README.md`'s "Live Preview" section.
+   */
+  previewToken?: string | null;
 }
+
+export { getPreviewToken } from './get-preview-token';
 
 // Commerce (packages/plugin-ecommerce) types, hand-mirrored from that plugin's own Zod route
 // schemas rather than imported — unlike @kenresoft-cms/contracts, the plugin package isn't
@@ -340,12 +354,13 @@ export interface GetEntryOptions extends ListEntriesOptions {
   /** The entry's own slug within that content type. */
   slug: string;
   /**
-   * Optional. Pass a Live Preview token straight through — e.g.
-   * `Astro.url.searchParams.get('preview_token')` — and this call transparently renders a draft
-   * (or any status) via the same signed-token mechanism `entries.preview()` uses, with no
-   * separate branch needed in your own template. Omit, or pass `null`/`undefined` (exactly what
-   * `URLSearchParams.get()` returns when the param is absent), for normal published-only
-   * rendering — the common case.
+   * Optional. Pass a Live Preview token straight through — e.g. `getPreviewToken(Astro.url)` —
+   * and this call transparently renders a draft (or any status) via the same signed-token
+   * mechanism `entries.preview()` uses, with no separate branch needed in your own template.
+   * Omitting this option entirely falls back to the client's own `previewToken` default (see
+   * `KenresoftClientConfig.previewToken`), if one was set when the client was created — the
+   * global, per-page-code-free way to wire this up. Pass `null` explicitly to force normal
+   * published-only rendering even when the client has a default set.
    */
   previewToken?: string | null;
 }
@@ -369,9 +384,9 @@ export interface ResolvePageOptions {
   /** The Page's literal route, e.g. "/about" — not a `{slug}` pattern. */
   route: string;
   /**
-   * Optional. Pass a Live Preview token straight through — same convention as
-   * `GetEntryOptions.previewToken` above — to transparently render a draft (or any status) Page
-   * via the same signed-token mechanism `pages.preview()` uses, with no separate branch needed.
+   * Optional. Same convention as `GetEntryOptions.previewToken` above — pass a token to
+   * transparently render a draft (or any status) Page, omit to fall back to the client's own
+   * `previewToken` default, or pass `null` to force published-only regardless of that default.
    */
   previewToken?: string | null;
 }
@@ -639,6 +654,7 @@ export function createKenresoftClient(config: KenresoftClientConfig): KenresoftC
   const baseUrl = config.url.replace(/\/$/, '');
   const doFetch = config.fetch ?? fetch;
   const commerceBase = `${baseUrl}/api/plugins/commerce/public/v1`;
+  const defaultPreviewToken = config.previewToken ?? null;
 
   // `credentials: 'include'` is required on every commerce call — cart identity (a guest cookie)
   // and, once accounts are wired in, a customer session, both travel as cookies that the API's
@@ -701,8 +717,9 @@ export function createKenresoftClient(config: KenresoftClientConfig): KenresoftC
         return entries ?? [];
       },
       get({ contentType, slug, previewToken }) {
-        return previewToken
-          ? request<Entry>(`/api/v1/public/preview/${contentType}/${slug}?token=${encodeURIComponent(previewToken)}`)
+        const token = previewToken !== undefined ? previewToken : defaultPreviewToken;
+        return token
+          ? request<Entry>(`/api/v1/public/preview/${contentType}/${slug}?token=${encodeURIComponent(token)}`)
           : request<Entry>(`/api/v1/public/${contentType}/${slug}`);
       },
       preview({ contentType, slug, token }) {
@@ -758,9 +775,10 @@ export function createKenresoftClient(config: KenresoftClientConfig): KenresoftC
         return pages ?? [];
       },
       resolve({ route, previewToken }) {
-        return previewToken
+        const token = previewToken !== undefined ? previewToken : defaultPreviewToken;
+        return token
           ? request<Page>(
-              `/api/v1/public/preview/pages?route=${encodeURIComponent(route)}&token=${encodeURIComponent(previewToken)}`,
+              `/api/v1/public/preview/pages?route=${encodeURIComponent(route)}&token=${encodeURIComponent(token)}`,
             )
           : request<Page>(`/api/v1/public/pages/by-route?route=${encodeURIComponent(route)}`);
       },

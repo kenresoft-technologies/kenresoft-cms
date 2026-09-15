@@ -132,21 +132,52 @@ oversight; see `docs/ASTRO.md`).
 ### Live Preview (draft rendering)
 
 Kenresoft CMS's Entry/Page Editor "Live Preview" button opens your page with
-`?preview_token=...` appended. Pass it straight through and `entries.get()`/`pages.resolve()`
-render the draft (or any status) through this exact same template — no separate branch needed:
+`?preview_token=...` appended. The recommended way to wire this up needs **no per-page code at
+all** — bind one client per request, in middleware, and every page that reads from it gets Live
+Preview for free:
+
+```ts
+// src/middleware.ts
+import { defineMiddleware } from 'astro:middleware';
+import { createKenresoftClient, getPreviewToken } from '@kenresoft-cms/astro';
+
+export const onRequest = defineMiddleware((context, next) => {
+  context.locals.cms = createKenresoftClient({
+    url: import.meta.env.PUBLIC_KENRESOFT_CMS_URL,
+    previewToken: getPreviewToken(context.url), // null on a normal request — a no-op default
+  });
+  return next();
+});
+```
 
 ```astro
 ---
-const previewToken = Astro.url.searchParams.get('preview_token');
+// Any page — no ?preview_token= handling here at all. If this request carried one, the client
+// above already knows about it, so this plain call transparently renders a draft (or any
+// status) through this exact same template instead of 404ing.
+const post = await Astro.locals.cms.entries.get({ contentType: 'blog-post', slug });
+---
+```
+
+`getPreviewToken(input)` accepts a `URL` (`Astro.url`), an absolute URL string, or a `Request`
+(`Astro.request`) and extracts `preview_token`, returning `null` when it's absent — always safe
+to pass straight into `createKenresoftClient({ previewToken: ... })`.
+
+If you'd rather not add middleware, the same thing works per call — pass `previewToken` directly
+to `entries.get()`/`pages.resolve()`, which still falls back to the client's own default (if any)
+when omitted:
+
+```astro
+---
+const previewToken = getPreviewToken(Astro.url);
 const post = await cms.entries.get({ contentType: 'blog-post', slug, previewToken });
 ---
 ```
 
-Omit `previewToken` (or leave it `null`/`undefined` — exactly what `URLSearchParams.get()`
-returns when the param is absent) for normal published-only rendering; that's the common case
-and needs no code change from the snippet above. `entries.preview()`/`pages.preview()` also
-exist as explicit standalone calls when you already have a token in hand and don't need the
-published-vs-draft branch collapsed into one call.
+Passing `previewToken: null` explicitly (either at client creation or on one call) always forces
+normal published-only rendering, even if a client-level default is set. `entries.preview()`/
+`pages.preview()` also still exist as explicit standalone calls for callers that already have a
+token in hand and don't need any of the above.
 
 > **⚠ If your site (or this one page) uses static output (`output: 'static'` + `getStaticPaths()`),
 > Live Preview will 404 every draft no matter what the code above does.** A dynamic route only
