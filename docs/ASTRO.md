@@ -257,6 +257,54 @@ just `fetch`, equally callable from a static `getStaticPaths()` page or an SSR o
 a config change in this example plus dropping `getStaticPaths()` from one page, not a redesign
 of the CMS API or the client.
 
+### Live Preview requires the page to render on demand — static output alone 404s every draft
+
+**Root cause of reported "previewing a draft 404s" issues.** This was missed when Live Preview's
+`previewToken` support shipped (see "Live Preview" below) — that fix is entirely about what a page
+*does* once it runs, but under Astro's default `output: 'static'` with `getStaticPaths()`, a
+dynamic route like `[slug].astro` only ever gets a real, buildable page for the exact params
+`getStaticPaths()` returned. A content type's own `getStaticPaths()` implementation almost always
+lists only published entries (this project's own historical static-output design did exactly
+that, per the note above) — a draft's slug was simply never one of the params a static build
+generated, so Astro 404s the request itself, before any page code (any `previewToken` handling
+included) ever runs. This isn't a CMS/SDK bug to fix server-side; it's an Astro routing-mode
+requirement your own page has to satisfy.
+
+**The fix, on your side:** the page that's supposed to support Live Preview needs to render
+on-demand, not be frozen to a build-time path list. Two ways to get there, in order of how much of
+your site it affects:
+
+1. **Whole site is SSR already** (`output: 'server'` in `astro.config.mjs`, what
+   `examples/astro-site` and the `npm create @kenresoft-cms@latest ... --astro` starter both use)
+   — nothing to do. Every route renders per-request by default.
+2. **Site is static output, one route needs to support previews** — opt just that page out of
+   prerendering, leaving the rest of the site fully static:
+
+   ```astro
+   ---
+   // src/pages/blog/[slug].astro
+   export const prerender = false; // required for Live Preview — see docs/ASTRO.md
+
+   import { cms } from '../../lib/cms';
+
+   const previewToken = Astro.url.searchParams.get('preview_token');
+   const post = await cms.entries.get({ contentType: 'blog-post', slug: Astro.params.slug!, previewToken });
+   if (!post) return new Response(null, { status: 404 });
+   ---
+   ```
+
+   Requires a deploy adapter that supports on-demand rendering (`@astrojs/cloudflare`,
+   `@astrojs/node`, etc. — the same one your `output: 'server'` sites already use); a purely
+   static host with no adapter at all can't do this for any route, static output included.
+   `getStaticPaths()` becomes unnecessary/unused on a `prerender: false` page — remove it if
+   present, since it no longer does anything.
+
+If you've confirmed the page *does* render on demand (SSR, or `prerender = false`) and a draft
+still 404s, that's a genuine bug — check the token hasn't expired (15 minutes), that the URL's
+`?preview_token=` matches exactly what the Entry/Page Editor's "Live Preview" button generated
+(don't hand-edit or reuse an old one), and that `entries.get()`/`pages.resolve()` is actually
+receiving it (log `previewToken` before the fetch) rather than a stale `undefined`.
+
 ## Cloudflare compatibility (future)
 
 The eventual production shape (`docs/ARCHITECTURE.md` §15):
@@ -425,13 +473,16 @@ only patched `examples/astro-site`'s own page code by hand-branching between `en
 deploy or fork (see `docs/DEPLOYMENT.md` §7), so the fix never reached anyone building a real
 site. The real fix is at the SDK level: `entries.get()`/`pages.resolve()` (`@kenresoft-cms/astro`
 0.3.0+) now accept an optional `previewToken` directly — pass it and they transparently hit the
-preview route instead of a second manual branch. This is what both `examples/astro-site` and the
-CLI starter template were updated to use, and it's what reaches *your* project too: once you
-`pnpm update @kenresoft-cms/astro` (or a fresh `npm create @kenresoft-cms@latest ... --astro`
-picks up the current template), the same one-line change — add `previewToken:
-Astro.url.searchParams.get('preview_token')` to an existing `entries.get()`/`pages.resolve()`
-call — gets you Live Preview in your own templates too, without waiting on this repo's example
-code or reading its source. See `integrations/astro/README.md`'s "Live Preview (draft rendering)"
+preview route instead of a second manual branch. Both `examples/astro-site` and the CLI starter
+template were updated to use it, and it reaches *your own* project the same way: a fresh
+`npm create @kenresoft-cms@latest ... --astro` picks up the current, already-fixed starter, and an
+existing project gets it via `pnpm add @kenresoft-cms/astro@latest` (**not** plain
+`pnpm update @kenresoft-cms/astro` — a caret range like `^0.2.0` never resolves past its own minor
+version, so a bare `update` can't cross 0.2 → 0.3; `@latest` both installs 0.3.0 and rewrites the
+range). From there, the same one-line change — add
+`previewToken: Astro.url.searchParams.get('preview_token')` to an existing `entries.get()`/
+`pages.resolve()` call — gets you Live Preview in your own templates too, without waiting on this
+repo's example code or reading its source. See `integrations/astro/README.md`'s "Live Preview (draft rendering)"
 section for the exact snippet. `entries.preview()`/`pages.preview()` still exist unchanged for
 callers that already have a token in hand and prefer an explicit call.
 

@@ -21,7 +21,11 @@ landed on `develop`.
   this was first demonstrated on. `npm create @kenresoft-cms@latest my-site -- --astro`'s
   `blog/[slug].astro` template was updated to use it (0.2.2), so a freshly scaffolded starter has
   working Live Preview out of the box. See `integrations/astro/README.md`'s "Live Preview (draft
-  rendering)" section. Update an existing project with `pnpm update @kenresoft-cms/astro`.
+  rendering)" section. Update an existing project with `pnpm add @kenresoft-cms/astro@latest` (or
+  `npm install`/`yarn add` the same way) — plain `pnpm update @kenresoft-cms/astro` won't reach
+  0.3.0 from an existing `^0.2.0` dependency range; a caret range on a 0.x package only resolves
+  within its own minor version, so crossing 0.2→0.3 needs `@latest` (or an equivalent explicit
+  version), not a bare update.
 - `@kenresoft-cms/astro` is now published on npm — `npm install @kenresoft-cms/astro` works
   directly in your own, separately-hosted Astro project against your own CMS deployment; it
   previously had to be copied or vendored by hand. See `integrations/astro/README.md`'s
@@ -112,6 +116,21 @@ landed on `develop`.
 
 ### Fixed
 
+- **Live Preview 404ing every draft under static Astro output** — reported by developers building
+  their own site on `@kenresoft-cms/astro`. Root cause was never a CMS/SDK bug: under Astro's
+  default `output: 'static'` with `getStaticPaths()`, a dynamic route only gets a real page for
+  the params `getStaticPaths()` returned at build time — a draft's slug is essentially never one
+  of them (most `getStaticPaths()` implementations, including this project's own historical one,
+  only list published entries), so Astro 404s the request itself before any page code (including
+  the `previewToken` handling added above) ever runs. Fixed by documenting the actual
+  requirement plainly, in the place developers actually see it — `integrations/astro/README.md`'s
+  "Live Preview" section now has a prominent warning with the fix
+  (`export const prerender = false;` on the one page that needs it, no adapter/output change for
+  the rest of your site) — and by adding that line, with an explanatory comment, to the
+  `npm create @kenresoft-cms@latest ... --astro` starter's `blog/[slug].astro` so a fresh scaffold
+  never regresses into this even if someone later switches the site to static output. See
+  `docs/ASTRO.md`'s "Live Preview requires the page to render on demand" section for the full
+  explanation. `@kenresoft-cms/create` bumped to 0.2.3 for the template fix.
 - `npm create @kenresoft-cms@latest <path> -- --astro` (and the full-CMS scaffold mode) failed to
   scaffold into an absolute target path, concatenating it onto the current directory instead of
   using it directly (`path.join()` has no special handling for an already-absolute second

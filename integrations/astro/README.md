@@ -31,6 +31,16 @@ npm install @kenresoft-cms/astro
 # or: pnpm add @kenresoft-cms/astro / yarn add @kenresoft-cms/astro
 ```
 
+**Updating to a new version later:** this package is still 0.x, so a caret range like
+`^0.3.0` in your `package.json` only resolves within `0.3.x` — a plain `npm update`/`pnpm update`
+(no version specified) will silently stay on your current minor version and never pick up a new
+one like `0.4.0`. To actually get the latest release, install it explicitly:
+
+```bash
+npm install @kenresoft-cms/astro@latest
+# or: pnpm add @kenresoft-cms/astro@latest / yarn add @kenresoft-cms/astro@latest
+```
+
 Published on npm under the `@kenresoft-cms` scope (same organization as
 [`@kenresoft-cms/contracts`](../../packages/contracts) and
 [`@kenresoft-cms/create`](../../packages/create)). It depends on `@kenresoft-cms/contracts` for
@@ -137,6 +147,15 @@ returns when the param is absent) for normal published-only rendering; that's th
 and needs no code change from the snippet above. `entries.preview()`/`pages.preview()` also
 exist as explicit standalone calls when you already have a token in hand and don't need the
 published-vs-draft branch collapsed into one call.
+
+> **⚠ If your site (or this one page) uses static output (`output: 'static'` + `getStaticPaths()`),
+> Live Preview will 404 every draft no matter what the code above does.** A dynamic route only
+> gets a real page for the params `getStaticPaths()` returned at build time — a draft's slug was
+> never in that list, so Astro 404s the request itself before this page's code ever runs. Add
+> `export const prerender = false;` to the top of this one page's frontmatter (requires an
+> on-demand-capable adapter, e.g. `@astrojs/cloudflare`/`@astrojs/node` — the rest of your site can
+> stay fully static) or switch the whole site to `output: 'server'`. See `docs/ASTRO.md`'s "Live
+> Preview requires the page to render on demand" section for the full explanation and snippet.
 
 ## Media/content integration
 
