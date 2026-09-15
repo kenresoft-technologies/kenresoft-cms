@@ -1,0 +1,18 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout title="My Kenresoft CMS site">
+  <h1>It's working!</h1>
+  <p>
+    This page isn't fetching anything from your CMS yet — see
+    <code>src/pages/blog/index.astro</code> and <code>src/pages/blog/[slug].astro</code> for a
+    working example, and <code>src/lib/cms.ts</code> for the client itself.
+  </p>
+  <p>
+    Set <code>PUBLIC_KENRESOFT_CMS_URL</code> in <code>.env</code> to your deployed API Worker's
+    URL (or <code>http://localhost:8787</code> while running the CMS locally), then adjust the
+    <code>contentType</code> string in the blog example to match a real content type in your own
+    deployment — <code>'blog-post'</code> here is just a placeholder name.
+  </p>
+</Layout>

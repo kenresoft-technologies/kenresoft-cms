@@ -47,9 +47,12 @@ work, not a rename of this package (see Future work).
 ### What the client covers today
 
 - `entries.list({ contentType })` — every published entry for a content type, by slug.
-- `entries.get({ contentType, slug })` — one published entry, or `null` if it doesn't exist
-  *or* isn't published (the public API doesn't distinguish those two cases — see
-  `docs/ARCHITECTURE.md` §6/§14 — and neither does this client).
+- `entries.get({ contentType, slug, previewToken? })` — one published entry, or `null` if it
+  doesn't exist *or* isn't published (the public API doesn't distinguish those two cases — see
+  `docs/ARCHITECTURE.md` §6/§14 — and neither does this client). Pass `previewToken` (e.g.
+  `Astro.url.searchParams.get('preview_token')`, the param Kenresoft CMS's Live Preview button
+  appends) to instead render a draft/any-status entry through the same call — see "Live
+  Preview" below; the common published-only case needs no branch.
 - `media.url({ id })` — the public URL for a Media item's file bytes (URL construction only,
   no fetch — use it directly as an `<img src>`). Backed by `GET /api/v1/public/media/:id/file`
   (`apps/api/src/routes/public/media.ts`), unauthenticated like the entry routes, edge-cached
@@ -127,6 +130,44 @@ they are. `Settings.name` still stays where it is — it's the deployment's own 
 identity (admin sidebar, browser tab), never site-facing content, and distinct from Structured
 Settings' own `general.siteName` (the public site's name, editable from Settings → General →
 "Site branding").
+
+## Connecting your own, separately-hosted Astro project
+
+Everything above documents how `@kenresoft-cms/astro` is developed and referenced *inside* this
+monorepo (`examples/astro-site` as a pnpm workspace member). Most people reading this doc are
+not working inside this monorepo at all — they have their own Astro project and their own
+deployed Kenresoft CMS (or one they're about to deploy — see `docs/DEPLOYMENT.md`), and just
+want to fetch content from it. That's a normal npm install, nothing monorepo-specific:
+
+```bash
+npm install @kenresoft-cms/astro
+```
+
+Published under the `@kenresoft-cms` npm scope, same as `@kenresoft-cms/contracts` and
+`@kenresoft-cms/create` — see `integrations/astro/README.md`'s "Connecting your own Astro
+project" section for a complete, minimal working example (client setup, env var, one page
+fetching one entry). The fastest path to a working starting point is the scaffolding CLI:
+
+```bash
+npm create @kenresoft-cms@latest my-site -- --astro
+```
+
+This copies a small, generic starter (content-agnostic — it doesn't assume Commerce, customer
+accounts, or any of `examples/astro-site`'s specific content types) with `@kenresoft-cms/astro`
+already wired up, ready to point at your own deployment's URL. See the root
+[README](../README.md) and [`packages/create`](../packages/create) for what it scaffolds and how
+it differs from the full CMS scaffold (`npm create @kenresoft-cms@latest my-cms`, no flag) — the
+Astro starter is a one-time template copy with no ongoing upstream-merge relationship, unlike the
+full CMS scaffold's `pnpm run update`.
+
+`examples/astro-site` itself stays what it's always been: the *fullest* reference — the whole
+Commerce plugin (catalog, cart, checkout, customer accounts), forms, media, and the Page/Block
+system — meant to be read as a worked example and seeded against a matching local deployment
+(`examples/astro-site/README.md`'s "Prerequisites: seeding a fresh deployment" section), not
+cloned as a starting point for an arbitrary CMS deployment with different content types. The new
+`--astro` scaffold exists specifically to fill the gap between "read the reference site's source"
+and "hand-write a client from the raw REST API" for someone who just wants a working Astro site
+pointed at their own content.
 
 ## How Astro communicates with the CMS
 
@@ -367,6 +408,32 @@ plugin-contributed block types (Phase 9). A route collision between a Page and o
 example's own static files (e.g. an admin creating a Page at `/about`) is a known,
 example-specific limitation — the static file always wins and the CMS Page is never reached; see
 the code comment at the top of `[...route].astro`.
+
+## Live Preview
+
+Every entry-backed template in `examples/astro-site` (`blog/[slug].astro`, `about.astro`,
+`contact.astro`, `categories/[slug].astro`) and the `npm create @kenresoft-cms@latest ... --astro`
+starter's `blog/[slug].astro` checks for a `?preview_token=` query param and passes it straight
+into `cms.entries.get({ ..., previewToken })`, so a draft (or any status) renders through the real
+template exactly like a published entry — the Entry Editor's "Live Preview" button works out of
+the box. Commerce's `shop/[slug].astro` (product pages) is **not** covered — products aren't
+Entries and have no preview-token route of their own.
+
+**Where the actual fix lives, and why it reaches real developers.** The first version of this
+only patched `examples/astro-site`'s own page code by hand-branching between `entries.get()`/
+`entries.preview()` in each template — but that example is explicitly not something developers
+deploy or fork (see `docs/DEPLOYMENT.md` §7), so the fix never reached anyone building a real
+site. The real fix is at the SDK level: `entries.get()`/`pages.resolve()` (`@kenresoft-cms/astro`
+0.3.0+) now accept an optional `previewToken` directly — pass it and they transparently hit the
+preview route instead of a second manual branch. This is what both `examples/astro-site` and the
+CLI starter template were updated to use, and it's what reaches *your* project too: once you
+`pnpm update @kenresoft-cms/astro` (or a fresh `npm create @kenresoft-cms@latest ... --astro`
+picks up the current template), the same one-line change — add `previewToken:
+Astro.url.searchParams.get('preview_token')` to an existing `entries.get()`/`pages.resolve()`
+call — gets you Live Preview in your own templates too, without waiting on this repo's example
+code or reading its source. See `integrations/astro/README.md`'s "Live Preview (draft rendering)"
+section for the exact snippet. `entries.preview()`/`pages.preview()` still exist unchanged for
+callers that already have a token in hand and prefer an explicit call.
 
 ## Known limitations
 

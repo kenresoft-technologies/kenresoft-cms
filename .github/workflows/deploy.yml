@@ -107,35 +107,9 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
-  deploy-marketing-site:
-    name: Deploy marketing site (examples/astro-site)
-    if: vars.DEPLOY_ENABLED == 'true'
-    runs-on: ubuntu-latest
-    environment: production
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 22
-          cache: 'pnpm'
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      # PUBLIC_KENRESOFT_CMS_URL is baked into the build by Vite (Astro's PUBLIC_ prefix is
-      # always statically inlined, even under SSR) — the deployment owner's own public API
-      # URL, set as a repository/environment variable, never hard-coded here.
-      - name: Build marketing site
-        run: pnpm --filter kenresoft-cms-example-astro build
-        env:
-          PUBLIC_KENRESOFT_CMS_URL: ${{ vars.PUBLIC_KENRESOFT_CMS_URL }}
-
-      - name: Deploy to Cloudflare Pages
-        run: pnpm --filter kenresoft-cms-example-astro exec wrangler pages deploy dist --project-name "$CLOUDFLARE_PAGES_PROJECT" --branch main
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          CLOUDFLARE_PAGES_PROJECT: ${{ vars.CLOUDFLARE_PAGES_PROJECT }}
+# There is deliberately no job here for examples/astro-site. It's an illustrative reference
+# implementation exercising the public API/SDK end to end — not a starter template meant to be
+# forked, built on top of, or deployed as anyone's real site (see examples/astro-site/README.md
+# and docs/ASTRO.md). A CI job here would have implied otherwise. Building your own frontend?
+# `npm create @kenresoft-cms@latest my-site -- --astro` scaffolds a real, minimal starter wired
+# to the published @kenresoft-cms/astro client — deploy that with whatever pipeline you choose.

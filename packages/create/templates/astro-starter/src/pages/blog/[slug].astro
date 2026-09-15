@@ -1,0 +1,33 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { cms } from '../../lib/cms';
+
+const { slug } = Astro.params;
+// Passing previewToken through opts this page into your CMS's Live Preview: the Entry Editor's
+// "Live Preview" button appends ?preview_token=... to this exact URL, and entries.get() renders
+// the draft (or any status) through this same template instead of 404ing — with no separate
+// branch needed. Omit the param entirely and it behaves exactly like a plain published-only fetch.
+const previewToken = Astro.url.searchParams.get('preview_token');
+const post = slug ? await cms.entries.get({ contentType: 'blog-post', slug, previewToken }) : null;
+
+if (!post) {
+  return new Response(null, { status: 404, statusText: 'Not Found' });
+}
+
+const title = String(post.data.title ?? post.slug);
+// Adjust this to match your own content type's field names — 'body' is just this template's
+// placeholder for a rich-text/HTML field. Only set:html content you trust (i.e. authored by a
+// signed-in CMS editor, never raw user input) — see docs/ARCHITECTURE.md's Tiptap notes.
+const body = typeof post.data.body === 'string' ? post.data.body : '';
+---
+
+<Layout title={title}>
+  {previewToken ? (
+    <p style="background:#fef3c7;color:#92400e;padding:0.5rem 1rem;border-radius:4px;">
+      Preview mode — viewing a {post.status} entry.
+    </p>
+  ) : null}
+  <a href="/blog/">&larr; Back to Blog</a>
+  <h1>{title}</h1>
+  {body && <div set:html={body} />}
+</Layout>

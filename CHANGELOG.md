@@ -12,6 +12,25 @@ landed on `develop`.
 
 ### Added
 
+- `@kenresoft-cms/astro` 0.3.0: `entries.get()`/`pages.resolve()` now accept an optional
+  `previewToken` — pass `Astro.url.searchParams.get('preview_token')` (the param Kenresoft CMS's
+  Live Preview button appends) straight through and they transparently render a draft/any-status
+  entry or Page through the same call, no separate `entries.preview()`/`pages.preview()` branch
+  needed in your own templates. Previously, getting Live Preview working in your own Astro site
+  meant hand-writing that branch yourself, easy to skip on any page that wasn't the one template
+  this was first demonstrated on. `npm create @kenresoft-cms@latest my-site -- --astro`'s
+  `blog/[slug].astro` template was updated to use it (0.2.2), so a freshly scaffolded starter has
+  working Live Preview out of the box. See `integrations/astro/README.md`'s "Live Preview (draft
+  rendering)" section. Update an existing project with `pnpm update @kenresoft-cms/astro`.
+- `@kenresoft-cms/astro` is now published on npm — `npm install @kenresoft-cms/astro` works
+  directly in your own, separately-hosted Astro project against your own CMS deployment; it
+  previously had to be copied or vendored by hand. See `integrations/astro/README.md`'s
+  "Connecting your own Astro project" section and `docs/ASTRO.md`.
+- `npm create @kenresoft-cms@latest my-site -- --astro` scaffolds a small, generic Astro starter
+  wired up to `@kenresoft-cms/astro` (published dependency, no monorepo) — for anyone who already
+  has a CMS deployment and just wants a frontend, without cloning the whole CMS or adapting
+  `examples/astro-site`'s much larger, Commerce-specific reference site. See
+  `packages/create/README.md`.
 - `pnpm run update -- --domain` (and the equivalent menu entry in `pnpm run setup`) connects a
   custom domain to the API Worker without touching the Cloudflare dashboard: it writes a
   `[[routes]]` entry (`custom_domain = true`) and redeploys, which makes Cloudflare create the
@@ -50,6 +69,16 @@ landed on `develop`.
 
 ### Changed
 
+- **`examples/astro-site` is no longer presented (or wired up) as something you deploy.** It was
+  previously documented as an optional "marketing site" with real `wrangler pages deploy`
+  instructions and a `deploy-marketing-site` job in `.github/workflows/deploy.yml` — both
+  removed. It's an illustrative reference implementation that proves the public API/SDK surface
+  works end to end (Commerce checkout included), not a starter meant to be forked or run in
+  production; there was never an update mechanism for it either way. If your fork had
+  `DEPLOY_ENABLED=true` with `PUBLIC_KENRESOFT_CMS_URL`/`CLOUDFLARE_PAGES_PROJECT` set expecting
+  this job to run, it no longer will — those variables are now unused. To build a real frontend,
+  use `npm create @kenresoft-cms@latest my-site -- --astro` (see `docs/DEPLOYMENT.md` §7)
+  instead, a genuine minimal starter meant to be built on and deployed however you choose.
 - **Breaking, has a migration**: staff accounts must now verify their email address before they
   can sign in — a real security gap closed (a newly created account, including one created via
   `Admin → Users → Add user`, could previously sign in with its temporary/chosen password with
@@ -83,6 +112,11 @@ landed on `develop`.
 
 ### Fixed
 
+- `npm create @kenresoft-cms@latest <path> -- --astro` (and the full-CMS scaffold mode) failed to
+  scaffold into an absolute target path, concatenating it onto the current directory instead of
+  using it directly (`path.join()` has no special handling for an already-absolute second
+  argument, unlike `path.resolve()`, which the scaffold now uses). A plain relative name, the
+  documented usage, was unaffected.
 - `pnpm run update` (and the equivalent `pnpm run setup` redeploy path) threw "Could not find the
   deployed Worker URL" on every run once a Worker's `*.workers.dev` route was disabled — even
   though the deploy itself succeeded. `wrangler deploy`'s own output only ever prints a

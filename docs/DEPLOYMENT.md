@@ -163,27 +163,29 @@ yet). Once the database exists at all, either order is fine on every deploy afte
 The first request to your deployed Worker's sign-up page becomes the owner account
 (`docs/ARCHITECTURE.md` §10) — there's no separate seeding step.
 
-## 7. The marketing site (optional)
+## 7. Building your own frontend (not `examples/astro-site`)
 
-`examples/astro-site` is a reference Astro integration, not a required part of the CMS — a
-separate frontend that happens to consume the CMS's public API, not one of the CMS's own two
-Workers (API + Admin, both moved to Workers Static Assets — see "Two Workers, one install"
-above). It renders server-side (Cloudflare Pages Functions via `@astrojs/cloudflare`) and
-fetches from your public API at request time — no rebuild needed when you publish new content.
-
-This example deploys to Cloudflare **Pages** below, not Workers, because that's simply
-`@astrojs/cloudflare`'s own default adapter target for this Astro version — it is not a required
-or even recommended choice specific to this CMS, and Pages remains a fully supported Cloudflare
-product for it. If your own site's Astro/framework setup targets Workers Static Assets instead
-(or a different host entirely), use that instead; nothing about the CMS's own two Workers depends
-on how you deploy this separate example.
+The CMS backend (steps 1-6) is frontend-agnostic — anything that can call an HTTP API can
+consume it (`docs/ARCHITECTURE.md` §4). To start a real Astro frontend of your own:
 
 ```bash
-wrangler pages project create your-cms-site
-cd examples/astro-site
-PUBLIC_KENRESOFT_CMS_URL=https://your-worker-url pnpm build
-wrangler pages deploy dist --project-name your-cms-site --branch main
+npm create @kenresoft-cms@latest my-site -- --astro
 ```
+
+This scaffolds a small, standalone Astro starter wired to the published `@kenresoft-cms/astro`
+client (`npm install @kenresoft-cms/astro` also works directly in an existing project — see
+`integrations/astro/README.md`). It's yours from that point on: deploy it however you like
+(Cloudflare Pages, Workers Static Assets, or any other host) with whatever pipeline you choose —
+nothing about it is CMS-managed.
+
+**`examples/astro-site` is not that starter.** It's a large, illustrative reference
+implementation in this repo — the thing that actually exercises every public API surface
+end-to-end (blog, categories, media, forms, Commerce cart/checkout, Structured Settings, Site
+Builder Pages/Blocks) — kept here to show real, working integration patterns, not to be forked,
+built on top of, or deployed as your site. Read it for patterns; don't run it as production. If
+you want to see it in action locally: `cd examples/astro-site && PUBLIC_KENRESOFT_CMS_URL=... pnpm dev`.
+There is no supported deploy path or update mechanism for it, and none is planned — that's by
+design, not an oversight.
 
 ## 8. The admin app
 
@@ -368,9 +370,10 @@ API_DOCS_ENABLED = "false"
 
 ## Automated deploys via GitHub Actions (optional)
 
-`.github/workflows/deploy.yml` can deploy the API Worker, the admin app, and the marketing site
-on every push to `main`, but is inert by default — every job is gated on a repository variable,
-so forking this repo never risks an accidental deploy attempt against secrets you haven't set.
+`.github/workflows/deploy.yml` can deploy the API Worker and the admin app on every push to
+`main`, but is inert by default — every job is gated on a repository variable, so forking this
+repo never risks an accidental deploy attempt against secrets you haven't set. There is
+deliberately no job for `examples/astro-site` — see step 7 above.
 
 To enable it, in your fork's **Settings → Secrets and variables → Actions**:
 
@@ -387,8 +390,6 @@ To enable it, in your fork's **Settings → Secrets and variables → Actions**:
 | --- | --- |
 | `DEPLOY_ENABLED` | `true` — the on/off switch every job checks. Leave unset (or anything else) to keep the workflow a no-op. |
 | `VITE_API_URL` | Your deployed API's public URL, baked into the admin app build. |
-| `PUBLIC_KENRESOFT_CMS_URL` | Your deployed API's public URL, baked into the marketing site build. |
-| `CLOUDFLARE_PAGES_PROJECT` | The marketing site's Pages project name from step 7. |
 
 Using a GitHub [Environment](https://docs.github.com/en/actions/deployment/targeting-different-environments/using-environments-for-deployment)
 named `production` (every deploy job already declares `environment: production`) lets you add

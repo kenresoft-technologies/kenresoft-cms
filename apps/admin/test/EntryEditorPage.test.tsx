@@ -74,7 +74,17 @@ describe('EntryEditorPage', () => {
   });
 
   it('creates a new entry, defaulting field values by type, and posts the built data object', async () => {
-    getMock.mockResolvedValue(fields);
+    getMock.mockImplementation((path: string) => {
+      if (path.endsWith('/fields')) return Promise.resolve(fields);
+      if (path.endsWith('/revisions')) return Promise.resolve([]);
+      return Promise.resolve({
+        id: 'e-1',
+        slug: 'hello-world',
+        status: 'draft',
+        data: { title: 'Hello World', featured: true },
+        publishAt: null,
+      });
+    });
     postMock.mockResolvedValue({ id: 'e-1' });
 
     renderEditor('/content-types/ct-1/entries/new');
@@ -96,6 +106,32 @@ describe('EntryEditorPage', () => {
         publishAt: null,
       }),
     );
+  });
+
+  it('lands on the new entry\'s own editor after creating it, instead of the entries list', async () => {
+    getMock.mockImplementation((path: string) => {
+      if (path.endsWith('/fields')) return Promise.resolve(fields);
+      if (path.endsWith('/revisions')) return Promise.resolve([]);
+      return Promise.resolve({
+        id: 'e-1',
+        slug: 'hello-world',
+        status: 'draft',
+        data: { title: 'Hello World', featured: false },
+        publishAt: null,
+      });
+    });
+    postMock.mockResolvedValue({ id: 'e-1' });
+
+    renderEditor('/content-types/ct-1/entries/new');
+
+    await waitFor(() => expect(screen.getByLabelText('Title')).toBeInTheDocument());
+    await userEvent.type(screen.getByLabelText('Slug'), 'hello-world');
+    await userEvent.type(screen.getByLabelText('Title'), 'Hello World');
+    await userEvent.click(screen.getByRole('button', { name: 'Save entry' }));
+
+    await waitFor(() => expect(postMock).toHaveBeenCalled());
+    expect(screen.queryByText('Entries list placeholder')).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Delete entry' })).toBeInTheDocument());
   });
 
   it('prefills the form from the existing entry when editing and PATCHes on save', async () => {
@@ -130,8 +166,55 @@ describe('EntryEditorPage', () => {
     );
   });
 
+  it('stays on the editor after saving an existing entry, instead of bouncing back to the list', async () => {
+    let saved = false;
+    getMock.mockImplementation((path: string) => {
+      if (path.endsWith('/fields')) return Promise.resolve(fields);
+      if (path.endsWith('/revisions')) return Promise.resolve([]);
+      return Promise.resolve({
+        id: 'e-1',
+        slug: 'hello-world',
+        status: 'published',
+        data: { title: saved ? 'Edited Title' : 'Hello World', featured: true },
+        publishAt: null,
+        updatedAt: saved ? '2026-01-01T00:01:00.000Z' : '2026-01-01T00:00:00.000Z',
+      });
+    });
+    patchMock.mockImplementation(() => {
+      saved = true;
+      return Promise.resolve({ id: 'e-1' });
+    });
+
+    renderEditor('/content-types/ct-1/entries/e-1');
+    await waitFor(() => expect(screen.getByLabelText('Slug')).toHaveValue('hello-world'));
+
+    await userEvent.clear(screen.getByLabelText('Title'));
+    await userEvent.type(screen.getByLabelText('Title'), 'Edited Title');
+    expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Save entry' }));
+
+    await waitFor(() => expect(patchMock).toHaveBeenCalled());
+    expect(screen.queryByText('Entries list placeholder')).not.toBeInTheDocument();
+    // Invalidating the entry query after a successful update remounts the form (its `key`
+    // includes updatedAt) with the freshly saved value as the new baseline, clearing the
+    // unsaved-changes indicator without navigating anywhere.
+    await waitFor(() => expect(screen.getByLabelText('Title')).toHaveValue('Edited Title'));
+    expect(screen.queryByText('Unsaved changes')).not.toBeInTheDocument();
+  });
+
   it('shows an unsaved-changes indicator once a field is edited, and clears it after saving', async () => {
-    getMock.mockResolvedValue(fields);
+    getMock.mockImplementation((path: string) => {
+      if (path.endsWith('/fields')) return Promise.resolve(fields);
+      if (path.endsWith('/revisions')) return Promise.resolve([]);
+      return Promise.resolve({
+        id: 'e-1',
+        slug: 'hello-world',
+        status: 'draft',
+        data: { title: 'Hello World', featured: true },
+        publishAt: null,
+      });
+    });
     postMock.mockResolvedValue({ id: 'e-1' });
 
     renderEditor('/content-types/ct-1/entries/new');
@@ -145,7 +228,9 @@ describe('EntryEditorPage', () => {
     await userEvent.type(screen.getByLabelText('Title'), 'Hello World');
     await userEvent.click(screen.getByRole('button', { name: 'Save entry' }));
 
-    await waitFor(() => expect(screen.getByText('Entries list placeholder')).toBeInTheDocument());
+    // Now on the newly created entry's own editor (see the dedicated test above) rather than
+    // the list — the indicator should be gone since the saved values are the new baseline.
+    await waitFor(() => expect(screen.queryByText('Unsaved changes')).not.toBeInTheDocument());
   });
 
   it('blocks in-app navigation away from unsaved changes until the user confirms', async () => {

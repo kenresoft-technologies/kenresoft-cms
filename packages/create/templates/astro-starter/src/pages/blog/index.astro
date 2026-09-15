@@ -1,0 +1,33 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { cms } from '../../lib/cms';
+
+// 'blog-post' is a placeholder — create a content type with this slug in your CMS admin (or
+// change this string to match one you already have) with at least a 'title' field.
+let posts: Awaited<ReturnType<typeof cms.entries.list>> = [];
+let loadFailed = false;
+try {
+  posts = await cms.entries.list({ contentType: 'blog-post' });
+} catch (error) {
+  console.error('Failed to load posts from Kenresoft CMS:', error);
+  loadFailed = true;
+}
+---
+
+<Layout title="Blog">
+  <h1>Blog</h1>
+  {loadFailed && (
+    <p>
+      Couldn't reach your Kenresoft CMS — check <code>PUBLIC_KENRESOFT_CMS_URL</code> in
+      <code>.env</code> and that a <code>blog-post</code> content type exists.
+    </p>
+  )}
+  {!loadFailed && posts.length === 0 && <p>No posts yet.</p>}
+  <ul>
+    {posts.map((post) => (
+      <li>
+        <a href={`/blog/${post.slug}/`}>{String(post.data.title ?? post.slug)}</a>
+      </li>
+    ))}
+  </ul>
+</Layout>
