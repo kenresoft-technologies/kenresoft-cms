@@ -11,9 +11,7 @@ const cms = createKenresoftClient({ url: import.meta.env.PUBLIC_KENRESOFT_CMS_UR
 const { slug } = Astro.params;
 const previewToken = Astro.url.searchParams.get('preview_token');
 const entry = slug
-  ? previewToken
-    ? await cms.entries.preview({ contentType: 'blog-post', slug, token: previewToken }).catch(() => null)
-    : await cms.entries.get({ contentType: 'blog-post', slug }).catch(() => null)
+  ? await cms.entries.get({ contentType: 'blog-post', slug, previewToken }).catch(() => null)
   : null;
 
 if (!entry) {

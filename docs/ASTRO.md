@@ -47,9 +47,12 @@ work, not a rename of this package (see Future work).
 ### What the client covers today
 
 - `entries.list({ contentType })` — every published entry for a content type, by slug.
-- `entries.get({ contentType, slug })` — one published entry, or `null` if it doesn't exist
-  *or* isn't published (the public API doesn't distinguish those two cases — see
-  `docs/ARCHITECTURE.md` §6/§14 — and neither does this client).
+- `entries.get({ contentType, slug, previewToken? })` — one published entry, or `null` if it
+  doesn't exist *or* isn't published (the public API doesn't distinguish those two cases — see
+  `docs/ARCHITECTURE.md` §6/§14 — and neither does this client). Pass `previewToken` (e.g.
+  `Astro.url.searchParams.get('preview_token')`, the param Kenresoft CMS's Live Preview button
+  appends) to instead render a draft/any-status entry through the same call — see "Live
+  Preview" below; the common published-only case needs no branch.
 - `media.url({ id })` — the public URL for a Media item's file bytes (URL construction only,
   no fetch — use it directly as an `<img src>`). Backed by `GET /api/v1/public/media/:id/file`
   (`apps/api/src/routes/public/media.ts`), unauthenticated like the entry routes, edge-cached
@@ -405,6 +408,32 @@ plugin-contributed block types (Phase 9). A route collision between a Page and o
 example's own static files (e.g. an admin creating a Page at `/about`) is a known,
 example-specific limitation — the static file always wins and the CMS Page is never reached; see
 the code comment at the top of `[...route].astro`.
+
+## Live Preview
+
+Every entry-backed template in `examples/astro-site` (`blog/[slug].astro`, `about.astro`,
+`contact.astro`, `categories/[slug].astro`) and the `npm create @kenresoft-cms@latest ... --astro`
+starter's `blog/[slug].astro` checks for a `?preview_token=` query param and passes it straight
+into `cms.entries.get({ ..., previewToken })`, so a draft (or any status) renders through the real
+template exactly like a published entry — the Entry Editor's "Live Preview" button works out of
+the box. Commerce's `shop/[slug].astro` (product pages) is **not** covered — products aren't
+Entries and have no preview-token route of their own.
+
+**Where the actual fix lives, and why it reaches real developers.** The first version of this
+only patched `examples/astro-site`'s own page code by hand-branching between `entries.get()`/
+`entries.preview()` in each template — but that example is explicitly not something developers
+deploy or fork (see `docs/DEPLOYMENT.md` §7), so the fix never reached anyone building a real
+site. The real fix is at the SDK level: `entries.get()`/`pages.resolve()` (`@kenresoft-cms/astro`
+0.3.0+) now accept an optional `previewToken` directly — pass it and they transparently hit the
+preview route instead of a second manual branch. This is what both `examples/astro-site` and the
+CLI starter template were updated to use, and it's what reaches *your* project too: once you
+`pnpm update @kenresoft-cms/astro` (or a fresh `npm create @kenresoft-cms@latest ... --astro`
+picks up the current template), the same one-line change — add `previewToken:
+Astro.url.searchParams.get('preview_token')` to an existing `entries.get()`/`pages.resolve()`
+call — gets you Live Preview in your own templates too, without waiting on this repo's example
+code or reading its source. See `integrations/astro/README.md`'s "Live Preview (draft rendering)"
+section for the exact snippet. `entries.preview()`/`pages.preview()` still exist unchanged for
+callers that already have a token in hand and prefer an explicit call.
 
 ## Known limitations
 

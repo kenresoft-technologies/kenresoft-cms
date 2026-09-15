@@ -9,14 +9,27 @@ const cms = createKenresoftClient({ url: import.meta.env.PUBLIC_KENRESOFT_CMS_UR
 // for the seed data this assumes); "about" is that content type's entry slug. A missing content
 // type or a missing/draft entry both come back as the same `null` here — this page renders a
 // clear "not set up yet" state rather than crashing, since a fresh clone of this example won't
-// have seeded any content until its own setup step runs.
-const entry = await cms.entries.get({ contentType: 'page', slug: 'about' }).catch(() => null);
+// have seeded any content until its own setup step runs. Unless a Live Preview token is present
+// (Kenresoft CMS's Entry Editor "Preview" button appends one), in which case a draft (or any
+// status) renders instead, matching blog/[slug].astro's own preview handling.
+const previewToken = Astro.url.searchParams.get('preview_token');
+const entry = await cms.entries.get({ contentType: 'page', slug: 'about', previewToken }).catch(() => null);
 
 const title = entry ? String(entry.data.metaTitle ?? entry.data.title ?? 'About') : 'About';
 const description = entry ? (entry.data.metaDescription ? String(entry.data.metaDescription) : undefined) : undefined;
 ---
 
-<BaseLayout title={`${title} — Kenresoft CMS`} description={description} canonicalUrl={new URL('/about', Astro.site ?? Astro.url).toString()}>
+<BaseLayout
+  title={`${title} — Kenresoft CMS`}
+  description={description}
+  canonicalUrl={new URL('/about', Astro.site ?? Astro.url).toString()}
+  noIndex={Boolean(previewToken)}
+>
+  {previewToken && entry ? (
+    <div class="preview-banner">
+      Preview mode — viewing a {entry.status} entry. This banner never appears without a valid preview link.
+    </div>
+  ) : null}
   <article class="page-content">
     {
       entry ? (
@@ -40,6 +53,16 @@ const description = entry ? (entry.data.metaDescription ? String(entry.data.meta
 </BaseLayout>
 
 <style>
+  .preview-banner {
+    background: var(--warning-bg);
+    color: color-mix(in oklch, var(--warning) 70%, var(--ink));
+    text-align: center;
+    padding: var(--space-3) var(--space-4);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    border-bottom: 1px solid var(--warning-border);
+  }
+
   .page-content {
     max-width: 720px;
     margin: 0 auto;

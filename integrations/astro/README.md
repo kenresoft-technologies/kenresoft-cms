@@ -119,6 +119,25 @@ never distinguishable from the outside. There is deliberately no `contentTypes.l
 public content-type-metadata endpoint exists to back one (an open product decision, not an
 oversight; see `docs/ASTRO.md`).
 
+### Live Preview (draft rendering)
+
+Kenresoft CMS's Entry/Page Editor "Live Preview" button opens your page with
+`?preview_token=...` appended. Pass it straight through and `entries.get()`/`pages.resolve()`
+render the draft (or any status) through this exact same template — no separate branch needed:
+
+```astro
+---
+const previewToken = Astro.url.searchParams.get('preview_token');
+const post = await cms.entries.get({ contentType: 'blog-post', slug, previewToken });
+---
+```
+
+Omit `previewToken` (or leave it `null`/`undefined` — exactly what `URLSearchParams.get()`
+returns when the param is absent) for normal published-only rendering; that's the common case
+and needs no code change from the snippet above. `entries.preview()`/`pages.preview()` also
+exist as explicit standalone calls when you already have a token in hand and don't need the
+published-vs-draft branch collapsed into one call.
+
 ## Media/content integration
 
 ```ts

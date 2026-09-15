@@ -339,6 +339,15 @@ export interface ListEntriesOptions {
 export interface GetEntryOptions extends ListEntriesOptions {
   /** The entry's own slug within that content type. */
   slug: string;
+  /**
+   * Optional. Pass a Live Preview token straight through — e.g.
+   * `Astro.url.searchParams.get('preview_token')` — and this call transparently renders a draft
+   * (or any status) via the same signed-token mechanism `entries.preview()` uses, with no
+   * separate branch needed in your own template. Omit, or pass `null`/`undefined` (exactly what
+   * `URLSearchParams.get()` returns when the param is absent), for normal published-only
+   * rendering — the common case.
+   */
+  previewToken?: string | null;
 }
 
 export interface PreviewEntryOptions extends GetEntryOptions {
@@ -359,6 +368,12 @@ export interface MediaUrlOptions {
 export interface ResolvePageOptions {
   /** The Page's literal route, e.g. "/about" — not a `{slug}` pattern. */
   route: string;
+  /**
+   * Optional. Pass a Live Preview token straight through — same convention as
+   * `GetEntryOptions.previewToken` above — to transparently render a draft (or any status) Page
+   * via the same signed-token mechanism `pages.preview()` uses, with no separate branch needed.
+   */
+  previewToken?: string | null;
 }
 
 export interface PreviewPageOptions extends ResolvePageOptions {
@@ -402,12 +417,16 @@ export interface KenresoftClient {
      * A single published entry by slug, or null if there's no content type with that slug,
      * or no *published* entry with that slug — including when a draft entry with that exact
      * slug exists (docs/ARCHITECTURE.md §6/§14: a draft 404s exactly like a slug that doesn't
-     * exist, from the public API's perspective).
+     * exist, from the public API's perspective). Pass `options.previewToken` to render a draft
+     * instead — see `GetEntryOptions.previewToken`; equivalent to calling `preview()` below but
+     * without a separate branch in your own template.
      */
     get(options: GetEntryOptions): Promise<Entry | null>;
     /**
      * Fetches one entry regardless of draft/published status, given a valid preview token for
-     * it — see `PreviewEntryOptions.token`. Powers Live Preview; not used for normal rendering.
+     * it — see `PreviewEntryOptions.token`. Powers Live Preview; equivalent to
+     * `get({ ...options, previewToken: options.token })` — kept as its own method for callers
+     * that always have a token in hand and want that explicit in their own code.
      */
     preview(options: PreviewEntryOptions): Promise<Entry | null>;
   };
@@ -465,13 +484,14 @@ export interface KenresoftClient {
     /**
      * A published Page by its exact route, or null if there's no Page there, or the Page at
      * that route is a draft — a draft 404s exactly like a nonexistent route (§7, mirroring
-     * entries).
+     * entries). Pass `options.previewToken` to render a draft instead — see
+     * `ResolvePageOptions.previewToken`.
      */
     resolve(options: ResolvePageOptions): Promise<Page | null>;
     /**
      * Fetches one Page regardless of draft/published status, given a valid preview token for
-     * it — see `PreviewPageOptions.token`. Powers Page Live Preview; not used for normal
-     * rendering.
+     * it — see `PreviewPageOptions.token`. Powers Page Live Preview; equivalent to
+     * `resolve({ ...options, previewToken: options.token })`.
      */
     preview(options: PreviewPageOptions): Promise<Page | null>;
   };
@@ -680,8 +700,10 @@ export function createKenresoftClient(config: KenresoftClientConfig): KenresoftC
         const entries = await request<Entry[]>(`/api/v1/public/${contentType}`);
         return entries ?? [];
       },
-      get({ contentType, slug }) {
-        return request<Entry>(`/api/v1/public/${contentType}/${slug}`);
+      get({ contentType, slug, previewToken }) {
+        return previewToken
+          ? request<Entry>(`/api/v1/public/preview/${contentType}/${slug}?token=${encodeURIComponent(previewToken)}`)
+          : request<Entry>(`/api/v1/public/${contentType}/${slug}`);
       },
       preview({ contentType, slug, token }) {
         return request<Entry>(`/api/v1/public/preview/${contentType}/${slug}?token=${encodeURIComponent(token)}`);
@@ -735,8 +757,12 @@ export function createKenresoftClient(config: KenresoftClientConfig): KenresoftC
         const pages = await request<PageListItem[]>('/api/v1/public/pages');
         return pages ?? [];
       },
-      resolve({ route }) {
-        return request<Page>(`/api/v1/public/pages/by-route?route=${encodeURIComponent(route)}`);
+      resolve({ route, previewToken }) {
+        return previewToken
+          ? request<Page>(
+              `/api/v1/public/preview/pages?route=${encodeURIComponent(route)}&token=${encodeURIComponent(previewToken)}`,
+            )
+          : request<Page>(`/api/v1/public/pages/by-route?route=${encodeURIComponent(route)}`);
       },
       preview({ route, token }) {
         return request<Page>(

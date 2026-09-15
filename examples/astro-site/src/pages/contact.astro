@@ -5,10 +5,23 @@ import RichText from '../components/cms/RichText.astro';
 import Alert from '../components/ui/Alert.astro';
 
 const cms = createKenresoftClient({ url: import.meta.env.PUBLIC_KENRESOFT_CMS_URL });
-const entry = await cms.entries.get({ contentType: 'page', slug: 'contact' }).catch(() => null);
+// Unless a Live Preview token is present (Kenresoft CMS's Entry Editor "Preview" button appends
+// one), in which case a draft (or any status) renders instead, matching blog/[slug].astro's own
+// preview handling.
+const previewToken = Astro.url.searchParams.get('preview_token');
+const entry = await cms.entries.get({ contentType: 'page', slug: 'contact', previewToken }).catch(() => null);
 ---
 
-<BaseLayout title="Contact — Kenresoft CMS" canonicalUrl={new URL('/contact', Astro.site ?? Astro.url).toString()}>
+<BaseLayout
+  title="Contact — Kenresoft CMS"
+  canonicalUrl={new URL('/contact', Astro.site ?? Astro.url).toString()}
+  noIndex={Boolean(previewToken)}
+>
+  {previewToken && entry ? (
+    <div class="preview-banner">
+      Preview mode — viewing a {entry.status} entry. This banner never appears without a valid preview link.
+    </div>
+  ) : null}
   <div class="contact-page">
     <div class="contact-intro">
       <h1>{entry ? String(entry.data.title ?? 'Contact') : 'Contact'}</h1>
@@ -92,6 +105,16 @@ const entry = await cms.entries.get({ contentType: 'page', slug: 'contact' }).ca
 </script>
 
 <style>
+  .preview-banner {
+    background: var(--warning-bg);
+    color: color-mix(in oklch, var(--warning) 70%, var(--ink));
+    text-align: center;
+    padding: var(--space-3) var(--space-4);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    border-bottom: 1px solid var(--warning-border);
+  }
+
   .contact-page {
     max-width: 640px;
     margin: 0 auto;

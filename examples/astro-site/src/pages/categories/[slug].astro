@@ -7,9 +7,14 @@ const cms = createKenresoftClient({ url: import.meta.env.PUBLIC_KENRESOFT_CMS_UR
 // "category" is a CMS content type used to organize "blog-post" entries — a real content-type
 // relationship (a reference field on blog-post), not Commerce's own product categories, which
 // have their own separate /shop?category= filtering. Fetched per-request, matching every other
-// page's SSR-on-request approach.
+// page's SSR-on-request approach. Unless a Live Preview token is present (Kenresoft CMS's Entry
+// Editor "Preview" button appends one), in which case a draft (or any status) renders instead,
+// matching blog/[slug].astro's own preview handling.
 const { slug } = Astro.params;
-const category = slug ? await cms.entries.get({ contentType: 'category', slug }).catch(() => null) : null;
+const previewToken = Astro.url.searchParams.get('preview_token');
+const category = slug
+  ? await cms.entries.get({ contentType: 'category', slug, previewToken }).catch(() => null)
+  : null;
 
 if (!category) {
   return new Response(null, { status: 404, statusText: 'Not Found' });
@@ -25,7 +30,13 @@ const title = String(category.data.title ?? category.slug);
   title={`${title} — Kenresoft CMS`}
   description={typeof category.data.description === 'string' ? category.data.description : undefined}
   canonicalUrl={new URL(`/categories/${category.slug}`, Astro.site ?? Astro.url).toString()}
+  noIndex={Boolean(previewToken)}
 >
+  {previewToken ? (
+    <div class="preview-banner">
+      Preview mode — viewing a {category.status} entry. This banner never appears without a valid preview link.
+    </div>
+  ) : null}
   <div class="page-header">
     <a class="back-link" href="/blog">← Back to blog</a>
     <h1>{title}</h1>
@@ -51,6 +62,16 @@ const title = String(category.data.title ?? category.slug);
 </BaseLayout>
 
 <style>
+  .preview-banner {
+    background: var(--warning-bg);
+    color: color-mix(in oklch, var(--warning) 70%, var(--ink));
+    text-align: center;
+    padding: var(--space-3) var(--space-4);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    border-bottom: 1px solid var(--warning-border);
+  }
+
   .page-header {
     max-width: var(--max-width);
     margin: 0 auto;
