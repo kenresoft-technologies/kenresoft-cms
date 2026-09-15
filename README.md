@@ -87,8 +87,9 @@ running it — each has its own README with prerequisites, configuration, and a 
   workspace packages required) — see that README for what's verified vs. not yet.
 - **[Astro Integration](integrations/astro/README.md)** — a typed client for reading CMS content
   from an Astro (or any JS/TS) site, published on npm as `@kenresoft-cms/astro`. Not a deployable
-  Worker — a library your own site depends on. See also [`examples/astro-site`](examples/astro-site)
-  for a full reference site, or the section above for scaffolding a minimal starter instead.
+  Worker — a library your own site depends on. To build your own frontend, use the section above
+  (`npm create @kenresoft-cms@latest my-site -- --astro`) — [`examples/astro-site`](examples/astro-site)
+  is a separate, illustrative reference implementation, not a starter to fork or deploy.
 
 ## Monorepo layout
 
@@ -108,7 +109,7 @@ integrations/
   astro/      @kenresoft-cms/astro      — Astro Integration: typed client for the public API
 docs/       Architecture and reference documentation, including docs/ASTRO.md
 examples/
-  astro-site/ Reference Astro site built on the Astro Integration — see its own README
+  astro-site/ Illustrative reference implementation (not a starter — see its own README)
 tests/      Empty, reserved scaffolding — real full-stack E2E lives in apps/admin/e2e instead
             (Playwright, drives the Admin Worker + API Worker together against a dedicated
             port/D1 state)
@@ -124,9 +125,10 @@ on top of that took the Admin Worker from functional CRUD screens to a full admi
 dashboard, command palette, drag-to-reorder fields, a redesigned Settings area, dark mode, and
 more. The Astro Integration (`@kenresoft-cms/astro`, the typed client library — see
 `docs/ASTRO.md`) is done: it's SSR, not a rebuild-to-see-changes static site, and has been
-verified end-to-end against a real deployed API. The reference `examples/astro-site` built on
-it has not itself been deployed to a live Cloudflare project by this project — see
-[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)'s "The marketing site" step for deploying your own.
+verified end-to-end against a real deployed API. `examples/astro-site` is the illustrative
+reference implementation that proves it — not something meant to be forked or deployed as your
+own site; see [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)'s step 7 for building your own frontend
+with `npm create @kenresoft-cms@latest my-site -- --astro`.
 
 For the authoritative, continuously-updated account of what's done and what isn't, see the
 **Status** section of [`CLAUDE.md`](CLAUDE.md). For the target end state, see

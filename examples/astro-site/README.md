@@ -1,10 +1,15 @@
 # Kenresoft CMS — Astro reference storefront
 
-A real, full-featured reference site for Kenresoft CMS, built entirely on top of the typed
-`@kenresoft-cms/astro` client — content, media, forms, and the full Commerce plugin (catalog,
-cart, checkout, Paystack payments, customer accounts). See [`docs/ASTRO.md`](../../docs/ASTRO.md)
-and [`docs/PLUGINS.md`](../../docs/PLUGINS.md) for the underlying platform docs; this README
-covers only what's specific to this example.
+**This is an illustrative reference implementation, not a starter template.** It exists to show
+every public API/SDK surface working together end to end (content, media, forms, and the full
+Commerce plugin — catalog, cart, checkout, Paystack payments, customer accounts) in real,
+working code — not to be forked, built on top of, or deployed as your own site. There is no
+supported deploy path or update mechanism for it (see `docs/DEPLOYMENT.md` §7). Building your own
+frontend? Run `npm create @kenresoft-cms@latest my-site -- --astro` instead — a small, real
+starter wired to the same published `@kenresoft-cms/astro` client, yours to build on from there.
+
+See [`docs/ASTRO.md`](../../docs/ASTRO.md) and [`docs/PLUGINS.md`](../../docs/PLUGINS.md) for the
+underlying platform docs; this README covers only what's specific to this example.
 
 Server-rendered (`output: 'server'`, `@astrojs/cloudflare`) — every page fetches from the CMS at
 **request** time, so a published edit or a new order is visible on the very next request, no
