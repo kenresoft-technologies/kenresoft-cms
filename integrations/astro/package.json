@@ -1,22 +1,45 @@
 {
   "name": "@kenresoft-cms/astro",
-  "version": "0.1.0",
-  "private": true,
+  "version": "0.2.0",
   "type": "module",
   "description": "Typed client for a Kenresoft CMS deployment's public API. The first-class Astro integration referenced in docs/ASTRO.md — not Astro-specific at the code level (it's a thin fetch wrapper over the public REST API), but built and documented as Astro's officially supported way in.",
+  "license": "MIT",
+  "homepage": "https://github.com/kenresoft-technologies/kenresoft-cms/tree/main/integrations/astro#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kenresoft-technologies/kenresoft-cms.git",
+    "directory": "integrations/astro"
+  },
+  "bugs": "https://github.com/kenresoft-technologies/kenresoft-cms/issues",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts"
   },
+  "files": ["dist"],
+  "publishConfig": {
+    "access": "public",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      }
+    }
+  },
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "prepublishOnly": "pnpm run build",
     "test": "node --experimental-strip-types --test test/*.test.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint ."
   },
+  "dependencies": {
+    "@kenresoft-cms/contracts": "^0.4.0"
+  },
   "devDependencies": {
     "@kenresoft-cms/config": "workspace:*",
-    "@kenresoft-cms/contracts": "workspace:*",
     "@types/node": "^26.4.1",
     "eslint": "^10.9.1",
     "typescript": "^5.9.3"

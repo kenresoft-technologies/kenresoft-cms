@@ -128,6 +128,44 @@ identity (admin sidebar, browser tab), never site-facing content, and distinct f
 Settings' own `general.siteName` (the public site's name, editable from Settings → General →
 "Site branding").
 
+## Connecting your own, separately-hosted Astro project
+
+Everything above documents how `@kenresoft-cms/astro` is developed and referenced *inside* this
+monorepo (`examples/astro-site` as a pnpm workspace member). Most people reading this doc are
+not working inside this monorepo at all — they have their own Astro project and their own
+deployed Kenresoft CMS (or one they're about to deploy — see `docs/DEPLOYMENT.md`), and just
+want to fetch content from it. That's a normal npm install, nothing monorepo-specific:
+
+```bash
+npm install @kenresoft-cms/astro
+```
+
+Published under the `@kenresoft-cms` npm scope, same as `@kenresoft-cms/contracts` and
+`@kenresoft-cms/create` — see `integrations/astro/README.md`'s "Connecting your own Astro
+project" section for a complete, minimal working example (client setup, env var, one page
+fetching one entry). The fastest path to a working starting point is the scaffolding CLI:
+
+```bash
+npm create @kenresoft-cms@latest my-site -- --astro
+```
+
+This copies a small, generic starter (content-agnostic — it doesn't assume Commerce, customer
+accounts, or any of `examples/astro-site`'s specific content types) with `@kenresoft-cms/astro`
+already wired up, ready to point at your own deployment's URL. See the root
+[README](../README.md) and [`packages/create`](../packages/create) for what it scaffolds and how
+it differs from the full CMS scaffold (`npm create @kenresoft-cms@latest my-cms`, no flag) — the
+Astro starter is a one-time template copy with no ongoing upstream-merge relationship, unlike the
+full CMS scaffold's `pnpm run update`.
+
+`examples/astro-site` itself stays what it's always been: the *fullest* reference — the whole
+Commerce plugin (catalog, cart, checkout, customer accounts), forms, media, and the Page/Block
+system — meant to be read as a worked example and seeded against a matching local deployment
+(`examples/astro-site/README.md`'s "Prerequisites: seeding a fresh deployment" section), not
+cloned as a starting point for an arbitrary CMS deployment with different content types. The new
+`--astro` scaffold exists specifically to fill the gap between "read the reference site's source"
+and "hand-write a client from the raw REST API" for someone who just wants a working Astro site
+pointed at their own content.
+
 ## How Astro communicates with the CMS
 
 ```

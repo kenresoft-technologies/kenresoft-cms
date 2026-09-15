@@ -23,15 +23,73 @@ without this package at all.
 
 ## Installation
 
-Inside this monorepo (e.g. from `examples/astro-site`), it's a normal workspace dependency:
+**In your own, separately-hosted Astro project**, against your own Kenresoft CMS deployment —
+this is the normal case for anyone who isn't working inside this monorepo:
+
+```bash
+npm install @kenresoft-cms/astro
+# or: pnpm add @kenresoft-cms/astro / yarn add @kenresoft-cms/astro
+```
+
+Published on npm under the `@kenresoft-cms` scope (same organization as
+[`@kenresoft-cms/contracts`](../../packages/contracts) and
+[`@kenresoft-cms/create`](../../packages/create)). It depends on `@kenresoft-cms/contracts` for
+its own TypeScript types — installed automatically, nothing extra to add. See "Connecting your
+own Astro project" below for a full walkthrough, or scaffold a starter with zero manual wiring
+via `npm create @kenresoft-cms@latest my-site -- --astro` (see the root
+[README](../../README.md)/[`packages/create`](../create)).
+
+Inside this monorepo (e.g. from `examples/astro-site`), it's a normal workspace dependency
+instead — `pnpm install` at the repo root symlinks it to the local, unpublished-yet-in-progress
+source automatically:
 
 ```json
 { "dependencies": { "@kenresoft-cms/astro": "workspace:*" } }
 ```
 
-Outside this monorepo — using this integration in your **own**, separately-hosted Astro project
-against your own Kenresoft CMS deployment — this package isn't published to npm yet; copy
-`integrations/astro/src` into your project, or vendor it, until that changes.
+## Connecting your own Astro project
+
+A minimal, from-scratch example — this is everything needed, no monorepo, no workspace linking:
+
+```bash
+npm create astro@latest my-site   # or add to an existing Astro project
+cd my-site
+npm install @kenresoft-cms/astro
+```
+
+```ts
+// src/lib/cms.ts
+import { createKenresoftClient } from '@kenresoft-cms/astro';
+
+export const cms = createKenresoftClient({
+  url: import.meta.env.PUBLIC_KENRESOFT_CMS_URL, // e.g. https://api.your-deployment.workers.dev
+});
+```
+
+```
+// .env — Astro's PUBLIC_ prefix ships this to the browser too, which is fine: it's just the
+// CMS's public API base URL, never a secret (the public API needs no authentication at all).
+PUBLIC_KENRESOFT_CMS_URL=http://localhost:8787
+```
+
+```astro
+---
+// src/pages/blog/[slug].astro
+import { cms } from '../../lib/cms';
+
+const post = await cms.entries.get({ contentType: 'blog-post', slug: Astro.params.slug! });
+if (!post) return new Response(null, { status: 404 });
+---
+<h1>{post.data.title}</h1>
+```
+
+That's the whole integration surface: point `createKenresoftClient({ url })` at your deployed API
+Worker (or `wrangler dev`'s `http://localhost:8787` while developing locally against your own
+CMS), then call `entries`/`media`/`forms`/`pages`/`settings` as documented below. Your Astro
+project needs `output: 'server'` (plus a deploy adapter, e.g. `@astrojs/cloudflare`) to see
+published edits without a rebuild — see `docs/ASTRO.md`'s "Static vs SSR" section for why
+`examples/astro-site` made that same choice. `output: 'static'` still works with
+`getStaticPaths()`, at the cost of needing a rebuild to pick up new/edited content.
 
 ## Configuration
 

@@ -1,0 +1,22 @@
+{
+  "name": "my-kenresoft-cms-site",
+  "type": "module",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "typecheck": "astro check"
+  },
+  "dependencies": {
+    "@astrojs/cloudflare": "^14.3.0",
+    "@kenresoft-cms/astro": "^0.2.0",
+    "astro": "^7.3.1"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.10",
+    "typescript": "^5.9.3",
+    "wrangler": "^4.129.0"
+  }
+}

@@ -12,6 +12,15 @@ landed on `develop`.
 
 ### Added
 
+- `@kenresoft-cms/astro` is now published on npm — `npm install @kenresoft-cms/astro` works
+  directly in your own, separately-hosted Astro project against your own CMS deployment; it
+  previously had to be copied or vendored by hand. See `integrations/astro/README.md`'s
+  "Connecting your own Astro project" section and `docs/ASTRO.md`.
+- `npm create @kenresoft-cms@latest my-site -- --astro` scaffolds a small, generic Astro starter
+  wired up to `@kenresoft-cms/astro` (published dependency, no monorepo) — for anyone who already
+  has a CMS deployment and just wants a frontend, without cloning the whole CMS or adapting
+  `examples/astro-site`'s much larger, Commerce-specific reference site. See
+  `packages/create/README.md`.
 - `pnpm run update -- --domain` (and the equivalent menu entry in `pnpm run setup`) connects a
   custom domain to the API Worker without touching the Cloudflare dashboard: it writes a
   `[[routes]]` entry (`custom_domain = true`) and redeploys, which makes Cloudflare create the

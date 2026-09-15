@@ -1,0 +1,42 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout title="Contact">
+  <h1>Contact</h1>
+  <p>
+    'contact' is a placeholder form slug — create a Form with this slug in your CMS admin (Forms
+    → New Form) with matching field names, or change the slug/fields below to match your own.
+  </p>
+  <form id="contact-form">
+    <label>Name <input name="name" required /></label>
+    <label>Email <input name="email" type="email" required /></label>
+    <label>Message <textarea name="message" required></textarea></label>
+    <button type="submit">Send</button>
+  </form>
+  <p id="contact-status" role="status"></p>
+</Layout>
+
+<script>
+  import { cms } from '../lib/cms';
+  import { KenresoftApiError } from '@kenresoft-cms/astro';
+
+  const form = document.getElementById('contact-form') as HTMLFormElement;
+  const status = document.getElementById('contact-status')!;
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const data = Object.fromEntries(new FormData(form).entries());
+    status.textContent = 'Sending...';
+    try {
+      await cms.forms.submit({ formSlug: 'contact', data });
+      status.textContent = 'Thanks — your message was sent.';
+      form.reset();
+    } catch (error) {
+      status.textContent =
+        error instanceof KenresoftApiError
+          ? `Couldn't send that: ${error.message}`
+          : "Couldn't reach the CMS — please try again.";
+    }
+  });
+</script>

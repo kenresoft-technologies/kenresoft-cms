@@ -283,13 +283,14 @@ importers:
         version: 4.129.0(@cloudflare/workers-types@5.20260903.1)
 
   integrations/astro:
+    dependencies:
+      '@kenresoft-cms/contracts':
+        specifier: ^0.4.0
+        version: link:../../packages/contracts
     devDependencies:
       '@kenresoft-cms/config':
         specifier: workspace:*
         version: link:../../packages/config
-      '@kenresoft-cms/contracts':
-        specifier: workspace:*
-        version: link:../../packages/contracts
       '@types/node':
         specifier: ^26.4.1
         version: 26.4.1

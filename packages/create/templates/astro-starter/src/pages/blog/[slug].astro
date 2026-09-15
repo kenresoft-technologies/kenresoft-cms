@@ -1,0 +1,23 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { cms } from '../../lib/cms';
+
+const { slug } = Astro.params;
+const post = slug ? await cms.entries.get({ contentType: 'blog-post', slug }) : null;
+
+if (!post) {
+  return new Response(null, { status: 404, statusText: 'Not Found' });
+}
+
+const title = String(post.data.title ?? post.slug);
+// Adjust this to match your own content type's field names — 'body' is just this template's
+// placeholder for a rich-text/HTML field. Only set:html content you trust (i.e. authored by a
+// signed-in CMS editor, never raw user input) — see docs/ARCHITECTURE.md's Tiptap notes.
+const body = typeof post.data.body === 'string' ? post.data.body : '';
+---
+
+<Layout title={title}>
+  <a href="/blog/">&larr; Back to Blog</a>
+  <h1>{title}</h1>
+  {body && <div set:html={body} />}
+</Layout>

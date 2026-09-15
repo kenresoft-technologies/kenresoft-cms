@@ -53,6 +53,25 @@ pnpm dev
 on `http://localhost:5173` (Vite). Each also runs independently:
 `pnpm --filter @kenresoft-cms/api dev` / `pnpm --filter @kenresoft-cms/admin dev`.
 
+## Already have a Kenresoft CMS deployment? Scaffold just an Astro frontend
+
+If you (or someone else) already deployed the CMS above and you just need a frontend that reads
+from it, you don't need the complete installation or this monorepo at all:
+
+```bash
+npm create @kenresoft-cms@latest my-site -- --astro
+cd my-site
+cp .env.example .env   # set PUBLIC_KENRESOFT_CMS_URL to your deployed API Worker's URL
+pnpm install
+pnpm dev
+```
+
+A small, standalone Astro project with [`@kenresoft-cms/astro`](integrations/astro/README.md)
+(published on npm — no workspace linking, no monorepo) already wired up: one example content
+page, a form example, and comments pointing at exactly what to change for your own content
+types. See [`docs/ASTRO.md`](docs/ASTRO.md#connecting-your-own-separately-hosted-astro-project)
+for the full walkthrough, or `packages/create/templates/astro-starter` for what it scaffolds.
+
 ## Advanced: Individual Components
 
 The complete installation above is two independent Cloudflare Workers under the hood, deployed
@@ -67,8 +86,9 @@ running it — each has its own README with prerequisites, configuration, and a 
   Static Assets. Installable and deployable standalone (its own npm-published dependencies, no
   workspace packages required) — see that README for what's verified vs. not yet.
 - **[Astro Integration](integrations/astro/README.md)** — a typed client for reading CMS content
-  from an Astro (or any JS/TS) site. Not a deployable Worker — a library your own site depends
-  on. See also [`examples/astro-site`](examples/astro-site) for a full reference site.
+  from an Astro (or any JS/TS) site, published on npm as `@kenresoft-cms/astro`. Not a deployable
+  Worker — a library your own site depends on. See also [`examples/astro-site`](examples/astro-site)
+  for a full reference site, or the section above for scaffolding a minimal starter instead.
 
 ## Monorepo layout
 
