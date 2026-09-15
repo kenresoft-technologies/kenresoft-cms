@@ -94,6 +94,33 @@ describe('PageEditorPage', () => {
     expect(getMock).not.toHaveBeenCalledWith('/api/v1/admin/pages/p-1/preview-token');
   });
 
+  it('allows Live Preview again right after saving an edit, instead of staying permanently dirty', async () => {
+    getMock.mockImplementation((path: string) => {
+      if (path.endsWith('/revisions')) return Promise.resolve([]);
+      if (path.endsWith('/preview-token')) {
+        return Promise.resolve({ token: 'tok-123', expiresAt: new Date(Date.now() + 900_000).toISOString() });
+      }
+      if (path === '/api/v1/admin/settings') {
+        return Promise.resolve({ pagePreviewUrl: 'http://localhost:4321{route}' });
+      }
+      return Promise.resolve(basePage);
+    });
+    patchMock.mockResolvedValue(basePage);
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+
+    renderEditor();
+    await waitFor(() => expect(screen.getByDisplayValue('About us')).toBeInTheDocument());
+
+    await userEvent.type(screen.getByDisplayValue('About us'), ' (v2)');
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(patchMock).toHaveBeenCalled());
+
+    await userEvent.click(screen.getByRole('button', { name: 'Live Preview' }));
+
+    await waitFor(() => expect(getMock).toHaveBeenCalledWith('/api/v1/admin/pages/p-1/preview-token'));
+    expect(openSpy).toHaveBeenCalled();
+  });
+
   it('saves title/route/status/blocks through the admin API', async () => {
     getMock.mockImplementation((path: string) => {
       if (path.endsWith('/revisions')) return Promise.resolve([]);
