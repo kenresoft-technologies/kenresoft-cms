@@ -92,6 +92,11 @@ landed on `develop`.
 
 ### Fixed
 
+- `npm create @kenresoft-cms@latest <path> -- --astro` (and the full-CMS scaffold mode) failed to
+  scaffold into an absolute target path, concatenating it onto the current directory instead of
+  using it directly (`path.join()` has no special handling for an already-absolute second
+  argument, unlike `path.resolve()`, which the scaffold now uses). A plain relative name, the
+  documented usage, was unaffected.
 - `pnpm run update` (and the equivalent `pnpm run setup` redeploy path) threw "Could not find the
   deployed Worker URL" on every run once a Worker's `*.workers.dev` route was disabled — even
   though the deploy itself succeeded. `wrangler deploy`'s own output only ever prints a

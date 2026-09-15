@@ -18,7 +18,7 @@
 // docs/ASTRO.md's "Connecting your own, separately-hosted Astro project" section in the CMS repo.
 import { execFileSync } from 'node:child_process';
 import { cpSync, existsSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 // Overridable only via env var, not a documented CLI flag — an internal hook for testing this
@@ -173,7 +173,10 @@ async function scaffoldFullCms(target, targetArg) {
 
 async function main() {
   const { astro, targetArg } = parseArgs(process.argv.slice(2));
-  const target = join(process.cwd(), targetArg ?? '.');
+  // resolve(), not join() — join() has no special handling for an already-absolute targetArg
+  // and would concatenate it onto cwd instead (e.g. `npm create ... C:\Users\me\site` became
+  // `<cwd>\C:\Users\me\site`), breaking scaffolding to an absolute path.
+  const target = resolve(process.cwd(), targetArg ?? '.');
 
   if (astro) await scaffoldAstroStarter(target, targetArg);
   else await scaffoldFullCms(target, targetArg);
