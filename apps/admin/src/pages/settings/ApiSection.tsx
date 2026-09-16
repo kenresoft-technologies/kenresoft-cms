@@ -132,6 +132,50 @@ function EmailDeliverySection() {
   );
 }
 
+// Read-only, same shape as EmailDeliverySection above. In practice this will only ever render
+// "Configured" — createAuth() now refuses to start at all when BETTER_AUTH_SECRET is missing or
+// still equal to better-auth's own known default (apps/api/src/lib/auth.ts), and reaching this
+// signed-in page requires a working session, which requires that same check to have passed. It
+// stays here anyway as an explicit, checkable confirmation, and because GET /system/status
+// itself is unauthenticated and reachable even when every session-touching route is down.
+function AuthSecuritySection() {
+  const { data: status, isPending } = useSystemStatus();
+
+  return (
+    <SettingsSection
+      title="Auth secret"
+      description="Whether this deployment's session-signing secret is a real, randomly generated value."
+    >
+      <div className="flex items-center justify-between gap-4">
+        {isPending ? (
+          <>
+            <Skeleton className="h-4 w-72" />
+            <Skeleton className="h-5 w-24 shrink-0 rounded-full" />
+          </>
+        ) : (
+          <>
+            <p className="max-w-md text-sm text-muted-foreground">
+              {status?.authSecretConfigured
+                ? 'BETTER_AUTH_SECRET is set to a real value — sessions are signed with a secret only this deployment knows.'
+                : "BETTER_AUTH_SECRET isn't set, which is why you can't be viewing this — every session-touching request refuses to run in this state. Set it with `wrangler secret put BETTER_AUTH_SECRET` (see docs/DEPLOYMENT.md)."}
+            </p>
+            <Badge
+              variant="outline"
+              className={
+                status?.authSecretConfigured
+                  ? 'shrink-0 border-success/30 bg-success/10 text-success'
+                  : 'shrink-0 border-destructive/30 bg-destructive/10 text-destructive'
+              }
+            >
+              {status?.authSecretConfigured ? 'Configured' : 'Not configured'}
+            </Badge>
+          </>
+        )}
+      </div>
+    </SettingsSection>
+  );
+}
+
 // Same mechanism/UI shape as DeveloperExperienceSection above (a dedicated card over one
 // Settings.featureFlags key), for the same reason: recordAudit() (apps/api/src/lib/audit.ts)
 // has no retention/pruning, so this table grows forever unless an owner opts out here.
@@ -409,6 +453,8 @@ export function ApiSection({ settings, readOnly }: SectionProps) {
       </SettingsSection>
 
       <EmailDeliverySection />
+
+      <AuthSecuritySection />
 
       <LivePreviewSection settings={settings} readOnly={readOnly} />
 

@@ -24,6 +24,31 @@ async function recoverOwner(body: Record<string, unknown>) {
   });
 }
 
+describe('deployment status — auth secret field', () => {
+  it('reports authSecretConfigured true against the real, test-configured secret', async () => {
+    const response = await systemRoute.request('/status', {}, env as unknown as Bindings);
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toMatchObject({ authSecretConfigured: true });
+  });
+
+  it('reports authSecretConfigured false when BETTER_AUTH_SECRET is missing or the known default', async () => {
+    const missing = await systemRoute.request(
+      '/status',
+      {},
+      { ...env, BETTER_AUTH_SECRET: undefined } as unknown as Bindings,
+    );
+    expect((await missing.json())).toMatchObject({ authSecretConfigured: false });
+
+    const defaulted = await systemRoute.request(
+      '/status',
+      {},
+      { ...env, BETTER_AUTH_SECRET: 'better-auth-secret-12345678901234567890' } as unknown as Bindings,
+    );
+    expect((await defaulted.json())).toMatchObject({ authSecretConfigured: false });
+  });
+});
+
 describe('break-glass owner recovery — not configured', () => {
   it('404s outright when OWNER_RECOVERY_SECRET is absent from Bindings entirely', async () => {
     const bareEnv = {} as Bindings;

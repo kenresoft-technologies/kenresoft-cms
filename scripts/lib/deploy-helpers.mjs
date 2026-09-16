@@ -144,5 +144,17 @@ export function buildAndDeployAdmin({ repoRoot, adminDir, apiUrl }) {
     env: { ...process.env, VITE_API_URL: apiUrl },
   });
 
-  return deployAdminOnly({ adminDir });
+  const url = deployAdminOnly({ adminDir });
+  // Confirmed real, not hypothetical: a real operator reported the live admin site's HTML shell
+  // still referencing a JS bundle hash that no longer existed in the just-deployed asset
+  // manifest, self-correcting roughly ten minutes later with no action taken — Cloudflare's edge
+  // cache for a Workers Static Assets site's index.html doesn't invalidate instantly on deploy.
+  // The deploy itself is correct the moment this returns; only what the edge is currently
+  // serving can lag behind it briefly.
+  console.log(
+    "Note: the admin site's HTML shell can take a few minutes to catch up at Cloudflare's edge " +
+      'after this deploy — seeing a stale page reference an old bundle hash right now is ' +
+      'expected, not a failed deploy. It corrects itself with no action needed.',
+  );
+  return url;
 }

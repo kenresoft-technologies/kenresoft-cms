@@ -11,7 +11,7 @@ import { apiClient } from '@/lib/api-client';
 export function useSystemStatus() {
   return useQuery({
     queryKey: ['system', 'status'],
-    queryFn: () => apiClient.get<{ emailConfigured: boolean }>('/api/v1/system/status'),
+    queryFn: () => apiClient.get<{ emailConfigured: boolean; authSecretConfigured: boolean }>('/api/v1/system/status'),
     staleTime: Infinity,
   });
 }

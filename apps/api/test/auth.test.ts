@@ -3,6 +3,8 @@ import { createDb } from '@kenresoft-cms/database';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { clearTestEmails, getTestEmails } from '../src/lib/email';
+import { createAuth, isAuthSecretConfigured } from '../src/lib/auth';
+import type { Bindings } from '../src/lib/env';
 
 const db = createDb(env.DB);
 
@@ -26,6 +28,36 @@ async function verify(email: string): Promise<void> {
   const response = await SELF.fetch(`https://example.com/api/v1/auth/verify-email?token=${encodeURIComponent(token)}`);
   if (response.status !== 200) throw new Error(`verification failed for ${email}: ${response.status}`);
 }
+
+// A real production incident (docs/ARCHITECTURE.md's Changelog: "real production reset" and a
+// later field report both hit this) — better-auth's own default-secret guard only throws under
+// `NODE_ENV=production`, which never holds in a Worker, so a missing/default secret used to run
+// silently, signing every session with a publicly known key. createAuth() now refuses to start
+// at all in that state instead.
+describe('createAuth refuses to start with no real BETTER_AUTH_SECRET', () => {
+  it('isAuthSecretConfigured rejects undefined, empty, and the known default; accepts a real value', () => {
+    expect(isAuthSecretConfigured(undefined)).toBe(false);
+    expect(isAuthSecretConfigured('')).toBe(false);
+    expect(isAuthSecretConfigured('better-auth-secret-12345678901234567890')).toBe(false);
+    expect(isAuthSecretConfigured('a-real-randomly-generated-secret-value')).toBe(true);
+  });
+
+  it('throws when BETTER_AUTH_SECRET is missing', () => {
+    expect(() => createAuth({ ...env, BETTER_AUTH_SECRET: undefined } as unknown as Bindings)).toThrow(
+      /BETTER_AUTH_SECRET/,
+    );
+  });
+
+  it('throws when BETTER_AUTH_SECRET is still better-auth\'s own known default', () => {
+    expect(() =>
+      createAuth({ ...env, BETTER_AUTH_SECRET: 'better-auth-secret-12345678901234567890' } as unknown as Bindings),
+    ).toThrow(/BETTER_AUTH_SECRET/);
+  });
+
+  it('does not throw with the real, test-configured secret', () => {
+    expect(() => createAuth(env as unknown as Bindings)).not.toThrow();
+  });
+});
 
 describe('better-auth wiring (real D1)', () => {
   beforeEach(async () => {
