@@ -17,6 +17,10 @@ vi.mock('@/lib/api-client', async () => {
   return { ...actual, apiClient: { ...actual.apiClient, get: getMock, patch: patchMock, delete: deleteMock } };
 });
 
+vi.mock('@/lib/auth-client', () => ({
+  authClient: { useSession: () => ({ data: { user: { name: 'Admin', role: 'admin', preferredMailClient: null } } }) },
+}));
+
 function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   return render(
@@ -149,7 +153,7 @@ describe('AllSubmissionsPage', () => {
 
     await waitFor(() => expect(screen.getByText('Full name')).toBeInTheDocument());
     const dialog = screen.getByRole('dialog');
-    expect(within(dialog).getByText('Jane')).toBeInTheDocument();
+    expect(within(dialog).getAllByText('Jane').length).toBeGreaterThan(0);
   });
 
   it('deletes a submission after confirming', async () => {

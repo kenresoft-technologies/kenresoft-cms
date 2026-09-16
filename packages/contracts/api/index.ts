@@ -11,6 +11,7 @@ export * from '../schemas/health';
 export * from '../schemas/field-definitions';
 export * from '../schemas/form-fields';
 export * from '../schemas/global-variables';
+export * from '../schemas/form-submission-replies';
 export * from '../schemas/form-submissions';
 export * from '../schemas/forms';
 export * from '../schemas/media';

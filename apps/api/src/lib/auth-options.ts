@@ -79,6 +79,18 @@ export const authOptions = {
         defaultValue: false,
         input: false,
       },
+      // Client-settable (unlike every other additionalField above) — a personal "which webmail
+      // app should Reply by email open" preference (packages/database/schema/auth.ts has the
+      // full rationale), never security-relevant, so there's no reason to route it through an
+      // admin-gated route the way role/disabled/developerToolsAccess are. Left unvalidated
+      // against a fixed enum here deliberately: an unrecognized value just falls back to a plain
+      // mailto: link client-side (apps/admin/src/lib/mail-compose-links.ts), so there's no
+      // failure mode worth a server-side rejection for.
+      preferredMailClient: {
+        type: 'string',
+        required: false,
+        input: true,
+      },
     },
   },
   session: {

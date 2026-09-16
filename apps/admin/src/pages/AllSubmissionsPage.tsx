@@ -1,17 +1,19 @@
 import { useMemo, useState } from 'react';
-import { Archive, Inbox, MailOpen, MoreHorizontal, Paperclip, Reply, Trash2 } from 'lucide-react';
+import { Archive, ExternalLink, Inbox, MailOpen, MoreHorizontal, Paperclip, Trash2 } from 'lucide-react';
 import { Link } from 'react-router';
 import { toast } from 'sonner';
 import type { ColumnDef } from '@tanstack/react-table';
 
 import { ApiError } from '@/lib/api-client';
+import { authClient } from '@/lib/auth-client';
+import { buildReplyLink, opensInNewTab } from '@/lib/mail-compose-links';
 import { useForms } from '@/lib/queries/forms';
-import { useFormFields } from '@/lib/queries/form-fields';
 import {
   useAllSubmissions,
   useDeleteSubmissionGlobal,
   useUpdateSubmissionStatusGlobal,
 } from '@/lib/queries/all-submissions';
+import { useFormFields } from '@/lib/queries/form-fields';
 import { getSubmissionAttachments } from '@/lib/submission-attachments';
 import { getSubmissionSender } from '@/lib/submission-sender';
 import type { FormSubmissionStatus, FormSubmissionWithForm } from '@/lib/types';
@@ -21,7 +23,7 @@ import { FormBadge } from '@/components/form-badge';
 import { PageBreadcrumb } from '@/components/page-breadcrumb';
 import { PageHeader } from '@/components/page-header';
 import { StatusBadge } from '@/components/status-badge';
-import { SubmissionValue } from '@/components/submission-value';
+import { SubmissionDetailSheet } from '@/components/submission-detail-sheet';
 import { TableSkeleton } from '@/components/table-skeleton';
 import {
   AlertDialog,
@@ -35,13 +37,6 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -53,40 +48,6 @@ import { Table, TableHeader, TableHead, TableRow } from '@/components/ui/table';
 
 type StatusFilter = 'all' | FormSubmissionStatus;
 
-function ViewSubmissionDialog({
-  submission,
-  onOpenChange,
-}: {
-  submission: FormSubmissionWithForm | null;
-  onOpenChange: (open: boolean) => void;
-}) {
-  const { data: fields } = useFormFields(submission?.formId ?? '');
-  const fieldLabels = useMemo(() => new Map((fields ?? []).map((field) => [field.name, field.label])), [fields]);
-
-  return (
-    <Dialog open={submission !== null} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Submission</DialogTitle>
-          <DialogDescription>
-            {submission ? `${submission.formName} · ${new Date(submission.createdAt).toLocaleString()}` : null}
-          </DialogDescription>
-        </DialogHeader>
-        {submission ? (
-          <div className="flex flex-col gap-3">
-            {Object.entries(submission.data).map(([key, value]) => (
-              <div key={key} className="flex flex-col gap-1">
-                <span className="text-xs font-medium text-muted-foreground">{fieldLabels.get(key) ?? key}</span>
-                <SubmissionValue formId={submission.formId} submissionId={submission.id} fieldName={key} value={value} />
-              </div>
-            ))}
-          </div>
-        ) : null}
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 function SubmissionActions({
   submission,
   onRequestDelete,
@@ -94,8 +55,9 @@ function SubmissionActions({
   submission: FormSubmissionWithForm;
   onRequestDelete: (submission: FormSubmissionWithForm) => void;
 }) {
+  const { data: session } = authClient.useSession();
   const updateStatus = useUpdateSubmissionStatusGlobal();
-  const { email: senderEmail } = getSubmissionSender(submission.data);
+  const { name: senderName, email: senderEmail } = getSubmissionSender(submission.data);
 
   function setStatus(status: FormSubmissionStatus) {
     updateStatus.mutate(
@@ -103,6 +65,8 @@ function SubmissionActions({
       { onError: (err) => toast.error(err instanceof ApiError ? err.message : 'Failed to update submission') },
     );
   }
+
+  const preferredMailClient = session?.user.preferredMailClient ?? null;
 
   return (
     <DropdownMenu>
@@ -115,9 +79,16 @@ function SubmissionActions({
         {senderEmail ? (
           <>
             <DropdownMenuItem asChild>
-              <a href={`mailto:${senderEmail}`}>
-                <Reply />
-                Reply by email
+              <a
+                href={buildReplyLink(preferredMailClient, {
+                  to: senderEmail,
+                  subject: `Re: submission from ${senderName ?? senderEmail}`,
+                })}
+                target={opensInNewTab(preferredMailClient) ? '_blank' : undefined}
+                rel={opensInNewTab(preferredMailClient) ? 'noreferrer' : undefined}
+              >
+                <ExternalLink />
+                Reply in email app
               </a>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
@@ -161,6 +132,11 @@ export function AllSubmissionsPage() {
   const [formFilter, setFormFilter] = useState('all');
   const [viewing, setViewing] = useState<FormSubmissionWithForm | null>(null);
   const [pendingDelete, setPendingDelete] = useState<FormSubmissionWithForm | FormSubmissionWithForm[] | null>(null);
+  const { data: viewingFields } = useFormFields(viewing?.formId ?? '');
+  const viewingFieldLabels = useMemo(
+    () => new Map((viewingFields ?? []).map((field) => [field.name, field.label])),
+    [viewingFields],
+  );
 
   const filteredSubmissions = useMemo(() => {
     return (submissions ?? []).filter((submission) => {
@@ -199,6 +175,7 @@ export function AllSubmissionsPage() {
 
     if (failed === 0) {
       toast.success(targets.length === 1 ? 'Submission deleted' : `${targets.length} submissions deleted`);
+      if (viewing && targets.some((t) => t.id === viewing.id)) setViewing(null);
     } else {
       toast.error(`${failed} of ${targets.length} submissions failed to delete`);
     }
@@ -371,11 +348,15 @@ export function AllSubmissionsPage() {
         />
       ) : null}
 
-      <ViewSubmissionDialog
+      <SubmissionDetailSheet
+        formId={viewing?.formId ?? ''}
+        formName={viewing?.formName ?? 'Form'}
         submission={viewing}
+        fieldLabels={viewingFieldLabels}
         onOpenChange={(open) => {
           if (!open) setViewing(null);
         }}
+        actions={(submission) => <SubmissionActions submission={submission} onRequestDelete={setPendingDelete} />}
       />
 
       <AlertDialog open={pendingDelete !== null} onOpenChange={(open) => !open && setPendingDelete(null)}>

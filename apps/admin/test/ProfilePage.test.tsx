@@ -109,7 +109,26 @@ describe('ProfilePage', () => {
     await userEvent.type(nameInput, 'New Name');
     await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
 
-    await waitFor(() => expect(updateUserMock).toHaveBeenCalledWith({ name: 'New Name' }));
+    // preferredMailClient is always sent alongside name — '' (not omitted/undefined) for the
+    // default "Default (your device's mail app)" selection, since better-auth's updateUser
+    // never delivers an omitted/undefined key to the server at all (a real, previously-missed
+    // gap: it would have made "switch back to default" silently no-op).
+    await waitFor(() =>
+      expect(updateUserMock).toHaveBeenCalledWith({ name: 'New Name', preferredMailClient: '' }),
+    );
+  });
+
+  it('saves a selected preferred mail app through the Profile tab', async () => {
+    updateUserMock.mockResolvedValue({ error: null });
+
+    renderPage();
+    await userEvent.click(screen.getByLabelText('Preferred mail app'));
+    await userEvent.click(screen.getByRole('option', { name: 'Gmail' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    await waitFor(() =>
+      expect(updateUserMock).toHaveBeenCalledWith({ name: 'Acme Admin', preferredMailClient: 'gmail' }),
+    );
   });
 
   it('changes the password through the Security tab', async () => {

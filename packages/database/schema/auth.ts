@@ -29,6 +29,12 @@ export const user = sqliteTable("user", {
   // auth-options.ts) — column name/shape here must match what that plugin expects verbatim,
   // not a field this app's own code ever writes directly.
   twoFactorEnabled: integer("two_factor_enabled", { mode: "boolean" }).default(false).notNull(),
+  // Which webmail app "Reply by email" (form-submissions UX) opens for this person specifically
+  // — a plain string enum (gmail/outlook/yahoo/zoho), null meaning "use the OS/browser's default
+  // mailto: handler". Unlike role/disabled/developerToolsAccess above, this one IS client-settable
+  // (additionalFields' input: true in auth-options.ts) since it's a harmless personal UI
+  // preference the account owner sets for themselves, not an admin-granted capability.
+  preferredMailClient: text("preferred_mail_client"),
 });
 
 export const session = sqliteTable(

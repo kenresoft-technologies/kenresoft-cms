@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { recordAudit } from '../../lib/audit';
 import { isAuthSecretConfigured } from '../../lib/auth';
 import { getDb } from '../../lib/db';
+import { isEmailProviderConfigured } from '../../lib/email';
 import { createOpenApiApp } from '../../lib/openapi';
 import { getCredentialAccount, updateAccountPassword } from '../../repositories/accounts';
 import { deleteAllSessionsForUser } from '../../repositories/sessions';
@@ -58,10 +59,10 @@ systemRoute.openapi(
     },
   }),
   (c) => {
-    const emailConfigured =
-      (c.env.EMAIL_PROVIDER === 'resend' && !!c.env.RESEND_API_KEY && !!c.env.EMAIL_FROM) ||
-      (c.env.EMAIL_PROVIDER === 'cloudflare' && !!c.env.EMAIL && !!c.env.EMAIL_FROM);
-    return c.json({ emailConfigured, authSecretConfigured: isAuthSecretConfigured(c.env.BETTER_AUTH_SECRET) }, 200);
+    return c.json(
+      { emailConfigured: isEmailProviderConfigured(c.env), authSecretConfigured: isAuthSecretConfigured(c.env.BETTER_AUTH_SECRET) },
+      200,
+    );
   },
 );
 

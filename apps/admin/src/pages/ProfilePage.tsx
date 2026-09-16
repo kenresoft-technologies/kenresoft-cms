@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 
 import { ApiError } from '@/lib/api-client';
 import { authClient } from '@/lib/auth-client';
+import { MAIL_CLIENTS, type MailClient } from '@/lib/types';
 import {
   useGenerateRecoveryCodes,
   useRecoveryCodesStatus,
@@ -42,14 +43,34 @@ function initials(name: string) {
   return chars.join('').toUpperCase();
 }
 
-function ProfileTab({ user }: { user: { name: string; email: string; role: string; createdAt: Date } }) {
+const MAIL_CLIENT_LABELS: Record<MailClient, string> = {
+  gmail: 'Gmail',
+  outlook: 'Outlook',
+  yahoo: 'Yahoo Mail',
+  zoho: 'Zoho Mail',
+};
+const DEFAULT_MAIL_CLIENT_VALUE = 'default';
+
+function ProfileTab({
+  user,
+}: {
+  user: { name: string; email: string; role: string; createdAt: Date; preferredMailClient: string | null };
+}) {
   const [name, setName] = useState(user.name);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [preferredMailClient, setPreferredMailClient] = useState(user.preferredMailClient || DEFAULT_MAIL_CLIENT_VALUE);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setIsSubmitting(true);
-    const { error } = await authClient.updateUser({ name });
+    const { error } = await authClient.updateUser({
+      name,
+      // '' rather than null/undefined for "Default" — better-auth's client typing requires
+      // `string | undefined` for an optional field, and an explicit `undefined` never reaches
+      // the server at all (JSON.stringify drops it), which would silently no-op instead of
+      // clearing a previously-set preference back to the OS/browser default.
+      preferredMailClient: preferredMailClient === DEFAULT_MAIL_CLIENT_VALUE ? '' : preferredMailClient,
+    });
     setIsSubmitting(false);
 
     if (error) {
@@ -68,6 +89,25 @@ function ProfileTab({ user }: { user: { name: string; email: string; role: strin
       <div className="flex flex-col gap-2">
         <Label htmlFor="profile-email">Email</Label>
         <Input id="profile-email" value={user.email} disabled />
+      </div>
+      <div className="flex flex-col gap-2">
+        <Label htmlFor="profile-mail-client">Preferred mail app</Label>
+        <Select value={preferredMailClient} onValueChange={setPreferredMailClient}>
+          <SelectTrigger id="profile-mail-client">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={DEFAULT_MAIL_CLIENT_VALUE}>Default (your device's mail app)</SelectItem>
+            {MAIL_CLIENTS.map((client) => (
+              <SelectItem key={client} value={client}>
+                {MAIL_CLIENT_LABELS[client]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <p className="text-xs text-muted-foreground">
+          Which app "Reply by email" (on a form submission) opens to compose in.
+        </p>
       </div>
       <div className="flex flex-col gap-1 rounded-lg border p-3 text-sm">
         <div className="flex items-center justify-between">
@@ -469,6 +509,7 @@ export function ProfilePage() {
               email: user.email,
               role: user.role,
               createdAt: new Date(user.createdAt),
+              preferredMailClient: user.preferredMailClient ?? null,
             }}
           />
         </TabsContent>

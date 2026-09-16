@@ -52,6 +52,15 @@ export const FORM_SUBMISSION_STATUSES = ['new', 'read', 'archived'] as const;
 
 export type FormSubmissionStatus = (typeof FORM_SUBMISSION_STATUSES)[number];
 
+// A person's own preference for which webmail app the "Reply by email" quick action opens
+// (apps/admin/src/lib/mail-compose-links.ts) — stored on user.preferredMailClient
+// (packages/database/schema/auth.ts), which is null/unset for "use the OS/browser default
+// mailto: handler" rather than one of these values, so this list only needs the non-default
+// options.
+export const MAIL_CLIENTS = ['gmail', 'outlook', 'yahoo', 'zoho'] as const;
+
+export type MailClient = (typeof MAIL_CLIENTS)[number];
+
 // Raster image types accepted for V1 (§14) — verified against the file's actual bytes at
 // upload time, not the client-supplied Content-Type (§9: never trust browser-provided MIME
 // types alone). Other media (PDF/doc, etc.) is future work.

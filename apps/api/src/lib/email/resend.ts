@@ -26,6 +26,7 @@ export function createResendEmailSender(env: Bindings): EmailSender {
           subject: message.subject,
           text: message.text,
           html: message.html,
+          ...(message.replyTo !== undefined ? { reply_to: message.replyTo } : {}),
         }),
       });
 

@@ -12,6 +12,20 @@ landed on `develop`.
 
 ### Added
 
+- A **preferred mail client** setting on Profile (Default/Gmail/Outlook/Yahoo/Zoho) — the
+  "Reply in email app" action on a form submission now opens that provider's own web compose
+  window (pre-filled to/subject) instead of always falling back to the OS's default `mailto:`
+  handler, unless "Default" is selected.
+- **Reply directly from the CMS**: a submission's detail view (now a wide, roomier side panel
+  rather than a small dialog) includes a rich-text reply composer and a visible thread of every
+  past reply sent from the admin for that submission — persisted server-side
+  (`form_submission_replies`), sent through the deployment's already-configured email provider
+  with `Reply-To` set to the replying staff member's own address so a further reply from the
+  visitor lands somewhere monitored. Requires an email provider to be configured
+  (`EMAIL_PROVIDER`); replying is otherwise disabled with an explanation.
+- Fixed: multi-line/paragraph text submitted through a textarea field displayed as a single
+  flattened line in the admin submission viewer (whitespace/line breaks were being collapsed by
+  default text wrapping) — formatting is now preserved.
 - `@kenresoft-cms/astro` 0.4.0: `createKenresoftClient({ previewToken })` binds a client to one
   request's Live Preview session — every `entries.get()`/`pages.resolve()` call made through it
   picks up that token automatically, with no `?preview_token=` handling in the page itself. Paired
