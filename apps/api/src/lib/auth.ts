@@ -87,21 +87,12 @@ export function createAuth(env: Bindings, executionCtx?: Pick<ExecutionContext, 
       sendOnSignIn: true,
       expiresIn: 60 * 60,
     },
-    databaseHooks: {
-      user: {
-        create: {
-          // Bootstraps the very first signup as owner — every other admin (via the Add User
-          // flow, §10) or owner (via ownership transfer) traces back to this one moment. Without
-          // it, an owner could only ever be created by hand-editing the database.
-          before: async () => {
-            const existing = await db.query.user.findFirst({ columns: { id: true } });
-            if (!existing) {
-              return { data: { role: 'owner' } };
-            }
-          },
-        },
-      },
-    },
+    // No databaseHooks.user.create.before granting "owner" to a bare first signup anymore —
+    // that let an attacker who reaches a freshly-deployed, not-yet-set-up installation before
+    // its real operator does simply sign up and claim ownership. The first owner is now created
+    // only through the one-time bootstrap flow (routes/system/bootstrap-owner.ts,
+    // docs/ARCHITECTURE.md §10) — every normal signup, first or not, gets the schema's own
+    // 'editor' default and is promoted explicitly afterward (Add User / role changes).
     // Auth-event audit logging (docs/ARCHITECTURE.md §9's "record security-sensitive
     // administrative actions" extended to sign-in/up/out, not just role/ownership changes —
     // apps/api/src/lib/audit.ts is still the one place rows get written). `before`/`after` are

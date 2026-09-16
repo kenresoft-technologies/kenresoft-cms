@@ -26,6 +26,7 @@ export interface WebhookInput {
   events: WebhookEvent[];
   contentTypeId: string | null;
   enabled?: boolean;
+  allowPrivateDestinations?: boolean;
 }
 
 export function useCreateWebhook() {

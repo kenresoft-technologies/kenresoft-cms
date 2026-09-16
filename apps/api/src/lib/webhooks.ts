@@ -6,6 +6,7 @@ import {
   listEnabledWebhooksForContentType,
   recordWebhookDelivery,
 } from '../repositories/webhooks';
+import { checkWebhookUrl } from './ssrf-guard';
 
 // Only the one method this module actually uses, rather than the full Cloudflare
 // `ExecutionContext` type — two different `@cloudflare/workers-types` versions coexist in this
@@ -42,6 +43,39 @@ async function signPayload(secret: string, body: string): Promise<string> {
 }
 
 const MAX_DELIVERY_ATTEMPTS = 5;
+const DELIVERY_TIMEOUT_MS = 10_000;
+const MAX_REDIRECTS = 3;
+// Bounds how much of a subscriber's response we ever read into memory — this codebase only ever
+// needs the status code, but `fetch`'s own default body handling would otherwise happily buffer
+// an arbitrarily large response from an endpoint an admin doesn't control.
+const MAX_RESPONSE_BYTES = 1024;
+
+// Fetches with `redirect: 'manual'` and re-validates every hop's Location against the same
+// SSRF guard before following it — the same URL an admin configured (and this deployment
+// approved at creation time) could otherwise redirect to a blocked destination at delivery
+// time, and Cloudflare's own `fetch` would otherwise follow that transparently.
+async function fetchWithGuardedRedirects(
+  url: string,
+  init: RequestInit,
+  allowPrivateDestinations: boolean,
+): Promise<Response> {
+  let currentUrl = url;
+  for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+    const check = checkWebhookUrl(currentUrl, allowPrivateDestinations);
+    if (!check.ok) {
+      throw new Error(`Blocked webhook destination: ${check.error}`);
+    }
+    const response = await fetch(currentUrl, { ...init, redirect: 'manual' });
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.get('Location');
+      if (!location) return response;
+      currentUrl = new URL(location, currentUrl).toString();
+      continue;
+    }
+    return response;
+  }
+  throw new Error('Too many redirects');
+}
 
 // Attempts a single delivery and records the outcome as a new webhook_deliveries row — never
 // throws, since a subscriber's endpoint being down/slow/broken must never affect the entry
@@ -49,7 +83,7 @@ const MAX_DELIVERY_ATTEMPTS = 5;
 // duration doesn't hold up the response the editor is waiting on.
 async function attemptDelivery(
   db: Database,
-  webhook: Pick<Webhook, 'id' | 'url' | 'secret'>,
+  webhook: Pick<Webhook, 'id' | 'url' | 'secret' | 'allowPrivateDestinations'>,
   event: WebhookEvent,
   payload: Record<string, unknown>,
   attempt: number,
@@ -59,21 +93,55 @@ async function attemptDelivery(
   let success = false;
 
   try {
+    // Re-checked immediately before dispatch, not just at creation time — defense in depth
+    // against a webhook created before a hostname was blocklisted, or one whose target changed
+    // meaning since it was configured.
+    const urlCheck = checkWebhookUrl(webhook.url, webhook.allowPrivateDestinations);
+    if (!urlCheck.ok) {
+      throw new Error(`Blocked webhook destination: ${urlCheck.error}`);
+    }
+
     const signature = await signPayload(webhook.secret, body);
-    const response = await fetch(webhook.url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Kenresoft-Event': event,
-        'X-Kenresoft-Signature': signature,
-      },
-      body,
-    });
-    responseStatus = response.status;
-    success = response.ok;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), DELIVERY_TIMEOUT_MS);
+    try {
+      const response = await fetchWithGuardedRedirects(
+        webhook.url,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Kenresoft-Event': event,
+            'X-Kenresoft-Signature': signature,
+          },
+          body,
+          signal: controller.signal,
+        },
+        webhook.allowPrivateDestinations,
+      );
+      responseStatus = response.status;
+      success = response.ok;
+      // Bounded read-and-discard so a subscriber can't hold this Worker invocation open by
+      // streaming an unbounded response body — we never use the body, only the status.
+      if (response.body) {
+        const reader = response.body.getReader();
+        let readBytes = 0;
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          readBytes += value.byteLength;
+          if (readBytes >= MAX_RESPONSE_BYTES) {
+            await reader.cancel();
+            break;
+          }
+        }
+      }
+    } finally {
+      clearTimeout(timeout);
+    }
   } catch {
-    // Network error, DNS failure, timeout, etc. — responseStatus stays null, distinct from a
-    // real non-2xx response the endpoint actually returned.
+    // Network error, DNS failure, timeout, blocked destination, etc. — responseStatus stays
+    // null, distinct from a real non-2xx response the endpoint actually returned.
   }
 
   try {

@@ -49,6 +49,14 @@ export async function invalidatePublicMediaCache(id: string): Promise<void> {
   await cache.delete(publicCacheKey(`/api/v1/public/media/${id}/file`));
 }
 
+// A media folder's public listing (routes/public/media.ts's GET .../media/folders/:slug) is
+// invalidated on rename/delete and whenever media moves in or out of it — cheap since it's one
+// key per folder, unlike the media file route's own per-item, effectively-permanent cache.
+export async function invalidatePublicMediaFolderCache(slug: string): Promise<void> {
+  const cache = caches.default;
+  await cache.delete(publicCacheKey(`/api/v1/public/media/folders/${slug}`));
+}
+
 // Global variables are a single list response (no per-key sub-resource), so there's exactly
 // one cache key to invalidate on any create/update/delete.
 export async function invalidatePublicGlobalVariablesCache(): Promise<void> {
@@ -84,4 +92,26 @@ export async function invalidatePublicPageCache(route: string): Promise<void> {
 export async function invalidatePublicReusableBlockCache(id: string): Promise<void> {
   const cache = caches.default;
   await cache.delete(publicCacheKey(`/api/v1/public/reusable-blocks/${id}`));
+}
+
+// UI Content: same two-key shape as invalidatePublicEntryCache (a list response plus one
+// per-item response), keyed by (type slug, item slug) rather than (content-type slug, entry
+// slug) — a structurally identical cache, deliberately not shared code, since the two are
+// genuinely separate domains that happen to have the same shape.
+export async function invalidatePublicUiContentCache(typeSlug: string, itemSlug: string): Promise<void> {
+  const cache = caches.default;
+  await Promise.all([
+    cache.delete(publicCacheKey(`/api/v1/public/ui-content/${typeSlug}`)),
+    cache.delete(publicCacheKey(`/api/v1/public/ui-content/${typeSlug}/${itemSlug}`)),
+  ]);
+}
+
+// A UI content type rename (changing its own slug) invalidates its list response under both
+// the old and new slug — every item URL under it changes too, but those are covered by each
+// item's own write path re-invalidating under its (possibly stale) type slug at the time of
+// that write; a type rename alone doesn't rewrite every item's cache key proactively, matching
+// this codebase's existing "invalidate what actually changed" scope rather than a full sweep.
+export async function invalidatePublicUiContentTypeCache(typeSlug: string): Promise<void> {
+  const cache = caches.default;
+  await cache.delete(publicCacheKey(`/api/v1/public/ui-content/${typeSlug}`));
 }

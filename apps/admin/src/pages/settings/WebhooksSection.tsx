@@ -96,6 +96,7 @@ function WebhookFormDialog({
   const [url, setUrl] = useState(webhook?.url ?? '');
   const [events, setEvents] = useState<WebhookEvent[]>(webhook?.events ?? []);
   const [contentTypeId, setContentTypeId] = useState<string>(webhook?.contentTypeId ?? 'all');
+  const [allowPrivateDestinations, setAllowPrivateDestinations] = useState(webhook?.allowPrivateDestinations ?? false);
   const [error, setError] = useState<string | null>(null);
 
   const isEditing = webhook !== undefined;
@@ -116,6 +117,7 @@ function WebhookFormDialog({
       url,
       events,
       contentTypeId: contentTypeId === 'all' ? null : contentTypeId,
+      allowPrivateDestinations,
     };
 
     try {
@@ -189,6 +191,21 @@ function WebhookFormDialog({
               </SelectContent>
             </Select>
           </div>
+
+          <label className="flex items-start gap-2 text-sm">
+            <Checkbox
+              checked={allowPrivateDestinations}
+              onCheckedChange={(checked) => setAllowPrivateDestinations(checked === true)}
+            />
+            <span>
+              Allow private destinations
+              <span className="block text-xs font-normal text-muted-foreground">
+                Off by default — localhost, private-network, link-local, and cloud-metadata
+                addresses are blocked. Only enable this if you're deliberately pointing this
+                webhook at something on your own private network.
+              </span>
+            </span>
+          </label>
 
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
 

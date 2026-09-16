@@ -1,3 +1,4 @@
+export * from './installation-bootstrap';
 export * from './settings';
 export * from './structured-settings';
 export * from './content-types';
@@ -8,7 +9,9 @@ export * from './templates';
 export * from './pages';
 export * from './page-revisions';
 export * from './reusable-blocks';
+export * from './media-folders';
 export * from './media';
+export * from './ui-content';
 export * from './forms';
 export * from './form-fields';
 export * from './form-submissions';

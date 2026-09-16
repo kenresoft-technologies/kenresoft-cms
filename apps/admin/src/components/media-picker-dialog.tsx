@@ -1,9 +1,10 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { ImageOff } from 'lucide-react';
 
-import { mediaFileUrl, useMediaList } from '@/lib/queries/media';
+import { mediaFileUrl, useMediaFolders, useMediaList } from '@/lib/queries/media';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface MediaPickerDialogProps {
   open: boolean;
@@ -17,7 +18,9 @@ interface MediaPickerDialogProps {
 // this exact dialog+grid inline — pulled out so a second consumer (Commerce's product image
 // picker) can share the same implementation rather than duplicating it.
 export function MediaPickerDialog({ open, onOpenChange, selectedId, onSelect, trigger }: MediaPickerDialogProps) {
-  const { data: mediaItems } = useMediaList();
+  const [folderId, setFolderId] = useState('all');
+  const { data: folders } = useMediaFolders();
+  const { data: mediaItems } = useMediaList({ folderId: folderId === 'all' ? undefined : folderId });
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -26,6 +29,22 @@ export function MediaPickerDialog({ open, onOpenChange, selectedId, onSelect, tr
         <DialogHeader>
           <DialogTitle>Choose media</DialogTitle>
         </DialogHeader>
+        {folders && folders.length > 0 ? (
+          <Select value={folderId} onValueChange={setFolderId}>
+            <SelectTrigger size="sm" className="w-40">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All folders</SelectItem>
+              <SelectItem value="unfiled">Unfiled</SelectItem>
+              {folders.map((folder) => (
+                <SelectItem key={folder.id} value={folder.id}>
+                  {folder.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : null}
         {mediaItems && mediaItems.length > 0 ? (
           <div className="grid max-h-96 grid-cols-3 gap-3 overflow-y-auto">
             {mediaItems.map((item) => (
