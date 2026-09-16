@@ -1,0 +1,1 @@
+ALTER TABLE `user` ADD `preferred_mail_client` text;

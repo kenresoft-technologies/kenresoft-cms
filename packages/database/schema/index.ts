@@ -12,6 +12,7 @@ export * from './media';
 export * from './forms';
 export * from './form-fields';
 export * from './form-submissions';
+export * from './form-submission-replies';
 export * from './global-variables';
 export * from './audit-log';
 export * from './recovery-codes';

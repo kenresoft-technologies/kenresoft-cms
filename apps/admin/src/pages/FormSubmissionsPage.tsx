@@ -1,10 +1,12 @@
 import { useMemo, useState } from 'react';
-import { Archive, Inbox, MailOpen, MoreHorizontal, Paperclip, Reply, Trash2 } from 'lucide-react';
+import { Archive, ExternalLink, Inbox, MailOpen, MoreHorizontal, Paperclip, Trash2 } from 'lucide-react';
 import { useParams } from 'react-router';
 import { toast } from 'sonner';
 import type { ColumnDef } from '@tanstack/react-table';
 
 import { ApiError } from '@/lib/api-client';
+import { authClient } from '@/lib/auth-client';
+import { buildReplyLink, opensInNewTab } from '@/lib/mail-compose-links';
 import { useForm } from '@/lib/queries/forms';
 import { useFormFields } from '@/lib/queries/form-fields';
 import {
@@ -20,7 +22,7 @@ import { EmptyState } from '@/components/empty-state';
 import { PageBreadcrumb } from '@/components/page-breadcrumb';
 import { PageHeader } from '@/components/page-header';
 import { StatusBadge } from '@/components/status-badge';
-import { SubmissionValue } from '@/components/submission-value';
+import { SubmissionDetailSheet } from '@/components/submission-detail-sheet';
 import { TableSkeleton } from '@/components/table-skeleton';
 import {
   AlertDialog,
@@ -34,13 +36,6 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -52,41 +47,6 @@ import { Table, TableHeader, TableHead, TableRow } from '@/components/ui/table';
 
 type StatusFilter = 'all' | FormSubmissionStatus;
 
-function ViewSubmissionDialog({
-  formId,
-  submission,
-  fieldLabels,
-  onOpenChange,
-}: {
-  formId: string;
-  submission: FormSubmission | null;
-  fieldLabels: Map<string, string>;
-  onOpenChange: (open: boolean) => void;
-}) {
-  return (
-    <Dialog open={submission !== null} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Submission</DialogTitle>
-          <DialogDescription>
-            {submission ? new Date(submission.createdAt).toLocaleString() : null}
-          </DialogDescription>
-        </DialogHeader>
-        {submission ? (
-          <div className="flex flex-col gap-3">
-            {Object.entries(submission.data).map(([key, value]) => (
-              <div key={key} className="flex flex-col gap-1">
-                <span className="text-xs font-medium text-muted-foreground">{fieldLabels.get(key) ?? key}</span>
-                <SubmissionValue formId={formId} submissionId={submission.id} fieldName={key} value={value} />
-              </div>
-            ))}
-          </div>
-        ) : null}
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 function SubmissionActions({
   formId,
   submission,
@@ -96,8 +56,9 @@ function SubmissionActions({
   submission: FormSubmission;
   onRequestDelete: (submission: FormSubmission) => void;
 }) {
+  const { data: session } = authClient.useSession();
   const updateStatus = useUpdateFormSubmissionStatus(formId);
-  const { email: senderEmail } = getSubmissionSender(submission.data);
+  const { name: senderName, email: senderEmail } = getSubmissionSender(submission.data);
 
   function setStatus(status: FormSubmissionStatus) {
     updateStatus.mutate(
@@ -105,6 +66,8 @@ function SubmissionActions({
       { onError: (err) => toast.error(err instanceof ApiError ? err.message : 'Failed to update submission') },
     );
   }
+
+  const preferredMailClient = session?.user.preferredMailClient ?? null;
 
   return (
     <DropdownMenu>
@@ -117,9 +80,16 @@ function SubmissionActions({
         {senderEmail ? (
           <>
             <DropdownMenuItem asChild>
-              <a href={`mailto:${senderEmail}`}>
-                <Reply />
-                Reply by email
+              <a
+                href={buildReplyLink(preferredMailClient, {
+                  to: senderEmail,
+                  subject: `Re: submission from ${senderName ?? senderEmail}`,
+                })}
+                target={opensInNewTab(preferredMailClient) ? '_blank' : undefined}
+                rel={opensInNewTab(preferredMailClient) ? 'noreferrer' : undefined}
+              >
+                <ExternalLink />
+                Reply in email app
               </a>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
@@ -174,6 +144,7 @@ export function FormSubmissionsPage() {
 
     if (failed === 0) {
       toast.success(targets.length === 1 ? 'Submission deleted' : `${targets.length} submissions deleted`);
+      if (viewing && targets.some((t) => t.id === viewing.id)) setViewing(null);
     } else {
       toast.error(`${failed} of ${targets.length} submissions failed to delete`);
     }
@@ -320,13 +291,17 @@ export function FormSubmissionsPage() {
         />
       ) : null}
 
-      <ViewSubmissionDialog
+      <SubmissionDetailSheet
         formId={formId ?? ''}
+        formName={form?.name ?? 'Form'}
         submission={viewing}
         fieldLabels={fieldLabels}
         onOpenChange={(open) => {
           if (!open) setViewing(null);
         }}
+        actions={(submission) =>
+          formId ? <SubmissionActions formId={formId} submission={submission} onRequestDelete={setPendingDelete} /> : null
+        }
       />
 
       <AlertDialog open={pendingDelete !== null} onOpenChange={(open) => !open && setPendingDelete(null)}>

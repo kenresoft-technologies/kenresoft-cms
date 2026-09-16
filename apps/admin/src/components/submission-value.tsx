@@ -50,5 +50,10 @@ export function SubmissionValue({
     );
   }
 
-  return <p className="text-sm break-words">{String(value)}</p>;
+  // whitespace-pre-wrap: a textarea field's line breaks/paragraph spacing (exactly as the
+  // visitor typed it — sanitizeText() in form-submission-validation.ts only strips angle
+  // brackets, never touches newlines) were previously collapsed to a single line by HTML's own
+  // default whitespace handling, a real reported bug — the value is plain text either way, just
+  // no longer visually flattened.
+  return <p className="text-sm break-words whitespace-pre-wrap">{String(value)}</p>;
 }

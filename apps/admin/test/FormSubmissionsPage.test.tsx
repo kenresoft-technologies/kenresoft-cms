@@ -6,16 +6,24 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { FormSubmissionsPage } from '@/pages/FormSubmissionsPage';
 
-const { getMock, patchMock, deleteMock } = vi.hoisted(() => ({
+const { getMock, patchMock, deleteMock, postMock } = vi.hoisted(() => ({
   getMock: vi.fn(),
   patchMock: vi.fn(),
   deleteMock: vi.fn(),
+  postMock: vi.fn(),
 }));
 
 vi.mock('@/lib/api-client', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api-client')>('@/lib/api-client');
-  return { ...actual, apiClient: { ...actual.apiClient, get: getMock, patch: patchMock, delete: deleteMock } };
+  return {
+    ...actual,
+    apiClient: { ...actual.apiClient, get: getMock, patch: patchMock, delete: deleteMock, post: postMock },
+  };
 });
+
+vi.mock('@/lib/auth-client', () => ({
+  authClient: { useSession: () => ({ data: { user: { name: 'Admin', role: 'admin', preferredMailClient: null } } }) },
+}));
 
 function renderPage() {
   const queryClient = new QueryClient({
@@ -45,12 +53,14 @@ describe('FormSubmissionsPage', () => {
     getMock.mockReset();
     patchMock.mockReset();
     deleteMock.mockReset();
+    postMock.mockReset();
   });
 
   it('lists submissions with their status', async () => {
     getMock.mockImplementation((path: string) => {
       if (path.endsWith('/submissions')) return Promise.resolve([submission]);
       if (path.endsWith('/fields')) return Promise.resolve([]);
+      if (path.endsWith('/replies')) return Promise.resolve([]);
       return Promise.resolve({ id: 'f-1', name: 'Contact', slug: 'contact' });
     });
 
@@ -64,6 +74,7 @@ describe('FormSubmissionsPage', () => {
     getMock.mockImplementation((path: string) => {
       if (path.endsWith('/submissions')) return Promise.resolve([]);
       if (path.endsWith('/fields')) return Promise.resolve([]);
+      if (path.endsWith('/replies')) return Promise.resolve([]);
       return Promise.resolve({ id: 'f-1', name: 'Contact', slug: 'contact' });
     });
 
@@ -97,6 +108,7 @@ describe('FormSubmissionsPage', () => {
         return Promise.resolve([{ ...submission, data: { name: 'Jane Doe', email: 'jane@example.com' } }]);
       }
       if (path.endsWith('/fields')) return Promise.resolve([]);
+      if (path.endsWith('/replies')) return Promise.resolve([]);
       return Promise.resolve({ id: 'f-1', name: 'Contact', slug: 'contact' });
     });
 
@@ -111,6 +123,7 @@ describe('FormSubmissionsPage', () => {
     getMock.mockImplementation((path: string) => {
       if (path.endsWith('/submissions')) return Promise.resolve([submission]);
       if (path.endsWith('/fields')) return Promise.resolve([]);
+      if (path.endsWith('/replies')) return Promise.resolve([]);
       return Promise.resolve({ id: 'f-1', name: 'Contact', slug: 'contact' });
     });
 
@@ -133,6 +146,7 @@ describe('FormSubmissionsPage', () => {
     getMock.mockImplementation((path: string) => {
       if (path.endsWith('/submissions')) return Promise.resolve([submission, readSubmission]);
       if (path.endsWith('/fields')) return Promise.resolve([]);
+      if (path.endsWith('/replies')) return Promise.resolve([]);
       return Promise.resolve({ id: 'f-1', name: 'Contact', slug: 'contact' });
     });
 
@@ -148,10 +162,11 @@ describe('FormSubmissionsPage', () => {
     expect(within(table).queryByText('Read')).not.toBeInTheDocument();
   });
 
-  it('offers a "Reply by email" action linking to the sender\'s mailto when an email field was submitted', async () => {
+  it('offers a "Reply in email app" action linking to the sender\'s mailto when an email field was submitted', async () => {
     getMock.mockImplementation((path: string) => {
       if (path.endsWith('/submissions')) return Promise.resolve([submission]);
       if (path.endsWith('/fields')) return Promise.resolve([]);
+      if (path.endsWith('/replies')) return Promise.resolve([]);
       return Promise.resolve({ id: 'f-1', name: 'Contact', slug: 'contact' });
     });
 
@@ -159,8 +174,11 @@ describe('FormSubmissionsPage', () => {
     await waitFor(() => expect(screen.getByText('New')).toBeInTheDocument());
 
     await userEvent.click(screen.getByRole('button', { name: 'Submission actions' }));
-    const replyLink = await screen.findByRole('menuitem', { name: 'Reply by email' });
-    expect(replyLink).toHaveAttribute('href', 'mailto:jane@example.com');
+    const replyLink = await screen.findByRole('menuitem', { name: 'Reply in email app' });
+    expect(replyLink).toHaveAttribute(
+      'href',
+      'mailto:jane@example.com?subject=Re%3A+submission+from+jane%40example.com',
+    );
   });
 
   it('shows an attachment count for a submission with a file-type field', async () => {
@@ -180,10 +198,41 @@ describe('FormSubmissionsPage', () => {
     expect(within(screen.getByTitle('resume.pdf')).getByText('1')).toBeInTheDocument();
   });
 
+  it('shows an existing reply thread and a compose box when opening a submission with a sender email', async () => {
+    const reply = {
+      id: 'reply-1',
+      submissionId: 'sub-1',
+      authorUserId: 'u-1',
+      authorName: 'Admin',
+      to: 'jane@example.com',
+      subject: 'Re: Contact submission',
+      bodyHtml: '<p>Thanks for reaching out!</p>',
+      createdAt: '2026-01-02T00:00:00.000Z',
+    };
+    getMock.mockImplementation((path: string) => {
+      if (path.endsWith('/submissions')) return Promise.resolve([submission]);
+      if (path.endsWith('/fields')) return Promise.resolve([]);
+      if (path.endsWith('/replies')) return Promise.resolve([reply]);
+      return Promise.resolve({ id: 'f-1', name: 'Contact', slug: 'contact' });
+    });
+
+    renderPage();
+    await waitFor(() => expect(screen.getByText('New')).toBeInTheDocument());
+    await userEvent.click(screen.getByText(/2026/));
+
+    const dialog = await screen.findByRole('dialog');
+    await waitFor(() => expect(within(dialog).getByText('Thanks for reaching out!')).toBeInTheDocument());
+    expect(within(dialog).getByText('Admin')).toBeInTheDocument();
+    // Subject is pre-filled from the form's own name, ready to send without typing it first.
+    expect(within(dialog).getByLabelText('Subject')).toHaveValue('Re: Contact submission');
+    expect(within(dialog).getByRole('button', { name: 'Send reply' })).toBeDisabled();
+  });
+
   it('marks a submission read via the row action menu', async () => {
     getMock.mockImplementation((path: string) => {
       if (path.endsWith('/submissions')) return Promise.resolve([submission]);
       if (path.endsWith('/fields')) return Promise.resolve([]);
+      if (path.endsWith('/replies')) return Promise.resolve([]);
       return Promise.resolve({ id: 'f-1', name: 'Contact', slug: 'contact' });
     });
     patchMock.mockResolvedValue({ ...submission, status: 'read' });

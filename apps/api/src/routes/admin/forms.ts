@@ -2,8 +2,10 @@ import { createRoute } from '@hono/zod-openapi';
 import {
   createFormFieldSchema,
   createFormSchema,
+  createFormSubmissionReplySchema,
   formFieldSchema,
   formSchema,
+  formSubmissionReplySchema,
   formSubmissionSchema,
   formSubmissionWithFormSchema,
   updateFormFieldSchema,
@@ -15,6 +17,7 @@ import type {
   FormField,
   FormFieldType,
   FormSubmission,
+  FormSubmissionReply,
   FormSubmissionStatus,
   FormSubmissionWithForm,
 } from '@kenresoft-cms/contracts';
@@ -22,6 +25,8 @@ import { z } from 'zod';
 
 import { recordAudit } from '../../lib/audit';
 import { getDb } from '../../lib/db';
+import { getEmailSender, isEmailProviderConfigured } from '../../lib/email';
+import { htmlToPlainText } from '../../lib/html-to-text';
 import { createOpenApiApp } from '../../lib/openapi';
 import { requireRole } from '../../middleware/require-role';
 import {
@@ -31,6 +36,10 @@ import {
   listFormFields,
   updateFormField,
 } from '../../repositories/form-fields';
+import {
+  createFormSubmissionReply,
+  listFormSubmissionReplies,
+} from '../../repositories/form-submission-replies';
 import {
   deleteFormSubmission,
   getFormSubmissionById,
@@ -44,6 +53,7 @@ import type {
   Form as DbForm,
   FormField as DbFormField,
   FormSubmission as DbFormSubmission,
+  FormSubmissionReply as DbFormSubmissionReply,
 } from '@kenresoft-cms/database';
 
 export const formsRoute = createOpenApiApp<{ Bindings: Bindings; Variables: AuthedVariables }>();
@@ -93,6 +103,19 @@ function toFormField(row: DbFormField): FormField {
     config: row.config ?? null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+function toFormSubmissionReply(row: DbFormSubmissionReply & { authorName: string | null }): FormSubmissionReply {
+  return {
+    id: row.id,
+    submissionId: row.submissionId,
+    authorUserId: row.authorUserId,
+    authorName: row.authorName,
+    to: row.to,
+    subject: row.subject,
+    bodyHtml: row.bodyHtml,
+    createdAt: row.createdAt.toISOString(),
   };
 }
 
@@ -486,6 +509,134 @@ formsRoute.openAPIRegistry.registerPath({
     },
   },
 });
+
+// No role gate beyond the global viewer-mutation block (blockViewerMutations) — replying to a
+// submission is an editorial action, same as triage just below. Requires a real EMAIL_PROVIDER
+// (isEmailProviderConfigured), since there's nowhere to actually send from otherwise — 400s
+// with a clear message rather than surfacing a raw provider error, matching this codebase's own
+// "explain what's missing" convention (e.g. the database_id-missing error in scripts/update.mjs).
+formsRoute.openapi(
+  createRoute({
+    method: 'get',
+    path: '/{id}/submissions/{submissionId}/replies',
+    tags: ['Forms'],
+    summary: 'List replies already sent to a submission',
+    request: { params: submissionParamsSchema },
+    responses: {
+      200: {
+        description: 'Every reply, oldest first.',
+        content: { 'application/json': { schema: z.array(formSubmissionReplySchema) } },
+      },
+      404: {
+        description: 'No form or submission matching those ids.',
+        content: { 'application/json': { schema: notFoundSchema } },
+      },
+    },
+  }),
+  async (c) => {
+    const { id, submissionId } = c.req.valid('param');
+    const db = getDb(c);
+    const form = await getFormById(db, id);
+    if (!form) {
+      return c.json({ error: 'Form not found' }, 404);
+    }
+    const submission = await getFormSubmissionById(db, submissionId);
+    if (!submission || submission.formId !== form.id) {
+      return c.json({ error: 'Submission not found' }, 404);
+    }
+    const replies = await listFormSubmissionReplies(db, submission.id);
+    return c.json(replies.map(toFormSubmissionReply), 200);
+  },
+);
+
+formsRoute.openapi(
+  createRoute({
+    method: 'post',
+    path: '/{id}/submissions/{submissionId}/replies',
+    tags: ['Forms'],
+    summary: 'Send a reply to a submission by email',
+    description:
+      "Sends through this deployment's configured email provider, with Reply-To set to the " +
+      "sending staff member's own email so a further reply from the visitor lands in their " +
+      'real inbox. Requires a real EMAIL_PROVIDER to be configured — 400s otherwise.',
+    request: {
+      params: submissionParamsSchema,
+      body: { content: { 'application/json': { schema: createFormSubmissionReplySchema } } },
+    },
+    responses: {
+      201: {
+        description: 'The reply was sent and recorded.',
+        content: { 'application/json': { schema: formSubmissionReplySchema } },
+      },
+      400: {
+        description: 'This deployment has no email provider configured to send from.',
+        content: { 'application/json': { schema: notFoundSchema } },
+      },
+      404: {
+        description: 'No form or submission matching those ids.',
+        content: { 'application/json': { schema: notFoundSchema } },
+      },
+      502: {
+        description: 'The configured email provider rejected or failed to send the message.',
+        content: { 'application/json': { schema: notFoundSchema } },
+      },
+    },
+  }),
+  async (c) => {
+    const { id, submissionId } = c.req.valid('param');
+    const db = getDb(c);
+    const form = await getFormById(db, id);
+    if (!form) {
+      return c.json({ error: 'Form not found' }, 404);
+    }
+    const submission = await getFormSubmissionById(db, submissionId);
+    if (!submission || submission.formId !== form.id) {
+      return c.json({ error: 'Submission not found' }, 404);
+    }
+
+    if (!isEmailProviderConfigured(c.env)) {
+      return c.json(
+        { error: 'This deployment has no email provider configured — see docs/DEPLOYMENT.md\'s recovery section.' },
+        400,
+      );
+    }
+
+    const { to, subject, bodyHtml } = c.req.valid('json');
+    const author = c.get('user');
+
+    try {
+      await getEmailSender(c.env).send({
+        to,
+        subject,
+        html: bodyHtml,
+        text: htmlToPlainText(bodyHtml),
+        replyTo: author.email,
+      });
+    } catch (error) {
+      console.error('Failed to send a form-submission reply:', error);
+      return c.json({ error: 'The email provider rejected or failed to send this message.' }, 502);
+    }
+
+    const reply = await createFormSubmissionReply(db, {
+      submissionId: submission.id,
+      authorUserId: author.id,
+      to,
+      subject,
+      bodyHtml,
+    });
+    await recordAudit(db, {
+      actorUserId: author.id,
+      action: 'form_submission.replied',
+      targetType: 'form_submission',
+      targetId: submission.id,
+      metadata: { formId: id, to, subject },
+    });
+    // authorName isn't on SessionUser (only id/email/role/disabled) — the client already knows
+    // its own signed-in user's display name from the session it's holding, so there's no need
+    // for an extra DB read here just to echo it back.
+    return c.json(toFormSubmissionReply({ ...reply, authorName: null }), 201);
+  },
+);
 
 // No role gate — triaging submissions (new/read/archived) is an editorial action, same as
 // entry create/edit, which also has no server-side role check.

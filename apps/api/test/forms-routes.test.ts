@@ -2,7 +2,8 @@ import { SELF, env } from 'cloudflare:test';
 import { signUpVerifiedAndGetCookie } from './helpers/auth';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { clearTestEmails, getTestEmails } from '../src/lib/email';
+import { clearTestEmails, getTestEmails, isEmailProviderConfigured } from '../src/lib/email';
+import type { Bindings } from '../src/lib/env';
 
 async function authedCookie(email: string): Promise<string> {
   return signUpVerifiedAndGetCookie(email, { password: 'correct horse battery staple', name: 'Test User' });
@@ -525,6 +526,114 @@ describe('forms routes (real D1)', () => {
       });
       expect(clearRes.status).toBe(200);
       expect(await clearRes.json()).toMatchObject({ notificationEmails: null });
+    });
+  });
+
+  describe('submission replies', () => {
+    async function createSubmission(cookie: string) {
+      const form = await createContactForm(cookie);
+      const submitRes = await SELF.fetch('https://example.com/api/v1/public/forms/contact/submissions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': 'reply-test-setup' },
+        body: JSON.stringify({ name: 'Jane', email: 'jane@example.com', message: 'Hello there' }),
+      });
+      const submission = await submitRes.json<{ id: string }>();
+      return { form, submission };
+    }
+
+    it('sends a reply, records it, and lists it back in the thread', async () => {
+      const cookie = await authedCookie('reply-admin@example.test');
+      const headers = { Cookie: cookie, 'Content-Type': 'application/json' };
+      const { form, submission } = await createSubmission(cookie);
+
+      const sendRes = await SELF.fetch(
+        `https://example.com/api/v1/admin/forms/${form.id}/submissions/${submission.id}/replies`,
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            to: 'jane@example.com',
+            subject: 'Re: Contact',
+            bodyHtml: '<p>Thanks for reaching out!</p>',
+          }),
+        },
+      );
+      expect(sendRes.status).toBe(201);
+      const created = await sendRes.json<{ id: string; to: string; subject: string; bodyHtml: string }>();
+      expect(created.to).toBe('jane@example.com');
+      expect(created.subject).toBe('Re: Contact');
+
+      const sent = getTestEmails().filter((m) => m.subject === 'Re: Contact');
+      expect(sent).toHaveLength(1);
+      expect(sent[0]!.to).toBe('jane@example.com');
+      expect(sent[0]!.html).toBe('<p>Thanks for reaching out!</p>');
+      expect(sent[0]!.text).toContain('Thanks for reaching out!');
+      expect(sent[0]!.replyTo).toBe('reply-admin@example.test');
+
+      const listRes = await SELF.fetch(
+        `https://example.com/api/v1/admin/forms/${form.id}/submissions/${submission.id}/replies`,
+        { headers: { Cookie: cookie } },
+      );
+      expect(listRes.status).toBe(200);
+      const replies = await listRes.json<{ id: string; subject: string }[]>();
+      expect(replies).toHaveLength(1);
+      expect(replies[0]!.id).toBe(created.id);
+    });
+
+    it('rejects a viewer sending a reply', async () => {
+      const ownerCookie = await authedCookie('reply-viewer-owner@example.test');
+      const { form, submission } = await createSubmission(ownerCookie);
+      const viewerCookie = await authedCookie('reply-viewer@example.test');
+      await setRole(ownerCookie, await userId(viewerCookie), 'viewer');
+
+      const response = await SELF.fetch(
+        `https://example.com/api/v1/admin/forms/${form.id}/submissions/${submission.id}/replies`,
+        {
+          method: 'POST',
+          headers: { Cookie: viewerCookie, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ to: 'jane@example.com', subject: 'Re: Contact', bodyHtml: '<p>Hi</p>' }),
+        },
+      );
+      expect(response.status).toBe(403);
+    });
+
+    // The reply route 400s when isEmailProviderConfigured(c.env) is false, but a real
+    // per-request env override isn't practical through SELF.fetch (it always runs against the
+    // real wrangler.test.toml-bound env, where EMAIL_PROVIDER=test is always "configured" —
+    // see the successful-send test above). Asserting the guard directly is the same approach
+    // auth.test.ts already uses for createAuth's own guard.
+    it('isEmailProviderConfigured requires the matching provider\'s full config, not just EMAIL_PROVIDER being set', () => {
+      expect(isEmailProviderConfigured({} as Bindings)).toBe(false);
+      expect(isEmailProviderConfigured({ EMAIL_PROVIDER: 'resend' } as Bindings)).toBe(false);
+      expect(
+        isEmailProviderConfigured({
+          EMAIL_PROVIDER: 'resend',
+          RESEND_API_KEY: 'key',
+          EMAIL_FROM: 'noreply@example.test',
+        } as Bindings),
+      ).toBe(true);
+    });
+
+    it('404s replying to a submission that does not belong to the given form', async () => {
+      const cookie = await authedCookie('reply-mismatch-admin@example.test');
+      const { submission } = await createSubmission(cookie);
+      const otherForm = await (
+        await SELF.fetch('https://example.com/api/v1/admin/forms', {
+          method: 'POST',
+          headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: 'Other', slug: 'other-reply' }),
+        })
+      ).json<{ id: string }>();
+
+      const response = await SELF.fetch(
+        `https://example.com/api/v1/admin/forms/${otherForm.id}/submissions/${submission.id}/replies`,
+        {
+          method: 'POST',
+          headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ to: 'jane@example.com', subject: 'Re: Contact', bodyHtml: '<p>Hi</p>' }),
+        },
+      );
+      expect(response.status).toBe(404);
     });
   });
 

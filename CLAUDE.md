@@ -2852,3 +2852,71 @@ changes behavior for a payload that omits a field with the now-removed default, 
 corruption case being closed, not a supported use anyone depended on. Per the same phase-gate
 discipline as every prior phase: stopped after this hardening pass, pending explicit direction
 on Phase 9 and Phase 10's remaining "patterns/presets" half.
+
+**Preferred mail client, in-CMS rich reply with a persisted reply log, and a submission-viewer
+redesign** (2026-09-16, on `develop`, direct follow-up to the notification-emails/attachments
+entry above) — done. Two feasibility questions ("can the CMS open the mail app I use for
+replies?" / "can I reply from the CMS itself?") were both built, per explicit choices: a
+per-person "Preferred mail client" setting (Gmail/Outlook/Yahoo/Zoho, "Default" falls back to
+the OS's `mailto:` handler) rather than a deployment-wide default, and full in-CMS reply with a
+persisted, visible thread (not fire-and-forget) rather than compose-only.
+
+`user.preferredMailClient` (nullable, no default — migration `0041_sweet_toad_men.sql`) is a
+better-auth `additionalFields` entry, added to both `auth-options.ts` (server) and
+`auth-client.ts` (client, `inferAdditionalFields`) — both sides need `required: false` set
+explicitly, or better-auth infers the client's own signUp input type as requiring it even though
+only the server-side config says otherwise. Clearing it back to "Default" sends `''`, not `null`
+or `undefined` — better-auth's `updateUser()` client typing rejects `null` for a `string` field,
+and `JSON.stringify` silently drops an `undefined` key entirely (indistinguishable from omitting
+the field, i.e. a silent no-op that could never actually clear a previously-set preference).
+`apps/admin/src/lib/mail-compose-links.ts`'s `buildReplyLink()`/`opensInNewTab()` build each
+provider's own web-compose URL (Gmail/Outlook/Yahoo/Zoho, discovered via `encodeURIComponent`
+gotcha: it does not escape `!~*'()`, so a naive test asserting `%21` for `!` is wrong).
+
+Reply persistence: a new `form_submission_replies` table (FK cascade to the submission, FK
+set-null to the author user — migration `0042_third_sebastian_shaw.sql`) backs
+`GET`/`POST /api/v1/admin/forms/:id/submissions/:submissionId/replies`. Sending uses the
+existing pluggable `getEmailSender(env)` (no second email path), 400s if
+`isEmailProviderConfigured(env)` (new export in `apps/api/src/lib/email/index.ts`, also now
+reused by `system/recover-owner.ts`'s `/status` route in place of its own duplicated inline
+check) says the deployment has no provider configured, and always sets the email's `Reply-To` to
+the replying staff member's own address (`EmailMessage.replyTo`, threaded through the Resend and
+Cloudflare providers) — replies are sent *from* the deployment's configured `EMAIL_FROM`, but a
+further reply from the visitor lands in a real, monitored inbox, not the deployment's possibly-
+unmonitored sending address. The rich-text body (composed via the existing `RichTextEditor`
+Tiptap wrapper, confirmed to mount cleanly in jsdom with zero new test shims needed) is converted
+to a plaintext fallback via a new dependency-free `apps/api/src/lib/html-to-text.ts`
+(deliberately not `turndown`, to avoid a new `apps/api` runtime dependency for one plaintext
+fallback). The route deliberately returns the created reply with `authorName: null` — the
+client already knows its own session's display name, so the round trip doesn't need to invent
+one.
+
+The reported bug that arrived mid-implementation — a test user found that a textarea field's
+paragraphs displayed as one flattened line in the admin submission viewer — was a missing
+`whitespace-pre-wrap` on `submission-value.tsx`'s plain-text rendering (one-line fix). The
+user's own follow-up ("maybe we need a proper submission viewer than a small popup... and with
+better UI this time") turned that bug report into a explicit redirection to also replace the
+cramped `Dialog`-based viewer: both `FormSubmissionsPage.tsx` and `AllSubmissionsPage.tsx` now
+open a shared `SubmissionDetailSheet` (a wide Radix `Sheet`, still `role="dialog"` under the
+hood since `Sheet` is built on the same `Dialog` primitive — existing `getByRole('dialog')`
+tests kept working unmodified) instead of a small dialog, with sender info, field values, and —
+whenever a sender email is detected — a `SubmissionReplyPanel` showing the reply thread and the
+rich-text compose box inline.
+
+Verified: `pnpm typecheck`/`pnpm lint` clean across `apps/api`/`apps/admin`. New/updated tests:
+4 cases in `apps/api/test/forms-routes.test.ts`'s new "submission replies" describe block (real
+D1 — send-and-list-back, viewer role rejection, cross-form-submission 404, and
+`isEmailProviderConfigured`'s per-provider required-field check); `apps/admin/test/
+mail-compose-links.test.ts` (7 tests, all four providers plus fallback/optional-body cases);
+`ProfilePage.test.tsx` gained a "saves a selected preferred mail app" case and an update to the
+existing name-save assertion (now expects `preferredMailClient: ''` alongside the name);
+`FormSubmissionsPage.test.tsx` gained a reply-thread-and-compose-box case and updated its
+existing reply-link assertion for the new `SubmissionActions`/`authClient.useSession()` wiring;
+`AllSubmissionsPage.test.tsx` fixed one now-ambiguous assertion (`getByText('Jane')` →
+`getAllByText('Jane').length > 0`, since "Jane" now legitimately appears in both the new
+sender-info card and the field value). Full regression: all 39 `apps/admin` test files (220
+tests) clean in one run; `apps/api/test/forms-routes.test.ts` (28 tests) and a spot-check of
+`auth.test.ts`/`owner-recovery-endpoint.test.ts` (15 tests, covering the touched
+`auth-options.ts`/`system/recover-owner.ts` files) all green. No breaking changes: every new
+column/field is nullable/additive, and a deployment with no email provider configured simply
+sees the reply action disabled with an explanation rather than failing.
