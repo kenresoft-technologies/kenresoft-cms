@@ -3,6 +3,7 @@ import { constantTimeEqual, hashPassword } from 'better-auth/crypto';
 import { z } from 'zod';
 
 import { recordAudit } from '../../lib/audit';
+import { isAuthSecretConfigured } from '../../lib/auth';
 import { getDb } from '../../lib/db';
 import { createOpenApiApp } from '../../lib/openapi';
 import { getCredentialAccount, updateAccountPassword } from '../../repositories/accounts';
@@ -19,7 +20,7 @@ const requestSchema = z.object({
 });
 const errorSchema = z.object({ error: z.string() });
 const successSchema = z.object({ message: z.string() });
-const statusSchema = z.object({ emailConfigured: z.boolean() });
+const statusSchema = z.object({ emailConfigured: z.boolean(), authSecretConfigured: z.boolean() });
 
 // Unauthenticated by design — this is deployment-wide, not per-account, so it carries none of
 // the account-enumeration risk that keeps /public/password-reset/request's response generic
@@ -34,15 +35,24 @@ const statusSchema = z.object({ emailConfigured: z.boolean() });
 // binding/EMAIL_FROM) would previously have reported "configured" even though
 // resend.ts/cloudflare.ts already throw at actual send time. Still purely static, no network
 // call — this is not a live delivery test.
+//
+// authSecretConfigured lets an operator (or the setup/update CLI) check whether
+// BETTER_AUTH_SECRET is real without needing `wrangler secret list` CLI access at all — a real
+// deployment was found running on better-auth's own known-default secret with nothing in the
+// normal request flow surfacing it (docs/ARCHITECTURE.md's Changelog has the incident).
+// createAuth() itself now refuses to start at all in that state (apps/api/src/lib/auth.ts), so
+// this field will only ever read `false` for a request that never reaches an authed route in
+// the first place — still worth exposing here since this endpoint is unauthenticated and cheap
+// to check proactively, before anything else 500s.
 systemRoute.openapi(
   createRoute({
     method: 'get',
     path: '/status',
     tags: ['System'],
-    summary: 'Deployment-wide feature availability (currently just email delivery)',
+    summary: 'Deployment-wide feature availability (email delivery, auth secret)',
     responses: {
       200: {
-        description: 'Whether this deployment has a real email provider fully configured.',
+        description: 'Whether this deployment has a real email provider and a real auth secret configured.',
         content: { 'application/json': { schema: statusSchema } },
       },
     },
@@ -51,7 +61,7 @@ systemRoute.openapi(
     const emailConfigured =
       (c.env.EMAIL_PROVIDER === 'resend' && !!c.env.RESEND_API_KEY && !!c.env.EMAIL_FROM) ||
       (c.env.EMAIL_PROVIDER === 'cloudflare' && !!c.env.EMAIL && !!c.env.EMAIL_FROM);
-    return c.json({ emailConfigured }, 200);
+    return c.json({ emailConfigured, authSecretConfigured: isAuthSecretConfigured(c.env.BETTER_AUTH_SECRET) }, 200);
   },
 );
 

@@ -175,8 +175,15 @@ async function main() {
   const databaseId = readDatabaseId(WRANGLER_TOML_PATH);
   if (!databaseId) {
     throw new Error(
-      'This install has not been set up yet (wrangler.toml has no database_id) — run `pnpm run ' +
-        'setup` first, then use `pnpm run update` for future updates.',
+      'wrangler.toml has no database_id. Usually this means the install has not been set up yet ' +
+        '— run `pnpm run setup` first, then use `pnpm run update` for future updates. If this is ' +
+        "an already-live deployment, wrangler.toml's own values may instead have just been reset " +
+        'by the code pull above (a known issue for installs scaffolded before this project\'s ' +
+        'create-tool switched to a real `git clone` — see docs/DEPLOYMENT.md\'s "Updating an ' +
+        'existing install" section): check `git log -p -- wrangler.toml` for a merge commit that ' +
+        'replaced your real values with the generic template\'s placeholders, and restore your ' +
+        'own database_id/bucket_name/BETTER_AUTH_URL from there rather than re-running `setup`, ' +
+        'which would provision new resources instead of recovering the old ones.',
     );
   }
 

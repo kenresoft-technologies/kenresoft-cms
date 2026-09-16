@@ -148,6 +148,15 @@ Local dev also needs `.dev.vars` (copy `.dev.vars.example`) — it overrides bot
 secrets during `wrangler dev`, so your local `BETTER_AUTH_SECRET` can differ from the deployed
 one.
 
+If this is ever skipped or lost against a real deployment, the Worker no longer fails loudly on
+its own the way you might expect — better-auth's own "you are using the default secret" guard
+only fires when `NODE_ENV=production`, which is never true in a Cloudflare Worker, so a missing
+secret used to mean every session got silently signed with better-auth's publicly known default,
+with no exception or log line anywhere until someone thought to check. The API Worker now checks
+this itself and refuses to serve any session-touching request until a real secret is set — check
+`GET /api/v1/system/status`'s `authSecretConfigured` field (also shown on Settings → API) any
+time you want to confirm this without Cloudflare CLI access at all.
+
 ## 6. Deploy, then run migrations
 
 ```bash
@@ -422,6 +431,12 @@ touches your `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, email configuration, D1/R2
 the safe subset for an install that already exists, and touches nothing this deployment's own
 configuration already holds.
 
+Right after a redeploy, the admin site's HTML shell may briefly reference a JS bundle hash from
+*before* the deploy — Cloudflare's edge cache for a Workers Static Assets site doesn't invalidate
+`index.html` instantly. This is expected and self-corrects within a few minutes with no action
+needed; it does not mean the deploy failed (the correct, new assets are already live underneath
+and load fine if requested directly).
+
 `pnpm run setup` itself is also safe to re-run — on an existing install it detects that and shows
 a status summary plus a menu (**Continue without changes** / **Update configuration** /
 **Reconfigure everything** / **Cancel**) instead of blindly repeating first-install steps.
@@ -462,16 +477,26 @@ https://github.com/kenresoft-technologies/kenresoft-cms.git`. An install scaffol
 tool switched from a tarball download to a real `git clone` will hit a one-time prompt the first
 time `update` pulls new code, since its local history has no real ancestry to merge against yet
 — confirming it is safe to proceed reconciles that once, and every update after is a normal,
-low-friction merge.
+low-friction merge. `wrangler.toml` is protected through this one-time merge specifically: it's
+restored to exactly what this install had committed immediately beforehand, rather than left to
+the merge's own `-X theirs` conflict resolution (which would otherwise silently replace your
+real `database_id`/`bucket_name`/`BETTER_AUTH_URL`/custom-domain routes with the generic
+template's placeholders, with no conflict marker to catch by eye — a real incident this behavior
+exists to prevent). If you scripted this reconciliation by hand before this protection existed,
+or if `wrangler.toml` still looks wrong afterward for any other reason, check `git log -p --
+wrangler.toml` for the merge commit and restore your real values from the commit just before it.
 
 `update` refuses to run (rather than silently doing the wrong thing) in two situations: if
-`wrangler.toml` has no `database_id` at all — meaning `pnpm run setup` was never actually run
-for this install — run that first; and if the Worker it's about to redeploy is currently bound
-to a *different* D1 database than this install's own `wrangler.toml` expects, meaning it belongs
-to a different deployment (every fork of this template ships the same default Worker name, so
-one Cloudflare account running more than one deployment of it can collide) — `wrangler deploy`
-has no "already exists" safeguard the way provisioning D1/R2 does, so without this check a
-redeploy would silently overwrite the other deployment's live Worker. If you hit this, run
+`wrangler.toml` has no `database_id` at all — meaning either `pnpm run setup` was never actually
+run for this install (run it first), *or* an already-live install's `wrangler.toml` just had its
+real values wiped by the reconciliation-merge bug described above (recover from git history
+instead of running `setup`, which would provision brand-new resources rather than recovering the
+old ones); and if the Worker it's about to redeploy is currently bound to a *different* D1
+database than this install's own `wrangler.toml` expects, meaning it belongs to a different
+deployment (every fork of this template ships the same default Worker name, so one Cloudflare
+account running more than one deployment of it can collide) — `wrangler deploy` has no "already
+exists" safeguard the way provisioning D1/R2 does, so without this check a redeploy would
+silently overwrite the other deployment's live Worker. If you hit the second case, run
 `pnpm run setup` again instead: it detects the same collision interactively and picks a new,
 unique name for both Workers (pairing the admin Worker's rename to the API Worker's) rather than
 just refusing.

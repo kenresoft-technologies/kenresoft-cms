@@ -130,6 +130,37 @@ landed on `develop`.
 
 ### Fixed
 
+- **A live deployment could run in production with no `BETTER_AUTH_SECRET` set at all, silently**
+  — reported directly by an operator who found only two of the three expected secrets on their
+  live Worker via `wrangler secret list`. better-auth's own "you are using the default secret"
+  guard only throws under `NODE_ENV=production`, which is never true in a Cloudflare Worker, so a
+  missing/default secret used to mean every session got signed with better-auth's publicly known
+  default with no exception or log line anywhere. The API Worker now refuses to start auth at all
+  (every session-touching request fails loudly, visible via `wrangler tail`) unless
+  `BETTER_AUTH_SECRET` is set to a real, non-default value. `GET /api/v1/system/status` also
+  gained an `authSecretConfigured` field (shown on Settings → API) so this can be checked without
+  Cloudflare CLI access.
+- **The documented unrelated-histories reconciliation merge (`pnpm run update` on an install
+  scaffolded before `packages/create` switched to a real `git clone`) could silently overwrite a
+  live deployment's own `wrangler.toml` values with the generic template's placeholders** —
+  reported by an operator whose `database_id`/`bucket_name`/`BETTER_AUTH_URL`/custom-domain
+  `[[routes]]` were all replaced with no conflict marker to catch it. The merge's `-X theirs`
+  strategy resolves `wrangler.toml` the same as every other file — as one whole-file add/add
+  conflict, since there's no common ancestor to 3-way-diff against — which only stayed safe as
+  long as this install's real values were purely uncommitted (and therefore separately stashed);
+  committing them at any point, which this project's own git conventions otherwise encourage, was
+  enough to lose them for real. `wrangler.toml` is now explicitly restored to this install's own
+  pre-merge committed content immediately after that one-time reconciliation merge, regardless of
+  whether the values were committed or just stashed. `pnpm run update`'s "not set up yet" error
+  (triggered downstream once `database_id` goes missing) now also explains this possibility and
+  points at recovering from `git log` instead of re-running `setup`, which would provision new
+  resources rather than recovering the old ones.
+- **A successful `pnpm run update`/`setup` redeploy could look broken for a few minutes** —
+  Cloudflare's edge cache for a Workers Static Assets site doesn't invalidate `index.html`
+  instantly, so the live admin site could briefly keep serving an HTML shell referencing a JS
+  bundle hash from before the deploy (self-correcting with no action needed). Both scripts now
+  print a note explaining this immediately after redeploying the admin app, and
+  `docs/DEPLOYMENT.md`'s update section documents it too.
 - **Live Preview 404ing every draft under static Astro output** — reported by developers building
   their own site on `@kenresoft-cms/astro`. Root cause was never a CMS/SDK bug: under Astro's
   default `output: 'static'` with `getStaticPaths()`, a dynamic route only gets a real page for

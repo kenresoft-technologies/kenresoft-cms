@@ -8,12 +8,38 @@ import { authOptions } from './auth-options';
 import { getEmailSender } from './email';
 import type { Bindings } from './env';
 
+// better-auth's own hardcoded fallback (confirmed against the installed 1.7.2 source,
+// context/create-context.mjs) — it only refuses to start on this value when its own
+// `isProduction` check (process.env.NODE_ENV === 'production') is true, which never holds in
+// a Cloudflare Worker, so a deployment missing this secret runs silently, signing every
+// session with a publicly known key, with no exception or log line anywhere. A real production
+// incident (docs/ARCHITECTURE.md's Changelog, "real production reset" entries) — this check
+// exists specifically so it can never recur unnoticed.
+const BETTER_AUTH_DEFAULT_SECRET = 'better-auth-secret-12345678901234567890';
+
+export function isAuthSecretConfigured(secret: string | undefined): boolean {
+  return Boolean(secret) && secret !== BETTER_AUTH_DEFAULT_SECRET;
+}
+
 // `executionCtx` is optional and only needed by call sites whose request can trigger
 // better-auth to send a verification email (apps/api/src/index.ts's auth catch-all,
 // admin/users.ts's Add User) — everything else (session lookups, the admin password
 // re-check) omits it and falls back to better-auth awaiting the send inline, which is fine
 // for paths that never send mail. See docs/ARCHITECTURE.md's Changelog for why this exists.
 export function createAuth(env: Bindings, executionCtx?: Pick<ExecutionContext, 'waitUntil'>) {
+  if (!isAuthSecretConfigured(env.BETTER_AUTH_SECRET)) {
+    // Loud and unmissable (visible via `wrangler tail`, and every auth-touching request 500s)
+    // rather than the silent, "worked fine, just insecurely" failure mode this replaces —
+    // see the comment on BETTER_AUTH_DEFAULT_SECRET above for why better-auth's own guard
+    // doesn't catch this on Workers.
+    throw new Error(
+      'BETTER_AUTH_SECRET is not set (or is still set to the unusable placeholder) for this ' +
+        'deployment — refusing to start auth. Every session would otherwise be signed with a ' +
+        "publicly known key. Run `wrangler secret put BETTER_AUTH_SECRET` (see docs/DEPLOYMENT.md) " +
+        'with a real, randomly generated value, then retry.',
+    );
+  }
+
   const db = createDb(env.DB);
 
   function clientIp(headers: Headers | undefined): string {

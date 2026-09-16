@@ -2671,6 +2671,57 @@ passing — the latter three confirm every existing consumer of `BlockTreeEditor
 any kind. Per the same phase-gate discipline as Phases 1-7: stopped after Phase 8, pending
 explicit approval before Phase 9 (plugin-contributed block types).
 
+**Three real deployment-tooling bugs, reported by a live user, fixed** (2026-09-16, on `develop`)
+— done. A Pathvera Group operator ran `pnpm run update` against their real, live
+`pathveragroup-website-api`/`-admin` deployment and reported three issues directly, two of them
+real production incidents fixed live against that deployment at the time. (1) **A live Worker
+can run with no `BETTER_AUTH_SECRET` set at all, undetected** — `wrangler secret list` on the
+real deployment showed only two of the three expected secrets; better-auth's own default-secret
+guard (confirmed by reading the installed 1.7.2 source) only throws under
+`NODE_ENV=production`, never true in a Worker, so a missing secret meant every session was
+silently signed with better-auth's publicly known default. `createAuth()`
+(`apps/api/src/lib/auth.ts`) now has an explicit `isAuthSecretConfigured()` guard and throws
+immediately if the secret is missing or still equals that known default — loud, not silent
+(every session-touching request now fails visibly, e.g. via `wrangler tail`, instead of running
+insecurely). `GET /api/v1/system/status` gained an `authSecretConfigured` field alongside the
+existing `emailConfigured` one, surfaced on Settings → API (`AuthSecuritySection`) — in practice
+it will only ever show "Configured" there, since reaching that signed-in page already requires
+the same check to have passed, but the unauthenticated `/status` route itself stays checkable
+even when every session route is down. (2) **The documented unrelated-histories reconciliation
+merge (the one-time `pnpm run update` path for installs scaffolded before `packages/create`
+switched to a real `git clone`) could silently overwrite a live deployment's own
+`database_id`/`bucket_name`/`BETTER_AUTH_URL`/custom-domain `[[routes]]` with the generic
+template's placeholders** — confirmed root cause: `-X theirs` resolves `wrangler.toml` as one
+whole-file add/add conflict (no common ancestor to 3-way-diff against), so it always picks the
+incoming template's version; this only stayed safe as long as an install's real config was
+purely *uncommitted* (and therefore protected by `pullLatestCode()`'s own pre-merge stash) —
+committing those values at any point, which this project's own "prefer small, reviewable
+commits" convention otherwise encourages, was enough to lose them for real, with the old
+confirmation prompt's "your wrangler.toml/config changes are safe regardless" claim turning out
+to be false in exactly that case. Fixed with a new exported `restoreOwnWranglerToml(repoRoot,
+atRef)` (`scripts/lib/git-cli.mjs`) called right after the reconciliation merge — restores
+`wrangler.toml` to exactly what this branch had committed immediately before the merge, folded
+into the merge commit via `git commit --amend --no-edit --allow-empty` (the `--allow-empty` case
+is real, not defensive-only: a new regression test, `scripts/lib/git-cli.test.mjs`, caught that
+amending to identical content throws without it whenever the merge commit touched nothing else).
+`update.mjs`'s downstream "not set up yet" error (triggered once `database_id` goes missing) now
+also names this possibility and points at recovering from `git log -p -- wrangler.toml` rather
+than re-running `setup`, which would provision brand-new resources instead of recovering the old
+ones. (3) **A successful redeploy could look broken for several minutes** — Cloudflare's edge
+cache for a Workers Static Assets site doesn't invalidate `index.html` instantly, so the admin
+site could briefly keep serving a stale HTML shell referencing a pre-deploy JS bundle hash,
+self-correcting with no action needed; `buildAndDeployAdmin()`
+(`scripts/lib/deploy-helpers.mjs`, the one function every redeploy path already funnels through)
+now prints a note explaining this immediately after every admin deploy, and
+`docs/DEPLOYMENT.md`'s update section documents it too. All three also documented in
+`CHANGELOG.md`. Verified: `pnpm typecheck`/`pnpm lint` clean across `apps/api`/`apps/admin`; new
+tests passing for real — `apps/api/test/auth.test.ts`'s new `createAuth` guard tests plus
+`apps/api/test/owner-recovery-endpoint.test.ts`'s new `/status` tests (both against real D1),
+and `scripts/lib/git-cli.test.mjs` (3 tests, real temporary git repos simulating the exact
+production scenario — no interactive-merge simulation needed, since the fix was extracted into
+one directly-testable pure-ish function); the full `pnpm run test:scripts` suite (41 tests) and
+the touched `apps/admin` suite (`SettingsPage.test.tsx`) both re-run clean.
+
 **Site builder Phase 10, hardening pass only** (2026-09-14, on `develop`, per direct user
 choice) — done. Phase 9 (plugin-contributed block types) and Phase 10's "patterns/presets" half
 were deliberately skipped this round: `docs/SITE_BUILDER.md` §9 itself says not to build plugin

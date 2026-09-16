@@ -8,7 +8,7 @@
 // failure, since update.mjs's later steps (install/migrate/redeploy) are still useful against
 // whatever code is already on disk.
 import { execFileSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 
@@ -27,6 +27,30 @@ function tryRunGit(args, cwd) {
     const stderr = error && typeof error === 'object' && 'stderr' in error ? String(error.stderr) : '';
     return { ok: false, stderr };
   }
+}
+
+// Exported for direct unit testing (real temp git repos, no interactive merge needed) — the
+// actual regression test for the production incident described where this is called from below.
+// Restores wrangler.toml to exactly what `atRef` had it as, folding that restoration into
+// whatever commit is currently HEAD (a merge commit made with --no-edit, in the one real caller)
+// rather than leaving a second, confusing "undo" commit behind. No-ops (returns false) if the
+// file didn't exist at `atRef` at all, or if there's nothing to amend (nothing changed).
+export function restoreOwnWranglerToml(repoRoot, atRef) {
+  const wranglerTomlPath = join(repoRoot, 'wrangler.toml');
+  const snapshot = tryRunGit(['show', `${atRef}:wrangler.toml`], repoRoot);
+  if (!snapshot.ok) return false;
+
+  writeFileSync(wranglerTomlPath, snapshot.output);
+  runGit(['add', 'wrangler.toml'], repoRoot);
+  const status = runGit(['status', '--porcelain', '--', 'wrangler.toml'], repoRoot);
+  if (!status.trim()) return false; // already matched — nothing to amend
+
+  // --allow-empty: covers the edge case where the merge commit being amended touched nothing
+  // but wrangler.toml (e.g. two installs already in sync except for this one file) — restoring
+  // it would otherwise make the amend a no-op diff from the parent, which git refuses without
+  // this flag. Confirmed by a real regression test hitting exactly this case.
+  runGit(['commit', '--amend', '--no-edit', '--allow-empty'], repoRoot);
+  return true;
 }
 
 async function confirm(question) {
@@ -90,6 +114,18 @@ export async function pullLatestCode(repoRoot, { branch } = {}) {
   const stashOutput = runGit(['stash', 'push', '-u', '-m', 'pnpm run update: temporary stash'], repoRoot);
   const stashed = !stashOutput.includes('No local changes to save');
 
+  // Snapshot wrangler.toml as this branch had it *committed*, right before the merge touches
+  // anything — the unrelated-histories path below needs this to survive a real, confirmed
+  // production incident: an operator who (reasonably, per this project's own "prefer small,
+  // reviewable commits" convention) committed their real database_id/bucket_name/
+  // BETTER_AUTH_URL/custom-domain [[routes]] into wrangler.toml at some point had every one of
+  // those values silently overwritten by the generic template's placeholders, because
+  // `-X theirs` resolves the *entire file* as one add/add conflict when there's no common
+  // ancestor — the confirmation prompt below used to claim wrangler.toml was "safe regardless"
+  // on the assumption its only local changes were the stash's uncommitted diff, which is false
+  // once any of it was ever committed.
+  const preMergeHead = runGit(['rev-parse', 'HEAD'], repoRoot).trim();
+
   const merge = tryRunGit(['merge', `upstream/${defaultBranch}`, '--no-edit'], repoRoot);
   if (!merge.ok) {
     if (/refusing to merge unrelated histories/i.test(merge.stderr)) {
@@ -106,8 +142,11 @@ export async function pullLatestCode(repoRoot, { branch } = {}) {
         '\nThis install has no shared git history with the upstream repo yet — it was likely\n' +
           'scaffolded before this tool switched to a real `git clone`. Reconciling it needs a\n' +
           'one-time merge that resolves every conflict in favor of the upstream code, INCLUDING\n' +
-          'any hand-edits you made directly to CMS source files (your wrangler.toml/config\n' +
-          'changes are safe regardless — already set aside above).',
+          'any hand-edits you made directly to CMS source files. wrangler.toml is protected\n' +
+          'separately either way (your uncommitted config edits are already stashed above, and\n' +
+          "this install's own *committed* wrangler.toml — database_id, bucket_name,\n" +
+          'BETTER_AUTH_URL, any custom-domain routes — is restored verbatim right after this\n' +
+          'merge, not overwritten by the incoming template).',
       );
       const proceed = await confirm('Proceed with this one-time reconciliation?');
       if (!proceed) {
@@ -118,6 +157,20 @@ export async function pullLatestCode(repoRoot, { branch } = {}) {
         ['merge', `upstream/${defaultBranch}`, '--allow-unrelated-histories', '-X', 'theirs', '--no-edit'],
         repoRoot,
       );
+
+      // -X theirs resolves wrangler.toml the same as every other file — as one whole-file
+      // add/add conflict with no common ancestor to 3-way-diff against — so it always wins in
+      // favor of the incoming template's placeholders, discarding this deployment's own
+      // database_id/bucket_name/BETTER_AUTH_URL/custom-domain routes with no conflict marker to
+      // catch by eye. Force this one file back to what this branch had committed immediately
+      // before the merge.
+      if (restoreOwnWranglerToml(repoRoot, preMergeHead)) {
+        console.log(
+          "✓ wrangler.toml: kept this install's own values — review it for any new config " +
+            'keys the update above may have introduced upstream (new [[ratelimits]]/binding ' +
+            'entries, etc.), since this file was deliberately excluded from the merge.',
+        );
+      }
     } else {
       if (stashed) {
         console.error('(Your local config changes are safely stashed — recover them with `git stash pop` after resolving.)');
