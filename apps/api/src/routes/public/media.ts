@@ -1,11 +1,12 @@
 import { createRoute, z } from '@hono/zod-openapi';
-import { publicMediaSchema } from '@kenresoft-cms/contracts';
-import type { PublicMedia } from '@kenresoft-cms/contracts';
+import { publicMediaListItemSchema, publicMediaSchema } from '@kenresoft-cms/contracts';
+import type { PublicMedia, PublicMediaListItem } from '@kenresoft-cms/contracts';
 
 import { getDb } from '../../lib/db';
 import { createOpenApiApp } from '../../lib/openapi';
 import { publicCacheKey, publicMediaCacheControlHeader } from '../../lib/public-cache';
-import { getMediaById } from '../../repositories/media';
+import { getMediaFolderBySlug } from '../../repositories/media-folders';
+import { getMediaById, listMedia } from '../../repositories/media';
 import type { Bindings } from '../../lib/env';
 
 export const publicMediaRoute = createOpenApiApp<{ Bindings: Bindings }>();
@@ -29,6 +30,47 @@ publicMediaRoute.get('*', async (c, next) => {
     c.executionCtx.waitUntil(cache.put(cacheKey, c.res.clone()));
   }
 });
+
+// Lets a frontend developer explicitly fetch a named collection ("home-page-hero") instead of
+// accidentally selecting unrelated files from the flat library — mounted before the `/{id}`
+// route below so "folders" is never ambiguous with a media id. Only ever returns the same
+// public-safe metadata shape the single-item route below does, plus the id needed to build a
+// file URL via media.url({id}).
+publicMediaRoute.openapi(
+  createRoute({
+    method: 'get',
+    path: '/folders/{slug}',
+    tags: ['Public media'],
+    summary: "List a media folder's items by slug (public, unauthenticated)",
+    request: { params: z.object({ slug: z.string().min(1) }) },
+    responses: {
+      200: {
+        description: "The folder's media items.",
+        content: { 'application/json': { schema: z.array(publicMediaListItemSchema) } },
+      },
+      404: {
+        description: 'No media folder with that slug.',
+        content: { 'application/json': { schema: notFoundSchema } },
+      },
+    },
+  }),
+  async (c) => {
+    const db = getDb(c);
+    const folder = await getMediaFolderBySlug(db, c.req.valid('param').slug);
+    if (!folder) {
+      return c.json({ error: 'Media folder not found' }, 404);
+    }
+    const items = await listMedia(db, folder.id);
+    const response: PublicMediaListItem[] = items.map((row) => ({
+      id: row.id,
+      altText: row.altText,
+      contentType: row.contentType,
+      width: row.width,
+      height: row.height,
+    }));
+    return c.json(response, 200);
+  },
+);
 
 // The subset of Media metadata that's safe to expose publicly (docs on publicMediaSchema) —
 // closes a real gap for external consumers of the file route below: without this, there's no

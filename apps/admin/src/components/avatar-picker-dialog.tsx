@@ -13,7 +13,7 @@ import {
 
 export function AvatarPickerDialog({ onSelect }: { onSelect: (url: string) => void }) {
   const [open, setOpen] = useState(false);
-  const { data: mediaItems } = useMediaList(open);
+  const { data: mediaItems } = useMediaList({ enabled: open });
   const pickable = mediaItems?.filter((item) => item.width && item.height) ?? [];
 
   return (

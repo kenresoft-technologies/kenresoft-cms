@@ -49,6 +49,14 @@ export async function invalidatePublicMediaCache(id: string): Promise<void> {
   await cache.delete(publicCacheKey(`/api/v1/public/media/${id}/file`));
 }
 
+// A media folder's public listing (routes/public/media.ts's GET .../media/folders/:slug) is
+// invalidated on rename/delete and whenever media moves in or out of it — cheap since it's one
+// key per folder, unlike the media file route's own per-item, effectively-permanent cache.
+export async function invalidatePublicMediaFolderCache(slug: string): Promise<void> {
+  const cache = caches.default;
+  await cache.delete(publicCacheKey(`/api/v1/public/media/folders/${slug}`));
+}
+
 // Global variables are a single list response (no per-key sub-resource), so there's exactly
 // one cache key to invalidate on any create/update/delete.
 export async function invalidatePublicGlobalVariablesCache(): Promise<void> {

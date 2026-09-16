@@ -63,6 +63,11 @@ work, not a rename of this package (see Future work).
   serving shipped, closing the gap noted below in Known limitations' history) — everything an
   `<img>` needs beyond the src from `media.url()` above: a real `alt` and dimensions to reserve
   layout space before the file loads, instead of falling back to the entry's title.
+- `media.byFolder({ slug })` — every item in a named media folder (e.g. "home-page-hero"),
+  letting a frontend fetch a deliberately-curated collection explicitly instead of guessing at
+  ids from the flat library. Backed by `GET /api/v1/public/media/folders/:slug`, edge-cached and
+  invalidated the same way the rest of `lib/public-cache.ts` is. Returns an empty array for a
+  folder slug that doesn't exist — folders have no draft/published distinction to hide.
 - `forms.submit({ formSlug, data })` — submits a public form. Rate limited server-side
   (5/60s per client IP) and validated against that form's own field definitions — there's no
   client-side equivalent of those definitions to validate against here (no public

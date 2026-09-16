@@ -15,6 +15,7 @@ export interface UploadMediaInput {
   bytes: Uint8Array;
   filename: string;
   altText: string | null;
+  folderId?: string | null;
 }
 
 export type UploadMediaResult = { ok: true; media: Media } | { ok: false; error: string };
@@ -47,6 +48,7 @@ export async function uploadMedia(
     width: sniffed.width,
     height: sniffed.height,
     altText: input.altText,
+    folderId: input.folderId ?? null,
   });
 
   return { ok: true, media: row };

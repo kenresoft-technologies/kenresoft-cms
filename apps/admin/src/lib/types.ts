@@ -65,6 +65,7 @@ export type {
   LegacyMigrationReport,
   Media,
   MediaContentType,
+  MediaFolder,
   NavigationItem,
   NavigationSettingsData,
   Page,

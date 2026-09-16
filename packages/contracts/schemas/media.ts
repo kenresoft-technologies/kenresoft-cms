@@ -11,8 +11,42 @@ export const mediaSchema = z.object({
   width: z.number().int().nullable(),
   height: z.number().int().nullable(),
   altText: z.string().nullable(),
+  // null = unfiled/root — every media item that predates folders keeps working unmodified.
+  folderId: z.string().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
+});
+
+export const mediaFolderSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  slug: z.string(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+const folderSlugSchema = z
+  .string()
+  .min(1)
+  .max(100)
+  .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Slug must be lowercase letters, numbers, and hyphens only');
+
+export const createMediaFolderSchema = z.object({
+  name: z.string().min(1).max(200),
+  slug: folderSlugSchema,
+});
+
+export const updateMediaFolderSchema = z.object({
+  name: z.string().min(1).max(200).optional(),
+  slug: folderSlugSchema.optional(),
+});
+
+// Moving media between folders — a dedicated small request shape (a list of media ids plus the
+// target folder) rather than overloading a per-item PATCH, since "move N files at once" is the
+// Media Library's actual UI action.
+export const moveMediaSchema = z.object({
+  mediaIds: z.array(z.string().min(1)).min(1).max(200),
+  folderId: z.string().min(1).nullable(),
 });
 
 // No create-request schema — upload is multipart/form-data (a file plus an optional altText
@@ -34,5 +68,15 @@ export const publicMediaSchema = z.object({
   height: z.number().int().nullable(),
 });
 
+// Same shape as publicMediaSchema plus an id — needed for a folder listing, where a frontend
+// developer needs to build a file URL (media.url({id})) for each item, unlike the single-item
+// GET .../media/:id route where the caller already has the id.
+export const publicMediaListItemSchema = publicMediaSchema.extend({ id: z.string() });
+
 export type Media = z.infer<typeof mediaSchema>;
+export type PublicMediaListItem = z.infer<typeof publicMediaListItemSchema>;
 export type PublicMedia = z.infer<typeof publicMediaSchema>;
+export type MediaFolder = z.infer<typeof mediaFolderSchema>;
+export type CreateMediaFolderInput = z.infer<typeof createMediaFolderSchema>;
+export type UpdateMediaFolderInput = z.infer<typeof updateMediaFolderSchema>;
+export type MoveMediaInput = z.infer<typeof moveMediaSchema>;

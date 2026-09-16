@@ -10,6 +10,7 @@ import type {
   Page,
   PageListItem,
   PublicMedia,
+  PublicMediaListItem,
   ReusableBlock,
   RoutePatternEntry,
   SeoSettingsData,
@@ -22,7 +23,7 @@ export type { BlockInstance, ChildBlockInstance, Page, ReusableBlock };
 // (or anything else @kenresoft-cms/contracts pulls in) at runtime. They exist purely so this
 // client's return types stay in sync with the API's real response shapes instead of a
 // hand-maintained copy — see the "Types" note in docs/ASTRO.md.
-export type { Entry, FormSubmission, PublicMedia, RoutePatternEntry };
+export type { Entry, FormSubmission, PublicMedia, PublicMediaListItem, RoutePatternEntry };
 
 // Phase 1 of the schema-driven frontend work (docs/SITE_BUILDER.md) — a read-only field
 // renderer registry, independent of the request/response client below. Re-exported here so
@@ -380,6 +381,11 @@ export interface MediaUrlOptions {
   id: string;
 }
 
+export interface MediaFolderOptions {
+  /** A media folder's slug (e.g. "home-page-hero"), not its id or display name. */
+  slug: string;
+}
+
 export interface ResolvePageOptions {
   /** The Page's literal route, e.g. "/about" — not a `{slug}` pattern. */
   route: string;
@@ -458,6 +464,13 @@ export interface KenresoftClient {
      * layout space before the file loads). Returns null if no media exists with that id.
      */
     get(options: MediaUrlOptions): Promise<PublicMedia | null>;
+    /**
+     * Every item in a named media folder (e.g. "home-page-hero") — lets a frontend fetch a
+     * deliberately-curated collection instead of guessing at ids from the flat library. Returns
+     * an empty array for a folder slug that doesn't exist (folders have no draft/published
+     * distinction to hide, so this is just "no items", not a 404 worth throwing over).
+     */
+    byFolder(options: MediaFolderOptions): Promise<PublicMediaListItem[]>;
   };
   forms: {
     /**
@@ -732,6 +745,10 @@ export function createKenresoftClient(config: KenresoftClientConfig): KenresoftC
       },
       get({ id }) {
         return request<PublicMedia>(`/api/v1/public/media/${id}`);
+      },
+      async byFolder({ slug }) {
+        const items = await request<PublicMediaListItem[]>(`/api/v1/public/media/folders/${slug}`);
+        return items ?? [];
       },
     },
     forms: {
