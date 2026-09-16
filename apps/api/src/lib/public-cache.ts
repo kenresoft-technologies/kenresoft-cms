@@ -93,3 +93,25 @@ export async function invalidatePublicReusableBlockCache(id: string): Promise<vo
   const cache = caches.default;
   await cache.delete(publicCacheKey(`/api/v1/public/reusable-blocks/${id}`));
 }
+
+// UI Content: same two-key shape as invalidatePublicEntryCache (a list response plus one
+// per-item response), keyed by (type slug, item slug) rather than (content-type slug, entry
+// slug) — a structurally identical cache, deliberately not shared code, since the two are
+// genuinely separate domains that happen to have the same shape.
+export async function invalidatePublicUiContentCache(typeSlug: string, itemSlug: string): Promise<void> {
+  const cache = caches.default;
+  await Promise.all([
+    cache.delete(publicCacheKey(`/api/v1/public/ui-content/${typeSlug}`)),
+    cache.delete(publicCacheKey(`/api/v1/public/ui-content/${typeSlug}/${itemSlug}`)),
+  ]);
+}
+
+// A UI content type rename (changing its own slug) invalidates its list response under both
+// the old and new slug — every item URL under it changes too, but those are covered by each
+// item's own write path re-invalidating under its (possibly stale) type slug at the time of
+// that write; a type rename alone doesn't rewrite every item's cache key proactively, matching
+// this codebase's existing "invalidate what actually changed" scope rather than a full sweep.
+export async function invalidatePublicUiContentTypeCache(typeSlug: string): Promise<void> {
+  const cache = caches.default;
+  await cache.delete(publicCacheKey(`/api/v1/public/ui-content/${typeSlug}`));
+}

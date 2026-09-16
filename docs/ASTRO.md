@@ -68,6 +68,12 @@ work, not a rename of this package (see Future work).
   ids from the flat library. Backed by `GET /api/v1/public/media/folders/:slug`, edge-cached and
   invalidated the same way the rest of `lib/public-cache.ts` is. Returns an empty array for a
   folder slug that doesn't exist — folders have no draft/published distinction to hide.
+- `uiContent.list({ type })`/`uiContent.get({ type, slug })` — UI Content
+  (`docs/ARCHITECTURE.md`'s Changelog), small independently-managed structured objects (Hero,
+  Carousel, Promo Banner, …) distinct from Entries and Reusable Blocks. Backed by
+  `GET /api/v1/public/ui-content/:type` and `.../:type/:slug`; a disabled item 404s (`get()`
+  returns `null`) exactly like a nonexistent slug, the same convention `entries.get()` already
+  uses for drafts.
 - `forms.submit({ formSlug, data })` — submits a public form. Rate limited server-side
   (5/60s per client IP) and validated against that form's own field definitions — there's no
   client-side equivalent of those definitions to validate against here (no public
