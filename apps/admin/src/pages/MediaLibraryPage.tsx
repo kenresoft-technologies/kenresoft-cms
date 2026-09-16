@@ -1,12 +1,13 @@
 import { useMemo, useState, type FormEvent, type ReactNode } from 'react';
-import { Grid3x3, ImageOff, Images, List, RefreshCw, Trash2 } from 'lucide-react';
+import { FolderCog, Grid3x3, ImageOff, Images, List, RefreshCw, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { ColumnDef } from '@tanstack/react-table';
 
 import { ApiError } from '@/lib/api-client';
 import { useDeveloperMode } from '@/lib/developer-mode';
-import { useDeleteMedia, useMediaList, useUploadMedia, mediaFileUrl } from '@/lib/queries/media';
+import { useDeleteMedia, useMediaFolders, useMediaList, useMoveMedia, useUploadMedia, mediaFileUrl } from '@/lib/queries/media';
 import { MediaDeveloperPanel } from '@/components/developer-panel/media-developer-panel';
+import { ManageMediaFoldersDialog } from '@/components/manage-media-folders-dialog';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -39,7 +40,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatBytes } from '@/lib/format';
-import type { Media, MediaContentType } from '@/lib/types';
+import type { Media, MediaContentType, MediaFolder } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
 const MEDIA_TYPE_LABELS: Record<MediaContentType, string> = {
@@ -59,12 +60,14 @@ const MEDIA_TYPE_TONE: Record<MediaContentType, string> = {
 type TypeFilter = 'all' | MediaContentType;
 type ViewMode = 'grid' | 'list';
 
-function UploadMediaDialog() {
+function UploadMediaDialog({ defaultFolderId }: { defaultFolderId?: string | undefined }) {
   const [open, setOpen] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [altText, setAltText] = useState('');
+  const [folderId, setFolderId] = useState<string>(defaultFolderId ?? 'none');
   const [error, setError] = useState<string | null>(null);
   const uploadMedia = useUploadMedia();
+  const { data: folders } = useMediaFolders();
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -76,7 +79,11 @@ function UploadMediaDialog() {
     }
 
     try {
-      await uploadMedia.mutateAsync({ file, altText: altText || undefined });
+      await uploadMedia.mutateAsync({
+        file,
+        altText: altText || undefined,
+        folderId: folderId === 'none' ? undefined : folderId,
+      });
       toast.success('Media uploaded');
       setFile(null);
       setAltText('');
@@ -89,7 +96,7 @@ function UploadMediaDialog() {
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={(next) => { setOpen(next); if (next) setFolderId(defaultFolderId ?? 'none'); }}>
       <DialogTrigger asChild>
         <Button>Upload media</Button>
       </DialogTrigger>
@@ -118,6 +125,22 @@ function UploadMediaDialog() {
               value={altText}
               onChange={(event) => setAltText(event.target.value)}
             />
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label>Folder</Label>
+            <Select value={folderId} onValueChange={setFolderId}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Unfiled</SelectItem>
+                {(folders ?? []).map((folder) => (
+                  <SelectItem key={folder.id} value={folder.id}>
+                    {folder.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
           <DialogFooter>
@@ -253,12 +276,15 @@ function MediaList({
   items,
   developerMode,
   onPreview,
+  folders,
 }: {
   items: Media[];
   developerMode: boolean;
   onPreview: (item: Media) => void;
+  folders: MediaFolder[];
 }) {
   const deleteMedia = useDeleteMedia();
+  const moveMedia = useMoveMedia();
 
   const columns = useMemo<ColumnDef<Media>[]>(
     () => [
@@ -339,20 +365,45 @@ function MediaList({
       searchPlaceholder="Search media…"
       enableRowSelection
       bulkActions={(selected, clearSelection) => (
-        <Button
-          variant="destructive"
-          size="sm"
-          onClick={async () => {
-            const results = await Promise.allSettled(selected.map((item) => deleteMedia.mutateAsync(item.id)));
-            const failed = results.filter((result) => result.status === 'rejected').length;
-            if (failed === 0) toast.success(`${selected.length} files deleted`);
-            else toast.error(`${failed} of ${selected.length} files failed to delete`);
-            clearSelection();
-          }}
-        >
-          <Trash2 />
-          Delete
-        </Button>
+        <div className="flex gap-2">
+          <Select
+            onValueChange={(value) => {
+              void moveMedia
+                .mutateAsync({ mediaIds: selected.map((item) => item.id), folderId: value === 'none' ? null : value })
+                .then(() => {
+                  toast.success(`Moved ${selected.length} files`);
+                  clearSelection();
+                })
+                .catch(() => toast.error('Failed to move files'));
+            }}
+          >
+            <SelectTrigger size="sm" className="w-40">
+              <SelectValue placeholder="Move to folder…" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">Unfiled</SelectItem>
+              {folders.map((folder) => (
+                <SelectItem key={folder.id} value={folder.id}>
+                  {folder.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={async () => {
+              const results = await Promise.allSettled(selected.map((item) => deleteMedia.mutateAsync(item.id)));
+              const failed = results.filter((result) => result.status === 'rejected').length;
+              if (failed === 0) toast.success(`${selected.length} files deleted`);
+              else toast.error(`${failed} of ${selected.length} files failed to delete`);
+              clearSelection();
+            }}
+          >
+            <Trash2 />
+            Delete
+          </Button>
+        </div>
       )}
     />
   );
@@ -388,11 +439,16 @@ function MediaPreviewDialog({ item, onOpenChange }: { item: Media | null; onOpen
 
 export function MediaLibraryPage() {
   const developerMode = useDeveloperMode();
-  const { data: mediaItems, isPending, error, refetch } = useMediaList();
+  const [folderFilter, setFolderFilter] = useState<string>('all');
+  const { data: folders } = useMediaFolders();
+  const { data: mediaItems, isPending, error, refetch } = useMediaList({
+    folderId: folderFilter === 'all' ? undefined : folderFilter,
+  });
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [previewItem, setPreviewItem] = useState<Media | null>(null);
+  const [managingFolders, setManagingFolders] = useState(false);
 
   const typeFilteredItems = useMemo(
     () => (mediaItems ?? []).filter((item) => typeFilter === 'all' || item.contentType === typeFilter),
@@ -411,7 +467,15 @@ export function MediaLibraryPage() {
       <PageHeader
         title="Media"
         description="Images available to use across your content."
-        actions={<UploadMediaDialog />}
+        actions={
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setManagingFolders(true)}>
+              <FolderCog />
+              Folders
+            </Button>
+            <UploadMediaDialog defaultFolderId={folderFilter === 'all' ? undefined : folderFilter} />
+          </div>
+        }
       />
 
       {error ? <p className="text-destructive">{error.message}</p> : null}
@@ -456,6 +520,20 @@ export function MediaLibraryPage() {
                 ))}
               </SelectContent>
             </Select>
+            <Select value={folderFilter} onValueChange={setFolderFilter}>
+              <SelectTrigger size="sm" className="w-40">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All folders</SelectItem>
+                <SelectItem value="unfiled">Unfiled</SelectItem>
+                {(folders ?? []).map((folder) => (
+                  <SelectItem key={folder.id} value={folder.id}>
+                    {folder.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Button variant="ghost" size="icon-sm" aria-label="Refresh" onClick={() => void refetch()}>
               <RefreshCw />
             </Button>
@@ -488,12 +566,13 @@ export function MediaLibraryPage() {
               <p className="py-8 text-center text-sm text-muted-foreground">No media matches your search.</p>
             )
           ) : (
-            <MediaList items={typeFilteredItems} developerMode={developerMode} onPreview={setPreviewItem} />
+            <MediaList items={typeFilteredItems} developerMode={developerMode} onPreview={setPreviewItem} folders={folders ?? []} />
           )}
         </div>
       ) : null}
 
       <MediaPreviewDialog item={previewItem} onOpenChange={(open) => !open && setPreviewItem(null)} />
+      <ManageMediaFoldersDialog open={managingFolders} onOpenChange={setManagingFolders} />
     </div>
   );
 }

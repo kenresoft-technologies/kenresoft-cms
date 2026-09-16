@@ -11,6 +11,7 @@ import type { Webhook, WebhookDelivery, WebhookWithSecret } from '@kenresoft-cms
 import { z } from 'zod';
 
 import { getDb } from '../../lib/db';
+import { checkWebhookUrl } from '../../lib/ssrf-guard';
 import { generateWebhookSecret } from '../../lib/webhooks';
 import { createOpenApiApp } from '../../lib/openapi';
 import { requireRole } from '../../middleware/require-role';
@@ -43,6 +44,7 @@ function toWebhook(row: DbWebhook): Webhook {
     events: row.events,
     contentTypeId: row.contentTypeId,
     enabled: row.enabled,
+    allowPrivateDestinations: row.allowPrivateDestinations,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -114,11 +116,17 @@ webhooksRoute.openapi(
       return c.json({ error: 'No content type with that id' }, 400);
     }
 
+    const urlCheck = checkWebhookUrl(input.url, input.allowPrivateDestinations ?? false);
+    if (!urlCheck.ok) {
+      return c.json({ error: urlCheck.error! }, 400);
+    }
+
     const created = await createWebhook(db, {
       url: input.url,
       events: input.events,
       contentTypeId: input.contentTypeId ?? null,
       enabled: input.enabled ?? true,
+      allowPrivateDestinations: input.allowPrivateDestinations ?? false,
       secret: generateWebhookSecret(),
     });
     return c.json(toWebhookWithSecret(created), 201);
@@ -162,6 +170,13 @@ webhooksRoute.openapi(
     }
     if (input.contentTypeId && !(await getContentTypeById(db, input.contentTypeId))) {
       return c.json({ error: 'No content type with that id' }, 400);
+    }
+    if (input.url !== undefined) {
+      const allowPrivate = input.allowPrivateDestinations ?? existing.allowPrivateDestinations;
+      const urlCheck = checkWebhookUrl(input.url, allowPrivate);
+      if (!urlCheck.ok) {
+        return c.json({ error: urlCheck.error! }, 400);
+      }
     }
 
     const updated = await updateWebhook(db, id, input);

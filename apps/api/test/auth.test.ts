@@ -67,15 +67,18 @@ describe('better-auth wiring (real D1)', () => {
     clearTestEmails();
   });
 
-  it('bootstraps the first signup as owner', async () => {
+  // Ordinary public signup can never claim Owner, first or not — that's now exclusively the
+  // job of the one-time installation-bootstrap flow (routes/system/bootstrap-owner.ts,
+  // installation-bootstrap.test.ts, docs/ARCHITECTURE.md §10's Changelog).
+  it('defaults the first signup to editor, not owner', async () => {
     const response = await signUp('first@example.test');
     expect(response.status).toBe(200);
 
     const user = await db.query.user.findFirst();
-    expect(user).toMatchObject({ email: 'first@example.test', role: 'owner' });
+    expect(user).toMatchObject({ email: 'first@example.test', role: 'editor' });
   });
 
-  it('defaults subsequent signups to editor', async () => {
+  it('defaults subsequent signups to editor too', async () => {
     await signUp('first@example.test');
     const response = await signUp('editor@example.test');
     expect(response.status).toBe(200);
@@ -97,13 +100,10 @@ describe('better-auth wiring (real D1)', () => {
     expect(attacker?.role).toBe('editor');
   });
 
-  it('emailVerified is true for the bootstrapped owner — same signup, no special hook value', async () => {
-    // Not a bootstrap exception: nothing in databaseHooks.user.create.before sets
-    // emailVerified, so this stays false at signup exactly like any other new account and is
-    // only ever flipped true by actually consuming a real verification token, asserted next.
-    await signUp('bootstrap@example.test');
-    const user = await db.query.user.findFirst({ where: (user, { eq }) => eq(user.email, 'bootstrap@example.test') });
-    expect(user).toMatchObject({ role: 'owner', emailVerified: false });
+  it('emailVerified is false at signup for an ordinary account — only ever flipped by consuming a real verification token', async () => {
+    await signUp('plain-signup@example.test');
+    const user = await db.query.user.findFirst({ where: (user, { eq }) => eq(user.email, 'plain-signup@example.test') });
+    expect(user).toMatchObject({ role: 'editor', emailVerified: false });
   });
 
   it('signs in and receives a session cookie once verified', async () => {

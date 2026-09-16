@@ -1,4 +1,4 @@
-import { SELF } from 'cloudflare:test';
+import { SELF, env } from 'cloudflare:test';
 
 import { getTestEmails } from '../../src/lib/email';
 
@@ -41,18 +41,27 @@ export function extractVerificationToken(email: string): string {
 }
 
 // requireEmailVerification (apps/api/src/lib/auth-options.ts) means sign-up alone no longer
-// creates a session for anyone, including the very first (owner) signup — no bootstrap
-// exception, by design (docs/ARCHITECTURE.md's Changelog). Every test file across this suite
-// that previously extracted a session cookie straight off the sign-up response now needs one
-// extra real step first: consume the verification email's own token, then sign in for real.
+// creates a session for anyone now (bootstrap or not — see below). Every test file across this
+// suite that previously extracted a session cookie straight off the sign-up response now needs
+// one extra real step first: consume the verification email's own token, then sign in for real.
 // This is the one shared implementation every file's local authedCookie()/signUp()-style
 // helper delegates to, instead of 30+ files reimplementing the same three-request sequence.
+//
+// `promoteFirstUserToOwner` (default true) preserves this helper's long-standing behavior for
+// every existing caller — the first account created in a given test's isolated D1 ends up an
+// Owner, so the ~40+ test files that need *some* privileged session don't each need their own
+// bootstrap-token dance — but it does so as a direct, test-only D1 write, never through the real
+// app code. The real app (apps/api/src/lib/auth.ts) no longer auto-grants Owner to a bare first
+// signup at all (see routes/system/bootstrap-owner.ts and installation-bootstrap.test.ts for the
+// real bootstrap flow this replaced) — this helper's promotion is a testing convenience for
+// getting a privileged fixture quickly, not a claim that production behaves this way.
 export async function signUpVerifiedAndGetCookie(
   email: string,
-  options: { password?: string; name?: string } = {},
+  options: { password?: string; name?: string; promoteFirstUserToOwner?: boolean } = {},
 ): Promise<string> {
   const password = options.password ?? 'correct horse battery staple';
   const name = options.name ?? 'Test User';
+  const promoteFirstUserToOwner = options.promoteFirstUserToOwner ?? true;
 
   const signUpResponse = await SELF.fetch('https://example.com/api/v1/auth/sign-up/email', {
     method: 'POST',
@@ -67,6 +76,13 @@ export async function signUpVerifiedAndGetCookie(
   const verifyResponse = await SELF.fetch(`https://example.com/api/v1/auth/verify-email?token=${encodeURIComponent(token)}`);
   if (verifyResponse.status !== 200) {
     throw new Error(`verification failed for ${email}: ${verifyResponse.status}`);
+  }
+
+  if (promoteFirstUserToOwner) {
+    const { results } = await env.DB.prepare('SELECT COUNT(*) as count FROM user').all<{ count: number }>();
+    if ((results[0]?.count ?? 0) === 1) {
+      await env.DB.prepare('UPDATE user SET role = ? WHERE email = ?').bind('owner', email).run();
+    }
   }
 
   const signInResponse = await SELF.fetch('https://example.com/api/v1/auth/sign-in/email', {

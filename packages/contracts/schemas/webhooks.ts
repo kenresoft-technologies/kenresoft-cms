@@ -13,6 +13,11 @@ export const webhookSchema = z.object({
   // null = fires for every content type; a real id scopes it to just that one.
   contentTypeId: z.string().nullable(),
   enabled: z.boolean(),
+  // Explicit per-webhook opt-in to deliver to a localhost/private-network/link-local/metadata
+  // destination (apps/api/src/lib/ssrf-guard.ts) — false unless an admin deliberately turns it
+  // on for a genuinely internal target (a self-hosted automation tool on the same network,
+  // localhost during testing).
+  allowPrivateDestinations: z.boolean(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -22,14 +27,17 @@ export const webhookWithSecretSchema = webhookSchema.extend({
 });
 
 export const createWebhookSchema = z.object({
-  // No hostname constraint beyond http(s) — a real deployment's webhook target could just as
-  // legitimately be an internal hostname (localhost during testing, a docker-network alias, an
-  // internal VPN name) as a public domain, none of which match a "looks like a real domain"
-  // regex.
+  // No hostname-shape constraint beyond http(s) here — a real deployment's webhook target could
+  // legitimately be an internal hostname as well as a public domain. Whether a given hostname/
+  // IP is actually reachable is a server-side check (checkWebhookUrl, apps/api/src/lib/
+  // ssrf-guard.ts), not something this shape-only schema can decide — it needs the sibling
+  // allowPrivateDestinations field, and a DNS-blind first pass over an IP literal is still worth
+  // doing without a network round trip.
   url: z.url({ protocol: /^https?$/ }),
   events: z.array(z.enum(WEBHOOK_EVENTS)).min(1, 'Select at least one event'),
   contentTypeId: z.string().nullable().optional(),
   enabled: z.boolean().optional(),
+  allowPrivateDestinations: z.boolean().optional(),
 });
 
 export const updateWebhookSchema = z.object({
@@ -37,6 +45,7 @@ export const updateWebhookSchema = z.object({
   events: z.array(z.enum(WEBHOOK_EVENTS)).min(1, 'Select at least one event').optional(),
   contentTypeId: z.string().nullable().optional(),
   enabled: z.boolean().optional(),
+  allowPrivateDestinations: z.boolean().optional(),
 });
 
 export const webhookDeliverySchema = z.object({

@@ -7,6 +7,96 @@ Status: Proposed / Ready for implementation
 
 ## Changelog
 
+**v0.23 (2026-09-16)** — a security-hardening pass across six areas found in a repository audit,
+plus two focused feature additions. **Secure first-owner bootstrap (P0)**: removed the
+`databaseHooks.user.create.before` hook that granted "owner" to a bare first signup
+(`apps/api/src/lib/auth.ts`) — a fresh installation now starts uninitialized, and the first Owner
+is created only through a one-time bootstrap flow (`POST /api/v1/system/bootstrap/request` then
+`.../bootstrap/complete`, `apps/api/src/routes/system/bootstrap-owner.ts`): a randomly generated,
+SHA-256-hashed, 30-minute token, logged only to this deployment's own server output (never
+returned over HTTP), single-use via a conditional-update-plus-check-returned-rows consumption.
+`examples/astro-site/scripts/seed.mjs` no longer defaults to `owner@example.com`/
+`correct-horse-battery-staple` — it now requires `SEED_OWNER_EMAIL`/`SEED_OWNER_PASSWORD`/
+`SEED_BOOTSTRAP_TOKEN` explicitly and refuses to run otherwise. **Admin CSRF/Origin protection**:
+a new `requireTrustedOrigin()` middleware (`apps/api/src/middleware/require-trusted-origin.ts`,
+mirroring `packages/plugin-ecommerce`'s existing `requireTrustedOriginForMutations`) is applied
+globally to every `/api/v1/admin/*` mutation — a present-but-not-allow-listed `Origin` is
+rejected (403); a missing `Origin` (non-browser clients) passes through; GET/HEAD and every
+non-admin route are unaffected. **Forms/Submissions RBAC**: a new `requireFormsAccess()`
+middleware (`apps/api/src/middleware/require-forms-access.ts`) applied to every route in
+`routes/admin/forms.ts` and `routes/admin/submissions.ts` — Owner/Admin/Editor get full
+read+editorial access, Viewer keeps read-only, and Author now gets **no** Forms/Submissions
+access at all (not even read), matching the documented model below rather than the Entries-style
+role floor those routes previously (and incorrectly) inherited by having no gate at all.
+**Submission reply stored XSS**: replies' `bodyHtml` is now sanitized server-side before it's
+ever sent or persisted (`apps/api/src/lib/html-sanitizer.ts`) — a small dependency-free,
+quote-aware tokenizer (a `sanitize-html`/`htmlparser2` first attempt failed under
+`@cloudflare/vitest-pool-workers`' own module loader) enforcing a strict tag/attribute allow-list
+and rejecting `javascript:`/`data:`/`vbscript:` (and any other non-http(s)/mailto) hrefs. **Site
+Builder URL safety**: a new shared `safeUrlSchema()` (`packages/contracts/schemas/safe-url.ts`)
+applied to every block/link URL field found in the audit — Hero's `ctaUrl`, CTA's `buttonUrl`,
+and Structured Settings' social/navigation/footer link URLs — allowing relative paths and
+http(s)/mailto while rejecting `javascript:`/`data:`/`vbscript:`/protocol-relative URLs at the
+contract boundary, not only in the Admin UI. **Webhook egress hardening (SSRF)**: a new
+`apps/api/src/lib/ssrf-guard.ts` blocks loopback/RFC1918/link-local (including the
+169.254.169.254 cloud metadata address)/multicast/unspecified/reserved destinations by default,
+both at webhook create/update time and again immediately before every dispatch attempt (defense
+in depth against a destination whose meaning changed since creation); a new per-webhook
+`allowPrivateDestinations` column (default `false`, additive) is the explicit opt-in for a
+deployment that deliberately needs an internal target. `lib/webhooks.ts`'s delivery path also
+gained a 10s timeout (`AbortController`), manual redirect handling (`redirect: 'manual'`, each
+hop re-validated against the same SSRF guard, capped at 3 hops), and a bounded response-body
+read (1KB) so a subscriber can't hold the Worker invocation open indefinitely.
+
+Two focused feature additions, reviewed against the existing media/entries/reusable-blocks/
+contracts/API/admin/Astro architecture before implementation. **Media folders**: a new
+`media_folders` table (flat, non-nested by design) and a nullable `media.folderId`
+(`onDelete: 'set null'` — deleting a folder never deletes or orphans its files, they simply
+become unfiled again; every pre-existing media row keeps working unmodified with `folderId:
+null`). Admin CRUD (`/api/v1/admin/media-folders`) plus a move-multiple-items endpoint
+(`POST /api/v1/admin/media/move`); the Media Library and Media Picker both gained a folder
+filter, and the Library gained a folder-management dialog and bulk move. A new
+`GET /api/v1/public/media/folders/{slug}` lets a frontend fetch a named collection (e.g.
+"home-page-hero") explicitly rather than guessing at ids from the flat library, edge-cached and
+invalidated the same way `public-cache.ts`'s other domains are; `@kenresoft-cms/astro` gained
+`media.byFolder({slug})`. **UI Content**: a new, independent content model sitting between
+Entries (editorial, content-type-modeled) and Reusable Blocks (global, live-referenced) for
+small structured UI objects (Hero, Carousel, Promo Banner, Feature Grid, Testimonials, …) —
+deliberately neither: not a `content_types`/`entries` row (would surface these in the Entries UI
+and the generic public content route) and not a `reusable_blocks` row (no schema/independent
+identity). Two new tables, `ui_content_types` (a type's own field shape stored inline as JSON,
+reusing content-types' exact `name/label/fieldType/required/config` vocabulary — deliberately not
+a normalized child table, since these types are expected to be small and static) and
+`ui_content_items` (`data` validated against its type's fields via a new, dynamically-built-per-
+type validator, `apps/api/src/lib/ui-content-validation.ts`, the same
+build-a-schema-from-field-definitions approach forms' own submission validation already uses).
+Admin CRUD under `/api/v1/admin/ui-content/types` (and nested `/{typeId}/items`), gated
+admin/editor like content-type field management; public read via
+`GET /api/v1/public/ui-content/{type}` and `.../{type}/{slug}`, a disabled item 404ing exactly
+like a nonexistent slug (Entries' own draft-is-nonexistent convention, applied to `enabled`
+here). A new `apps/admin` "UI content" section (between Reusable Blocks and Global Variables in
+the sidebar) reuses the existing per-field-type `FieldInput` component to render each field —
+confirmed by inspection that it only ever reads `name/label/fieldType/required/config` off the
+field it's given, so a lightweight adapter object (no id/contentTypeId/sortOrder/presentation/
+timestamps) drives it directly rather than duplicating ~250 lines of field-rendering logic.
+`@kenresoft-cms/astro` gained `uiContent.list({type})`/`uiContent.get({type, slug})`.
+
+One real bug found and fixed during implementation, not hypothetical: drizzle-kit's generated
+migration for the new `media.folder_id` column (`ALTER TABLE media ADD folder_id text REFERENCES
+media_folders(id)`) silently omitted the `ON DELETE SET NULL` clause the schema itself declares
+— a real limitation of `ALTER TABLE ADD COLUMN` migration generation, not a hand-authoring
+mistake — confirmed by a real D1 test (deleting a folder with media in it 500'd on the FK
+constraint instead of setting `folder_id` to null). Fixed by hand-editing the generated
+migration SQL to add the clause explicitly before it was ever applied anywhere.
+
+Verified: `pnpm typecheck`/`pnpm lint` clean workspace-wide; new regression tests for every one
+of the six security fixes (`installation-bootstrap.test.ts`, `admin-origin-check.test.ts`,
+`forms-rbac.test.ts`, the XSS case added to `forms-routes.test.ts`, `site-builder-url-
+safety.test.ts`, `webhook-ssrf.test.ts`) and both feature additions (`media-folders-
+routes.test.ts`, `ui-content-routes.test.ts`), plus the pre-existing suite re-run to confirm no
+regressions — see this repo's own PR/commit history for the exact pass/fail counts at the time
+of this change, since a live count would go stale here immediately.
+
 **v0.22 (2026-09-14)** — a production hardening pass over the schema-driven frontend/
 site-builder initiative (Phase 10's hardening half, `docs/SITE_BUILDER.md` §25; the
 "patterns/presets" half and Phase 9's plugin-contributed block types both stay deliberately
@@ -1068,8 +1158,13 @@ every check the ones below it satisfy (`ROLE_RANK`/`roleAtLeast()` in
   actions: no Admin can demote, delete, or disable the Owner, and role/ownership changes to or
   from Owner only ever happen through the dedicated ownership-transfer flow, never the general
   role-change route. Represents ownership of *this specific installation* — not a Kenresoft or
-  any other external account (§11 restates why no such account exists). The first person to
-  sign up on a deployment becomes its Owner.
+  any other external account (§11 restates why no such account exists). A fresh installation
+  starts with no Owner and no users at all; ordinary public signup can never claim the role.
+  The Owner is created exactly once through a one-time installation bootstrap
+  (`POST /api/v1/system/bootstrap/request` then `.../bootstrap/complete`, see the Changelog's
+  "Secure first-owner bootstrap" entry) — a randomly generated, hashed, 30-minute token that's
+  logged only to this deployment's own server output, never returned over HTTP or hardcoded
+  anywhere.
 - **Admin** — everything: structure (content types, forms, their fields), users and roles
   (except touching the Owner), settings, cache purge, plus everything Editor and Author can do.
 - **Editor** — any entry (not just their own), form submission triage, media, and

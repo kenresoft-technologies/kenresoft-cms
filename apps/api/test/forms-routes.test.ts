@@ -597,6 +597,59 @@ describe('forms routes (real D1)', () => {
       expect(response.status).toBe(403);
     });
 
+    it('sanitizes a stored-XSS reply body before sending or persisting it', async () => {
+      const cookie = await authedCookie('reply-xss-admin@example.test');
+      const { form, submission } = await createSubmission(cookie);
+
+      const malicious =
+        '<p>Hello <script>alert(1)</script><img src=x onerror="alert(2)">' +
+        '<a href="javascript:alert(3)" onclick="alert(4)">click</a>' +
+        '<a href="data:text/html,evil">data link</a>' +
+        '<a href="vbscript:msgbox(5)">vbscript link</a>' +
+        '<a href="https://example.com" target="_blank">safe link</a></p>';
+
+      const sendRes = await SELF.fetch(
+        `https://example.com/api/v1/admin/forms/${form.id}/submissions/${submission.id}/replies`,
+        {
+          method: 'POST',
+          headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ to: 'jane@example.com', subject: 'Re: XSS', bodyHtml: malicious }),
+        },
+      );
+      expect(sendRes.status).toBe(201);
+      const created = await sendRes.json<{ bodyHtml: string }>();
+
+      // No script/img/event-handler survives at all.
+      expect(created.bodyHtml).not.toContain('<script');
+      expect(created.bodyHtml).not.toContain('<img');
+      expect(created.bodyHtml).not.toContain('onerror');
+      expect(created.bodyHtml).not.toContain('onclick');
+      // The script tag itself is gone — its former text content survives only as inert,
+      // non-executable text (not wrapped in any tag that could run it).
+      expect(created.bodyHtml).not.toContain('<script');
+      expect(created.bodyHtml).toContain('alert(1)');
+      // Dangerous-protocol links are stripped of their href entirely, never merely re-quoted.
+      expect(created.bodyHtml).not.toContain('javascript:');
+      expect(created.bodyHtml).not.toContain('data:text/html');
+      expect(created.bodyHtml).not.toContain('vbscript:');
+      // A safe http(s) link with target="_blank" is preserved, with a forced safe rel.
+      expect(created.bodyHtml).toContain('href="https://example.com"');
+      expect(created.bodyHtml).toContain('rel="noopener noreferrer"');
+
+      // The email actually sent used the same sanitized body, not the raw attacker input.
+      const sent = getTestEmails().find((m) => m.subject === 'Re: XSS');
+      expect(sent?.html).toBe(created.bodyHtml);
+      expect(sent?.html).not.toContain('<script');
+
+      // What's persisted (and later re-served through the list endpoint) is sanitized too.
+      const listRes = await SELF.fetch(
+        `https://example.com/api/v1/admin/forms/${form.id}/submissions/${submission.id}/replies`,
+        { headers: { Cookie: cookie } },
+      );
+      const replies = await listRes.json<{ bodyHtml: string }[]>();
+      expect(replies[0]!.bodyHtml).toBe(created.bodyHtml);
+    });
+
     // The reply route 400s when isEmailProviderConfigured(c.env) is false, but a real
     // per-request env override isn't practical through SELF.fetch (it always runs against the
     // real wrangler.test.toml-bound env, where EMAIL_PROVIDER=test is always "configured" —

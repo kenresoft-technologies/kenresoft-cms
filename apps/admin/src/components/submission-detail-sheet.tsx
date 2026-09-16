@@ -37,7 +37,7 @@ export function SubmissionDetailSheet<T extends FormSubmission | FormSubmissionW
 
   return (
     <Sheet open={submission !== null} onOpenChange={onOpenChange}>
-      <SheetContent className="flex w-full flex-col gap-0 sm:max-w-xl">
+      <SheetContent className="flex w-full flex-col gap-0 sm:max-w-2xl lg:max-w-3xl">
         {submission ? (
           <>
             <SheetHeader className="flex-row items-start justify-between gap-4 space-y-0 pr-10">
@@ -65,9 +65,9 @@ export function SubmissionDetailSheet<T extends FormSubmission | FormSubmissionW
                 </div>
               ) : null}
 
-              <div className="flex flex-col gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 {Object.entries(submission.data).map(([key, value]) => (
-                  <div key={key} className="flex flex-col gap-1">
+                  <div key={key} className="flex min-w-0 flex-col gap-1">
                     <span className="text-xs font-medium text-muted-foreground">{fieldLabels.get(key) ?? key}</span>
                     <SubmissionValue formId={formId} submissionId={submission.id} fieldName={key} value={value} />
                   </div>

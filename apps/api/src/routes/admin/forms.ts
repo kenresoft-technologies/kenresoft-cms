@@ -26,8 +26,10 @@ import { z } from 'zod';
 import { recordAudit } from '../../lib/audit';
 import { getDb } from '../../lib/db';
 import { getEmailSender, isEmailProviderConfigured } from '../../lib/email';
+import { sanitizeReplyHtml } from '../../lib/html-sanitizer';
 import { htmlToPlainText } from '../../lib/html-to-text';
 import { createOpenApiApp } from '../../lib/openapi';
+import { requireFormsAccess } from '../../middleware/require-forms-access';
 import { requireRole } from '../../middleware/require-role';
 import {
   createFormField,
@@ -57,6 +59,12 @@ import type {
 } from '@kenresoft-cms/database';
 
 export const formsRoute = createOpenApiApp<{ Bindings: Bindings; Variables: AuthedVariables }>();
+
+// Applies to every route in this file, including reads — see requireFormsAccess's own comment
+// for why Forms/Submissions carve out a stricter boundary than Entries' role floor (Author gets
+// no access at all here, not even read). Individual routes below still layer their own stricter
+// requireRole(...) for admin-only writes (form/field structural changes) on top of this.
+formsRoute.use('*', requireFormsAccess());
 
 const notFoundSchema = z.object({ error: z.string() });
 const idParamSchema = z.object({ id: z.string().min(1) });
@@ -601,8 +609,16 @@ formsRoute.openapi(
       );
     }
 
-    const { to, subject, bodyHtml } = c.req.valid('json');
+    const { to, subject, bodyHtml: rawBodyHtml } = c.req.valid('json');
     const author = c.get('user');
+
+    // Sanitized BEFORE it's ever sent or persisted — the Admin Tiptap editor is not the only
+    // path that can reach this endpoint, and the persisted value is later rendered with
+    // dangerouslySetInnerHTML for every role with Forms/Submissions access. A strict allow-list
+    // (apps/api/src/lib/html-sanitizer.ts) strips anything outside a small set of formatting
+    // tags and rejects javascript:/data:/vbscript: (and any other non-http(s)/mailto) URLs on
+    // links, regardless of what the client sent.
+    const bodyHtml = sanitizeReplyHtml(rawBodyHtml);
 
     try {
       await getEmailSender(c.env).send({

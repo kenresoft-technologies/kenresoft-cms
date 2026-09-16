@@ -10,6 +10,7 @@ import {
   LayoutList,
   LayoutTemplate,
   LogOut,
+  PanelsTopLeft,
   Puzzle,
   ScrollText,
   Search,
@@ -63,6 +64,7 @@ const contentItems = [
   { to: '/pages', label: 'Pages', end: false, icon: LayoutTemplate },
   { to: '/templates', label: 'Templates', end: false, icon: Layers },
   { to: '/reusable-blocks', label: 'Reusable blocks', end: false, icon: Blocks },
+  { to: '/ui-content', label: 'UI content', end: false, icon: PanelsTopLeft },
   { to: '/global-variables', label: 'Global variables', end: false, icon: Variable },
 ];
 
