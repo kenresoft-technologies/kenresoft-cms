@@ -85,6 +85,17 @@ landed on `develop`.
   independently published — pull this repo's changes to pick it up) gained a matching
   `entries.preview()` method, and `examples/astro-site`'s blog page shows how to wire it up.
 
+- Forms now support **email notifications on submission**: a form gains an optional
+  `notificationEmails` list (set on it via Forms → a form → Edit form) — leave it blank for no
+  change in behavior, or add one or more addresses to get emailed (subject, field labels/values,
+  and a link into the admin) every time that form is submitted. Reuses whatever `EMAIL_PROVIDER`
+  a deployment already has configured (Resend, Cloudflare, or none) — no new email setup needed.
+  Requires the new database migration (`0040_dazzling_union_jack.sql`) via `pnpm run update`.
+- Submissions tables (per-form and the unified "All submissions" view) gained an attachments
+  indicator (a paperclip + count, hover for filenames) so a form with file uploads — a résumé on
+  a Job Application form, for example — is scannable without opening every row, and a "Reply by
+  email" quick action on any submission with a recognizable sender email.
+
 ### Changed
 
 - **`examples/astro-site` is no longer presented (or wired up) as something you deploy.** It was

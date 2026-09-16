@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { ListPlus, Pencil, Plus, Trash2 } from 'lucide-react';
+import { ListPlus, Mail, Pencil, Plus, Trash2 } from 'lucide-react';
 import { Link, useParams } from 'react-router';
 import { toast } from 'sonner';
 
@@ -33,6 +33,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Dialog,
   DialogContent,
@@ -177,7 +178,17 @@ function FormFieldForm({
   );
 }
 
-function EditFormDialog({ formId, name, slug }: { formId: string; name: string; slug: string }) {
+function EditFormDialog({
+  formId,
+  name,
+  slug,
+  notificationEmails,
+}: {
+  formId: string;
+  name: string;
+  slug: string;
+  notificationEmails: string[] | null;
+}) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -196,33 +207,58 @@ function EditFormDialog({ formId, name, slug }: { formId: string; name: string; 
             slug will need updating.
           </DialogDescription>
         </DialogHeader>
-        {open ? <EditFormForm formId={formId} name={name} slug={slug} onDone={() => setOpen(false)} /> : null}
+        {open ? (
+          <EditFormForm
+            formId={formId}
+            name={name}
+            slug={slug}
+            notificationEmails={notificationEmails}
+            onDone={() => setOpen(false)}
+          />
+        ) : null}
       </DialogContent>
     </Dialog>
   );
+}
+
+// Parses a freeform, comma/newline-separated textarea into the array notificationEmails
+// actually expects — deliberately not a dedicated tag-input widget (no such component exists
+// elsewhere in this app yet, and a handful of email addresses per form doesn't warrant one).
+// A syntactically invalid entry is caught by the server's own z.string().email() validation on
+// save (surfaced via the existing ApiError message), not duplicated here.
+function parseEmailList(raw: string): string[] {
+  return [...new Set(raw.split(/[,\n]/).map((entry) => entry.trim()).filter(Boolean))];
 }
 
 function EditFormForm({
   formId,
   name,
   slug,
+  notificationEmails,
   onDone,
 }: {
   formId: string;
   name: string;
   slug: string;
+  notificationEmails: string[] | null;
   onDone: () => void;
 }) {
   const [nameValue, setNameValue] = useState(name);
   const [slugValue, setSlugValue] = useState(slug);
+  const [notificationEmailsValue, setNotificationEmailsValue] = useState((notificationEmails ?? []).join(', '));
   const [error, setError] = useState<string | null>(null);
   const updateForm = useUpdateForm(formId);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
+    const parsedEmails = parseEmailList(notificationEmailsValue);
     try {
-      await updateForm.mutateAsync({ name: nameValue, slug: slugValue });
+      await updateForm.mutateAsync({
+        name: nameValue,
+        slug: slugValue,
+        notificationEmails: parsedEmails.length > 0 ? parsedEmails : null,
+      });
       toast.success('Form updated');
       onDone();
     } catch (err) {
@@ -241,6 +277,20 @@ function EditFormForm({
       <div className="flex flex-col gap-2">
         <Label htmlFor="form-edit-slug">Slug</Label>
         <Input id="form-edit-slug" required value={slugValue} onChange={(e) => setSlugValue(e.target.value)} />
+      </div>
+      <div className="flex flex-col gap-2">
+        <Label htmlFor="form-edit-notifications">Notification emails</Label>
+        <Textarea
+          id="form-edit-notifications"
+          rows={2}
+          placeholder="hr@example.com, ops@example.com"
+          value={notificationEmailsValue}
+          onChange={(e) => setNotificationEmailsValue(e.target.value)}
+        />
+        <p className="text-xs text-muted-foreground">
+          Comma-separated. Each address gets an email whenever this form is submitted. Leave
+          blank to disable.
+        </p>
       </div>
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
       <DialogFooter>
@@ -296,7 +346,12 @@ export function FormDetailPage() {
             </Button>
             {developerMode && form && fields ? <FormDeveloperPanel form={form} fields={fields} /> : null}
             {canManageFields && form && formId ? (
-              <EditFormDialog formId={formId} name={form.name} slug={form.slug} />
+              <EditFormDialog
+                formId={formId}
+                name={form.name}
+                slug={form.slug}
+                notificationEmails={form.notificationEmails}
+              />
             ) : null}
             {canManageFields && formId ? (
               <FormFieldDialog
@@ -320,6 +375,18 @@ export function FormDetailPage() {
             <Badge variant="outline" className="font-mono font-normal text-muted-foreground">
               {form.slug}
             </Badge>
+            {form.notificationEmails && form.notificationEmails.length > 0 ? (
+              <Badge variant="secondary" className="gap-1 font-normal" title={form.notificationEmails.join(', ')}>
+                <Mail className="size-3" />
+                Notifies {form.notificationEmails.length}{' '}
+                {form.notificationEmails.length === 1 ? 'address' : 'addresses'}
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="gap-1 font-normal text-muted-foreground">
+                <Mail className="size-3" />
+                No notifications configured
+              </Badge>
+            )}
             <span className="ml-auto text-sm text-muted-foreground">
               {fields?.length ?? 0} {fields?.length === 1 ? 'field' : 'fields'}
             </span>

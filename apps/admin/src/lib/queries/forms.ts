@@ -35,7 +35,7 @@ export function useUpdateForm(formId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (input: { name?: string; slug?: string }) =>
+    mutationFn: (input: { name?: string; slug?: string; notificationEmails?: string[] | null }) =>
       apiClient.patch<Form>(`/api/v1/admin/forms/${formId}`, input),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: formsKey });

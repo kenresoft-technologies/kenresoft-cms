@@ -9,6 +9,12 @@ export const forms = sqliteTable('forms', {
     .$defaultFn(() => crypto.randomUUID()),
   name: text('name').notNull(),
   slug: text('slug').notNull().unique(),
+  // Who gets emailed when a visitor submits this form — null/empty means no notification is
+  // sent (opt-in, matching this codebase's own EMAIL_PROVIDER-unset-is-fine convention rather
+  // than assuming every deployment wants email for every form). Per-form, not a single
+  // deployment-wide address, since a "Job Application" form and a "Contact" form legitimately
+  // want different recipients.
+  notificationEmails: text('notification_emails', { mode: 'json' }).$type<string[] | null>(),
   createdAt: integer('created_at', { mode: 'timestamp' })
     .notNull()
     .default(sql`(unixepoch())`),

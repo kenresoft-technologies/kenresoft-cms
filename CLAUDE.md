@@ -2722,6 +2722,55 @@ production scenario — no interactive-merge simulation needed, since the fix wa
 one directly-testable pure-ish function); the full `pnpm run test:scripts` suite (41 tests) and
 the touched `apps/admin` suite (`SettingsPage.test.tsx`) both re-run clean.
 
+**Form submission email notifications, an attachments indicator, and a submission-list UX pass**
+(2026-09-16, on `develop`, direct user request) — done. Forms gained an opt-in, per-form
+`notificationEmails` column (nullable JSON array, migration `0040_dazzling_union_jack.sql`) —
+`routes/public/forms.ts` calls a new `sendFormSubmissionNotification()`
+(`apps/api/src/lib/form-notifications.ts`) right after a submission is created, via
+`c.executionCtx.waitUntil()` so a slow/unreachable mail provider never holds up the response a
+visitor is waiting on, mirroring `webhooks.ts`'s own dispatch-never-blocks-the-write stance —
+including the same "never throw" discipline (each recipient's send is individually try/caught
+and logged, never allowed to affect the ones after it). Deliberately reuses the existing
+pluggable `getEmailSender(env)` (Resend/Cloudflare/noop via `EMAIL_PROVIDER`) rather than adding
+a second email-sending path — a deployment that already has email configured for password-reset
+needs zero new setup for this. No deployment-wide default recipient exists: a form with nothing
+configured stays silent, matching this codebase's own "opt-in infrastructure, not a hard
+dependency" precedent for `EMAIL_PROVIDER` itself. `updateFormSchema` was written by hand rather
+than `createFormSchema.partial()` from the start (no bug forced this one — `createFormSchema` has
+no defaulted field today — but every other update schema in this codebase that started as
+`.partial()` was eventually burned by exactly that pattern once its base schema gained a
+`.default()`, per the Phase 10 hardening entry below, so new update schemas now skip the trap
+from day one rather than waiting to be bitten). Admin UI: Forms → a form → Edit form gained a
+"Notification emails" textarea (comma/newline-separated, parsed client-side — no new tag-input
+component for a handful of addresses), and the form's summary card shows a "Notifies N addresses"
+or "No notifications configured" badge.
+
+File management for submissions was already substantially built (per-field-type validation
+including `file` with byte-sniffed content-type verification, R2 storage, an admin-gated
+download route, and a submission-detail dialog rendering an attachment as a named download link)
+— confirmed by reading `form-submission-validation.ts`/`routes/admin/forms.ts`/
+`submission-value.tsx` before writing anything new, rather than assuming a gap that wasn't
+actually there. What was missing: seeing which submissions *have* an attachment without opening
+each one. Both submissions tables (`FormSubmissionsPage.tsx`, `AllSubmissionsPage.tsx`) gained a
+paperclip-and-count column (new `apps/admin/src/lib/submission-attachments.ts`, mirroring
+`submission-sender.ts`'s own "derive it from the data blob, forms have no fixed shape" approach),
+and both gained a "Reply by email" quick action in the row's action menu whenever
+`getSubmissionSender()` finds a recognizable email field.
+
+Verified: `pnpm typecheck`/`pnpm lint` clean across `packages/contracts`, `packages/database`,
+`apps/api`, `apps/admin`. New tests: 4 cases in `apps/api/test/forms-routes.test.ts` (real D1 —
+no email sent when unconfigured, every configured recipient emailed with the right subject/field
+values, an invalid address rejected, clearing back to null) — one real test-writing gotcha
+surfaced and fixed here, not a product bug: `authedCookie()`'s own signup flow sends a real
+verification-link email into the exact same `getTestEmails()` capture store this suite reads
+from (see the Staff email verification entry above), so the assertions filter by the
+notification's own subject rather than asserting a raw store length; 3 new
+`apps/admin/test/FormSubmissionsPage.test.tsx` cases (reply-mailto href, attachment count) and 1
+in `FormDetailPage.test.tsx` (setting notification emails through Edit form, and the "No
+notifications configured" badge). Full regression: the entire `apps/admin` suite (38 files, 211
+tests) clean in one run; `forms-routes.test.ts` (24 tests) and `health`/`api-docs-gate` (confirming
+the OpenAPI document still generates correctly with the new `notificationEmails` field) all green.
+
 **Site builder Phase 10, hardening pass only** (2026-09-14, on `develop`, per direct user
 choice) — done. Phase 9 (plugin-contributed block types) and Phase 10's "patterns/presets" half
 were deliberately skipped this round: `docs/SITE_BUILDER.md` §9 itself says not to build plugin

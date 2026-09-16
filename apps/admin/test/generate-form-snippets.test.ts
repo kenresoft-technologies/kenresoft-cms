@@ -11,6 +11,7 @@ const form: Form = {
   id: 'form-1',
   name: 'Contact',
   slug: 'contact',
+  notificationEmails: null,
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z',
 };

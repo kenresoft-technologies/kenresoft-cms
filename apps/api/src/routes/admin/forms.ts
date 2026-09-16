@@ -75,6 +75,7 @@ function toForm(row: DbForm): Form {
     id: row.id,
     name: row.name,
     slug: row.slug,
+    notificationEmails: row.notificationEmails ?? null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };

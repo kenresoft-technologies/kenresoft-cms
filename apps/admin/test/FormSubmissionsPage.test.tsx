@@ -148,6 +148,38 @@ describe('FormSubmissionsPage', () => {
     expect(within(table).queryByText('Read')).not.toBeInTheDocument();
   });
 
+  it('offers a "Reply by email" action linking to the sender\'s mailto when an email field was submitted', async () => {
+    getMock.mockImplementation((path: string) => {
+      if (path.endsWith('/submissions')) return Promise.resolve([submission]);
+      if (path.endsWith('/fields')) return Promise.resolve([]);
+      return Promise.resolve({ id: 'f-1', name: 'Contact', slug: 'contact' });
+    });
+
+    renderPage();
+    await waitFor(() => expect(screen.getByText('New')).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole('button', { name: 'Submission actions' }));
+    const replyLink = await screen.findByRole('menuitem', { name: 'Reply by email' });
+    expect(replyLink).toHaveAttribute('href', 'mailto:jane@example.com');
+  });
+
+  it('shows an attachment count for a submission with a file-type field', async () => {
+    const withAttachment = {
+      ...submission,
+      data: { resume: { key: 'form-uploads/x.pdf', filename: 'resume.pdf', size: 1024, contentType: 'application/pdf' } },
+    };
+    getMock.mockImplementation((path: string) => {
+      if (path.endsWith('/submissions')) return Promise.resolve([withAttachment]);
+      if (path.endsWith('/fields')) return Promise.resolve([]);
+      return Promise.resolve({ id: 'f-1', name: 'Job Application', slug: 'job-application' });
+    });
+
+    renderPage();
+
+    await waitFor(() => expect(screen.getByTitle('resume.pdf')).toBeInTheDocument());
+    expect(within(screen.getByTitle('resume.pdf')).getByText('1')).toBeInTheDocument();
+  });
+
   it('marks a submission read via the row action menu', async () => {
     getMock.mockImplementation((path: string) => {
       if (path.endsWith('/submissions')) return Promise.resolve([submission]);
