@@ -21,6 +21,11 @@ export const webhooks = sqliteTable(
     contentTypeId: text('content_type_id').references(() => contentTypes.id, { onDelete: 'cascade' }),
     secret: text('secret').notNull(),
     enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+    // Explicit per-webhook opt-in to deliver to a localhost/RFC1918/link-local/metadata
+    // destination (apps/api/src/lib/ssrf-guard.ts) — false by default for every existing and
+    // new webhook, so this is purely additive: no webhook's delivery behavior changes unless an
+    // admin deliberately turns this on.
+    allowPrivateDestinations: integer('allow_private_destinations', { mode: 'boolean' }).notNull().default(false),
     createdAt: integer('created_at', { mode: 'timestamp' })
       .notNull()
       .default(sql`(unixepoch())`),

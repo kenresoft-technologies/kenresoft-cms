@@ -4,12 +4,16 @@ import { z } from 'zod';
 
 import { getDb } from '../../lib/db';
 import { createOpenApiApp } from '../../lib/openapi';
+import { requireFormsAccess } from '../../middleware/require-forms-access';
 import { listSubmissionsWithForm } from '../../repositories/form-submissions';
 import { toFormSubmissionWithForm } from './forms';
 import type { Bindings } from '../../lib/env';
 import type { AuthedVariables } from '../../middleware/require-session';
 
 export const submissionsRoute = createOpenApiApp<{ Bindings: Bindings; Variables: AuthedVariables }>();
+
+// Same access boundary as /api/v1/admin/forms — see requireFormsAccess's own comment.
+submissionsRoute.use('*', requireFormsAccess());
 
 // Unified admin "all submissions" view across every form, mirroring GET /api/v1/admin/entries'
 // contentTypeId-omitted branch — a separate top-level route rather than an optional query

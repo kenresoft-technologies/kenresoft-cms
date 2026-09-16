@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { BLOCK_TYPES, BLOCK_TYPES_ALLOWING_CHILDREN } from './enums';
+import { safeUrlSchemaOptional } from './safe-url';
 import type { BlockType } from './enums';
 
 // Phase 3 of the schema-driven frontend work (docs/SITE_BUILDER.md §3.3): a Page's block
@@ -53,7 +54,7 @@ export const HERO_BLOCK_CONFIG = z
     subheading: z.string().max(500).optional(),
     imageMediaId: z.string().max(100).optional(),
     ctaLabel: z.string().max(100).optional(),
-    ctaUrl: z.string().max(2000).optional(),
+    ctaUrl: safeUrlSchemaOptional(2000),
   })
   .strict();
 
@@ -75,7 +76,7 @@ export const CTA_BLOCK_CONFIG = z
   .object({
     heading: z.string().max(200).optional(),
     buttonLabel: z.string().max(100).optional(),
-    buttonUrl: z.string().max(2000).optional(),
+    buttonUrl: safeUrlSchemaOptional(2000),
   })
   .strict();
 

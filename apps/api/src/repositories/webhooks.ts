@@ -21,7 +21,7 @@ export function listEnabledWebhooksForContentType(db: Database, contentTypeId: s
 
 export async function createWebhook(
   db: Database,
-  input: Pick<NewWebhook, 'url' | 'events' | 'contentTypeId' | 'enabled'> & { secret: string },
+  input: Pick<NewWebhook, 'url' | 'events' | 'contentTypeId' | 'enabled' | 'allowPrivateDestinations'> & { secret: string },
 ): Promise<Webhook> {
   const [row] = await db.insert(webhooks).values(input).returning();
   return row!;
