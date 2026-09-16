@@ -391,7 +391,10 @@ async function runFullFlow() {
     console.log('✓ Admin origin already present in CORS_ORIGINS — skipping (running setup again is safe).');
   }
 
-  console.log('\n✓ CMS installed/updated — sign up at the admin URL below (the first account becomes owner):');
+  console.log('\n✓ CMS installed/updated. Create your Owner account with the one-time bootstrap flow:');
+  console.log(`  curl -X POST ${finalUrl}/api/v1/system/bootstrap/request`);
+  console.log('  Then check this Worker\'s logs (wrangler tail) for the token and complete the bootstrap');
+  console.log('  — see docs/DEPLOYMENT.md\'s "Deploy, then run migrations" section for the full steps.');
   console.log(`  API:   ${finalUrl}`);
   console.log(`  Admin: ${adminUrl}`);
 }

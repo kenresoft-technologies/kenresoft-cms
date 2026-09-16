@@ -169,8 +169,26 @@ auto-provisions your D1 database — migrations need it to already exist, so thi
 (reversing it fails with "database not found" the very first time, since nothing's created it
 yet). Once the database exists at all, either order is fine on every deploy after this one.
 
-The first request to your deployed Worker's sign-up page becomes the owner account
-(`docs/ARCHITECTURE.md` §10) — there's no separate seeding step.
+A fresh deployment starts with no users — ordinary sign-up can never claim the Owner role
+(`docs/ARCHITECTURE.md` §10 and its Changelog's "Secure first-owner bootstrap" entry). Create the
+first Owner with a one-time bootstrap:
+
+```bash
+curl -X POST https://your-worker-url/api/v1/system/bootstrap/request
+```
+
+Then check this Worker's own logs (`wrangler tail`, or your `wrangler dev` terminal output) for a
+line starting `[installation-bootstrap]` containing the token — it's never returned in the HTTP
+response. Use it once, within 30 minutes:
+
+```bash
+curl -X POST https://your-worker-url/api/v1/system/bootstrap/complete \
+  -H 'Content-Type: application/json' \
+  -d '{"token":"<the token from your logs>","email":"you@example.com","password":"...","name":"Your Name"}'
+```
+
+Sign in normally from there. Both routes 404 outright once any user already exists on this
+deployment.
 
 ## 7. Building your own frontend (not `examples/astro-site`)
 
@@ -268,31 +286,34 @@ deployment verifies that signature before ever acting on a delivery.
 
 ## Account verification, password recovery & owner recovery
 
-Every email/password account — including the very first signup, which becomes the deployment's
-owner — must verify its email address before it can sign in at all
-(`apps/api/src/lib/auth-options.ts`'s `requireEmailVerification`). There is deliberately no
-bootstrap-owner exception: read on for how to verify your own first account with zero email
-configuration.
+Every email/password account must verify its email address before it can sign in at all
+(`apps/api/src/lib/auth-options.ts`'s `requireEmailVerification`) — except the one account
+created through the installation-bootstrap flow above (`docs/ARCHITECTURE.md` §10's Changelog),
+since proving possession of the bootstrap token (itself only ever visible in this deployment's
+own server logs) is already at least as strong a proof of legitimate access as an email round
+trip. Every account created afterward (Add User, further signups) still needs the normal
+verification step — read on for how to verify one with zero email configuration.
 
 Password reset and recovery codes degrade gracefully with no email configuration at all
 (`docs/ARCHITECTURE.md` §10.1), and the two owner-recovery mechanisms further below are entirely
 opt-in.
 
-**Verifying your own first account with no email configured** — if you haven't set up
-`EMAIL_PROVIDER` yet, the verification email is still "sent," just logged instead of delivered
-(the noop sender, below). Since you're the one who just deployed this Worker, you already have
-the Cloudflare access needed to read that log:
+**Verifying an account with no email configured** — if you haven't set up `EMAIL_PROVIDER` yet,
+the verification email is still "sent," just logged instead of delivered (the noop sender,
+below). Since you're the one who just deployed this Worker, you already have the Cloudflare
+access needed to read that log:
 
 ```bash
 wrangler tail          # a live deployment
 # or just watch the terminal running `wrangler dev` for local development
 ```
 
-Sign up in the admin app, then look for a logged line containing `/verify-email?token=...` — it's
-already a complete URL pointing at your Admin app's own origin (or `localhost` in local dev).
-Open it in your browser to verify and continue. This only applies to your very first sign-up on a
-fresh deployment; once `EMAIL_PROVIDER` is configured (next section), every account — including
-ones created later via `Admin → Users → Add user` — receives a real, clickable email instead.
+Sign up (or use `Admin → Users → Add user`) then look for a logged line containing
+`/verify-email?token=...` — it's already a complete URL pointing at your Admin app's own origin
+(or `localhost` in local dev). Open it in your browser to verify and continue. The very first
+account (created via the installation-bootstrap flow above) skips this step entirely — this
+applies to every account after that. Once `EMAIL_PROVIDER` is configured (next section), every
+account receives a real, clickable email instead.
 
 **Password-reset and account-verification email** — set `EMAIL_PROVIDER` in `wrangler.toml`'s
 `[vars]` to enable actually sending these emails (it's unset by default, which logs instead of

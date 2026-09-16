@@ -8,6 +8,7 @@ import { blockViewerMutations } from './middleware/block-viewer-mutations';
 import { corsMiddleware } from './middleware/cors';
 import { publicContentRateLimit } from './middleware/public-content-rate-limit';
 import { requireSession } from './middleware/require-session';
+import { requireTrustedOrigin } from './middleware/require-trusted-origin';
 import { securityHeaders } from './middleware/security-headers';
 import { enqueueCachePurgePaths, processCachePurgeQueue } from './lib/cache-purge';
 import { dispatchWebhookEvent, retryFailedWebhookDeliveries } from './lib/webhooks';
@@ -45,6 +46,7 @@ import { publicRecoveryRoute } from './routes/public/recovery';
 import { publicReusableBlocksRoute } from './routes/public/reusable-blocks';
 import { publicRoutePatternsRoute } from './routes/public/route-patterns';
 import { publicStructuredSettingsRoute } from './routes/public/structured-settings';
+import { bootstrapRoute } from './routes/system/bootstrap-owner';
 import { systemRoute } from './routes/system/recover-owner';
 import type { Bindings } from './lib/env';
 import type { AuthedVariables } from './middleware/require-session';
@@ -82,8 +84,10 @@ app.route('/api/v1/public', publicContentRoute);
 // see routes/system/recover-owner.ts for why this 404s outright on any deployment that
 // hasn't explicitly opted in.
 app.route('/api/v1/system', systemRoute);
+app.route('/api/v1/system', bootstrapRoute);
 
 app.use('/api/v1/admin/*', requireSession);
+app.use('/api/v1/admin/*', requireTrustedOrigin());
 app.use('/api/v1/admin/*', blockViewerMutations);
 app.route('/api/v1/admin/dashboard', dashboardRoute);
 app.route('/api/v1/admin/audit-log', auditLogRoute);
