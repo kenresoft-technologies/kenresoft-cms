@@ -2,6 +2,8 @@ import { SELF, env } from 'cloudflare:test';
 import { signUpVerifiedAndGetCookie } from './helpers/auth';
 import { beforeEach, describe, expect, it } from 'vitest';
 
+import { clearTestEmails, getTestEmails } from '../src/lib/email';
+
 async function authedCookie(email: string): Promise<string> {
   return signUpVerifiedAndGetCookie(email, { password: 'correct horse battery staple', name: 'Test User' });
 }
@@ -60,6 +62,7 @@ describe('forms routes (real D1)', () => {
     await env.DB.exec('DELETE FROM session');
     await env.DB.exec('DELETE FROM account');
     await env.DB.exec('DELETE FROM user');
+    clearTestEmails();
   });
 
   it('rejects admin form creation from an editor, allows it from an owner', async () => {
@@ -439,6 +442,90 @@ describe('forms routes (real D1)', () => {
       body: JSON.stringify({ name: 'Hijacked' }),
     });
     expect(response.status).toBe(403);
+  });
+
+  describe('submission notification emails', () => {
+    // authedCookie() itself sends a real (test-captured) email — better-auth's own
+    // verification link, required for every signup (see auth.test.ts) — into the exact same
+    // getTestEmails() store this suite reads from. Filtering to just the notification-shaped
+    // subject keeps these assertions about the feature under test, not about signup's own,
+    // unrelated email traffic.
+    function submissionNotificationEmails() {
+      return getTestEmails().filter((message) => message.subject.startsWith('New submission:'));
+    }
+
+    it('does not send any email when a form has no notificationEmails configured', async () => {
+      const cookie = await authedCookie('notify-none-admin@example.test');
+      await createContactForm(cookie);
+
+      const response = await SELF.fetch('https://example.com/api/v1/public/forms/contact/submissions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': 'notify-test-1' },
+        body: JSON.stringify({ name: 'Jane', email: 'jane@example.com' }),
+      });
+      expect(response.status).toBe(201);
+      expect(submissionNotificationEmails()).toHaveLength(0);
+    });
+
+    it('emails every configured recipient, with the field labels and values, when a submission is made', async () => {
+      const cookie = await authedCookie('notify-configured-admin@example.test');
+      const headers = { Cookie: cookie, 'Content-Type': 'application/json' };
+      const form = await createContactForm(cookie);
+
+      const updateRes = await SELF.fetch(`https://example.com/api/v1/admin/forms/${form.id}`, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({ notificationEmails: ['hr@example.test', 'ops@example.test'] }),
+      });
+      expect(updateRes.status).toBe(200);
+      expect(await updateRes.json()).toMatchObject({ notificationEmails: ['hr@example.test', 'ops@example.test'] });
+
+      const response = await SELF.fetch('https://example.com/api/v1/public/forms/contact/submissions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': 'notify-test-2' },
+        body: JSON.stringify({ name: 'Jane', email: 'jane@example.com', message: 'Hello there' }),
+      });
+      expect(response.status).toBe(201);
+
+      const sent = submissionNotificationEmails();
+      expect(sent).toHaveLength(2);
+      expect(sent.map((m) => m.to).sort()).toEqual(['hr@example.test', 'ops@example.test']);
+      expect(sent[0]!.subject).toBe('New submission: Contact');
+      expect(sent[0]!.text).toContain('Name: Jane');
+      expect(sent[0]!.text).toContain('Email: jane@example.com');
+      expect(sent[0]!.text).toContain('Message: Hello there');
+    });
+
+    it('rejects an invalid email address in notificationEmails', async () => {
+      const cookie = await authedCookie('notify-invalid-admin@example.test');
+      const form = await createContactForm(cookie);
+
+      const response = await SELF.fetch(`https://example.com/api/v1/admin/forms/${form.id}`, {
+        method: 'PATCH',
+        headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notificationEmails: ['not-an-email'] }),
+      });
+      expect(response.status).toBe(400);
+    });
+
+    it('clears notificationEmails when set back to null', async () => {
+      const cookie = await authedCookie('notify-clear-admin@example.test');
+      const headers = { Cookie: cookie, 'Content-Type': 'application/json' };
+      const form = await createContactForm(cookie);
+
+      await SELF.fetch(`https://example.com/api/v1/admin/forms/${form.id}`, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({ notificationEmails: ['hr@example.test'] }),
+      });
+      const clearRes = await SELF.fetch(`https://example.com/api/v1/admin/forms/${form.id}`, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({ notificationEmails: null }),
+      });
+      expect(clearRes.status).toBe(200);
+      expect(await clearRes.json()).toMatchObject({ notificationEmails: null });
+    });
   });
 
   describe('file-upload field (multipart submissions)', () => {

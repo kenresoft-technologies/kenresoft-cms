@@ -126,7 +126,17 @@ function QuickReferenceDialog() {
           </div>
           <div>
             <p className="font-medium">Field types</p>
-            <p className="text-muted-foreground">text, textarea, email, url, number, date, select, checkbox.</p>
+            <p className="text-muted-foreground">
+              text, textarea, email, url, number, date, select, checkbox, file (up to 10MB,
+              downloadable from a submission in the admin).
+            </p>
+          </div>
+          <div>
+            <p className="font-medium">Notifications</p>
+            <p className="text-muted-foreground">
+              Set notification emails on a form (Edit form) to get emailed whenever it's
+              submitted. Off by default.
+            </p>
           </div>
         </div>
         <DialogFooter>

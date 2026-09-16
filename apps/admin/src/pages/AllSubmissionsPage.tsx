@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Archive, Inbox, MailOpen, MoreHorizontal, Trash2 } from 'lucide-react';
+import { Archive, Inbox, MailOpen, MoreHorizontal, Paperclip, Reply, Trash2 } from 'lucide-react';
 import { Link } from 'react-router';
 import { toast } from 'sonner';
 import type { ColumnDef } from '@tanstack/react-table';
@@ -12,6 +12,7 @@ import {
   useDeleteSubmissionGlobal,
   useUpdateSubmissionStatusGlobal,
 } from '@/lib/queries/all-submissions';
+import { getSubmissionAttachments } from '@/lib/submission-attachments';
 import { getSubmissionSender } from '@/lib/submission-sender';
 import type { FormSubmissionStatus, FormSubmissionWithForm } from '@/lib/types';
 import { DataTable } from '@/components/data-table';
@@ -94,6 +95,7 @@ function SubmissionActions({
   onRequestDelete: (submission: FormSubmissionWithForm) => void;
 }) {
   const updateStatus = useUpdateSubmissionStatusGlobal();
+  const { email: senderEmail } = getSubmissionSender(submission.data);
 
   function setStatus(status: FormSubmissionStatus) {
     updateStatus.mutate(
@@ -110,6 +112,17 @@ function SubmissionActions({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
+        {senderEmail ? (
+          <>
+            <DropdownMenuItem asChild>
+              <a href={`mailto:${senderEmail}`}>
+                <Reply />
+                Reply by email
+              </a>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+          </>
+        ) : null}
         {submission.status !== 'new' ? (
           <DropdownMenuItem onClick={() => setStatus('new')}>
             <Inbox />
@@ -230,6 +243,24 @@ export function AllSubmissionsPage() {
         accessorKey: 'status',
         header: 'Status',
         cell: ({ row }) => <StatusBadge status={row.original.status} />,
+      },
+      {
+        id: 'attachments',
+        header: '',
+        enableSorting: false,
+        cell: ({ row }) => {
+          const attachments = getSubmissionAttachments(row.original.data);
+          if (attachments.length === 0) return null;
+          return (
+            <span
+              className="inline-flex items-center gap-1 text-xs text-muted-foreground"
+              title={attachments.map((a) => a.filename).join(', ')}
+            >
+              <Paperclip className="size-3.5" />
+              {attachments.length}
+            </span>
+          );
+        },
       },
       {
         id: 'actions',

@@ -1,0 +1,1 @@
+ALTER TABLE `forms` ADD `notification_emails` text;

@@ -3,6 +3,7 @@ import { formSubmissionSchema } from '@kenresoft-cms/contracts';
 import type { FormSubmission, FormSubmissionStatus } from '@kenresoft-cms/contracts';
 
 import { getDb } from '../../lib/db';
+import { sendFormSubmissionNotification } from '../../lib/form-notifications';
 import { validateSubmission } from '../../lib/form-submission-validation';
 import { createOpenApiApp } from '../../lib/openapi';
 import type { Bindings } from '../../lib/env';
@@ -92,6 +93,7 @@ publicFormsRoute.post('/:slug/submissions', async (c) => {
   }
 
   const submission = await createFormSubmission(db, { formId: form.id, data });
+  sendFormSubmissionNotification(c.env, c.executionCtx, form, fields, submission);
   return c.json(toFormSubmission(submission), 201);
 });
 
