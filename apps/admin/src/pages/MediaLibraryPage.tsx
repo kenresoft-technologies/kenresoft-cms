@@ -1,5 +1,5 @@
 import { useMemo, useState, type FormEvent, type ReactNode } from 'react';
-import { Folder, FolderCog, FolderOpen, FolderPlus, Grid3x3, ImageOff, Images, List, MoreHorizontal, Pencil, RefreshCw, Trash2 } from 'lucide-react';
+import { Check, Folder, FolderCog, FolderOpen, FolderPlus, Grid3x3, ImageOff, Images, List, MoreHorizontal, Pencil, RefreshCw, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { ColumnDef } from '@tanstack/react-table';
 
@@ -12,6 +12,7 @@ import {
   useMediaFolders,
   useMediaList,
   useMoveMedia,
+  useUpdateMedia,
   useUpdateMediaFolder,
   useUploadMedia,
   mediaFileUrl,
@@ -203,6 +204,59 @@ function DeleteMediaAlert({ item, trigger }: { item: Media; trigger: ReactNode }
   );
 }
 
+function RenameMediaDialog({ item, trigger }: { item: Media; trigger: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const [filename, setFilename] = useState(item.filename);
+  const [altText, setAltText] = useState(item.altText ?? '');
+  const [error, setError] = useState<string | null>(null);
+  const updateMedia = useUpdateMedia();
+
+  async function handleSave() {
+    setError(null);
+    if (!filename.trim()) {
+      setError('Filename is required');
+      return;
+    }
+    try {
+      await updateMedia.mutateAsync({ id: item.id, filename: filename.trim(), altText: altText.trim() || null });
+      toast.success('Media updated');
+      setOpen(false);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Failed to update media');
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(next) => { setOpen(next); if (next) { setFilename(item.filename); setAltText(item.altText ?? ''); } }}>
+      <DialogTrigger asChild>{trigger}</DialogTrigger>
+      <DialogContent size="md">
+        <DialogHeader>
+          <DialogTitle>Edit details</DialogTitle>
+          <DialogDescription>
+            Renaming or re-describing this item never touches its file bytes or public URL.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="media-rename-filename">Filename</Label>
+            <Input id="media-rename-filename" value={filename} onChange={(event) => setFilename(event.target.value)} />
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="media-rename-alt-text">Alt text</Label>
+            <Input id="media-rename-alt-text" value={altText} onChange={(event) => setAltText(event.target.value)} />
+          </div>
+          {error ? <p className="text-sm text-destructive">{error}</p> : null}
+        </div>
+        <DialogFooter>
+          <Button onClick={() => void handleSave()} disabled={updateMedia.isPending}>
+            {updateMedia.isPending ? 'Saving…' : 'Save'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function MediaThumbnail({ item, className }: { item: Media; className?: string }) {
   if (item.width && item.height) {
     return <img src={mediaFileUrl(item.id)} alt={item.altText ?? item.filename} className={className} />;
@@ -218,72 +272,109 @@ function MediaGrid({
   items,
   developerMode,
   onPreview,
+  selectedIds,
+  onToggleSelect,
 }: {
   items: Media[];
   developerMode: boolean;
   onPreview: (item: Media) => void;
+  selectedIds: Set<string>;
+  onToggleSelect: (id: string) => void;
 }) {
   return (
     <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-      {items.map((item) => (
-        <Card key={item.id} size="sm" className="group overflow-hidden py-0">
-          <div
-            role="button"
-            tabIndex={0}
-            className="relative block aspect-square w-full cursor-pointer overflow-hidden text-left"
-            onClick={() => onPreview(item)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' || event.key === ' ') {
-                event.preventDefault();
-                onPreview(item);
-              }
-            }}
-            aria-label={`View ${item.filename} full size`}
-          >
-            <MediaThumbnail item={item} className="size-full object-cover transition-transform group-hover:scale-105" />
-            {/* The dark wash is a hover-only visual flourish; the delete button itself stays
-                rendered and clickable without hovering first, so it's reachable on touch
-                devices, which have no hover state at all — subtly toned at rest, full
-                destructive-red only once hovered/focused. */}
-            <div className="pointer-events-none absolute inset-0 bg-black/0 transition-colors group-hover:bg-black/20" />
-            {developerMode ? (
-              <div className="absolute top-2 left-2" onClick={(event) => event.stopPropagation()}>
-                <MediaDeveloperPanel
-                  item={item}
-                  className="bg-background/80 text-foreground hover:bg-background"
-                />
-              </div>
-            ) : null}
-            <div className="absolute top-2 right-2" onClick={(event) => event.stopPropagation()}>
-              <DeleteMediaAlert
-                item={item}
-                trigger={
-                  <Button
-                    variant="secondary"
-                    size="icon-sm"
-                    aria-label={`Delete ${item.filename}`}
-                    className="bg-background/80 text-foreground hover:bg-destructive/20 hover:text-destructive"
-                  >
-                    <Trash2 />
-                  </Button>
+      {items.map((item) => {
+        const selected = selectedIds.has(item.id);
+        return (
+          <Card key={item.id} size="sm" className={cn('group overflow-hidden py-0', selected && 'ring-2 ring-primary')}>
+            <div
+              role="button"
+              tabIndex={0}
+              className="relative block aspect-square w-full cursor-pointer overflow-hidden text-left"
+              onClick={() => onPreview(item)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  onPreview(item);
                 }
-              />
+              }}
+              aria-label={`View ${item.filename} full size`}
+            >
+              <MediaThumbnail item={item} className="size-full object-cover transition-transform group-hover:scale-105" />
+              {/* The dark wash is a hover-only visual flourish; the delete button itself stays
+                  rendered and clickable without hovering first, so it's reachable on touch
+                  devices, which have no hover state at all — subtly toned at rest, full
+                  destructive-red only once hovered/focused. */}
+              <div className="pointer-events-none absolute inset-0 bg-black/0 transition-colors group-hover:bg-black/20" />
+              <button
+                type="button"
+                aria-label={selected ? `Deselect ${item.filename}` : `Select ${item.filename}`}
+                aria-pressed={selected}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onToggleSelect(item.id);
+                }}
+                className={cn(
+                  'absolute top-2 left-2 flex size-5 items-center justify-center rounded border bg-background/80 text-foreground transition-opacity',
+                  selected ? 'border-primary bg-primary text-primary-foreground opacity-100' : 'opacity-0 group-hover:opacity-100',
+                )}
+              >
+                {selected ? <Check className="size-3.5" /> : null}
+              </button>
+              <div className="absolute top-2 right-2 flex gap-1" onClick={(event) => event.stopPropagation()}>
+                {developerMode ? (
+                  <MediaDeveloperPanel
+                    item={item}
+                    className="bg-background/80 text-foreground hover:bg-background"
+                  />
+                ) : null}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="secondary"
+                      size="icon-sm"
+                      aria-label={`Manage ${item.filename}`}
+                      className="bg-background/80 text-foreground hover:bg-background"
+                    >
+                      <MoreHorizontal />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <RenameMediaDialog
+                      item={item}
+                      trigger={
+                        <DropdownMenuItem onSelect={(event) => event.preventDefault()}>
+                          <Pencil /> Edit details
+                        </DropdownMenuItem>
+                      }
+                    />
+                    <DeleteMediaAlert
+                      item={item}
+                      trigger={
+                        <DropdownMenuItem onSelect={(event) => event.preventDefault()} variant="destructive">
+                          <Trash2 /> Delete
+                        </DropdownMenuItem>
+                      }
+                    />
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             </div>
-          </div>
-          <CardContent className="flex flex-col gap-1 pb-3">
-            <p className="truncate text-sm font-medium">{item.filename}</p>
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Badge variant="outline" className={cn('text-[0.65rem]', MEDIA_TYPE_TONE[item.contentType])}>
-                {MEDIA_TYPE_LABELS[item.contentType]}
-              </Badge>
-              <span>
-                {item.width && item.height ? `${item.width}×${item.height} · ` : ''}
-                {formatBytes(item.size)}
-              </span>
-            </div>
-          </CardContent>
-        </Card>
-      ))}
+            <CardContent className="flex flex-col gap-1 pb-3">
+              <p className="truncate text-sm font-medium">{item.filename}</p>
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Badge variant="outline" className={cn('text-[0.65rem]', MEDIA_TYPE_TONE[item.contentType])}>
+                  {MEDIA_TYPE_LABELS[item.contentType]}
+                </Badge>
+                <span>
+                  {item.width && item.height ? `${item.width}×${item.height} · ` : ''}
+                  {formatBytes(item.size)}
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })}
     </div>
   );
 }
@@ -359,6 +450,14 @@ function MediaList({
         cell: ({ row }) => (
           <div className="flex justify-end gap-1">
             {developerMode ? <MediaDeveloperPanel item={row.original} /> : null}
+            <RenameMediaDialog
+              item={row.original}
+              trigger={
+                <Button variant="ghost" size="icon-sm" aria-label={`Edit details for ${row.original.filename}`}>
+                  <Pencil />
+                </Button>
+              }
+            />
             <DeleteMediaAlert
               item={row.original}
               trigger={
@@ -621,6 +720,23 @@ export function MediaLibraryPage() {
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [previewItem, setPreviewItem] = useState<Media | null>(null);
   const [managingFolders, setManagingFolders] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const moveMedia = useMoveMedia();
+  const deleteMedia = useDeleteMedia();
+
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function navigateToFolder(id: string | null) {
+    setSelectedIds(new Set());
+    setCurrentFolderId(id);
+  }
 
   const currentFolder = folders?.find((folder) => folder.id === currentFolderId) ?? null;
   const breadcrumbFolders = useMemo(() => {
@@ -668,13 +784,13 @@ export function MediaLibraryPage() {
       />
 
       <div className="flex flex-wrap items-center gap-1 text-sm text-muted-foreground">
-        <button type="button" className="flex items-center gap-1 hover:underline" onClick={() => setCurrentFolderId(null)}>
+        <button type="button" className="flex items-center gap-1 hover:underline" onClick={() => navigateToFolder(null)}>
           <FolderOpen className="size-3.5" /> Media
         </button>
         {breadcrumbFolders.map((folder) => (
           <span key={folder.id} className="flex items-center gap-1">
             <span>/</span>
-            <button type="button" className="hover:underline" onClick={() => setCurrentFolderId(folder.id)}>
+            <button type="button" className="hover:underline" onClick={() => navigateToFolder(folder.id)}>
               {folder.name}
             </button>
           </span>
@@ -684,7 +800,7 @@ export function MediaLibraryPage() {
       {subfolders.length > 0 ? (
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
           {subfolders.map((folder) => (
-            <FolderCard key={folder.id} folder={folder} onOpen={setCurrentFolderId} />
+            <FolderCard key={folder.id} folder={folder} onOpen={navigateToFolder} />
           ))}
         </div>
       ) : null}
@@ -756,9 +872,62 @@ export function MediaLibraryPage() {
             </div>
           </div>
 
+          {viewMode === 'grid' && selectedIds.size > 0 ? (
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/50 p-2">
+              <span className="px-1 text-sm text-muted-foreground">{selectedIds.size} selected</span>
+              <Select
+                onValueChange={(value) => {
+                  void moveMedia
+                    .mutateAsync({ mediaIds: Array.from(selectedIds), folderId: value === 'none' ? null : value })
+                    .then(() => {
+                      toast.success(`Moved ${selectedIds.size} files`);
+                      setSelectedIds(new Set());
+                    })
+                    .catch(() => toast.error('Failed to move files'));
+                }}
+              >
+                <SelectTrigger size="sm" className="w-40">
+                  <SelectValue placeholder="Move to folder…" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Unfiled</SelectItem>
+                  {(folders ?? []).map((folder) => (
+                    <SelectItem key={folder.id} value={folder.id}>
+                      {folder.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={async () => {
+                  const ids = Array.from(selectedIds);
+                  const results = await Promise.allSettled(ids.map((id) => deleteMedia.mutateAsync(id)));
+                  const failed = results.filter((result) => result.status === 'rejected').length;
+                  if (failed === 0) toast.success(`${ids.length} files deleted`);
+                  else toast.error(`${failed} of ${ids.length} files failed to delete`);
+                  setSelectedIds(new Set());
+                }}
+              >
+                <Trash2 />
+                Delete
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
+                Clear
+              </Button>
+            </div>
+          ) : null}
+
           {viewMode === 'grid' ? (
             gridItems.length > 0 ? (
-              <MediaGrid items={gridItems} developerMode={developerMode} onPreview={setPreviewItem} />
+              <MediaGrid
+                items={gridItems}
+                developerMode={developerMode}
+                onPreview={setPreviewItem}
+                selectedIds={selectedIds}
+                onToggleSelect={toggleSelect}
+              />
             ) : (
               <p className="py-8 text-center text-sm text-muted-foreground">No media matches your search.</p>
             )

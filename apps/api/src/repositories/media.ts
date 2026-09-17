@@ -26,6 +26,18 @@ export function getMediaById(db: Database, id: string): Promise<Media | undefine
   return db.query.media.findFirst({ where: eq(media.id, id) });
 }
 
+export async function updateMedia(
+  db: Database,
+  id: string,
+  input: { filename?: string | undefined; altText?: string | null | undefined },
+): Promise<Media | undefined> {
+  if (Object.keys(input).length === 0) {
+    return getMediaById(db, id);
+  }
+  const [row] = await db.update(media).set(input).where(eq(media.id, id)).returning();
+  return row;
+}
+
 export async function deleteMedia(db: Database, id: string): Promise<boolean> {
   const [deleted] = await db.delete(media).where(eq(media.id, id)).returning({ id: media.id });
   return Boolean(deleted);

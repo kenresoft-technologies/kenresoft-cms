@@ -1,5 +1,5 @@
 import { createRoute, z } from '@hono/zod-openapi';
-import { altTextSchema, mediaSchema, moveMediaSchema } from '@kenresoft-cms/contracts';
+import { altTextSchema, mediaSchema, moveMediaSchema, updateMediaSchema } from '@kenresoft-cms/contracts';
 import type { Media } from '@kenresoft-cms/contracts';
 
 import { recordAudit } from '../../lib/audit';
@@ -9,7 +9,7 @@ import { deleteMediaFile, uploadMedia } from '../../lib/media-service';
 import { invalidatePublicMediaFolderCache } from '../../lib/public-cache';
 import { requireRole } from '../../middleware/require-role';
 import { getMediaFolderById } from '../../repositories/media-folders';
-import { getMediaById, listMedia, moveMediaToFolder } from '../../repositories/media';
+import { getMediaById, listMedia, moveMediaToFolder, updateMedia } from '../../repositories/media';
 import type { Bindings } from '../../lib/env';
 import type { AuthedVariables } from '../../middleware/require-session';
 import type { Media as DbMedia } from '@kenresoft-cms/database';
@@ -184,6 +184,54 @@ mediaRoute.openAPIRegistry.registerPath({
     },
   },
 });
+
+mediaRoute.openapi(
+  createRoute({
+    method: 'patch',
+    path: '/{id}',
+    tags: ['Media'],
+    summary: 'Rename a media item or update its alt text',
+    description: 'Never touches the file bytes, R2 key, or content type — those are immutable once uploaded (§14).',
+    middleware: requireRole('admin', 'editor'),
+    request: {
+      params: idParamSchema,
+      body: { content: { 'application/json': { schema: updateMediaSchema } } },
+    },
+    responses: {
+      200: {
+        description: 'The updated media item.',
+        content: { 'application/json': { schema: mediaSchema } },
+      },
+      404: {
+        description: 'No media with that id.',
+        content: { 'application/json': { schema: notFoundSchema } },
+      },
+    },
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const input = c.req.valid('json');
+    const db = getDb(c);
+    const row = await updateMedia(db, id, input);
+    if (!row) {
+      return c.json({ error: 'Media not found' }, 404);
+    }
+
+    await recordAudit(db, {
+      actorUserId: c.get('user').id,
+      action: 'media.updated',
+      targetType: 'media',
+      targetId: row.id,
+      metadata: { filename: row.filename },
+    });
+    if (row.folderId) {
+      const folder = await getMediaFolderById(db, row.folderId);
+      if (folder) await invalidatePublicMediaFolderCache(folder.slug);
+    }
+
+    return c.json(toMedia(row), 200);
+  },
+);
 
 mediaRoute.openapi(
   createRoute({
