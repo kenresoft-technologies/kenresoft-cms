@@ -61,6 +61,11 @@ function initials(name: string) {
   return (parts.length > 1 ? [parts[0]![0], parts[parts.length - 1]![0]] : [name.slice(0, 2)]).join('').toUpperCase();
 }
 
+function getPlainTextFromHtml(html: string) {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  return doc.body.textContent ?? '';
+}
+
 // The full-page replacement for the old narrow right-side Sheet — a submission plus its
 // attachments/replies/reply-composer is a proper record, not something that fits in a slide-
 // over. Reachable from both the per-form (FormSubmissionsPage) and unified (AllSubmissionsPage)
@@ -102,7 +107,7 @@ export function SubmissionDetailPage() {
     return { fieldEntries, attachmentEntries };
   }, [submission]);
 
-  const bodyIsEmpty = bodyHtml.replace(/<[^>]+>/g, '').trim().length === 0;
+  const bodyIsEmpty = getPlainTextFromHtml(bodyHtml).trim().length === 0;
 
   function setStatus(status: FormSubmissionStatus) {
     if (!formId || !submission) return;
