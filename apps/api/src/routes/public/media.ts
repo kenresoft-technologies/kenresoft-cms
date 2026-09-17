@@ -6,7 +6,7 @@ import { getDb } from '../../lib/db';
 import { createOpenApiApp } from '../../lib/openapi';
 import { publicCacheKey, publicMediaCacheControlHeader } from '../../lib/public-cache';
 import { getMediaFolderBySlug } from '../../repositories/media-folders';
-import { getMediaById, listMedia } from '../../repositories/media';
+import { getPublicMediaById, listMedia } from '../../repositories/media';
 import type { Bindings } from '../../lib/env';
 
 export const publicMediaRoute = createOpenApiApp<{ Bindings: Bindings }>();
@@ -98,7 +98,7 @@ publicMediaRoute.openapi(
   }),
   async (c) => {
     const db = getDb(c);
-    const row = await getMediaById(db, c.req.valid('param').id);
+    const row = await getPublicMediaById(db, c.req.valid('param').id);
     if (!row) {
       return c.json({ error: 'Media not found' }, 404);
     }
@@ -120,7 +120,7 @@ publicMediaRoute.openapi(
 // who has (or guesses) its id, the same trust model as any CDN-backed asset URL.
 publicMediaRoute.get('/:id/file', async (c) => {
   const db = getDb(c);
-  const row = await getMediaById(db, c.req.param('id'));
+  const row = await getPublicMediaById(db, c.req.param('id'));
   if (!row) {
     return c.json({ error: 'Media not found' }, 404);
   }

@@ -1,16 +1,20 @@
 import { z } from 'zod';
 
-import { MEDIA_CONTENT_TYPES } from './enums';
+import { MEDIA_CONTENT_TYPES, MEDIA_DOCUMENT_CONTENT_TYPES, MEDIA_VISIBILITIES } from './enums';
 
 export const mediaSchema = z.object({
   id: z.string(),
   key: z.string(),
   filename: z.string(),
-  contentType: z.enum(MEDIA_CONTENT_TYPES),
+  // Admin-facing Media can be either the public image contract or (only when `visibility` is
+  // 'private') one of MEDIA_DOCUMENT_CONTENT_TYPES — publicMediaSchema below deliberately keeps
+  // the narrower, image-only enum, since it's the one contract external/public consumers see.
+  contentType: z.enum([...MEDIA_CONTENT_TYPES, ...MEDIA_DOCUMENT_CONTENT_TYPES]),
   size: z.number().int(),
   width: z.number().int().nullable(),
   height: z.number().int().nullable(),
   altText: z.string().nullable(),
+  visibility: z.enum(MEDIA_VISIBILITIES),
   // null = unfiled/root — every media item that predates folders keeps working unmodified.
   folderId: z.string().nullable(),
   createdAt: z.string(),
@@ -68,6 +72,10 @@ export const altTextSchema = z.string().max(500).optional();
 export const updateMediaSchema = z.object({
   filename: z.string().min(1).max(255).optional(),
   altText: z.string().max(500).nullable().optional(),
+  // Toggling visibility is allowed (e.g. marking an existing public asset private); the API
+  // route rejects switching a document-content-type asset to 'public', since that would violate
+  // the public image-only contract (publicMediaSchema/MEDIA_CONTENT_TYPES).
+  visibility: z.enum(MEDIA_VISIBILITIES).optional(),
 });
 
 // The subset of Media that's safe to expose from the public API (GET /api/v1/public/media/:id)

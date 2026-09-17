@@ -5,10 +5,12 @@ import type { FormSubmission, FormSubmissionStatus } from '@kenresoft-cms/contra
 import { getDb } from '../../lib/db';
 import { sendFormSubmissionNotification } from '../../lib/form-notifications';
 import { validateSubmission } from '../../lib/form-submission-validation';
+import { uploadMedia } from '../../lib/media-service';
 import { createOpenApiApp } from '../../lib/openapi';
 import type { Bindings } from '../../lib/env';
 import { listFormFields } from '../../repositories/form-fields';
-import { createFormSubmission } from '../../repositories/form-submissions';
+import { createMediaAttachment } from '../../repositories/media-attachments';
+import { createFormSubmission, updateFormSubmissionData } from '../../repositories/form-submissions';
 import { getFormBySlug } from '../../repositories/forms';
 import type { FormSubmission as DbFormSubmission } from '@kenresoft-cms/database';
 
@@ -78,21 +80,48 @@ publicFormsRoute.post('/:slug/submissions', async (c) => {
   }
 
   const data: Record<string, unknown> = { ...validated.data };
-  for (const [fieldName, attachment] of Object.entries(validated.files ?? {})) {
-    const extension = attachment.filename.includes('.') ? attachment.filename.split('.').pop() : undefined;
-    const key = `form-uploads/${crypto.randomUUID()}${extension ? `.${extension}` : ''}`;
-    await c.env.MEDIA_BUCKET.put(key, attachment.bytes, {
-      httpMetadata: { contentType: attachment.contentType },
-    });
-    data[fieldName] = {
-      key,
-      filename: attachment.filename,
-      size: attachment.bytes.byteLength,
-      contentType: attachment.contentType,
-    };
+  const submission = await createFormSubmission(db, { formId: form.id, data });
+
+  // A file's real Media reference isn't known until after upload, and media_attachments needs
+  // the submission's own id — so file fields are attached in a second pass, right after
+  // creation, rather than blocking submission creation on however many uploads a form has.
+  // Every submitted file becomes a real, private Media asset (Phase 5's "single canonical Media
+  // table" decision) rather than a bare R2 object the CMS otherwise knows nothing about — never
+  // shown in the admin Media Library's default grid (visibility: 'private'), reachable only
+  // through the submission's own detail view.
+  const fileEntries = Object.entries(validated.files ?? {});
+  if (fileEntries.length > 0) {
+    const updatedData: Record<string, unknown> = { ...data };
+    for (const [fieldName, attachment] of fileEntries) {
+      const uploadResult = await uploadMedia(db, c.env.MEDIA_BUCKET, {
+        bytes: attachment.bytes,
+        filename: attachment.filename,
+        altText: null,
+        visibility: 'private',
+      });
+      if (!uploadResult.ok) {
+        // Already sniffed successfully by validateSubmission above — this should never actually
+        // fail, but if it somehow does, skip this one field rather than lose the rest of an
+        // already-created, otherwise-valid submission.
+        continue;
+      }
+      await createMediaAttachment(db, {
+        mediaId: uploadResult.media.id,
+        ownerType: 'form_submission',
+        ownerId: submission.id,
+        fieldName,
+      });
+      updatedData[fieldName] = {
+        mediaId: uploadResult.media.id,
+        filename: attachment.filename,
+        size: attachment.bytes.byteLength,
+        contentType: attachment.contentType,
+      };
+    }
+    submission.data = updatedData;
+    await updateFormSubmissionData(db, submission.id, updatedData);
   }
 
-  const submission = await createFormSubmission(db, { formId: form.id, data });
   sendFormSubmissionNotification(c.env, c.executionCtx, form, fields, submission);
   return c.json(toFormSubmission(submission), 201);
 });

@@ -57,21 +57,31 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatBytes } from '@/lib/format';
-import type { Media, MediaContentType, MediaFolder } from '@/lib/types';
+import type { AnyMediaContentType, Media, MediaContentType, MediaFolder } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
-const MEDIA_TYPE_LABELS: Record<MediaContentType, string> = {
+// The Media Library's default grid only ever shows public items (Phase 5: private assets,
+// including every document type, are excluded from the default listing at the API layer, not
+// filtered here) — but Media.contentType's own type is the full public+private union, so these
+// maps cover every value that type can hold rather than only the ones this page ever actually
+// renders.
+const MEDIA_TYPE_LABELS: Record<AnyMediaContentType, string> = {
   'image/png': 'PNG',
   'image/jpeg': 'JPEG',
   'image/gif': 'GIF',
   'image/webp': 'WebP',
+  'application/pdf': 'PDF',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'DOCX',
 };
 
-const MEDIA_TYPE_TONE: Record<MediaContentType, string> = {
+const MEDIA_TYPE_TONE: Record<AnyMediaContentType, string> = {
   'image/png': 'border-swatch-2/30 bg-swatch-2/14 text-swatch-2',
   'image/jpeg': 'border-swatch-4/30 bg-swatch-4/14 text-swatch-4',
   'image/gif': 'border-swatch-3/30 bg-swatch-3/14 text-swatch-3',
   'image/webp': 'border-swatch-5/30 bg-swatch-5/14 text-swatch-5',
+  'application/pdf': 'border-swatch-1/30 bg-swatch-1/14 text-swatch-1',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
+    'border-swatch-1/30 bg-swatch-1/14 text-swatch-1',
 };
 
 type TypeFilter = 'all' | MediaContentType;
