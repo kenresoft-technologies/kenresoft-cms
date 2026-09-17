@@ -26,10 +26,12 @@ import { z } from 'zod';
 import { recordAudit } from '../../lib/audit';
 import { getDb } from '../../lib/db';
 import { getEmailSender, isEmailProviderConfigured } from '../../lib/email';
+import { sendFormSubmissionNotification } from '../../lib/form-notifications';
 import { sanitizeReplyHtml } from '../../lib/html-sanitizer';
 import { htmlToPlainText } from '../../lib/html-to-text';
 import { deleteMediaIfUnreferenced } from '../../lib/media-service';
 import { createOpenApiApp } from '../../lib/openapi';
+import { parseSubmissionRequestBody, submitForm } from '../../lib/submit-form';
 import { requireFormsAccess } from '../../middleware/require-forms-access';
 import { requireRole } from '../../middleware/require-role';
 import {
@@ -141,6 +143,7 @@ function toFormSubmission(row: DbFormSubmission): FormSubmission {
     formId: row.formId,
     data: row.data,
     status: row.status as FormSubmissionStatus,
+    isTest: row.isTest,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -153,6 +156,7 @@ export function toFormSubmissionWithForm(
     formId: row.formId,
     data: row.data,
     status: row.status as FormSubmissionStatus,
+    isTest: row.isTest,
     createdAt: row.createdAt.toISOString(),
     formName: row.formName,
     formSlug: row.formSlug,
@@ -472,6 +476,75 @@ formsRoute.openapi(
     return c.json(submissions.map(toFormSubmissionWithForm), 200);
   },
 );
+
+// "Preview & Test": submits a real test entry through the exact same validate/upload/notify
+// pipeline the public route uses (submitForm() — shared, not a second copy), rather than a
+// dry-run/simulation. That's deliberate: it's the only way to actually prove a form's file
+// upload and email-notification paths work, not just that its field validation does. The
+// resulting row is real (isTest: true) and appears in the inbox flagged, not hidden — the
+// admin still gets a real thing to inspect. Gated by requireFormsAccess() alone (this route's
+// `formsRoute.use('*', ...)` above) — the same editor+ floor "manage fields" already uses, since
+// testing a form you can already edit needs no stricter gate; author/viewer are excluded/
+// read-only exactly as they are everywhere else in this file. Never rate-limited by
+// FORM_SUBMISSION_RATE_LIMITER — that budget exists for anonymous public traffic, not an
+// authenticated admin verifying their own form.
+formsRoute.post('/:id/test-submissions', async (c) => {
+  const db = getDb(c);
+  const form = await getFormById(db, c.req.param('id'));
+  if (!form) {
+    return c.json({ error: 'Form not found' }, 404);
+  }
+
+  const parsedBody = await parseSubmissionRequestBody(c.req.raw);
+  if (!parsedBody.ok) {
+    return c.json({ error: parsedBody.error }, 400);
+  }
+
+  const fields = await listFormFields(db, form.id);
+  const result = await submitForm(db, c.env.MEDIA_BUCKET, form.id, fields, parsedBody.parsed, { isTest: true });
+  if (!result.ok) {
+    return c.json({ error: result.error, issues: result.issues }, 400);
+  }
+
+  sendFormSubmissionNotification(c.env, c.executionCtx, form, fields, result.submission, { isTest: true });
+  await recordAudit(db, {
+    actorUserId: c.get('user').id,
+    action: 'form_submission.tested',
+    targetType: 'form',
+    targetId: form.id,
+    metadata: { submissionId: result.submission.id },
+  });
+  return c.json(toFormSubmission(result.submission), 201);
+});
+
+formsRoute.openAPIRegistry.registerPath({
+  method: 'post',
+  path: '/{id}/test-submissions',
+  tags: ['Forms'],
+  summary: 'Submit a real test entry through this form, for admin verification (Preview & Test)',
+  description:
+    "Runs the exact same validation/file-upload/notification pipeline the public submission " +
+    'route does, flagged isTest: true. The request body shape is dynamic, built from the ' +
+    "form's own field definitions, the same as the public submission route.",
+  request: {
+    params: idParamSchema,
+    body: { content: { 'application/json': { schema: z.record(z.string(), z.unknown()) } } },
+  },
+  responses: {
+    201: {
+      description: 'The created test submission.',
+      content: { 'application/json': { schema: formSubmissionSchema } },
+    },
+    400: {
+      description: 'Malformed body, or the body failed the form-specific validation.',
+      content: { 'application/json': { schema: notFoundSchema } },
+    },
+    404: {
+      description: 'No form with that id.',
+      content: { 'application/json': { schema: notFoundSchema } },
+    },
+  },
+});
 
 // Streams the raw attachment bytes — not a JSON response, so (like media.ts's own file route)
 // this stays a plain route with a docs-only registerPath below. No role gate: viewing an

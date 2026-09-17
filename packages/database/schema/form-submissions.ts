@@ -24,6 +24,12 @@ export const formSubmissions = sqliteTable(
       .notNull()
       .$type<Record<string, unknown>>(),
     status: text('status').notNull().$type<FormSubmissionStatus>().default('new'),
+    // True only for a submission created through the admin "Preview & Test" flow
+    // (routes/admin/forms.ts's test-submissions route) — runs the exact same validation/file-
+    // upload/notification pipeline a real visitor submission does, so it's a real row, not a
+    // dry run, but flagged so it can be visually distinguished and excluded from any future
+    // count/export feature by default (never silently mixed into real visitor data).
+    isTest: integer('is_test', { mode: 'boolean' }).notNull().default(false),
     createdAt: integer('created_at', { mode: 'timestamp' })
       .notNull()
       .default(sql`(unixepoch())`),

@@ -3,7 +3,7 @@ import type { Database, FormSubmission, FormSubmissionStatus, NewFormSubmission 
 
 export async function createFormSubmission(
   db: Database,
-  input: Pick<NewFormSubmission, 'formId' | 'data'>,
+  input: Pick<NewFormSubmission, 'formId' | 'data' | 'isTest'>,
 ): Promise<FormSubmission> {
   const [submission] = await db.insert(formSubmissions).values(input).returning();
   return submission!;
@@ -20,6 +20,7 @@ export function listSubmissionsWithForm(db: Database, formId?: string) {
       formId: formSubmissions.formId,
       data: formSubmissions.data,
       status: formSubmissions.status,
+      isTest: formSubmissions.isTest,
       createdAt: formSubmissions.createdAt,
       formName: forms.name,
       formSlug: forms.slug,
