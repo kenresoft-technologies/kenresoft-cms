@@ -29,7 +29,8 @@ export function useMediaFolders() {
 export function useCreateMediaFolder() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: { name: string; slug: string }) => apiClient.post<MediaFolder>('/api/v1/admin/media-folders', input),
+    mutationFn: (input: { name: string; slug: string; parentId?: string | null }) =>
+      apiClient.post<MediaFolder>('/api/v1/admin/media-folders', input),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: mediaFoldersKey });
     },
@@ -39,7 +40,7 @@ export function useCreateMediaFolder() {
 export function useUpdateMediaFolder() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, ...input }: { id: string; name?: string; slug?: string }) =>
+    mutationFn: ({ id, ...input }: { id: string; name?: string; slug?: string; parentId?: string | null }) =>
       apiClient.patch<MediaFolder>(`/api/v1/admin/media-folders/${id}`, input),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: mediaFoldersKey });

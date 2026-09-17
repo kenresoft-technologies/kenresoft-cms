@@ -21,6 +21,8 @@ export const mediaFolderSchema = z.object({
   id: z.string(),
   name: z.string(),
   slug: z.string(),
+  // null = a top-level folder.
+  parentId: z.string().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -34,11 +36,14 @@ const folderSlugSchema = z
 export const createMediaFolderSchema = z.object({
   name: z.string().min(1).max(200),
   slug: folderSlugSchema,
+  parentId: z.string().min(1).nullable().optional(),
 });
 
 export const updateMediaFolderSchema = z.object({
   name: z.string().min(1).max(200).optional(),
   slug: folderSlugSchema.optional(),
+  // Explicit null moves the folder to top-level; omitted leaves it where it is.
+  parentId: z.string().min(1).nullable().optional(),
 });
 
 // Moving media between folders — a dedicated small request shape (a list of media ids plus the

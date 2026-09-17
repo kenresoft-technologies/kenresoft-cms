@@ -27,3 +27,13 @@ export const updateContentTypeSchema = createContentTypeSchema.partial();
 export type ContentType = z.infer<typeof contentTypeSchema>;
 export type CreateContentTypeInput = z.infer<typeof createContentTypeSchema>;
 export type UpdateContentTypeInput = z.infer<typeof updateContentTypeSchema>;
+
+// Backs the Content Types grid view — one cheap aggregate query for field/entry counts per
+// content type (never N+1), so the card grid can show both without every card issuing its own
+// request the way the old table's per-row FieldsCountCell did.
+export const contentTypeWithCountsSchema = contentTypeSchema.extend({
+  fieldCount: z.number().int(),
+  entryCount: z.number().int(),
+});
+
+export type ContentTypeWithCounts = z.infer<typeof contentTypeWithCountsSchema>;

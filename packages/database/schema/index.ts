@@ -5,6 +5,7 @@ export * from './content-types';
 export * from './field-definitions';
 export * from './entries';
 export * from './entry-revisions';
+export * from './entry-folders';
 export * from './templates';
 export * from './pages';
 export * from './page-revisions';
