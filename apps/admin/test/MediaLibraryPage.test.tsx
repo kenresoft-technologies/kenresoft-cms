@@ -76,15 +76,15 @@ describe('MediaLibraryPage', () => {
 
     renderPage();
 
-    await waitFor(() => expect(screen.getByText('No media yet')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('No unfiled media')).toBeInTheDocument());
   });
 
   it('uploads a file through the dialog and refetches the list', async () => {
-    let mediaListCalls = 0;
+    let uploaded = false;
     getMock.mockImplementation((path: string) => {
       if (path === '/api/v1/admin/settings') return Promise.resolve(null);
-      mediaListCalls += 1;
-      if (mediaListCalls === 1) return Promise.resolve([]);
+      if (path.startsWith('/api/v1/admin/media-folders')) return Promise.resolve([]);
+      if (!uploaded) return Promise.resolve([]);
       return Promise.resolve([
         {
           id: 'm-1',
@@ -97,10 +97,13 @@ describe('MediaLibraryPage', () => {
         },
       ]);
     });
-    uploadMock.mockResolvedValue({ id: 'm-1' });
+    uploadMock.mockImplementation(() => {
+      uploaded = true;
+      return Promise.resolve({ id: 'm-1' });
+    });
 
     renderPage();
-    await waitFor(() => expect(screen.getByText('No media yet')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('No unfiled media')).toBeInTheDocument());
 
     await userEvent.click(screen.getByRole('button', { name: 'Upload media' }));
     const dialog = screen.getByRole('dialog');

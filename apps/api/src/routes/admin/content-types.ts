@@ -1,6 +1,7 @@
 import { createRoute } from '@hono/zod-openapi';
 import {
   contentTypeSchema,
+  contentTypeWithCountsSchema,
   createContentTypeSchema,
   createFieldDefinitionSchema,
   fieldDefinitionSchema,
@@ -22,6 +23,7 @@ import {
   getContentTypeById,
   getContentTypeByRoutePattern,
   listContentTypes,
+  listContentTypesWithCounts,
   updateContentType,
 } from '../../repositories/content-types';
 import { findPageMatchingRoutePattern } from '../../repositories/pages';
@@ -86,6 +88,32 @@ contentTypesRoute.openapi(
   async (c) => {
     const db = getDb(c);
     return c.json((await listContentTypes(db)).map(toContentType), 200);
+  },
+);
+
+// Registered before /{id} below — same static-path-before-dynamic-path precedence rule as the
+// field-reorder route further down this file (Hono matches routes in registration order, and a
+// GET to /with-counts would otherwise be captured by /{id} first).
+contentTypesRoute.openapi(
+  createRoute({
+    method: 'get',
+    path: '/with-counts',
+    tags: ['Content types'],
+    summary: 'List every content type with its field and entry counts — backs the grid view',
+    responses: {
+      200: {
+        description: 'Every content type, each with fieldCount/entryCount from one aggregate query apiece.',
+        content: { 'application/json': { schema: z.array(contentTypeWithCountsSchema) } },
+      },
+    },
+  }),
+  async (c) => {
+    const db = getDb(c);
+    const rows = await listContentTypesWithCounts(db);
+    return c.json(
+      rows.map((row) => ({ ...toContentType(row), fieldCount: row.fieldCount, entryCount: row.entryCount })),
+      200,
+    );
   },
 );
 

@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { apiClient } from '@/lib/api-client';
-import type { ContentType } from '@/lib/types';
+import type { ContentType, ContentTypeWithCounts } from '@/lib/types';
 
 const contentTypesKey = ['content-types'] as const;
 
@@ -9,6 +9,16 @@ export function useContentTypes() {
   return useQuery({
     queryKey: contentTypesKey,
     queryFn: () => apiClient.get<ContentType[]>('/api/v1/admin/content-types'),
+  });
+}
+
+// Backs the grid view's cards — one cheap aggregate query on the API side (never N+1 the way the
+// old table's per-row field-count cell was), so every card can show field/entry counts without
+// its own request.
+export function useContentTypesWithCounts() {
+  return useQuery({
+    queryKey: [...contentTypesKey, 'with-counts'],
+    queryFn: () => apiClient.get<ContentTypeWithCounts[]>('/api/v1/admin/content-types/with-counts'),
   });
 }
 

@@ -1,13 +1,29 @@
 import { useMemo, useState, type FormEvent, type ReactNode } from 'react';
-import { FolderCog, Grid3x3, ImageOff, Images, List, RefreshCw, Trash2 } from 'lucide-react';
+import { Folder, FolderCog, FolderOpen, FolderPlus, Grid3x3, ImageOff, Images, List, MoreHorizontal, Pencil, RefreshCw, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { ColumnDef } from '@tanstack/react-table';
 
 import { ApiError } from '@/lib/api-client';
 import { useDeveloperMode } from '@/lib/developer-mode';
-import { useDeleteMedia, useMediaFolders, useMediaList, useMoveMedia, useUploadMedia, mediaFileUrl } from '@/lib/queries/media';
+import {
+  useCreateMediaFolder,
+  useDeleteMedia,
+  useDeleteMediaFolder,
+  useMediaFolders,
+  useMediaList,
+  useMoveMedia,
+  useUpdateMediaFolder,
+  useUploadMedia,
+  mediaFileUrl,
+} from '@/lib/queries/media';
 import { MediaDeveloperPanel } from '@/components/developer-panel/media-developer-panel';
 import { ManageMediaFoldersDialog } from '@/components/manage-media-folders-dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -437,18 +453,190 @@ function MediaPreviewDialog({ item, onOpenChange }: { item: Media | null; onOpen
   );
 }
 
+function NewMediaFolderButton({ parentId }: { parentId: string | null }) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const createFolder = useCreateMediaFolder();
+
+  async function handleCreate() {
+    if (!name.trim()) {
+      setError('Enter a folder name');
+      return;
+    }
+    setError(null);
+    try {
+      await createFolder.mutateAsync({ name: name.trim(), slug: slugify(name), parentId });
+      setName('');
+      setOpen(false);
+      toast.success('Folder created');
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Failed to create folder');
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <Button variant="outline" onClick={() => setOpen(true)}>
+        <FolderPlus />
+        New folder
+      </Button>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>New folder</DialogTitle>
+          <DialogDescription>
+            {parentId ? 'Created inside the folder you currently have open.' : 'Created at the top level of the Media Library.'}
+          </DialogDescription>
+        </DialogHeader>
+        <Input
+          placeholder="Folder name"
+          value={name}
+          autoFocus
+          onChange={(event) => setName(event.target.value)}
+          onKeyDown={(event) => event.key === 'Enter' && void handleCreate()}
+        />
+        {error ? <p className="text-sm text-destructive">{error}</p> : null}
+        <DialogFooter>
+          <Button onClick={() => void handleCreate()} disabled={createFolder.isPending}>
+            Create
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function slugify(value: string): string {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+function FolderCard({ folder, onOpen }: { folder: MediaFolder; onOpen: (id: string) => void }) {
+  const updateFolder = useUpdateMediaFolder();
+  const deleteFolder = useDeleteMediaFolder();
+  const [renaming, setRenaming] = useState(false);
+  const [name, setName] = useState(folder.name);
+
+  async function handleRename() {
+    if (!name.trim() || name === folder.name) {
+      setRenaming(false);
+      return;
+    }
+    try {
+      await updateFolder.mutateAsync({ id: folder.id, name: name.trim(), slug: slugify(name) });
+      toast.success('Folder renamed');
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Failed to rename folder');
+    } finally {
+      setRenaming(false);
+    }
+  }
+
+  async function handleDelete() {
+    try {
+      await deleteFolder.mutateAsync(folder.id);
+      toast.success('Folder deleted — its media is now unfiled');
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Failed to delete folder');
+    }
+  }
+
+  if (renaming) {
+    return (
+      <Card size="sm" className="p-3">
+        <Input
+          value={name}
+          autoFocus
+          onChange={(event) => setName(event.target.value)}
+          onBlur={() => void handleRename()}
+          onKeyDown={(event) => event.key === 'Enter' && void handleRename()}
+        />
+      </Card>
+    );
+  }
+
+  return (
+    <Card size="sm" className="group flex-row items-center justify-between gap-2 p-3">
+      <button
+        type="button"
+        className="flex min-w-0 flex-1 items-center gap-2 text-left"
+        onClick={() => onOpen(folder.id)}
+      >
+        <Folder className="size-5 shrink-0 text-muted-foreground" />
+        <span className="truncate text-sm font-medium">{folder.name}</span>
+      </button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={`Manage ${folder.name}`}
+            className="opacity-0 group-hover:opacity-100"
+          >
+            <MoreHorizontal />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onSelect={() => setRenaming(true)}>
+            <Pencil /> Rename
+          </DropdownMenuItem>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <DropdownMenuItem onSelect={(event) => event.preventDefault()} variant="destructive">
+                <Trash2 /> Delete
+              </DropdownMenuItem>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete "{folder.name}"?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  The folder is removed. Media inside it is never deleted — it becomes unfiled, and any
+                  subfolders move to the top level.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={() => void handleDelete()}>Delete</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </Card>
+  );
+}
+
 export function MediaLibraryPage() {
   const developerMode = useDeveloperMode();
-  const [folderFilter, setFolderFilter] = useState<string>('all');
   const { data: folders } = useMediaFolders();
+  const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
   const { data: mediaItems, isPending, error, refetch } = useMediaList({
-    folderId: folderFilter === 'all' ? undefined : folderFilter,
+    folderId: currentFolderId === null ? 'unfiled' : currentFolderId,
   });
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [previewItem, setPreviewItem] = useState<Media | null>(null);
   const [managingFolders, setManagingFolders] = useState(false);
+
+  const currentFolder = folders?.find((folder) => folder.id === currentFolderId) ?? null;
+  const breadcrumbFolders = useMemo(() => {
+    if (!folders) return [];
+    const chain: MediaFolder[] = [];
+    let cursor = currentFolder;
+    while (cursor) {
+      chain.unshift(cursor);
+      cursor = folders.find((folder) => folder.id === cursor!.parentId) ?? null;
+    }
+    return chain;
+  }, [folders, currentFolder]);
+  const subfolders = useMemo(
+    () => (folders ?? []).filter((folder) => folder.parentId === currentFolderId),
+    [folders, currentFolderId],
+  );
 
   const typeFilteredItems = useMemo(
     () => (mediaItems ?? []).filter((item) => typeFilter === 'all' || item.contentType === typeFilter),
@@ -471,12 +659,35 @@ export function MediaLibraryPage() {
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => setManagingFolders(true)}>
               <FolderCog />
-              Folders
+              Manage folders
             </Button>
-            <UploadMediaDialog defaultFolderId={folderFilter === 'all' ? undefined : folderFilter} />
+            <NewMediaFolderButton parentId={currentFolderId} />
+            <UploadMediaDialog defaultFolderId={currentFolderId ?? undefined} />
           </div>
         }
       />
+
+      <div className="flex flex-wrap items-center gap-1 text-sm text-muted-foreground">
+        <button type="button" className="flex items-center gap-1 hover:underline" onClick={() => setCurrentFolderId(null)}>
+          <FolderOpen className="size-3.5" /> Media
+        </button>
+        {breadcrumbFolders.map((folder) => (
+          <span key={folder.id} className="flex items-center gap-1">
+            <span>/</span>
+            <button type="button" className="hover:underline" onClick={() => setCurrentFolderId(folder.id)}>
+              {folder.name}
+            </button>
+          </span>
+        ))}
+      </div>
+
+      {subfolders.length > 0 ? (
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+          {subfolders.map((folder) => (
+            <FolderCard key={folder.id} folder={folder} onOpen={setCurrentFolderId} />
+          ))}
+        </div>
+      ) : null}
 
       {error ? <p className="text-destructive">{error.message}</p> : null}
 
@@ -488,10 +699,10 @@ export function MediaLibraryPage() {
         </div>
       ) : null}
 
-      {mediaItems && mediaItems.length === 0 ? (
+      {mediaItems && mediaItems.length === 0 && subfolders.length === 0 ? (
         <EmptyState
           icon={Images}
-          title="No media yet"
+          title={currentFolderId === null ? 'No unfiled media' : 'This folder is empty'}
           description="Upload an image to start using it in your content."
         />
       ) : null}
@@ -516,20 +727,6 @@ export function MediaLibraryPage() {
                 {Object.entries(MEDIA_TYPE_LABELS).map(([value, label]) => (
                   <SelectItem key={value} value={value}>
                     {label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={folderFilter} onValueChange={setFolderFilter}>
-              <SelectTrigger size="sm" className="w-40">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All folders</SelectItem>
-                <SelectItem value="unfiled">Unfiled</SelectItem>
-                {(folders ?? []).map((folder) => (
-                  <SelectItem key={folder.id} value={folder.id}>
-                    {folder.name}
                   </SelectItem>
                 ))}
               </SelectContent>

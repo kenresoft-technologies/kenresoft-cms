@@ -31,9 +31,34 @@ function toMediaFolder(row: DbMediaFolder): MediaFolder {
     id: row.id,
     name: row.name,
     slug: row.slug,
+    parentId: row.parentId,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
+}
+
+// Rejects a parentId that doesn't exist, or that would create a cycle (moving/creating a folder
+// as a descendant of itself) — mirrors entry-folders.ts's own identical guard.
+async function validateParentId(
+  db: ReturnType<typeof getDb>,
+  folderId: string | null,
+  parentId: string | null,
+): Promise<string | null> {
+  if (parentId === null) return null;
+  if (parentId === folderId) return 'A folder cannot be its own parent';
+  let cursor: string | null = parentId;
+  const seen = new Set<string>();
+  while (cursor) {
+    if (folderId !== null && cursor === folderId) {
+      return 'Cannot move a folder into one of its own descendants';
+    }
+    if (seen.has(cursor)) break;
+    seen.add(cursor);
+    const folder = await getMediaFolderById(db, cursor);
+    if (!folder) return 'parentId does not reference a real media folder';
+    cursor = folder.parentId;
+  }
+  return null;
 }
 
 mediaFoldersRoute.openapi(
@@ -82,6 +107,10 @@ mediaFoldersRoute.openapi(
 
     if (await getMediaFolderBySlug(db, input.slug)) {
       return c.json({ error: 'A media folder with that slug already exists' }, 400);
+    }
+    const parentError = await validateParentId(db, null, input.parentId ?? null);
+    if (parentError) {
+      return c.json({ error: parentError }, 400);
     }
 
     const created = await createMediaFolder(db, input);
@@ -135,6 +164,12 @@ mediaFoldersRoute.openapi(
       const bySlug = await getMediaFolderBySlug(db, input.slug);
       if (bySlug && bySlug.id !== id) {
         return c.json({ error: 'A media folder with that slug already exists' }, 400);
+      }
+    }
+    if ('parentId' in input) {
+      const parentError = await validateParentId(db, id, input.parentId ?? null);
+      if (parentError) {
+        return c.json({ error: parentError }, 400);
       }
     }
 

@@ -34,12 +34,14 @@ function renderPage() {
   );
 }
 
-function mockEntries(entries: unknown[]) {
-  getMock.mockImplementation((path: string) =>
-    path.startsWith('/api/v1/admin/content-types/')
-      ? Promise.resolve({ id: 'ct-1', name: 'Blog Post', slug: 'blog-post' })
-      : Promise.resolve(entries),
-  );
+function mockEntries(entries: unknown[], folders: unknown[] = []) {
+  getMock.mockImplementation((path: string) => {
+    if (path.startsWith('/api/v1/admin/entry-folders')) return Promise.resolve(folders);
+    if (path.startsWith('/api/v1/admin/content-types/')) {
+      return Promise.resolve({ id: 'ct-1', name: 'Blog Post', slug: 'blog-post' });
+    }
+    return Promise.resolve(entries);
+  });
 }
 
 describe('EntriesPage', () => {
@@ -66,7 +68,25 @@ describe('EntriesPage', () => {
     await waitFor(() => expect(screen.getByText('hello-world')).toBeInTheDocument());
     expect(screen.getByText('Published')).toBeInTheDocument();
     expect(screen.getByText('Jane Doe')).toBeInTheDocument();
-    expect(getMock).toHaveBeenCalledWith('/api/v1/admin/entries?contentTypeId=ct-1');
+    expect(getMock).toHaveBeenCalledWith('/api/v1/admin/entries?contentTypeId=ct-1&folderId=unfiled');
+  });
+
+  it('shows subfolder chips and navigates into a folder via breadcrumbs', async () => {
+    mockEntries(
+      [{ id: 'e-1', slug: 'hello-world', status: 'published', updatedAt: '2026-01-01T00:00:00.000Z', folderId: null }],
+      [{ id: 'folder-1', contentTypeId: 'ct-1', name: '2026', parentId: null }],
+    );
+
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('2026')).toBeInTheDocument());
+    await userEvent.click(screen.getByText('2026'));
+
+    await waitFor(() =>
+      expect(getMock).toHaveBeenCalledWith('/api/v1/admin/entries?contentTypeId=ct-1&folderId=folder-1'),
+    );
+    expect(screen.getByRole('button', { name: 'Root' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '2026' })).toBeInTheDocument();
   });
 
   it('shows an em dash when an entry has no author', async () => {

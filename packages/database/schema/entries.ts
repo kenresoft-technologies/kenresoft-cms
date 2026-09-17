@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import { sqliteTable, text, integer, uniqueIndex, index } from 'drizzle-orm/sqlite-core';
 
 import { contentTypes } from './content-types';
+import { entryFolders } from './entry-folders';
 import { user } from './auth';
 // ENTRY_STATUSES itself lives in packages/contracts — see field-definitions.ts for why.
 import type { EntryStatus } from '@kenresoft-cms/contracts';
@@ -27,6 +28,10 @@ export const entries = sqliteTable(
     // once at creation and never changed by later edits, unlike entry_revisions.createdBy
     // which records the author of every individual save.
     createdBy: text('created_by').references(() => user.id, { onDelete: 'set null' }),
+    // Null = unfiled/root — every pre-existing entry keeps working unmodified, same convention
+    // as media.folderId. `onDelete: 'set null'` so deleting a folder never deletes or orphans
+    // the entries in it — they simply become unfiled again, not the content type's own schema.
+    folderId: text('folder_id').references(() => entryFolders.id, { onDelete: 'set null' }),
     // Field values keyed by FieldDefinition.name — validated against the content type's
     // field definitions at the API layer, not the DB layer.
     data: text('data', { mode: 'json' })
@@ -47,6 +52,7 @@ export const entries = sqliteTable(
     // Scanned by the scheduled-publishing Cron Trigger (§13): status = 'draft' AND
     // publishAt <= now().
     index('entries_status_publish_at_idx').on(table.status, table.publishAt),
+    index('entries_folder_id_idx').on(table.folderId),
   ],
 );
 
