@@ -107,6 +107,12 @@ export const router = createBrowserRouter([
         }),
       },
       {
+        path: 'forms/:formId/submissions/:submissionId',
+        lazy: async () => ({
+          Component: (await import('@/pages/SubmissionDetailPage')).SubmissionDetailPage,
+        }),
+      },
+      {
         path: 'submissions',
         lazy: async () => ({
           Component: (await import('@/pages/AllSubmissionsPage')).AllSubmissionsPage,
