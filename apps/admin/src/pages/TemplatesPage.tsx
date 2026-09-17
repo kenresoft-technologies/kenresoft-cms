@@ -89,7 +89,7 @@ function TemplateDialog({ template, trigger }: { template?: Template; trigger: R
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>{trigger}</DialogTrigger>
-      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
+      <DialogContent size="lg" className="max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{isEditing ? 'Edit template' : 'New template'}</DialogTitle>
           <DialogDescription>

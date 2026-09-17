@@ -25,7 +25,7 @@ export function MediaPickerDialog({ open, onOpenChange, selectedId, onSelect, tr
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>{trigger}</DialogTrigger>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent size="md">
         <DialogHeader>
           <DialogTitle>Choose media</DialogTitle>
         </DialogHeader>

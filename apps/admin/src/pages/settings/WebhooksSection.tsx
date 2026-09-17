@@ -225,7 +225,7 @@ function DeliveriesDialog({ webhookId, onOpenChange }: { webhookId: string | nul
 
   return (
     <Dialog open={webhookId !== null} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent size="lg">
         <DialogHeader>
           <DialogTitle>Delivery log</DialogTitle>
           <DialogDescription>The 50 most recent delivery attempts, newest first.</DialogDescription>

@@ -428,7 +428,7 @@ function MediaList({
 function MediaPreviewDialog({ item, onOpenChange }: { item: Media | null; onOpenChange: (open: boolean) => void }) {
   return (
     <Dialog open={item !== null} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-3xl">
+      <DialogContent size="lg">
         <DialogHeader>
           <DialogTitle className="truncate">{item?.filename}</DialogTitle>
           {item ? (

@@ -103,7 +103,7 @@ function CreateUiContentTypeDialog() {
           Create type
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent size="md">
         <DialogHeader>
           <DialogTitle>Create a UI content type</DialogTitle>
           <DialogDescription>

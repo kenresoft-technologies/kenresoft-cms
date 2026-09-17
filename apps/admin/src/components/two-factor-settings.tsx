@@ -137,7 +137,7 @@ function EnableTwoFactorDialog({ onOpenChange }: { onOpenChange: (open: boolean)
   }
 
   return (
-    <DialogContent className="max-w-md">
+    <DialogContent size="md">
       <DialogHeader>
         <DialogTitle>Scan this QR code</DialogTitle>
         <DialogDescription>
