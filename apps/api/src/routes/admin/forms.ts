@@ -28,6 +28,7 @@ import { getDb } from '../../lib/db';
 import { getEmailSender, isEmailProviderConfigured } from '../../lib/email';
 import { sanitizeReplyHtml } from '../../lib/html-sanitizer';
 import { htmlToPlainText } from '../../lib/html-to-text';
+import { deleteMediaIfUnreferenced } from '../../lib/media-service';
 import { createOpenApiApp } from '../../lib/openapi';
 import { requireFormsAccess } from '../../middleware/require-forms-access';
 import { requireRole } from '../../middleware/require-role';
@@ -49,6 +50,8 @@ import {
   updateFormSubmissionStatus,
 } from '../../repositories/form-submissions';
 import { createForm, getFormById, listForms, updateForm } from '../../repositories/forms';
+import { deleteAttachmentsForOwner } from '../../repositories/media-attachments';
+import { getMediaById } from '../../repositories/media';
 import type { Bindings } from '../../lib/env';
 import type { AuthedVariables } from '../../middleware/require-session';
 import type {
@@ -71,19 +74,24 @@ const idParamSchema = z.object({ id: z.string().min(1) });
 const submissionParamsSchema = z.object({ id: z.string().min(1), submissionId: z.string().min(1) });
 const fieldParamSchema = z.object({ id: z.string().min(1), fieldId: z.string().min(1) });
 
-// A `file`-type field's value in FormSubmission.data — see routes/public/forms.ts, where a
-// submitted attachment is uploaded to R2 and this shape is written in the field's place.
-function attachmentAt(data: Record<string, unknown>, fieldName: string) {
+// A `file`-type field's value in FormSubmission.data. Two shapes coexist, per Phase 5's
+// backward-compatible-readers requirement: the legacy `{key, ...}` shape (a bare R2 key, from
+// before Media/media_attachments existed) and the current `{mediaId, ...}` shape (routes/public/
+// forms.ts now uploads through Media, private by default). Never migrated in place — old
+// submissions keep their original shape until an explicit, separate backfill (Phase 5's
+// two-step migration plan).
+type LegacyAttachment = { key: string; contentType: string; filename?: string };
+type MediaRefAttachment = { mediaId: string; contentType: string; filename?: string };
+
+function attachmentAt(data: Record<string, unknown>, fieldName: string): LegacyAttachment | MediaRefAttachment | null {
   const value = data[fieldName];
-  if (
-    value &&
-    typeof value === 'object' &&
-    'key' in value &&
-    typeof (value as { key: unknown }).key === 'string' &&
-    'contentType' in value &&
-    typeof (value as { contentType: unknown }).contentType === 'string'
-  ) {
-    return value as { key: string; contentType: string; filename?: string };
+  if (!value || typeof value !== 'object') return null;
+  const record = value as Record<string, unknown>;
+  if (typeof record['mediaId'] === 'string') {
+    return record as unknown as MediaRefAttachment;
+  }
+  if (typeof record['key'] === 'string' && typeof record['contentType'] === 'string') {
+    return record as unknown as LegacyAttachment;
   }
   return null;
 }
@@ -487,7 +495,18 @@ formsRoute.get('/:id/submissions/:submissionId/files/:fieldName', async (c) => {
     return c.json({ error: 'No file attached to that field' }, 404);
   }
 
-  const object = await c.env.MEDIA_BUCKET.get(attachment.key);
+  let key: string;
+  if ('mediaId' in attachment) {
+    const mediaRow = await getMediaById(db, attachment.mediaId);
+    if (!mediaRow) {
+      return c.json({ error: 'File missing from storage' }, 404);
+    }
+    key = mediaRow.key;
+  } else {
+    key = attachment.key;
+  }
+
+  const object = await c.env.MEDIA_BUCKET.get(key);
   if (!object) {
     return c.json({ error: 'File missing from storage' }, 404);
   }
@@ -727,7 +746,19 @@ formsRoute.openapi(
       return c.json({ error: 'Submission not found' }, 404);
     }
 
+    // The submission's own attachment relationships have no real FK to form_submissions
+    // (media_attachments is deliberately domain-agnostic — Phase 5), so they're cleaned up
+    // explicitly here rather than relying on a DB cascade. Removing the relationship first, then
+    // only physically deleting the underlying Media/R2 object if nothing else still references
+    // it, is the exact "remove relationship → check remaining references → delete only if
+    // unreferenced" behavior Phase 5 requires — never a blind delete that could destroy a Media
+    // asset another owner still points at.
+    const attachments = await deleteAttachmentsForOwner(db, 'form_submission', submissionId);
     await deleteFormSubmission(db, submissionId);
+    for (const attachment of attachments) {
+      await deleteMediaIfUnreferenced(db, c.env.MEDIA_BUCKET, attachment.mediaId);
+    }
+
     await recordAudit(db, {
       actorUserId: c.get('user').id,
       action: 'form_submission.deleted',

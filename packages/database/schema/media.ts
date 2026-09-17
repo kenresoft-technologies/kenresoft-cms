@@ -1,11 +1,11 @@
 import { sql } from 'drizzle-orm';
 import { sqliteTable, text, integer, index } from 'drizzle-orm/sqlite-core';
 // MEDIA_CONTENT_TYPES itself lives in packages/contracts — see field-definitions.ts for why.
-import type { MediaContentType } from '@kenresoft-cms/contracts';
+import type { MediaContentType, MediaVisibility } from '@kenresoft-cms/contracts';
 
 import { mediaFolders } from './media-folders';
 
-export type { MediaContentType };
+export type { MediaContentType, MediaVisibility };
 
 export const media = sqliteTable(
   'media',
@@ -25,6 +25,13 @@ export const media = sqliteTable(
     width: integer('width'),
     height: integer('height'),
     altText: text('alt_text'),
+    // 'public' (default) — every pre-existing row keeps working unmodified. 'private' assets are
+    // excluded from every public Media route at the query layer (never a route-level filter) and
+    // from the admin Media Library's default grid — see MediaVisibility's own doc comment.
+    visibility: text('visibility')
+      .notNull()
+      .default('public')
+      .$type<MediaVisibility>(),
     // Null = unfiled/root — every pre-existing media row keeps working unmodified, and
     // "no folder" stays a valid, first-class state rather than requiring migration into a
     // synthetic default folder. `onDelete: 'set null'` so deleting a folder never deletes or
@@ -37,7 +44,10 @@ export const media = sqliteTable(
       .notNull()
       .default(sql`(unixepoch())`),
   },
-  (table) => [index('media_folder_id_idx').on(table.folderId)],
+  (table) => [
+    index('media_folder_id_idx').on(table.folderId),
+    index('media_visibility_idx').on(table.visibility),
+  ],
 );
 
 export type Media = typeof media.$inferSelect;

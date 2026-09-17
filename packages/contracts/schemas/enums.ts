@@ -68,6 +68,34 @@ export const MEDIA_CONTENT_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'ima
 
 export type MediaContentType = (typeof MEDIA_CONTENT_TYPES)[number];
 
+// Phase 5 (Media/Forms architecture review): a separate, additive contract for content types
+// only ever allowed on a *private* Media asset — kept deliberately distinct from
+// MEDIA_CONTENT_TYPES (the public, image-only contract) rather than widening that union, so the
+// public API's own response schema is never able to claim it might return a document. Mirrors
+// apps/api/src/lib/attachment-metadata.ts's own AttachmentContentType union (that file can't be
+// imported from here — it's an apps/api-only module — so the literal is duplicated, not
+// re-exported).
+export const MEDIA_DOCUMENT_CONTENT_TYPES = [
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+] as const;
+
+export type MediaDocumentContentType = (typeof MEDIA_DOCUMENT_CONTENT_TYPES)[number];
+
+// The full set of content types a Media row (admin-facing) can actually hold — public image
+// types plus, only for a private asset, a document type. publicMediaSchema/MEDIA_CONTENT_TYPES
+// alone remain the narrower, image-only contract for what the public API can ever return.
+export type AnyMediaContentType = MediaContentType | MediaDocumentContentType;
+
+// 'public' (default, every pre-existing Media row) is listed/servable by the public API exactly
+// as before; 'private' is excluded from every public Media route at the repository/query layer
+// (never a route-level filter an author could forget) and from the admin Media Library's default
+// grid (visitor/submission attachments belong on their owning resource's own detail view, not
+// mixed into the general library) — see docs/ARCHITECTURE.md's Phase 5 decisions.
+export const MEDIA_VISIBILITIES = ['public', 'private'] as const;
+
+export type MediaVisibility = (typeof MEDIA_VISIBILITIES)[number];
+
 // owner: represents ownership of this specific installation — everything admin can do, plus
 // immune to every other role's user-management actions (an admin can never demote, delete, or
 // disable an owner; only the owner can transfer ownership). Not tied to Kenresoft or any
