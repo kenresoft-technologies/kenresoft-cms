@@ -1,0 +1,1 @@
+ALTER TABLE `form_submissions` ADD `is_test` integer DEFAULT false NOT NULL;
