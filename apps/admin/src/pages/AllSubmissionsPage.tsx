@@ -25,6 +25,7 @@ import { PageHeader } from '@/components/page-header';
 import { StatusBadge } from '@/components/status-badge';
 import { SubmissionDetailSheet } from '@/components/submission-detail-sheet';
 import { TableSkeleton } from '@/components/table-skeleton';
+import { TestSubmissionBadge } from '@/components/test-submission-badge';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -130,6 +131,7 @@ export function AllSubmissionsPage() {
 
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [formFilter, setFormFilter] = useState('all');
+  const [hideTest, setHideTest] = useState(false);
   const [viewing, setViewing] = useState<FormSubmissionWithForm | null>(null);
   const [pendingDelete, setPendingDelete] = useState<FormSubmissionWithForm | FormSubmissionWithForm[] | null>(null);
   const { data: viewingFields } = useFormFields(viewing?.formId ?? '');
@@ -142,9 +144,10 @@ export function AllSubmissionsPage() {
     return (submissions ?? []).filter((submission) => {
       if (statusFilter !== 'all' && submission.status !== statusFilter) return false;
       if (formFilter !== 'all' && submission.formId !== formFilter) return false;
+      if (hideTest && submission.isTest) return false;
       return true;
     });
-  }, [submissions, statusFilter, formFilter]);
+  }, [submissions, statusFilter, formFilter, hideTest]);
 
   async function handleBulkStatus(
     rows: FormSubmissionWithForm[],
@@ -219,7 +222,12 @@ export function AllSubmissionsPage() {
       {
         accessorKey: 'status',
         header: 'Status',
-        cell: ({ row }) => <StatusBadge status={row.original.status} />,
+        cell: ({ row }) => (
+          <div className="flex items-center gap-1.5">
+            <StatusBadge status={row.original.status} />
+            {row.original.isTest ? <TestSubmissionBadge /> : null}
+          </div>
+        ),
       },
       {
         id: 'attachments',
@@ -314,6 +322,13 @@ export function AllSubmissionsPage() {
                   <SelectItem value="archived">Archived</SelectItem>
                 </SelectContent>
               </Select>
+              <Button
+                variant={hideTest ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setHideTest((v) => !v)}
+              >
+                Hide test
+              </Button>
             </>
           }
           bulkActions={(selected, clearSelection) => (

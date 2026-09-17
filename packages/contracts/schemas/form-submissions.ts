@@ -10,6 +10,11 @@ export const formSubmissionSchema = z.object({
   formId: z.string(),
   data: z.record(z.string(), z.unknown()),
   status: z.enum(FORM_SUBMISSION_STATUSES),
+  // True only for a submission created via the admin "Preview & Test" flow — real row, real
+  // validation/upload/notification pipeline, just flagged so it's never silently mixed into
+  // real visitor data (counts/exports should exclude it by default; the inbox UI shows it with
+  // a badge instead of hiding it outright).
+  isTest: z.boolean(),
   createdAt: z.string(),
 });
 
