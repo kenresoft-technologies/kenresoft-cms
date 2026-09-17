@@ -103,7 +103,7 @@ function ItemFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent size="md">
         <DialogHeader>
           <DialogTitle>{isEditing ? 'Edit item' : 'New item'}</DialogTitle>
           <DialogDescription>Addressed publicly by (type slug, item slug).</DialogDescription>

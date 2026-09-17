@@ -136,7 +136,7 @@ export function ManageMediaFoldersDialog({ open, onOpenChange }: { open: boolean
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent size="md">
         <DialogHeader>
           <DialogTitle>Media folders</DialogTitle>
           <DialogDescription>

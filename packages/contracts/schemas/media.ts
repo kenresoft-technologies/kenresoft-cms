@@ -60,6 +60,16 @@ export const moveMediaSchema = z.object({
 // for the one plain-string field the route does validate with Zod.
 export const altTextSchema = z.string().max(500).optional();
 
+// Renaming/re-describing an already-uploaded item — never the file's bytes/key/contentType,
+// which are immutable once uploaded (§14). Hand-written, not `mediaSchema.pick({...}).partial()`
+// — no field here has a `.default()` today, but every prior `.partial()`-of-a-create-schema in
+// this codebase eventually got bitten by that trap once its base schema gained one (Site Builder
+// Phase 10's hardening pass), so new update schemas are written by hand from day one.
+export const updateMediaSchema = z.object({
+  filename: z.string().min(1).max(255).optional(),
+  altText: z.string().max(500).nullable().optional(),
+});
+
 // The subset of Media that's safe to expose from the public API (GET /api/v1/public/media/:id)
 // alongside the already-public file bytes (.../media/:id/file) — no key (the internal R2
 // object path), filename, or timestamps, since those describe internal storage rather than
@@ -85,3 +95,4 @@ export type MediaFolder = z.infer<typeof mediaFolderSchema>;
 export type CreateMediaFolderInput = z.infer<typeof createMediaFolderSchema>;
 export type UpdateMediaFolderInput = z.infer<typeof updateMediaFolderSchema>;
 export type MoveMediaInput = z.infer<typeof moveMediaSchema>;
+export type UpdateMediaInput = z.infer<typeof updateMediaSchema>;

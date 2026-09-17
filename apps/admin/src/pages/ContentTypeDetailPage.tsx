@@ -96,7 +96,7 @@ function FieldDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>{trigger}</DialogTrigger>
-      <DialogContent>
+      <DialogContent size="md">
         <DialogHeader>
           <DialogTitle>{field ? 'Edit field' : 'Add field'}</DialogTitle>
           <DialogDescription>Fields define what the entry editor renders (§6.1).</DialogDescription>

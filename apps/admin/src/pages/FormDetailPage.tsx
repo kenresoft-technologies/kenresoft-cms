@@ -63,7 +63,7 @@ function FormFieldDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>{trigger}</DialogTrigger>
-      <DialogContent>
+      <DialogContent size="md">
         <DialogHeader>
           <DialogTitle>{field ? 'Edit field' : 'Add field'}</DialogTitle>
           <DialogDescription>Fields define what a submitter fills in (§7).</DialogDescription>

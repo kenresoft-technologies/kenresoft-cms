@@ -87,6 +87,17 @@ export function useUploadMedia() {
   });
 }
 
+export function useUpdateMedia() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...input }: { id: string; filename?: string; altText?: string | null }) =>
+      apiClient.patch<Media>(`/api/v1/admin/media/${id}`, input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: mediaKey });
+    },
+  });
+}
+
 export function useDeleteMedia() {
   const queryClient = useQueryClient();
 
