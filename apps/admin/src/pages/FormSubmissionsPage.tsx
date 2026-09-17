@@ -24,6 +24,7 @@ import { PageHeader } from '@/components/page-header';
 import { StatusBadge } from '@/components/status-badge';
 import { SubmissionDetailSheet } from '@/components/submission-detail-sheet';
 import { TableSkeleton } from '@/components/table-skeleton';
+import { TestSubmissionBadge } from '@/components/test-submission-badge';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -132,6 +133,7 @@ export function FormSubmissionsPage() {
   const [viewing, setViewing] = useState<FormSubmission | null>(null);
   const [pendingDelete, setPendingDelete] = useState<FormSubmission | FormSubmission[] | null>(null);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [hideTest, setHideTest] = useState(false);
 
   const fieldLabels = useMemo(() => new Map((fields ?? []).map((field) => [field.name, field.label])), [fields]);
 
@@ -153,8 +155,12 @@ export function FormSubmissionsPage() {
 
   const filteredSubmissions = useMemo(
     () =>
-      statusFilter === 'all' ? (submissions ?? []) : (submissions ?? []).filter((s) => s.status === statusFilter),
-    [submissions, statusFilter],
+      (submissions ?? []).filter((s) => {
+        if (statusFilter !== 'all' && s.status !== statusFilter) return false;
+        if (hideTest && s.isTest) return false;
+        return true;
+      }),
+    [submissions, statusFilter, hideTest],
   );
 
   const columns = useMemo<ColumnDef<FormSubmission>[]>(
@@ -185,7 +191,12 @@ export function FormSubmissionsPage() {
       {
         accessorKey: 'status',
         header: 'Status',
-        cell: ({ row }) => <StatusBadge status={row.original.status} />,
+        cell: ({ row }) => (
+          <div className="flex items-center gap-1.5">
+            <StatusBadge status={row.original.status} />
+            {row.original.isTest ? <TestSubmissionBadge /> : null}
+          </div>
+        ),
       },
       {
         id: 'attachments',
@@ -263,17 +274,26 @@ export function FormSubmissionsPage() {
           onRowClick={(row) => setViewing(row)}
           enableRowSelection
           toolbar={
-            <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as StatusFilter)}>
-              <SelectTrigger size="sm" className="w-36" aria-label="Filter by status">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All statuses</SelectItem>
-                <SelectItem value="new">New</SelectItem>
-                <SelectItem value="read">Read</SelectItem>
-                <SelectItem value="archived">Archived</SelectItem>
-              </SelectContent>
-            </Select>
+            <>
+              <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as StatusFilter)}>
+                <SelectTrigger size="sm" className="w-36" aria-label="Filter by status">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All statuses</SelectItem>
+                  <SelectItem value="new">New</SelectItem>
+                  <SelectItem value="read">Read</SelectItem>
+                  <SelectItem value="archived">Archived</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button
+                variant={hideTest ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setHideTest((v) => !v)}
+              >
+                Hide test
+              </Button>
+            </>
           }
           bulkActions={(selected, clearSelection) => (
             <Button

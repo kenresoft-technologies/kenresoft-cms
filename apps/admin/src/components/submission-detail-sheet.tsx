@@ -3,6 +3,7 @@ import type { FormSubmission, FormSubmissionWithForm } from '@/lib/types';
 import { SubmissionReplyPanel } from '@/components/submission-reply-panel';
 import { SubmissionValue } from '@/components/submission-value';
 import { StatusBadge } from '@/components/status-badge';
+import { TestSubmissionBadge } from '@/components/test-submission-badge';
 import { Badge } from '@/components/ui/badge';
 import {
   Sheet,
@@ -47,6 +48,7 @@ export function SubmissionDetailSheet<T extends FormSubmission | FormSubmissionW
                   <div className="flex flex-wrap items-center gap-2">
                     <span>{new Date(submission.createdAt).toLocaleString()}</span>
                     <StatusBadge status={submission.status} />
+                    {submission.isTest ? <TestSubmissionBadge /> : null}
                   </div>
                 </SheetDescription>
               </div>

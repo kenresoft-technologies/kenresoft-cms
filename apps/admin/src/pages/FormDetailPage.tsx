@@ -13,6 +13,7 @@ import { EmptyState } from '@/components/empty-state';
 import { FormDeveloperPanel } from '@/components/developer-panel/form-developer-panel';
 import { FieldTypeBadge, fieldTypeIcon } from '@/components/field-type-badge';
 import { FormBadge } from '@/components/form-badge';
+import { FormTestDialog } from '@/components/form-test-dialog';
 import { OptionListEditor } from '@/components/option-list-editor';
 import { PageBreadcrumb } from '@/components/page-breadcrumb';
 import { PageHeader } from '@/components/page-header';
@@ -344,6 +345,7 @@ export function FormDetailPage() {
             <Button variant="outline" asChild>
               <Link to={`/forms/${formId}/submissions`}>View submissions</Link>
             </Button>
+            {formId && fields && fields.length > 0 ? <FormTestDialog formId={formId} fields={fields} /> : null}
             {developerMode && form && fields ? <FormDeveloperPanel form={form} fields={fields} /> : null}
             {canManageFields && form && formId ? (
               <EditFormDialog

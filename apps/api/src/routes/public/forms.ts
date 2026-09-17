@@ -4,13 +4,10 @@ import type { FormSubmission, FormSubmissionStatus } from '@kenresoft-cms/contra
 
 import { getDb } from '../../lib/db';
 import { sendFormSubmissionNotification } from '../../lib/form-notifications';
-import { validateSubmission } from '../../lib/form-submission-validation';
-import { uploadMedia } from '../../lib/media-service';
+import { parseSubmissionRequestBody, submitForm } from '../../lib/submit-form';
 import { createOpenApiApp } from '../../lib/openapi';
 import type { Bindings } from '../../lib/env';
 import { listFormFields } from '../../repositories/form-fields';
-import { createMediaAttachment } from '../../repositories/media-attachments';
-import { createFormSubmission, updateFormSubmissionData } from '../../repositories/form-submissions';
 import { getFormBySlug } from '../../repositories/forms';
 import type { FormSubmission as DbFormSubmission } from '@kenresoft-cms/database';
 
@@ -22,6 +19,7 @@ function toFormSubmission(row: DbFormSubmission): FormSubmission {
     formId: row.formId,
     data: row.data,
     status: row.status as FormSubmissionStatus,
+    isTest: row.isTest,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -47,83 +45,19 @@ publicFormsRoute.post('/:slug/submissions', async (c) => {
     return c.json({ error: 'Too many submissions, please try again later' }, 429);
   }
 
-  // A form with a `file` field can only be submitted as multipart/form-data — a file has no
-  // representation inside a JSON body. Every other form keeps working exactly as before; this
-  // branch is purely additive, not a change to the existing JSON contract.
-  const contentType = c.req.header('Content-Type') ?? '';
-  let body: unknown;
-  const uploadedFiles = new Map<string, File>();
-
-  if (contentType.includes('multipart/form-data')) {
-    const formData = await c.req.formData().catch(() => null);
-    if (!formData) {
-      return c.json({ error: 'Invalid multipart/form-data body' }, 400);
-    }
-    const plain: Record<string, unknown> = {};
-    for (const [key, value] of formData.entries()) {
-      if (value instanceof File) uploadedFiles.set(key, value);
-      else plain[key] = value;
-    }
-    body = plain;
-  } else {
-    try {
-      body = await c.req.json();
-    } catch {
-      return c.json({ error: 'Invalid JSON body' }, 400);
-    }
+  const parsedBody = await parseSubmissionRequestBody(c.req.raw);
+  if (!parsedBody.ok) {
+    return c.json({ error: parsedBody.error }, 400);
   }
 
   const fields = await listFormFields(db, form.id);
-  const validated = await validateSubmission(fields, body, uploadedFiles);
-  if (validated.issues) {
-    return c.json({ error: 'Validation failed', issues: validated.issues }, 400);
+  const result = await submitForm(db, c.env.MEDIA_BUCKET, form.id, fields, parsedBody.parsed, { isTest: false });
+  if (!result.ok) {
+    return c.json({ error: result.error, issues: result.issues }, 400);
   }
 
-  const data: Record<string, unknown> = { ...validated.data };
-  const submission = await createFormSubmission(db, { formId: form.id, data });
-
-  // A file's real Media reference isn't known until after upload, and media_attachments needs
-  // the submission's own id — so file fields are attached in a second pass, right after
-  // creation, rather than blocking submission creation on however many uploads a form has.
-  // Every submitted file becomes a real, private Media asset (Phase 5's "single canonical Media
-  // table" decision) rather than a bare R2 object the CMS otherwise knows nothing about — never
-  // shown in the admin Media Library's default grid (visibility: 'private'), reachable only
-  // through the submission's own detail view.
-  const fileEntries = Object.entries(validated.files ?? {});
-  if (fileEntries.length > 0) {
-    const updatedData: Record<string, unknown> = { ...data };
-    for (const [fieldName, attachment] of fileEntries) {
-      const uploadResult = await uploadMedia(db, c.env.MEDIA_BUCKET, {
-        bytes: attachment.bytes,
-        filename: attachment.filename,
-        altText: null,
-        visibility: 'private',
-      });
-      if (!uploadResult.ok) {
-        // Already sniffed successfully by validateSubmission above — this should never actually
-        // fail, but if it somehow does, skip this one field rather than lose the rest of an
-        // already-created, otherwise-valid submission.
-        continue;
-      }
-      await createMediaAttachment(db, {
-        mediaId: uploadResult.media.id,
-        ownerType: 'form_submission',
-        ownerId: submission.id,
-        fieldName,
-      });
-      updatedData[fieldName] = {
-        mediaId: uploadResult.media.id,
-        filename: attachment.filename,
-        size: attachment.bytes.byteLength,
-        contentType: attachment.contentType,
-      };
-    }
-    submission.data = updatedData;
-    await updateFormSubmissionData(db, submission.id, updatedData);
-  }
-
-  sendFormSubmissionNotification(c.env, c.executionCtx, form, fields, submission);
-  return c.json(toFormSubmission(submission), 201);
+  sendFormSubmissionNotification(c.env, c.executionCtx, form, fields, result.submission);
+  return c.json(toFormSubmission(result.submission), 201);
 });
 
 publicFormsRoute.openAPIRegistry.registerPath({

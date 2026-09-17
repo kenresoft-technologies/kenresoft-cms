@@ -29,6 +29,24 @@ export function useUpdateFormSubmissionStatus(formId: string) {
   });
 }
 
+// "Preview & Test" — submits a real test entry through the same pipeline a public submission
+// uses (server-side: submit-form.ts's shared submitForm()), flagged isTest so it's excluded
+// from any future count/export by default and badged in the inbox rather than hidden. Takes a
+// FormData body directly (not a typed input object) since the request shape is dynamic per
+// form's own fields, the same reason the public submission route has no fixed request schema.
+export function useTestFormSubmission(formId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (formData: FormData) =>
+      apiClient.upload<FormSubmission>(`/api/v1/admin/forms/${formId}/test-submissions`, formData),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['form-submissions', formId] });
+      void queryClient.invalidateQueries({ queryKey: ['submissions'] });
+    },
+  });
+}
+
 export function useDeleteFormSubmission(formId: string) {
   const queryClient = useQueryClient();
 
