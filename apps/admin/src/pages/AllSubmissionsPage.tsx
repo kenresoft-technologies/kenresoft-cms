@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Archive, ExternalLink, Inbox, MailOpen, MoreHorizontal, Paperclip, Trash2 } from 'lucide-react';
-import { Link } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import type { ColumnDef } from '@tanstack/react-table';
 
@@ -13,7 +13,6 @@ import {
   useDeleteSubmissionGlobal,
   useUpdateSubmissionStatusGlobal,
 } from '@/lib/queries/all-submissions';
-import { useFormFields } from '@/lib/queries/form-fields';
 import { getSubmissionAttachments } from '@/lib/submission-attachments';
 import { getSubmissionSender } from '@/lib/submission-sender';
 import type { FormSubmissionStatus, FormSubmissionWithForm } from '@/lib/types';
@@ -23,7 +22,6 @@ import { FormBadge } from '@/components/form-badge';
 import { PageBreadcrumb } from '@/components/page-breadcrumb';
 import { PageHeader } from '@/components/page-header';
 import { StatusBadge } from '@/components/status-badge';
-import { SubmissionDetailSheet } from '@/components/submission-detail-sheet';
 import { TableSkeleton } from '@/components/table-skeleton';
 import { TestSubmissionBadge } from '@/components/test-submission-badge';
 import {
@@ -124,6 +122,7 @@ function SubmissionActions({
 }
 
 export function AllSubmissionsPage() {
+  const navigate = useNavigate();
   const { data: submissions, isPending, error, refetch } = useAllSubmissions();
   const { data: forms } = useForms();
   const updateStatus = useUpdateSubmissionStatusGlobal();
@@ -132,13 +131,7 @@ export function AllSubmissionsPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [formFilter, setFormFilter] = useState('all');
   const [hideTest, setHideTest] = useState(false);
-  const [viewing, setViewing] = useState<FormSubmissionWithForm | null>(null);
   const [pendingDelete, setPendingDelete] = useState<FormSubmissionWithForm | FormSubmissionWithForm[] | null>(null);
-  const { data: viewingFields } = useFormFields(viewing?.formId ?? '');
-  const viewingFieldLabels = useMemo(
-    () => new Map((viewingFields ?? []).map((field) => [field.name, field.label])),
-    [viewingFields],
-  );
 
   const filteredSubmissions = useMemo(() => {
     return (submissions ?? []).filter((submission) => {
@@ -178,7 +171,6 @@ export function AllSubmissionsPage() {
 
     if (failed === 0) {
       toast.success(targets.length === 1 ? 'Submission deleted' : `${targets.length} submissions deleted`);
-      if (viewing && targets.some((t) => t.id === viewing.id)) setViewing(null);
     } else {
       toast.error(`${failed} of ${targets.length} submissions failed to delete`);
     }
@@ -294,7 +286,7 @@ export function AllSubmissionsPage() {
           data={filteredSubmissions}
           searchPlaceholder="Search submissions…"
           onRefresh={() => void refetch()}
-          onRowClick={(row) => setViewing(row)}
+          onRowClick={(row) => navigate(`/forms/${row.formId}/submissions/${row.id}`)}
           enableRowSelection
           toolbar={
             <>
@@ -362,17 +354,6 @@ export function AllSubmissionsPage() {
           )}
         />
       ) : null}
-
-      <SubmissionDetailSheet
-        formId={viewing?.formId ?? ''}
-        formName={viewing?.formName ?? 'Form'}
-        submission={viewing}
-        fieldLabels={viewingFieldLabels}
-        onOpenChange={(open) => {
-          if (!open) setViewing(null);
-        }}
-        actions={(submission) => <SubmissionActions submission={submission} onRequestDelete={setPendingDelete} />}
-      />
 
       <AlertDialog open={pendingDelete !== null} onOpenChange={(open) => !open && setPendingDelete(null)}>
         <AlertDialogContent>

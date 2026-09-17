@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { FormSubmissionsPage } from '@/pages/FormSubmissionsPage';
+import { SubmissionDetailPage } from '@/pages/SubmissionDetailPage';
 
 const { getMock, patchMock, deleteMock, postMock } = vi.hoisted(() => ({
   getMock: vi.fn(),
@@ -34,6 +35,7 @@ function renderPage() {
       <MemoryRouter initialEntries={['/forms/f-1/submissions']}>
         <Routes>
           <Route path="/forms/:formId/submissions" element={<FormSubmissionsPage />} />
+          <Route path="/forms/:formId/submissions/:submissionId" element={<SubmissionDetailPage />} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -83,12 +85,13 @@ describe('FormSubmissionsPage', () => {
     await waitFor(() => expect(screen.getByText('No submissions yet')).toBeInTheDocument());
   });
 
-  it('opens a dialog with the submission data, labeled by the matching field', async () => {
+  it('navigates to the submission detail page with the submission data, labeled by the matching field', async () => {
     getMock.mockImplementation((path: string) => {
       if (path.endsWith('/submissions')) return Promise.resolve([submission]);
       if (path.endsWith('/fields')) {
         return Promise.resolve([{ id: 'ff-1', name: 'email', label: 'Email address', fieldType: 'email' }]);
       }
+      if (path.endsWith('/replies')) return Promise.resolve([]);
       return Promise.resolve({ id: 'f-1', name: 'Contact', slug: 'contact' });
     });
 
@@ -97,9 +100,8 @@ describe('FormSubmissionsPage', () => {
 
     await userEvent.click(screen.getByText(/2026/));
 
-    const dialog = await screen.findByRole('dialog');
-    expect(dialog).toHaveTextContent('Email address');
-    expect(dialog).toHaveTextContent('jane@example.com');
+    await waitFor(() => expect(screen.getByText('Email address')).toBeInTheDocument());
+    expect(screen.getAllByText('jane@example.com').length).toBeGreaterThan(0);
   });
 
   it('shows the sender name and email at a glance in the table', async () => {
@@ -220,12 +222,11 @@ describe('FormSubmissionsPage', () => {
     await waitFor(() => expect(screen.getByText('New')).toBeInTheDocument());
     await userEvent.click(screen.getByText(/2026/));
 
-    const dialog = await screen.findByRole('dialog');
-    await waitFor(() => expect(within(dialog).getByText('Thanks for reaching out!')).toBeInTheDocument());
-    expect(within(dialog).getByText('Admin')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('Thanks for reaching out!')).toBeInTheDocument());
+    expect(screen.getByText('Admin')).toBeInTheDocument();
     // Subject is pre-filled from the form's own name, ready to send without typing it first.
-    expect(within(dialog).getByLabelText('Subject')).toHaveValue('Re: Contact submission');
-    expect(within(dialog).getByRole('button', { name: 'Send reply' })).toBeDisabled();
+    expect(screen.getByLabelText('Subject')).toHaveValue('Re: Contact submission');
+    expect(screen.getByRole('button', { name: 'Send reply' })).toBeDisabled();
   });
 
   it('marks a submission read via the row action menu', async () => {

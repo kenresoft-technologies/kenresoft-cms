@@ -28,3 +28,23 @@ export function getSubmissionAttachments(data: Record<string, unknown>): Submiss
       filename: typeof value.filename === 'string' ? value.filename : 'file',
     }));
 }
+
+// The full attachment shape (routes/public/forms.ts's upload record), used by
+// SubmissionDetailPage to split a submission's fields from its file-type attachments before
+// rendering either — attachments get their own dedicated section there.
+export interface SubmissionAttachmentValue {
+  key: string;
+  filename: string;
+  size: number;
+  contentType: string;
+}
+
+export function isSubmissionAttachmentValue(value: unknown): value is SubmissionAttachmentValue {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as { filename?: unknown }).filename === 'string' &&
+    typeof (value as { size?: unknown }).size === 'number' &&
+    typeof (value as { contentType?: unknown }).contentType === 'string'
+  );
+}

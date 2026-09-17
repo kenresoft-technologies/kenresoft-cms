@@ -1,10 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router';
+import { MemoryRouter, Route, Routes } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AllSubmissionsPage } from '@/pages/AllSubmissionsPage';
+import { SubmissionDetailPage } from '@/pages/SubmissionDetailPage';
 
 const { getMock, patchMock, deleteMock } = vi.hoisted(() => ({
   getMock: vi.fn(),
@@ -25,8 +26,11 @@ function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter>
-        <AllSubmissionsPage />
+      <MemoryRouter initialEntries={['/submissions']}>
+        <Routes>
+          <Route path="/submissions" element={<AllSubmissionsPage />} />
+          <Route path="/forms/:formId/submissions/:submissionId" element={<SubmissionDetailPage />} />
+        </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -62,6 +66,9 @@ function mockGet(submissions: unknown[]) {
   getMock.mockImplementation((path: string) => {
     if (path === '/api/v1/admin/submissions') return Promise.resolve(submissions);
     if (path === '/api/v1/admin/forms') return Promise.resolve(forms);
+    if (path.endsWith('/replies')) return Promise.resolve([]);
+    if (path === '/api/v1/admin/forms/f-1') return Promise.resolve(forms[0]);
+    if (path === '/api/v1/admin/forms/f-2') return Promise.resolve(forms[1]);
     return Promise.resolve([]);
   });
 }
@@ -134,14 +141,16 @@ describe('AllSubmissionsPage', () => {
     );
   });
 
-  it('opens the view dialog and resolves field labels for that submission\'s own form', async () => {
-    mockGet(allSubmissions);
+  it("navigates to the submission detail page and resolves field labels for that submission's own form", async () => {
     getMock.mockImplementation((path: string) => {
       if (path === '/api/v1/admin/submissions') return Promise.resolve(allSubmissions);
       if (path === '/api/v1/admin/forms') return Promise.resolve(forms);
+      if (path === '/api/v1/admin/forms/f-1') return Promise.resolve(forms[0]);
+      if (path === '/api/v1/admin/forms/f-1/submissions') return Promise.resolve(allSubmissions.filter((s) => s.formId === 'f-1'));
       if (path === '/api/v1/admin/forms/f-1/fields') {
         return Promise.resolve([{ name: 'name', label: 'Full name' }]);
       }
+      if (path.endsWith('/replies')) return Promise.resolve([]);
       return Promise.resolve([]);
     });
 
@@ -152,8 +161,7 @@ describe('AllSubmissionsPage', () => {
     await userEvent.click(within(row!).getByText(/2026/));
 
     await waitFor(() => expect(screen.getByText('Full name')).toBeInTheDocument());
-    const dialog = screen.getByRole('dialog');
-    expect(within(dialog).getAllByText('Jane').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Jane').length).toBeGreaterThan(0);
   });
 
   it('deletes a submission after confirming', async () => {

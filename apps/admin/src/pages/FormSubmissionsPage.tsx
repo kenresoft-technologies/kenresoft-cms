@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Archive, ExternalLink, Inbox, MailOpen, MoreHorizontal, Paperclip, Trash2 } from 'lucide-react';
-import { useParams } from 'react-router';
+import { useNavigate, useParams } from 'react-router';
 import { toast } from 'sonner';
 import type { ColumnDef } from '@tanstack/react-table';
 
@@ -8,7 +8,6 @@ import { ApiError } from '@/lib/api-client';
 import { authClient } from '@/lib/auth-client';
 import { buildReplyLink, opensInNewTab } from '@/lib/mail-compose-links';
 import { useForm } from '@/lib/queries/forms';
-import { useFormFields } from '@/lib/queries/form-fields';
 import {
   useDeleteFormSubmission,
   useFormSubmissions,
@@ -22,7 +21,6 @@ import { EmptyState } from '@/components/empty-state';
 import { PageBreadcrumb } from '@/components/page-breadcrumb';
 import { PageHeader } from '@/components/page-header';
 import { StatusBadge } from '@/components/status-badge';
-import { SubmissionDetailSheet } from '@/components/submission-detail-sheet';
 import { TableSkeleton } from '@/components/table-skeleton';
 import { TestSubmissionBadge } from '@/components/test-submission-badge';
 import {
@@ -126,16 +124,13 @@ function SubmissionActions({
 
 export function FormSubmissionsPage() {
   const { formId } = useParams<{ formId: string }>();
+  const navigate = useNavigate();
   const { data: form } = useForm(formId ?? '');
-  const { data: fields } = useFormFields(formId ?? '');
   const { data: submissions, isPending, error, refetch } = useFormSubmissions(formId ?? '');
   const deleteSubmission = useDeleteFormSubmission(formId ?? '');
-  const [viewing, setViewing] = useState<FormSubmission | null>(null);
   const [pendingDelete, setPendingDelete] = useState<FormSubmission | FormSubmission[] | null>(null);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [hideTest, setHideTest] = useState(false);
-
-  const fieldLabels = useMemo(() => new Map((fields ?? []).map((field) => [field.name, field.label])), [fields]);
 
   async function handleConfirmDelete() {
     if (!pendingDelete) return;
@@ -146,7 +141,6 @@ export function FormSubmissionsPage() {
 
     if (failed === 0) {
       toast.success(targets.length === 1 ? 'Submission deleted' : `${targets.length} submissions deleted`);
-      if (viewing && targets.some((t) => t.id === viewing.id)) setViewing(null);
     } else {
       toast.error(`${failed} of ${targets.length} submissions failed to delete`);
     }
@@ -271,7 +265,7 @@ export function FormSubmissionsPage() {
           data={filteredSubmissions}
           searchPlaceholder="Search submissions…"
           onRefresh={() => void refetch()}
-          onRowClick={(row) => setViewing(row)}
+          onRowClick={(row) => navigate(`/forms/${formId}/submissions/${row.id}`)}
           enableRowSelection
           toolbar={
             <>
@@ -310,19 +304,6 @@ export function FormSubmissionsPage() {
           )}
         />
       ) : null}
-
-      <SubmissionDetailSheet
-        formId={formId ?? ''}
-        formName={form?.name ?? 'Form'}
-        submission={viewing}
-        fieldLabels={fieldLabels}
-        onOpenChange={(open) => {
-          if (!open) setViewing(null);
-        }}
-        actions={(submission) =>
-          formId ? <SubmissionActions formId={formId} submission={submission} onRequestDelete={setPendingDelete} /> : null
-        }
-      />
 
       <AlertDialog open={pendingDelete !== null} onOpenChange={(open) => !open && setPendingDelete(null)}>
         <AlertDialogContent>
