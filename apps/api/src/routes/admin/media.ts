@@ -1,6 +1,6 @@
 import { createRoute, z } from '@hono/zod-openapi';
-import { altTextSchema, mediaSchema, moveMediaSchema, updateMediaSchema } from '@kenresoft-cms/contracts';
-import type { Media } from '@kenresoft-cms/contracts';
+import { altTextSchema, MEDIA_CONTENT_TYPES, MEDIA_VISIBILITIES, mediaSchema, moveMediaSchema, updateMediaSchema } from '@kenresoft-cms/contracts';
+import type { Media, MediaVisibility } from '@kenresoft-cms/contracts';
 
 import { recordAudit } from '../../lib/audit';
 import { getDb } from '../../lib/db';
@@ -29,6 +29,7 @@ function toMedia(row: DbMedia): Media {
     width: row.width,
     height: row.height,
     altText: row.altText,
+    visibility: row.visibility,
     folderId: row.folderId,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
@@ -99,12 +100,22 @@ mediaRoute.post('/', requireRole('admin', 'editor'), async (c) => {
     folderId = folderIdRaw;
   }
 
+  const visibilityRaw = form.get('visibility');
+  let visibility: MediaVisibility = 'public';
+  if (typeof visibilityRaw === 'string' && visibilityRaw.length > 0) {
+    if (!(MEDIA_VISIBILITIES as readonly string[]).includes(visibilityRaw)) {
+      return c.json({ error: 'visibility must be "public" or "private"' }, 400);
+    }
+    visibility = visibilityRaw as MediaVisibility;
+  }
+
   const bytes = new Uint8Array(await file.arrayBuffer());
   const result = await uploadMedia(db, c.env.MEDIA_BUCKET, {
     bytes,
     filename: file.name,
     altText: altTextParsed.data ?? null,
     folderId,
+    visibility,
   });
   if (!result.ok) {
     return c.json({ error: result.error }, 400);
@@ -128,10 +139,22 @@ mediaRoute.openAPIRegistry.registerPath({
   tags: ['Media'],
   summary: 'Upload a media file',
   description:
-    'multipart/form-data with a `file` field (required) and an `altText` field (optional). ' +
-    'The file is accepted or rejected by sniffing its actual bytes, not its declared MIME type.',
+    'multipart/form-data with a `file` field (required), an `altText` field (optional), and a ' +
+    '`visibility` field (optional, "public" or "private" — defaults to "public"; only a ' +
+    '"private" asset may be a document rather than an image). The file is accepted or rejected ' +
+    'by sniffing its actual bytes, not its declared MIME type.',
   request: {
-    body: { content: { 'multipart/form-data': { schema: z.object({ file: z.string().openapi({ type: 'string', format: 'binary' }), altText: z.string().optional() }) } } },
+    body: {
+      content: {
+        'multipart/form-data': {
+          schema: z.object({
+            file: z.string().openapi({ type: 'string', format: 'binary' }),
+            altText: z.string().optional(),
+            visibility: z.string().optional(),
+          }),
+        },
+      },
+    },
   },
   responses: {
     201: {
@@ -202,6 +225,10 @@ mediaRoute.openapi(
         description: 'The updated media item.',
         content: { 'application/json': { schema: mediaSchema } },
       },
+      400: {
+        description: 'A document-content-type asset cannot be made public.',
+        content: { 'application/json': { schema: notFoundSchema } },
+      },
       404: {
         description: 'No media with that id.',
         content: { 'application/json': { schema: notFoundSchema } },
@@ -212,6 +239,17 @@ mediaRoute.openapi(
     const { id } = c.req.valid('param');
     const input = c.req.valid('json');
     const db = getDb(c);
+
+    if (input.visibility === 'public') {
+      const existing = await getMediaById(db, id);
+      if (!existing) {
+        return c.json({ error: 'Media not found' }, 404);
+      }
+      if (!(MEDIA_CONTENT_TYPES as readonly string[]).includes(existing.contentType)) {
+        return c.json({ error: 'A document asset cannot be made public — the public Media contract only allows images' }, 400);
+      }
+    }
+
     const row = await updateMedia(db, id, input);
     if (!row) {
       return c.json({ error: 'Media not found' }, 404);
