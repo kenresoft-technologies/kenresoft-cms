@@ -3,7 +3,7 @@ import { createDb } from '@kenresoft-cms/database';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { clearTestEmails, getTestEmails } from '../src/lib/email';
-import { withExpectedInternalRejection } from './helpers/auth';
+import { signUpVerifiedAndGetCookie, withExpectedInternalRejection } from './helpers/auth';
 
 const PASSWORD = 'correct horse battery staple';
 
@@ -200,34 +200,23 @@ describe('email verification (real D1)', () => {
     expect(getTestEmails().filter((message) => message.to === 'already-verified@example.test')).toHaveLength(0);
   });
 
-  it('bootstrap owner gets no exception: unverified until it goes through the same verify flow', async () => {
-    const response = await signUp('bootstrap-owner@example.test');
-    expect(response.status).toBe(200);
-
-    const owner = await getUser('bootstrap-owner@example.test');
-    expect(owner).toMatchObject({ role: 'owner', emailVerified: false });
-
-    const blockedSignIn = await withExpectedInternalRejection(() => signIn('bootstrap-owner@example.test'));
-    expect(blockedSignIn.status).toBe(403);
-
-    const verificationEmail = getTestEmails().find((message) => message.to === 'bootstrap-owner@example.test');
-    const token = extractToken(verificationEmail!.html!);
-    const verifyResponse = await verify(token);
-    expect(verifyResponse.status).toBe(200);
-
-    const allowedSignIn = await signIn('bootstrap-owner@example.test');
-    expect(allowedSignIn.status).toBe(200);
-  });
+  // A bare public signup no longer becomes Owner at all (lib/auth.ts's databaseHooks comment,
+  // and installation-bootstrap.test.ts's "an ordinary public signup never becomes owner on a
+  // fresh installation") — the first Owner is only ever created through the one-time
+  // bootstrap-token flow (routes/system/bootstrap-owner.ts), which also bypasses this file's
+  // own email-verification gate deliberately (see that route's own comment: proving possession
+  // of a token that only ever appeared in this deployment's own server logs is proof enough).
+  // installation-bootstrap.test.ts's round-trip test already asserts the bootstrap-created
+  // owner's emailVerified is set to true directly — a test here asserting the opposite (an
+  // unverified "owner" reachable through plain signUp) would be asserting behavior that was
+  // deliberately removed, not exercising a real code path.
 
   it('an Add User-created account is unverified just like any other new account', async () => {
-    // Bootstrap and verify an owner first so it can authenticate and use the admin route.
-    await signUp('admin-owner@example.test');
-    const ownerVerificationEmail = getTestEmails().find((message) => message.to === 'admin-owner@example.test');
-    await verify(extractToken(ownerVerificationEmail!.html!));
+    // Plain signup no longer grants anyone Owner/Admin (see above) — this test-only helper's
+    // promoteFirstUserToOwner write stands in for the real bootstrap-token flow just to get a
+    // privileged session able to call the admin Add User route below.
+    const ownerCookie = await signUpVerifiedAndGetCookie('admin-owner@example.test');
     clearTestEmails();
-
-    const ownerSignIn = await signIn('admin-owner@example.test');
-    const ownerCookie = ownerSignIn.headers.get('set-cookie')!.split(';')[0]!;
 
     const createResponse = await SELF.fetch('https://example.com/api/v1/admin/users', {
       method: 'POST',
