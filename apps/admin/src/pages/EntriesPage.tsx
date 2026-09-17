@@ -21,6 +21,7 @@ import {
   useUpdateEntryStatusById,
 } from '@/lib/queries/entries';
 import type { ContentTypeExport, EntryFolder, EntryStatus, EntryWithContentType } from '@/lib/types';
+import { ContentTypeTabs } from '@/components/content-type-tabs';
 import { DataTable } from '@/components/data-table';
 import { EmptyState } from '@/components/empty-state';
 import { EntryRowActions } from '@/components/entry-row-actions';
@@ -410,16 +411,17 @@ export function EntriesPage() {
       <PageBreadcrumb
         items={[
           { label: 'Content types', to: '/content-types' },
-          { label: contentType?.name ?? '…', to: `/content-types/${contentTypeId}` },
-          { label: 'Entries' },
+          { label: contentType?.name ?? '…' },
         ]}
       />
 
       <PageHeader
-        title="Entries"
-        description={contentType ? `Instances of ${contentType.name}.` : 'Content instances.'}
+        title={contentType?.name ?? 'Entries'}
+        description={contentType ? `Content — instances of ${contentType.name}.` : 'Content instances.'}
         actions={<div className="flex items-center gap-2">{headerActions}</div>}
       />
+
+      {contentTypeId ? <ContentTypeTabs contentTypeId={contentTypeId} active="entries" /> : null}
 
       <div className="flex flex-wrap items-center gap-1 text-sm text-muted-foreground">
         <button type="button" className="hover:underline" onClick={() => setCurrentFolderId(null)}>

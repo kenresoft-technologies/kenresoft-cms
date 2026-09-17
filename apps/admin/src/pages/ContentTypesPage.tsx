@@ -185,7 +185,8 @@ function ContentTypeTemplatesDialog() {
       }
       toast.success(`${template.name} content type created`);
       setOpen(false);
-      void navigate(`/content-types/${contentType.id}`);
+      // Schema, not Entries — the fields just created are the thing worth reviewing next.
+      void navigate(`/content-types/${contentType.id}/schema`);
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : `Failed to create ${template.name}`);
     } finally {
@@ -238,17 +239,21 @@ function NewContentTypeDialog() {
   const [slug, setSlug] = useState('');
   const [error, setError] = useState<string | null>(null);
   const createContentType = useCreateContentType();
+  const navigate = useNavigate();
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
 
     try {
-      await createContentType.mutateAsync({ name, slug });
+      const contentType = await createContentType.mutateAsync({ name, slug });
       toast.success('Content type created');
       setName('');
       setSlug('');
       setOpen(false);
+      // Schema, not Entries — a brand-new content type has no fields yet, so adding fields is
+      // the useful next step, not an empty entries list.
+      void navigate(`/content-types/${contentType.id}/schema`);
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to create content type';
       setError(message);
@@ -302,6 +307,9 @@ function NewContentTypeDialog() {
 
 function ContentTypeCard({ contentType }: { contentType: ContentTypeWithCounts }) {
   return (
+    // The card's own click target is Entries — the actual content/data — not the schema. A
+    // secondary "Schema" link sits inside, stopping propagation so it navigates independently
+    // rather than also triggering the card's own Entries link underneath it.
     <Link to={`/content-types/${contentType.id}`} className="block h-full">
       <Card className="h-full transition-colors hover:border-primary/50 hover:bg-accent/40">
         <CardHeader className="flex flex-row items-start justify-between gap-2">
@@ -315,13 +323,22 @@ function ContentTypeCard({ contentType }: { contentType: ContentTypeWithCounts }
           <p className="line-clamp-2 min-h-10 text-sm text-muted-foreground">
             {contentType.description ?? 'No description.'}
           </p>
-          <div className="flex flex-wrap items-center gap-1.5">
-            <Badge variant="secondary" className="font-normal">
-              <ListTree /> {contentType.fieldCount} {contentType.fieldCount === 1 ? 'field' : 'fields'}
-            </Badge>
-            <Badge variant="outline" className="font-normal">
-              <FileText /> {contentType.entryCount} {contentType.entryCount === 1 ? 'entry' : 'entries'}
-            </Badge>
+          <div className="flex flex-wrap items-center justify-between gap-1.5">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <Badge variant="secondary" className="font-normal">
+                <ListTree /> {contentType.fieldCount} {contentType.fieldCount === 1 ? 'field' : 'fields'}
+              </Badge>
+              <Badge variant="outline" className="font-normal">
+                <FileText /> {contentType.entryCount} {contentType.entryCount === 1 ? 'entry' : 'entries'}
+              </Badge>
+            </div>
+            <Link
+              to={`/content-types/${contentType.id}/schema`}
+              onClick={(event) => event.stopPropagation()}
+              className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+            >
+              Schema
+            </Link>
           </div>
         </CardContent>
       </Card>

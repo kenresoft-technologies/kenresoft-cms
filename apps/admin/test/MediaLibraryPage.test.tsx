@@ -135,7 +135,8 @@ describe('MediaLibraryPage', () => {
     renderPage();
     await waitFor(() => expect(screen.getByText('photo.png')).toBeInTheDocument());
 
-    await userEvent.click(screen.getByRole('button', { name: 'Delete photo.png' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Manage photo.png' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: /Delete/ }));
     const alert = await screen.findByRole('alertdialog');
     expect(within(alert).getByText('Delete "photo.png"?')).toBeInTheDocument();
     await userEvent.click(within(alert).getByRole('button', { name: 'Delete' }));
@@ -228,7 +229,8 @@ describe('MediaLibraryPage', () => {
     renderPage();
     await waitFor(() => expect(screen.getByText('photo.png')).toBeInTheDocument());
 
-    await userEvent.click(screen.getByRole('button', { name: 'Delete photo.png' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Manage photo.png' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: /Delete/ }));
     const alert = await screen.findByRole('alertdialog');
     await userEvent.click(within(alert).getByRole('button', { name: 'Cancel' }));
 

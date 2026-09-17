@@ -31,9 +31,9 @@ function renderPage() {
   });
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={['/content-types/ct-1']}>
+      <MemoryRouter initialEntries={['/content-types/ct-1/schema']}>
         <Routes>
-          <Route path="/content-types/:contentTypeId" element={<ContentTypeDetailPage />} />
+          <Route path="/content-types/:contentTypeId/schema" element={<ContentTypeDetailPage />} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -59,10 +59,10 @@ describe('ContentTypeDetailPage', () => {
 
     renderPage();
 
-    await waitFor(() =>
-      expect(screen.getByRole('heading', { name: 'Blog Post' })).toBeInTheDocument(),
-    );
-    expect(screen.getByText('title')).toBeInTheDocument();
+    // The "Schema" heading is static, not data-dependent, so waiting on it alone would resolve
+    // before the fields have actually loaded — wait on the field data itself instead.
+    await waitFor(() => expect(screen.getByText('title')).toBeInTheDocument());
+    expect(screen.getByRole('heading', { name: 'Schema' })).toBeInTheDocument();
     expect(screen.getByText('Title')).toBeInTheDocument();
     expect(getMock).toHaveBeenCalledWith('/api/v1/admin/content-types/ct-1/fields');
     expect(getMock).toHaveBeenCalledWith('/api/v1/admin/content-types/ct-1');
@@ -158,7 +158,9 @@ describe('ContentTypeDetailPage', () => {
     });
 
     renderPage();
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'Blog Post' })).toBeInTheDocument());
+    // Wait for the content type to actually load — the "Schema" heading is static and would
+    // resolve immediately, before the Edit button (which needs contentType data) exists.
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument());
 
     await userEvent.click(screen.getByRole('button', { name: 'Edit' }));
     const dialog = screen.getByRole('dialog');
@@ -188,7 +190,9 @@ describe('ContentTypeDetailPage', () => {
     );
 
     renderPage();
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'Blog Post' })).toBeInTheDocument());
+    // Wait for the content type to actually load — the "Schema" heading is static and would
+    // resolve immediately, before the Edit button (which needs contentType data) exists.
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument());
 
     await userEvent.click(screen.getByRole('button', { name: 'Edit' }));
     const dialog = screen.getByRole('dialog');
