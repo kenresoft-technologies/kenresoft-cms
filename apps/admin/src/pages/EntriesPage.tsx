@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { Download, FileText, Plus, Trash2, Upload } from 'lucide-react';
+import { Download, FileText, Folder, FolderPlus, MoreHorizontal, Pencil, Plus, Trash2, Upload } from 'lucide-react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { toast } from 'sonner';
 import type { ColumnDef } from '@tanstack/react-table';
@@ -7,13 +7,21 @@ import type { ColumnDef } from '@tanstack/react-table';
 import { ApiError } from '@/lib/api-client';
 import { useContentType } from '@/lib/queries/content-types';
 import {
+  useCreateEntryFolder,
+  useDeleteEntryFolder,
+  useEntryFolders,
+  useMoveEntries,
+  useUpdateEntryFolder,
+} from '@/lib/queries/entry-folders';
+import {
   exportEntries,
   useDeleteEntryById,
   useEntries,
   useImportEntries,
   useUpdateEntryStatusById,
 } from '@/lib/queries/entries';
-import type { ContentTypeExport, EntryStatus, EntryWithContentType } from '@/lib/types';
+import type { ContentTypeExport, EntryFolder, EntryStatus, EntryWithContentType } from '@/lib/types';
+import { ContentTypeTabs } from '@/components/content-type-tabs';
 import { DataTable } from '@/components/data-table';
 import { EmptyState } from '@/components/empty-state';
 import { EntryRowActions } from '@/components/entry-row-actions';
@@ -30,25 +38,217 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableHeader, TableHead, TableRow } from '@/components/ui/table';
 
 type StatusFilter = 'all' | EntryStatus;
 
+function NewFolderDialog({ contentTypeId, parentId }: { contentTypeId: string; parentId: string | null }) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const createFolder = useCreateEntryFolder(contentTypeId);
+
+  async function handleCreate() {
+    if (!name.trim()) {
+      setError('Enter a folder name');
+      return;
+    }
+    setError(null);
+    try {
+      await createFolder.mutateAsync({ name: name.trim(), parentId });
+      setName('');
+      setOpen(false);
+      toast.success('Folder created');
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Failed to create folder');
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <Button variant="outline" onClick={() => setOpen(true)}>
+        <FolderPlus />
+        New folder
+      </Button>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>New folder</DialogTitle>
+          <DialogDescription>Organize entries of this content type into folders.</DialogDescription>
+        </DialogHeader>
+        <div className="flex flex-col gap-2">
+          <Input
+            placeholder="Folder name"
+            value={name}
+            autoFocus
+            onChange={(event) => setName(event.target.value)}
+            onKeyDown={(event) => event.key === 'Enter' && void handleCreate()}
+          />
+          {error ? <p className="text-sm text-destructive">{error}</p> : null}
+        </div>
+        <DialogFooter>
+          <Button onClick={() => void handleCreate()} disabled={createFolder.isPending}>
+            Create
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function FolderChip({
+  folder,
+  contentTypeId,
+  onOpen,
+}: {
+  folder: EntryFolder;
+  contentTypeId: string;
+  onOpen: (id: string) => void;
+}) {
+  const updateFolder = useUpdateEntryFolder(contentTypeId);
+  const deleteFolder = useDeleteEntryFolder(contentTypeId);
+  const [renaming, setRenaming] = useState(false);
+  const [name, setName] = useState(folder.name);
+
+  async function handleRename() {
+    if (!name.trim() || name === folder.name) {
+      setRenaming(false);
+      return;
+    }
+    try {
+      await updateFolder.mutateAsync({ id: folder.id, name: name.trim() });
+      toast.success('Folder renamed');
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Failed to rename folder');
+    } finally {
+      setRenaming(false);
+    }
+  }
+
+  async function handleDelete() {
+    try {
+      await deleteFolder.mutateAsync(folder.id);
+      toast.success('Folder deleted — its entries are now unfiled');
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Failed to delete folder');
+    }
+  }
+
+  if (renaming) {
+    return (
+      <Input
+        value={name}
+        autoFocus
+        onChange={(event) => setName(event.target.value)}
+        onBlur={() => void handleRename()}
+        onKeyDown={(event) => event.key === 'Enter' && void handleRename()}
+        className="h-8 w-40"
+      />
+    );
+  }
+
+  return (
+    <div className="group flex items-center gap-1 rounded-lg border bg-card py-1 pr-1 pl-3 text-sm">
+      <button
+        type="button"
+        className="flex items-center gap-2 hover:underline"
+        onClick={() => onOpen(folder.id)}
+      >
+        <Folder className="size-4 text-muted-foreground" />
+        {folder.name}
+      </button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={`Manage ${folder.name}`}
+            className="opacity-0 group-hover:opacity-100"
+          >
+            <MoreHorizontal />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onSelect={() => setRenaming(true)}>
+            <Pencil /> Rename
+          </DropdownMenuItem>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <DropdownMenuItem onSelect={(event) => event.preventDefault()} variant="destructive">
+                <Trash2 /> Delete
+              </DropdownMenuItem>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete "{folder.name}"?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  The folder is removed. Its entries become unfiled; any subfolders move to root. This
+                  cannot be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction variant="destructive" onClick={() => void handleDelete()}>
+                  Delete
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+}
+
 export function EntriesPage() {
   const navigate = useNavigate();
   const { contentTypeId } = useParams<{ contentTypeId: string }>();
   const { data: contentType } = useContentType(contentTypeId ?? '');
-  const { data: entries, isPending, error, refetch } = useEntries(contentTypeId ?? '');
+  const { data: folders } = useEntryFolders(contentTypeId ?? '');
+  const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
+  const {
+    data: entries,
+    isPending,
+    error,
+    refetch,
+  } = useEntries(contentTypeId ?? '', currentFolderId === null ? 'unfiled' : currentFolderId);
   const deleteEntry = useDeleteEntryById(contentTypeId ?? '');
   const updateStatus = useUpdateEntryStatusById(contentTypeId ?? '');
   const importEntries = useImportEntries(contentTypeId ?? '');
+  const moveEntries = useMoveEntries(contentTypeId ?? '');
   const importFileInputRef = useRef<HTMLInputElement>(null);
 
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [pendingDelete, setPendingDelete] = useState<EntryWithContentType | EntryWithContentType[] | null>(null);
+
+  const currentFolder = folders?.find((folder) => folder.id === currentFolderId) ?? null;
+  const breadcrumbFolders = useMemo(() => {
+    if (!folders) return [];
+    const chain: EntryFolder[] = [];
+    let cursor = currentFolder;
+    while (cursor) {
+      chain.unshift(cursor);
+      cursor = folders.find((folder) => folder.id === cursor!.parentId) ?? null;
+    }
+    return chain;
+  }, [folders, currentFolder]);
+  const subfolders = useMemo(
+    () => (folders ?? []).filter((folder) => folder.parentId === currentFolderId),
+    [folders, currentFolderId],
+  );
 
   async function handleExport() {
     if (!contentTypeId) return;
@@ -196,6 +396,7 @@ export function EntriesPage() {
         <Download />
         Export
       </Button>
+      {contentTypeId ? <NewFolderDialog contentTypeId={contentTypeId} parentId={currentFolderId} /> : null}
       <Button asChild>
         <Link to={`/content-types/${contentTypeId}/entries/new`}>
           <Plus />
@@ -210,16 +411,41 @@ export function EntriesPage() {
       <PageBreadcrumb
         items={[
           { label: 'Content types', to: '/content-types' },
-          { label: contentType?.name ?? '…', to: `/content-types/${contentTypeId}` },
-          { label: 'Entries' },
+          { label: contentType?.name ?? '…' },
         ]}
       />
 
       <PageHeader
-        title="Entries"
-        description={contentType ? `Instances of ${contentType.name}.` : 'Content instances.'}
+        title={contentType?.name ?? 'Entries'}
+        description={contentType ? `Content — instances of ${contentType.name}.` : 'Content instances.'}
         actions={<div className="flex items-center gap-2">{headerActions}</div>}
       />
+
+      {contentTypeId ? <ContentTypeTabs contentTypeId={contentTypeId} active="entries" /> : null}
+
+      <div className="flex flex-wrap items-center gap-1 text-sm text-muted-foreground">
+        <button type="button" className="hover:underline" onClick={() => setCurrentFolderId(null)}>
+          Root
+        </button>
+        {breadcrumbFolders.map((folder) => (
+          <span key={folder.id} className="flex items-center gap-1">
+            <span>/</span>
+            <button type="button" className="hover:underline" onClick={() => setCurrentFolderId(folder.id)}>
+              {folder.name}
+            </button>
+          </span>
+        ))}
+      </div>
+
+      {subfolders.length > 0 ? (
+        <div className="flex flex-wrap gap-2">
+          {subfolders.map((folder) =>
+            contentTypeId ? (
+              <FolderChip key={folder.id} folder={folder} contentTypeId={contentTypeId} onOpen={setCurrentFolderId} />
+            ) : null,
+          )}
+        </div>
+      ) : null}
 
       {error ? <p className="text-destructive">{error.message}</p> : null}
 
@@ -269,6 +495,29 @@ export function EntriesPage() {
           }
           bulkActions={(selected, clearSelection) => (
             <>
+              <Select
+                onValueChange={(value) => {
+                  void moveEntries
+                    .mutateAsync({ entryIds: selected.map((entry) => entry.id), folderId: value === 'root' ? null : value })
+                    .then(() => {
+                      toast.success(`Moved ${selected.length} entries`);
+                      clearSelection();
+                    })
+                    .catch((err) => toast.error(err instanceof ApiError ? err.message : 'Failed to move entries'));
+                }}
+              >
+                <SelectTrigger size="sm" className="w-40">
+                  <SelectValue placeholder="Move to folder…" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="root">Unfiled (root)</SelectItem>
+                  {(folders ?? []).map((folder) => (
+                    <SelectItem key={folder.id} value={folder.id}>
+                      {folder.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <Button
                 variant="outline"
                 size="sm"

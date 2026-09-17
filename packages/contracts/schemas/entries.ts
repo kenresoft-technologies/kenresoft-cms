@@ -24,6 +24,9 @@ export const createEntrySchema = z.object({
   status: z.enum(ENTRY_STATUSES).optional().default('draft'),
   data: z.record(z.string(), z.unknown()),
   publishAt: publishAtInputSchema.optional(),
+  // Admin-only organization, never a validated part of the entry's own content — an omitted
+  // value means unfiled/root, matching folderId's own nullable-by-default convention elsewhere.
+  folderId: z.string().min(1).nullable().optional(),
 });
 
 export const updateEntrySchema = z.object({
@@ -31,6 +34,7 @@ export const updateEntrySchema = z.object({
   status: z.enum(ENTRY_STATUSES).optional(),
   data: z.record(z.string(), z.unknown()).optional(),
   publishAt: publishAtInputSchema.optional(),
+  folderId: z.string().min(1).nullable().optional(),
 });
 
 export type Entry = z.infer<typeof entrySchema>;
@@ -92,6 +96,8 @@ export const entryWithContentTypeSchema = entrySchema.extend({
   contentTypeSlug: z.string(),
   authorName: z.string().nullable(),
   authorEmail: z.string().nullable(),
+  // Admin-only, same reasoning as authorName/authorEmail above — null = unfiled/root.
+  folderId: z.string().nullable(),
 });
 
 export type EntryWithContentType = z.infer<typeof entryWithContentTypeSchema>;

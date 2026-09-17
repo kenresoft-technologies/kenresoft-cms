@@ -3,6 +3,7 @@ import { relations } from 'drizzle-orm';
 import { contentTypes } from './content-types';
 import { fieldDefinitions } from './field-definitions';
 import { entries } from './entries';
+import { entryFolders } from './entry-folders';
 import { entryRevisions } from './entry-revisions';
 import { pages } from './pages';
 import { pageRevisions } from './page-revisions';
@@ -30,7 +31,14 @@ export const entriesRelations = relations(entries, ({ one, many }) => ({
     fields: [entries.contentTypeId],
     references: [contentTypes.id],
   }),
+  folder: one(entryFolders, { fields: [entries.folderId], references: [entryFolders.id] }),
   revisions: many(entryRevisions),
+}));
+
+export const entryFoldersRelations = relations(entryFolders, ({ one, many }) => ({
+  contentType: one(contentTypes, { fields: [entryFolders.contentTypeId], references: [contentTypes.id] }),
+  parent: one(entryFolders, { fields: [entryFolders.parentId], references: [entryFolders.id] }),
+  entries: many(entries),
 }));
 
 // No relation defined toward `user` here — auth.ts (generated) already owns the one

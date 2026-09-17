@@ -52,7 +52,12 @@ function canWriteEntry(role: string, entry: Pick<DbEntry, 'createdBy'>, userId: 
 // contentTypeId is optional: present -> entries for that one content type (unchanged
 // behavior); absent -> every entry across every content type, joined with its content type
 // and author (§ unified admin Entries view).
-const listQuerySchema = z.object({ contentTypeId: z.string().min(1).optional() });
+const listQuerySchema = z.object({
+  contentTypeId: z.string().min(1).optional(),
+  // Mirrors Media's own list-query convention: omitted = every folder, 'unfiled' = root only,
+  // any other string = entries in that one folder.
+  folderId: z.string().min(1).optional(),
+});
 const createEntryQuerySchema = z.object({ contentTypeId: z.string().min(1) });
 const contentTypeScopedQuerySchema = z.object({ contentTypeId: z.string().min(1) });
 const idParamSchema = z.object({ id: z.string().min(1) });
@@ -78,6 +83,7 @@ function toEntryWithContentType(row: DbEntryWithContentType): EntryWithContentTy
     contentTypeSlug: row.contentTypeSlug,
     authorName: row.authorName,
     authorEmail: row.authorEmail,
+    folderId: row.folderId,
   };
 }
 
@@ -146,9 +152,10 @@ entriesRoute.openapi(
     },
   }),
   async (c) => {
-    const { contentTypeId } = c.req.valid('query');
+    const { contentTypeId, folderId } = c.req.valid('query');
     const db = getDb(c);
-    const rows = await listEntriesWithContentType(db, contentTypeId);
+    const scope = folderId === undefined ? undefined : folderId === 'unfiled' ? null : folderId;
+    const rows = await listEntriesWithContentType(db, contentTypeId, scope);
     return c.json(rows.map(toEntryWithContentType), 200);
   },
 );

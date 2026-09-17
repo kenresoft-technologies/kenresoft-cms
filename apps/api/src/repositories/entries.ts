@@ -1,4 +1,4 @@
-import { and, contentTypes, desc, entries, entryRevisions, eq, lte, user } from '@kenresoft-cms/database';
+import { and, contentTypes, desc, entries, entryRevisions, eq, isNull, lte, user } from '@kenresoft-cms/database';
 import type { Database, Entry, EntryRevision, NewEntry } from '@kenresoft-cms/database';
 
 export interface EntryWithContentType extends Entry {
@@ -6,6 +6,7 @@ export interface EntryWithContentType extends Entry {
   contentTypeSlug: string;
   authorName: string | null;
   authorEmail: string | null;
+  folderId: string | null;
 }
 
 type EntryWriteInput = {
@@ -13,6 +14,7 @@ type EntryWriteInput = {
   status?: NewEntry['status'] | undefined;
   data?: NewEntry['data'] | undefined;
   publishAt?: NewEntry['publishAt'] | undefined;
+  folderId?: NewEntry['folderId'] | undefined;
 };
 
 async function snapshotRevision(
@@ -32,7 +34,7 @@ async function snapshotRevision(
 export async function createEntry(
   db: Database,
   contentTypeId: string,
-  input: Pick<NewEntry, 'slug' | 'status' | 'data'> & Pick<EntryWriteInput, 'publishAt'>,
+  input: Pick<NewEntry, 'slug' | 'status' | 'data'> & Pick<EntryWriteInput, 'publishAt' | 'folderId'>,
   createdBy: string | null,
 ): Promise<Entry> {
   const contentType = await db.query.contentTypes.findFirst({
@@ -55,9 +57,12 @@ export async function createEntry(
 // system-triggered write, e.g. the scheduled-publish Cron Trigger, has no acting user)
 // either way, so both screens can show an Author column, not just the unified one. Pass
 // contentTypeId to scope to one content type; omit it for every entry across every type.
+// folderId follows the same three-state convention as Media's own listMedia: undefined = every
+// folder (no filter), null = unfiled/root only, a string = entries in that one folder.
 export function listEntriesWithContentType(
   db: Database,
   contentTypeId?: string,
+  folderId?: string | null,
 ): Promise<EntryWithContentType[]> {
   return db
     .select({
@@ -70,6 +75,7 @@ export function listEntriesWithContentType(
       createdAt: entries.createdAt,
       updatedAt: entries.updatedAt,
       createdBy: entries.createdBy,
+      folderId: entries.folderId,
       contentTypeName: contentTypes.name,
       contentTypeSlug: contentTypes.slug,
       authorName: user.name,
@@ -78,7 +84,12 @@ export function listEntriesWithContentType(
     .from(entries)
     .innerJoin(contentTypes, eq(entries.contentTypeId, contentTypes.id))
     .leftJoin(user, eq(entries.createdBy, user.id))
-    .where(contentTypeId ? eq(entries.contentTypeId, contentTypeId) : undefined)
+    .where(
+      and(
+        contentTypeId ? eq(entries.contentTypeId, contentTypeId) : undefined,
+        folderId === undefined ? undefined : folderId === null ? isNull(entries.folderId) : eq(entries.folderId, folderId),
+      ),
+    )
     .orderBy(desc(entries.updatedAt));
 }
 

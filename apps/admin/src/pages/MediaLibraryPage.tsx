@@ -1,13 +1,30 @@
 import { useMemo, useState, type FormEvent, type ReactNode } from 'react';
-import { FolderCog, Grid3x3, ImageOff, Images, List, RefreshCw, Trash2 } from 'lucide-react';
+import { Check, Folder, FolderCog, FolderOpen, FolderPlus, Grid3x3, ImageOff, Images, List, MoreHorizontal, Pencil, RefreshCw, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { ColumnDef } from '@tanstack/react-table';
 
 import { ApiError } from '@/lib/api-client';
 import { useDeveloperMode } from '@/lib/developer-mode';
-import { useDeleteMedia, useMediaFolders, useMediaList, useMoveMedia, useUploadMedia, mediaFileUrl } from '@/lib/queries/media';
+import {
+  useCreateMediaFolder,
+  useDeleteMedia,
+  useDeleteMediaFolder,
+  useMediaFolders,
+  useMediaList,
+  useMoveMedia,
+  useUpdateMedia,
+  useUpdateMediaFolder,
+  useUploadMedia,
+  mediaFileUrl,
+} from '@/lib/queries/media';
 import { MediaDeveloperPanel } from '@/components/developer-panel/media-developer-panel';
 import { ManageMediaFoldersDialog } from '@/components/manage-media-folders-dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -187,6 +204,59 @@ function DeleteMediaAlert({ item, trigger }: { item: Media; trigger: ReactNode }
   );
 }
 
+function RenameMediaDialog({ item, trigger }: { item: Media; trigger: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const [filename, setFilename] = useState(item.filename);
+  const [altText, setAltText] = useState(item.altText ?? '');
+  const [error, setError] = useState<string | null>(null);
+  const updateMedia = useUpdateMedia();
+
+  async function handleSave() {
+    setError(null);
+    if (!filename.trim()) {
+      setError('Filename is required');
+      return;
+    }
+    try {
+      await updateMedia.mutateAsync({ id: item.id, filename: filename.trim(), altText: altText.trim() || null });
+      toast.success('Media updated');
+      setOpen(false);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Failed to update media');
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(next) => { setOpen(next); if (next) { setFilename(item.filename); setAltText(item.altText ?? ''); } }}>
+      <DialogTrigger asChild>{trigger}</DialogTrigger>
+      <DialogContent size="md">
+        <DialogHeader>
+          <DialogTitle>Edit details</DialogTitle>
+          <DialogDescription>
+            Renaming or re-describing this item never touches its file bytes or public URL.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="media-rename-filename">Filename</Label>
+            <Input id="media-rename-filename" value={filename} onChange={(event) => setFilename(event.target.value)} />
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="media-rename-alt-text">Alt text</Label>
+            <Input id="media-rename-alt-text" value={altText} onChange={(event) => setAltText(event.target.value)} />
+          </div>
+          {error ? <p className="text-sm text-destructive">{error}</p> : null}
+        </div>
+        <DialogFooter>
+          <Button onClick={() => void handleSave()} disabled={updateMedia.isPending}>
+            {updateMedia.isPending ? 'Saving…' : 'Save'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function MediaThumbnail({ item, className }: { item: Media; className?: string }) {
   if (item.width && item.height) {
     return <img src={mediaFileUrl(item.id)} alt={item.altText ?? item.filename} className={className} />;
@@ -202,72 +272,109 @@ function MediaGrid({
   items,
   developerMode,
   onPreview,
+  selectedIds,
+  onToggleSelect,
 }: {
   items: Media[];
   developerMode: boolean;
   onPreview: (item: Media) => void;
+  selectedIds: Set<string>;
+  onToggleSelect: (id: string) => void;
 }) {
   return (
     <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-      {items.map((item) => (
-        <Card key={item.id} size="sm" className="group overflow-hidden py-0">
-          <div
-            role="button"
-            tabIndex={0}
-            className="relative block aspect-square w-full cursor-pointer overflow-hidden text-left"
-            onClick={() => onPreview(item)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' || event.key === ' ') {
-                event.preventDefault();
-                onPreview(item);
-              }
-            }}
-            aria-label={`View ${item.filename} full size`}
-          >
-            <MediaThumbnail item={item} className="size-full object-cover transition-transform group-hover:scale-105" />
-            {/* The dark wash is a hover-only visual flourish; the delete button itself stays
-                rendered and clickable without hovering first, so it's reachable on touch
-                devices, which have no hover state at all — subtly toned at rest, full
-                destructive-red only once hovered/focused. */}
-            <div className="pointer-events-none absolute inset-0 bg-black/0 transition-colors group-hover:bg-black/20" />
-            {developerMode ? (
-              <div className="absolute top-2 left-2" onClick={(event) => event.stopPropagation()}>
-                <MediaDeveloperPanel
-                  item={item}
-                  className="bg-background/80 text-foreground hover:bg-background"
-                />
-              </div>
-            ) : null}
-            <div className="absolute top-2 right-2" onClick={(event) => event.stopPropagation()}>
-              <DeleteMediaAlert
-                item={item}
-                trigger={
-                  <Button
-                    variant="secondary"
-                    size="icon-sm"
-                    aria-label={`Delete ${item.filename}`}
-                    className="bg-background/80 text-foreground hover:bg-destructive/20 hover:text-destructive"
-                  >
-                    <Trash2 />
-                  </Button>
+      {items.map((item) => {
+        const selected = selectedIds.has(item.id);
+        return (
+          <Card key={item.id} size="sm" className={cn('group overflow-hidden py-0', selected && 'ring-2 ring-primary')}>
+            <div
+              role="button"
+              tabIndex={0}
+              className="relative block aspect-square w-full cursor-pointer overflow-hidden text-left"
+              onClick={() => onPreview(item)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  onPreview(item);
                 }
-              />
+              }}
+              aria-label={`View ${item.filename} full size`}
+            >
+              <MediaThumbnail item={item} className="size-full object-cover transition-transform group-hover:scale-105" />
+              {/* The dark wash is a hover-only visual flourish; the delete button itself stays
+                  rendered and clickable without hovering first, so it's reachable on touch
+                  devices, which have no hover state at all — subtly toned at rest, full
+                  destructive-red only once hovered/focused. */}
+              <div className="pointer-events-none absolute inset-0 bg-black/0 transition-colors group-hover:bg-black/20" />
+              <button
+                type="button"
+                aria-label={selected ? `Deselect ${item.filename}` : `Select ${item.filename}`}
+                aria-pressed={selected}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onToggleSelect(item.id);
+                }}
+                className={cn(
+                  'absolute top-2 left-2 flex size-5 items-center justify-center rounded border bg-background/80 text-foreground transition-opacity',
+                  selected ? 'border-primary bg-primary text-primary-foreground opacity-100' : 'opacity-0 group-hover:opacity-100',
+                )}
+              >
+                {selected ? <Check className="size-3.5" /> : null}
+              </button>
+              <div className="absolute top-2 right-2 flex gap-1" onClick={(event) => event.stopPropagation()}>
+                {developerMode ? (
+                  <MediaDeveloperPanel
+                    item={item}
+                    className="bg-background/80 text-foreground hover:bg-background"
+                  />
+                ) : null}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="secondary"
+                      size="icon-sm"
+                      aria-label={`Manage ${item.filename}`}
+                      className="bg-background/80 text-foreground hover:bg-background"
+                    >
+                      <MoreHorizontal />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <RenameMediaDialog
+                      item={item}
+                      trigger={
+                        <DropdownMenuItem onSelect={(event) => event.preventDefault()}>
+                          <Pencil /> Edit details
+                        </DropdownMenuItem>
+                      }
+                    />
+                    <DeleteMediaAlert
+                      item={item}
+                      trigger={
+                        <DropdownMenuItem onSelect={(event) => event.preventDefault()} variant="destructive">
+                          <Trash2 /> Delete
+                        </DropdownMenuItem>
+                      }
+                    />
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             </div>
-          </div>
-          <CardContent className="flex flex-col gap-1 pb-3">
-            <p className="truncate text-sm font-medium">{item.filename}</p>
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Badge variant="outline" className={cn('text-[0.65rem]', MEDIA_TYPE_TONE[item.contentType])}>
-                {MEDIA_TYPE_LABELS[item.contentType]}
-              </Badge>
-              <span>
-                {item.width && item.height ? `${item.width}×${item.height} · ` : ''}
-                {formatBytes(item.size)}
-              </span>
-            </div>
-          </CardContent>
-        </Card>
-      ))}
+            <CardContent className="flex flex-col gap-1 pb-3">
+              <p className="truncate text-sm font-medium">{item.filename}</p>
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Badge variant="outline" className={cn('text-[0.65rem]', MEDIA_TYPE_TONE[item.contentType])}>
+                  {MEDIA_TYPE_LABELS[item.contentType]}
+                </Badge>
+                <span>
+                  {item.width && item.height ? `${item.width}×${item.height} · ` : ''}
+                  {formatBytes(item.size)}
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })}
     </div>
   );
 }
@@ -343,6 +450,14 @@ function MediaList({
         cell: ({ row }) => (
           <div className="flex justify-end gap-1">
             {developerMode ? <MediaDeveloperPanel item={row.original} /> : null}
+            <RenameMediaDialog
+              item={row.original}
+              trigger={
+                <Button variant="ghost" size="icon-sm" aria-label={`Edit details for ${row.original.filename}`}>
+                  <Pencil />
+                </Button>
+              }
+            />
             <DeleteMediaAlert
               item={row.original}
               trigger={
@@ -412,7 +527,7 @@ function MediaList({
 function MediaPreviewDialog({ item, onOpenChange }: { item: Media | null; onOpenChange: (open: boolean) => void }) {
   return (
     <Dialog open={item !== null} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-3xl">
+      <DialogContent size="lg">
         <DialogHeader>
           <DialogTitle className="truncate">{item?.filename}</DialogTitle>
           {item ? (
@@ -437,18 +552,207 @@ function MediaPreviewDialog({ item, onOpenChange }: { item: Media | null; onOpen
   );
 }
 
+function NewMediaFolderButton({ parentId }: { parentId: string | null }) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const createFolder = useCreateMediaFolder();
+
+  async function handleCreate() {
+    if (!name.trim()) {
+      setError('Enter a folder name');
+      return;
+    }
+    setError(null);
+    try {
+      await createFolder.mutateAsync({ name: name.trim(), slug: slugify(name), parentId });
+      setName('');
+      setOpen(false);
+      toast.success('Folder created');
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Failed to create folder');
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <Button variant="outline" onClick={() => setOpen(true)}>
+        <FolderPlus />
+        New folder
+      </Button>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>New folder</DialogTitle>
+          <DialogDescription>
+            {parentId ? 'Created inside the folder you currently have open.' : 'Created at the top level of the Media Library.'}
+          </DialogDescription>
+        </DialogHeader>
+        <Input
+          placeholder="Folder name"
+          value={name}
+          autoFocus
+          onChange={(event) => setName(event.target.value)}
+          onKeyDown={(event) => event.key === 'Enter' && void handleCreate()}
+        />
+        {error ? <p className="text-sm text-destructive">{error}</p> : null}
+        <DialogFooter>
+          <Button onClick={() => void handleCreate()} disabled={createFolder.isPending}>
+            Create
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function slugify(value: string): string {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+function FolderCard({ folder, onOpen }: { folder: MediaFolder; onOpen: (id: string) => void }) {
+  const updateFolder = useUpdateMediaFolder();
+  const deleteFolder = useDeleteMediaFolder();
+  const [renaming, setRenaming] = useState(false);
+  const [name, setName] = useState(folder.name);
+
+  async function handleRename() {
+    if (!name.trim() || name === folder.name) {
+      setRenaming(false);
+      return;
+    }
+    try {
+      await updateFolder.mutateAsync({ id: folder.id, name: name.trim(), slug: slugify(name) });
+      toast.success('Folder renamed');
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Failed to rename folder');
+    } finally {
+      setRenaming(false);
+    }
+  }
+
+  async function handleDelete() {
+    try {
+      await deleteFolder.mutateAsync(folder.id);
+      toast.success('Folder deleted — its media is now unfiled');
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Failed to delete folder');
+    }
+  }
+
+  if (renaming) {
+    return (
+      <Card size="sm" className="p-3">
+        <Input
+          value={name}
+          autoFocus
+          onChange={(event) => setName(event.target.value)}
+          onBlur={() => void handleRename()}
+          onKeyDown={(event) => event.key === 'Enter' && void handleRename()}
+        />
+      </Card>
+    );
+  }
+
+  return (
+    <Card size="sm" className="group flex-row items-center justify-between gap-2 p-3">
+      <button
+        type="button"
+        className="flex min-w-0 flex-1 items-center gap-2 text-left"
+        onClick={() => onOpen(folder.id)}
+      >
+        <Folder className="size-5 shrink-0 text-muted-foreground" />
+        <span className="truncate text-sm font-medium">{folder.name}</span>
+      </button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={`Manage ${folder.name}`}
+            className="opacity-0 group-hover:opacity-100"
+          >
+            <MoreHorizontal />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onSelect={() => setRenaming(true)}>
+            <Pencil /> Rename
+          </DropdownMenuItem>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <DropdownMenuItem onSelect={(event) => event.preventDefault()} variant="destructive">
+                <Trash2 /> Delete
+              </DropdownMenuItem>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete "{folder.name}"?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  The folder is removed. Media inside it is never deleted — it becomes unfiled, and any
+                  subfolders move to the top level.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={() => void handleDelete()}>Delete</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </Card>
+  );
+}
+
 export function MediaLibraryPage() {
   const developerMode = useDeveloperMode();
-  const [folderFilter, setFolderFilter] = useState<string>('all');
   const { data: folders } = useMediaFolders();
+  const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
   const { data: mediaItems, isPending, error, refetch } = useMediaList({
-    folderId: folderFilter === 'all' ? undefined : folderFilter,
+    folderId: currentFolderId === null ? 'unfiled' : currentFolderId,
   });
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [previewItem, setPreviewItem] = useState<Media | null>(null);
   const [managingFolders, setManagingFolders] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const moveMedia = useMoveMedia();
+  const deleteMedia = useDeleteMedia();
+
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function navigateToFolder(id: string | null) {
+    setSelectedIds(new Set());
+    setCurrentFolderId(id);
+  }
+
+  const currentFolder = folders?.find((folder) => folder.id === currentFolderId) ?? null;
+  const breadcrumbFolders = useMemo(() => {
+    if (!folders) return [];
+    const chain: MediaFolder[] = [];
+    let cursor = currentFolder;
+    while (cursor) {
+      chain.unshift(cursor);
+      cursor = folders.find((folder) => folder.id === cursor!.parentId) ?? null;
+    }
+    return chain;
+  }, [folders, currentFolder]);
+  const subfolders = useMemo(
+    () => (folders ?? []).filter((folder) => folder.parentId === currentFolderId),
+    [folders, currentFolderId],
+  );
 
   const typeFilteredItems = useMemo(
     () => (mediaItems ?? []).filter((item) => typeFilter === 'all' || item.contentType === typeFilter),
@@ -471,12 +775,35 @@ export function MediaLibraryPage() {
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => setManagingFolders(true)}>
               <FolderCog />
-              Folders
+              Manage folders
             </Button>
-            <UploadMediaDialog defaultFolderId={folderFilter === 'all' ? undefined : folderFilter} />
+            <NewMediaFolderButton parentId={currentFolderId} />
+            <UploadMediaDialog defaultFolderId={currentFolderId ?? undefined} />
           </div>
         }
       />
+
+      <div className="flex flex-wrap items-center gap-1 text-sm text-muted-foreground">
+        <button type="button" className="flex items-center gap-1 hover:underline" onClick={() => navigateToFolder(null)}>
+          <FolderOpen className="size-3.5" /> Media
+        </button>
+        {breadcrumbFolders.map((folder) => (
+          <span key={folder.id} className="flex items-center gap-1">
+            <span>/</span>
+            <button type="button" className="hover:underline" onClick={() => navigateToFolder(folder.id)}>
+              {folder.name}
+            </button>
+          </span>
+        ))}
+      </div>
+
+      {subfolders.length > 0 ? (
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+          {subfolders.map((folder) => (
+            <FolderCard key={folder.id} folder={folder} onOpen={navigateToFolder} />
+          ))}
+        </div>
+      ) : null}
 
       {error ? <p className="text-destructive">{error.message}</p> : null}
 
@@ -488,10 +815,10 @@ export function MediaLibraryPage() {
         </div>
       ) : null}
 
-      {mediaItems && mediaItems.length === 0 ? (
+      {mediaItems && mediaItems.length === 0 && subfolders.length === 0 ? (
         <EmptyState
           icon={Images}
-          title="No media yet"
+          title={currentFolderId === null ? 'No unfiled media' : 'This folder is empty'}
           description="Upload an image to start using it in your content."
         />
       ) : null}
@@ -516,20 +843,6 @@ export function MediaLibraryPage() {
                 {Object.entries(MEDIA_TYPE_LABELS).map(([value, label]) => (
                   <SelectItem key={value} value={value}>
                     {label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={folderFilter} onValueChange={setFolderFilter}>
-              <SelectTrigger size="sm" className="w-40">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All folders</SelectItem>
-                <SelectItem value="unfiled">Unfiled</SelectItem>
-                {(folders ?? []).map((folder) => (
-                  <SelectItem key={folder.id} value={folder.id}>
-                    {folder.name}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -559,9 +872,62 @@ export function MediaLibraryPage() {
             </div>
           </div>
 
+          {viewMode === 'grid' && selectedIds.size > 0 ? (
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/50 p-2">
+              <span className="px-1 text-sm text-muted-foreground">{selectedIds.size} selected</span>
+              <Select
+                onValueChange={(value) => {
+                  void moveMedia
+                    .mutateAsync({ mediaIds: Array.from(selectedIds), folderId: value === 'none' ? null : value })
+                    .then(() => {
+                      toast.success(`Moved ${selectedIds.size} files`);
+                      setSelectedIds(new Set());
+                    })
+                    .catch(() => toast.error('Failed to move files'));
+                }}
+              >
+                <SelectTrigger size="sm" className="w-40">
+                  <SelectValue placeholder="Move to folder…" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Unfiled</SelectItem>
+                  {(folders ?? []).map((folder) => (
+                    <SelectItem key={folder.id} value={folder.id}>
+                      {folder.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={async () => {
+                  const ids = Array.from(selectedIds);
+                  const results = await Promise.allSettled(ids.map((id) => deleteMedia.mutateAsync(id)));
+                  const failed = results.filter((result) => result.status === 'rejected').length;
+                  if (failed === 0) toast.success(`${ids.length} files deleted`);
+                  else toast.error(`${failed} of ${ids.length} files failed to delete`);
+                  setSelectedIds(new Set());
+                }}
+              >
+                <Trash2 />
+                Delete
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
+                Clear
+              </Button>
+            </div>
+          ) : null}
+
           {viewMode === 'grid' ? (
             gridItems.length > 0 ? (
-              <MediaGrid items={gridItems} developerMode={developerMode} onPreview={setPreviewItem} />
+              <MediaGrid
+                items={gridItems}
+                developerMode={developerMode}
+                onPreview={setPreviewItem}
+                selectedIds={selectedIds}
+                onToggleSelect={toggleSelect}
+              />
             ) : (
               <p className="py-8 text-center text-sm text-muted-foreground">No media matches your search.</p>
             )

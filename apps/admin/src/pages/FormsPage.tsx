@@ -92,7 +92,7 @@ function QuickReferenceDialog() {
           Quick reference
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-lg">
+      <DialogContent size="md">
         <DialogHeader>
           <DialogTitle>How forms work</DialogTitle>
           <DialogDescription>What actually happens between a visitor's submit and this inbox (§7).</DialogDescription>

@@ -21,11 +21,15 @@ type EntryWriteInput = {
 // The API returns the same joined shape (content type + author) whether or not
 // contentTypeId is set — scoped here to one content type, so this page can show an Author
 // column too, not just the unified AllEntriesPage.
-export function useEntries(contentTypeId: string) {
+// folderId follows Media's own three-state convention: undefined = every folder (no filter),
+// 'unfiled' = root only, a real id = entries in that one folder.
+export function useEntries(contentTypeId: string, folderId?: string | undefined) {
   return useQuery({
-    queryKey: ['entries', contentTypeId],
+    queryKey: ['entries', contentTypeId, folderId ?? 'all'],
     queryFn: () =>
-      apiClient.get<EntryWithContentType[]>(`/api/v1/admin/entries?contentTypeId=${contentTypeId}`),
+      apiClient.get<EntryWithContentType[]>(
+        `/api/v1/admin/entries?contentTypeId=${contentTypeId}${folderId ? `&folderId=${encodeURIComponent(folderId)}` : ''}`,
+      ),
     enabled: Boolean(contentTypeId),
   });
 }

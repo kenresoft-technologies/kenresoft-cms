@@ -174,7 +174,7 @@ function ImageButton({ editor }: { editor: Editor }) {
       <ToolbarButton label="Image" onClick={() => setOpen(true)}>
         <ImageIcon />
       </ToolbarButton>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent size="md">
         <DialogHeader>
           <DialogTitle>Insert image</DialogTitle>
         </DialogHeader>

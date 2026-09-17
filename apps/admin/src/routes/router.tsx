@@ -135,14 +135,23 @@ export const router = createBrowserRouter([
         lazy: async () => ({ Component: (await import('@/pages/ProfilePage')).ProfilePage }),
       },
       {
+        // The primary destination for a content type — its Entries (the actual content/data),
+        // not its schema. Reachable both here and at the `/entries` alias below (kept working
+        // for any existing bookmark/link) so both resolve to the exact same page.
         path: 'content-types/:contentTypeId',
-        lazy: async () => ({
-          Component: (await import('@/pages/ContentTypeDetailPage')).ContentTypeDetailPage,
-        }),
+        lazy: async () => ({ Component: (await import('@/pages/EntriesPage')).EntriesPage }),
       },
       {
         path: 'content-types/:contentTypeId/entries',
         lazy: async () => ({ Component: (await import('@/pages/EntriesPage')).EntriesPage }),
+      },
+      {
+        // Schema/fields — the structural, secondary view. One click away via ContentTypeTabs,
+        // not a separate top-level navigation path.
+        path: 'content-types/:contentTypeId/schema',
+        lazy: async () => ({
+          Component: (await import('@/pages/ContentTypeDetailPage')).ContentTypeDetailPage,
+        }),
       },
       {
         path: 'content-types/:contentTypeId/entries/:entryId',
