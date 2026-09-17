@@ -10,7 +10,7 @@ import {
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { GripVertical, ListPlus, Pencil, Plus, Trash2 } from 'lucide-react';
-import { Link, useParams } from 'react-router';
+import { useParams } from 'react-router';
 import { toast } from 'sonner';
 
 import { ApiError } from '@/lib/api-client';
@@ -26,6 +26,7 @@ import {
 import { useDeveloperMode } from '@/lib/developer-mode';
 import { FIELD_TYPES, roleAtLeast, type FieldDefinition, type FieldType, type UserRole } from '@/lib/types';
 import { ContentTypeBadge } from '@/components/content-type-badge';
+import { ContentTypeTabs } from '@/components/content-type-tabs';
 import { ContentTypeDeveloperPanel } from '@/components/developer-panel/content-type-developer-panel';
 import { EmptyState } from '@/components/empty-state';
 import { FieldTypeBadge, fieldTypeIcon } from '@/components/field-type-badge';
@@ -508,22 +509,18 @@ export function ContentTypeDetailPage() {
         items={[
           { label: 'Content types', to: '/content-types' },
           { label: contentType?.name ?? '…', to: `/content-types/${contentTypeId}` },
-          { label: 'Fields' },
         ]}
       />
 
       <PageHeader
-        title={contentType?.name ?? 'Fields'}
+        title="Schema"
         description={
           fields
-            ? `${fields.length} ${fields.length === 1 ? 'field' : 'fields'}${contentType?.description ? ` · ${contentType.description}` : ''}`
+            ? `${fields.length} ${fields.length === 1 ? 'field' : 'fields'} defining ${contentType?.name ?? 'this content type'}'s shape.`
             : 'Fields define what the entry editor renders.'
         }
         actions={
           <>
-            <Button variant="outline" asChild>
-              <Link to={`/content-types/${contentTypeId}/entries`}>View entries</Link>
-            </Button>
             {developerMode && contentType && fields ? (
               <ContentTypeDeveloperPanel contentType={contentType} fields={fields} />
             ) : null}
@@ -550,6 +547,8 @@ export function ContentTypeDetailPage() {
           </>
         }
       />
+
+      {contentTypeId ? <ContentTypeTabs contentTypeId={contentTypeId} active="schema" /> : null}
 
       {contentType && contentTypeId ? (
         <Card>
