@@ -91,9 +91,13 @@ describe('legacy global variable -> structured settings migration (real D1)', ()
     expect(contact.data.email).toBe('manually-edited@kenresoft.test');
   });
 
-  it('skips a malformed legacy URL rather than failing the whole run', async () => {
+  it('skips a legacy URL using a disallowed scheme rather than failing the whole run', async () => {
+    // socialLinkSchema's url field is safeUrlSchema (packages/contracts/schemas/safe-url.ts),
+    // which allows a schemeless value as a relative path — a plain malformed string like "not
+    // a valid url" has no scheme at all and legitimately passes it. An actually-unsafe scheme
+    // is what this validator exists to reject.
     const cookie = await authedCookie('legacy-malformed@example.test');
-    await createGlobalVariable(cookie, 'social_github', 'not a valid url');
+    await createGlobalVariable(cookie, 'social_github', 'javascript:alert(1)');
 
     const response = await (
       await SELF.fetch('https://example.com/api/v1/admin/structured-settings/migrate-legacy', {
