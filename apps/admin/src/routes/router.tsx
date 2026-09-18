@@ -1,6 +1,7 @@
 import { createBrowserRouter } from 'react-router';
 
 import { AppLayout } from '@/layouts/AppLayout';
+import { RouteErrorBoundary } from '@/components/route-error-boundary';
 import { pluginRoutes } from '@/plugins/registry';
 
 // Every page is a separate chunk, downloaded only when its route is actually visited —
@@ -15,30 +16,39 @@ export const router = createBrowserRouter([
   {
     path: '/login',
     lazy: async () => ({ Component: (await import('@/pages/LoginPage')).LoginPage }),
+    errorElement: <RouteErrorBoundary />,
   },
   {
     path: '/forgot-password',
     lazy: async () => ({
       Component: (await import('@/pages/ForgotPasswordPage')).ForgotPasswordPage,
     }),
+    errorElement: <RouteErrorBoundary />,
   },
   {
     path: '/reset-password',
     lazy: async () => ({ Component: (await import('@/pages/ResetPasswordPage')).ResetPasswordPage }),
+    errorElement: <RouteErrorBoundary />,
   },
   {
     path: '/verify-email',
     lazy: async () => ({ Component: (await import('@/pages/VerifyEmailPage')).VerifyEmailPage }),
+    errorElement: <RouteErrorBoundary />,
   },
   {
     path: '/recover-with-code',
     lazy: async () => ({
       Component: (await import('@/pages/RecoverWithCodePage')).RecoverWithCodePage,
     }),
+    errorElement: <RouteErrorBoundary />,
   },
   {
     path: '/',
     element: <AppLayout />,
+    // A single errorElement here also catches any error thrown by a lazy-loaded child route
+    // below (React Router bubbles a route error up to the nearest ancestor that defines one) —
+    // covers every authenticated page without repeating this on each of the ~25 child routes.
+    errorElement: <RouteErrorBoundary />,
     children: [
       {
         index: true,

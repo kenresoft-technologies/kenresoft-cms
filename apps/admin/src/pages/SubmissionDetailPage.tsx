@@ -247,28 +247,10 @@ export function SubmissionDetailPage() {
       {submission ? (
         <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-5">
           <div className="flex min-w-0 flex-col gap-6 lg:col-span-3">
-            {sender && (sender.name || sender.email) ? (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-sm">Applicant</CardTitle>
-                </CardHeader>
-                <CardContent className="flex flex-col gap-3">
-                  {sender.name ? (
-                    <div className="flex items-baseline justify-between gap-4">
-                      <span className="shrink-0 text-sm text-muted-foreground">Name</span>
-                      <span className="min-w-0 text-right text-sm font-medium break-words">{sender.name}</span>
-                    </div>
-                  ) : null}
-                  {sender.email ? (
-                    <div className="flex items-baseline justify-between gap-4">
-                      <span className="shrink-0 text-sm text-muted-foreground">Email</span>
-                      <span className="min-w-0 text-right text-sm break-all">{sender.email}</span>
-                    </div>
-                  ) : null}
-                </CardContent>
-              </Card>
-            ) : null}
-
+            {/* No separate "Applicant" card — Name/Email are just submitted field values like
+                any other (sender is only ever derived from this same submission.data to drive
+                the page header and the reply recipient), so showing them twice was pure
+                duplication rather than a distinct section. */}
             <Card>
               <CardHeader>
                 <CardTitle className="text-sm">Submission</CardTitle>
