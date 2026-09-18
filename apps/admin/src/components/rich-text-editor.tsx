@@ -488,8 +488,12 @@ export function RichTextEditor({ value, onChange, placeholder }: RichTextEditorP
         fullscreen && 'fixed inset-4 z-40 bg-popover shadow-xl',
       )}
     >
-      <div className="flex items-center justify-between gap-2 border-b border-input p-1">
-        <div className="flex items-center gap-1 rounded-lg bg-muted p-0.5">
+      {/* flex-wrap: the mode-tab group + word count + fullscreen button never fit on one line
+          in a narrow column (e.g. SubmissionDetailPage's ~40%-width Reply card on mobile) —
+          without this, the row simply forces its own intrinsic width past the container,
+          dragging the whole page wider than the viewport instead of wrapping to a second line. */}
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-input p-1">
+        <div className="flex flex-wrap items-center gap-1 rounded-lg bg-muted p-0.5">
           <ModeTab active={mode === 'write'} onClick={() => switchMode('write')} icon={<Pencil className="size-3.5" />} label="Write" />
           <ModeTab active={mode === 'preview'} onClick={() => switchMode('preview')} icon={<Eye className="size-3.5" />} label="Preview" />
           <ModeTab
