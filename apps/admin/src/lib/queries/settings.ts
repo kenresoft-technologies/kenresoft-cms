@@ -14,7 +14,6 @@ export function useSettings() {
 
 export type SettingsInput = {
   name: string;
-  corsOrigin: string | null;
   featureFlags: Record<string, boolean> | null;
   previewUrl: string | null;
   pagePreviewUrl: string | null;

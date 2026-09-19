@@ -453,7 +453,7 @@ of by convention.
   Reusability is preserved at the codebase level (fork/redeploy the same open-source project
   to a new Cloudflare account per site) rather than at the running-instance level. The
   `Setting` entity added in v0.4 is renamed `Settings` and is now a **singleton per
-  deployment** (name, contact email, social links, CORS origin, feature flags) rather than
+  deployment** (name, contact email, social links, feature flags) rather than
   scoped to a project, since there is no longer a project to scope it to.
 - **Deployment model (§11)**, retitled from "Multi-Client / Multi-Tenant Strategy" to
   "Deployment Model: Single Site Per Instance" — now documents the single-site-per-instance
@@ -735,7 +735,7 @@ kenresoft-cms/
 
 | Entity | Purpose |
 |---|---|
-| Settings | Singleton per-deployment **operational** configuration (deployment identity name, CORS origin, feature flags, Live Preview URL template) — never exposed to the public API. Used to also carry `contactEmail`/`socialLinks`; both were removed once Global Variables, and later Structured Settings, gave that kind of data a real home (see §6.2/Changelog). |
+| Settings | Singleton per-deployment **operational** configuration (deployment identity name, feature flags, Live Preview URL template) — never exposed to the public API. Used to also carry `contactEmail`/`socialLinks`; both were removed once Global Variables, and later Structured Settings, gave that kind of data a real home (see §6.2/Changelog). |
 | StructuredSettings | Singleton, typed, schema-validated **site** configuration — one row per module (`general`/`contact`/`social`/`navigation`/`footer`/`seo`), each validated against its own Zod schema (`packages/contracts/schemas/structured-settings.ts`). Publicly readable per module at `GET /api/v1/public/settings/:module` (§6.2). |
 | GlobalVariable | Generic, arbitrary key/value configuration with no fixed schema — feature flags, plugin/app variables, and anything genuinely schema-less. Publicly readable as a flat map at `GET /api/v1/public/global-variables`. Not the home for structured site content once a Structured Settings module exists for it (§6.2). |
 | User | Administrative identity |
@@ -767,7 +767,7 @@ one for a given value is the mistake this section exists to prevent:
   application-specific and doesn't justify a stable schema — a feature flag, a one-off custom
   value a specific deployment needs that isn't part of any Structured Settings module.
 - **Use the CMS-internal `Settings` singleton** only for deployment-*operational* configuration
-  that the admin itself needs to function (its own display name, CORS origin, feature flags,
+  that the admin itself needs to function (its own display name, feature flags,
   the Live Preview URL template) — never for anything a public frontend renders. This table
   briefly also carried `contactEmail`/`socialLinks`, removed once this distinction existed to
   hold them properly instead.

@@ -113,8 +113,7 @@ Three places, each with a real boundary (`docs/ARCHITECTURE.md` §6.2 has the fu
 - **Global Variables** (`globalVariables.list()`) stays the home for genuinely arbitrary,
   schema-less values — a promo banner's text, a one-off custom value, a feature flag — that
   don't (yet, or ever) justify a stable schema of their own.
-- **Settings** (admin-only, `GET`/`PUT /api/v1/admin/settings`) is never public — `corsOrigin`/
-  `featureFlags`/`previewUrl`/`name` are CMS-internal operational configuration, not site content,
+- **Settings** (admin-only, `GET`/`PUT /api/v1/admin/settings`) is never public — `featureFlags`/`previewUrl`/`name` are CMS-internal operational configuration, not site content,
   and this client has no wrapper for it at all.
 
 This wasn't the first attempt at the boundary. Settings briefly also carried `contactEmail`/
