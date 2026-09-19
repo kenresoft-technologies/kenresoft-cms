@@ -3,6 +3,8 @@ import { settingsSchema, upsertSettingsSchema } from '@kenresoft-cms/contracts';
 
 import { getDb } from '../../lib/db';
 import { createOpenApiApp } from '../../lib/openapi';
+import { recordAudit } from '../../lib/audit';
+import { invalidateAllPageCaches } from '../../lib/page-cache';
 import { requireRole } from '../../middleware/require-role';
 import { getSettings, upsertSettings } from '../../repositories/settings';
 import type { Bindings } from '../../lib/env';
@@ -51,7 +53,22 @@ settingsRoute.openapi(
   async (c) => {
     const input = c.req.valid('json');
     const db = getDb(c);
+    const before = await getSettings(db);
     const row = await upsertSettings(db, input);
+
+    // Turning Raw HTML blocks on or off is a security-relevant switch: record who did it, and
+    // purge cached public pages so the change (especially switching OFF) takes effect at once.
+    const wasOn = before?.featureFlags?.['rawHtmlBlocks'] === true;
+    const isOn = row.featureFlags?.['rawHtmlBlocks'] === true;
+    if (wasOn !== isOn) {
+      await recordAudit(db, {
+        actorUserId: c.get('user').id,
+        action: isOn ? 'settings.raw_html_enabled' : 'settings.raw_html_disabled',
+        targetType: 'settings',
+        targetId: row.id,
+      });
+      c.executionCtx.waitUntil(invalidateAllPageCaches(db));
+    }
     return c.json(row);
   },
 );

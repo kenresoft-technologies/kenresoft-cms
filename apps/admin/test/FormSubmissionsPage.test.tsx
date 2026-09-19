@@ -63,6 +63,8 @@ describe('FormSubmissionsPage', () => {
       if (path.endsWith('/submissions')) return Promise.resolve([submission]);
       if (path.endsWith('/fields')) return Promise.resolve([]);
       if (path.endsWith('/replies')) return Promise.resolve([]);
+      if (path.endsWith('/email/limits')) return Promise.resolve({ configured: true, maxTotalBytes: 1, maxFiles: 1 });
+      if (path.includes('/media')) return Promise.resolve([]);
       return Promise.resolve({ id: 'f-1', name: 'Contact', slug: 'contact' });
     });
 
@@ -77,6 +79,8 @@ describe('FormSubmissionsPage', () => {
       if (path.endsWith('/submissions')) return Promise.resolve([]);
       if (path.endsWith('/fields')) return Promise.resolve([]);
       if (path.endsWith('/replies')) return Promise.resolve([]);
+      if (path.endsWith('/email/limits')) return Promise.resolve({ configured: true, maxTotalBytes: 1, maxFiles: 1 });
+      if (path.includes('/media')) return Promise.resolve([]);
       return Promise.resolve({ id: 'f-1', name: 'Contact', slug: 'contact' });
     });
 
@@ -92,6 +96,8 @@ describe('FormSubmissionsPage', () => {
         return Promise.resolve([{ id: 'ff-1', name: 'email', label: 'Email address', fieldType: 'email' }]);
       }
       if (path.endsWith('/replies')) return Promise.resolve([]);
+      if (path.endsWith('/email/limits')) return Promise.resolve({ configured: true, maxTotalBytes: 1, maxFiles: 1 });
+      if (path.includes('/media')) return Promise.resolve([]);
       return Promise.resolve({ id: 'f-1', name: 'Contact', slug: 'contact' });
     });
 
@@ -111,6 +117,8 @@ describe('FormSubmissionsPage', () => {
       }
       if (path.endsWith('/fields')) return Promise.resolve([]);
       if (path.endsWith('/replies')) return Promise.resolve([]);
+      if (path.endsWith('/email/limits')) return Promise.resolve({ configured: true, maxTotalBytes: 1, maxFiles: 1 });
+      if (path.includes('/media')) return Promise.resolve([]);
       return Promise.resolve({ id: 'f-1', name: 'Contact', slug: 'contact' });
     });
 
@@ -126,6 +134,8 @@ describe('FormSubmissionsPage', () => {
       if (path.endsWith('/submissions')) return Promise.resolve([submission]);
       if (path.endsWith('/fields')) return Promise.resolve([]);
       if (path.endsWith('/replies')) return Promise.resolve([]);
+      if (path.endsWith('/email/limits')) return Promise.resolve({ configured: true, maxTotalBytes: 1, maxFiles: 1 });
+      if (path.includes('/media')) return Promise.resolve([]);
       return Promise.resolve({ id: 'f-1', name: 'Contact', slug: 'contact' });
     });
 
@@ -149,6 +159,8 @@ describe('FormSubmissionsPage', () => {
       if (path.endsWith('/submissions')) return Promise.resolve([submission, readSubmission]);
       if (path.endsWith('/fields')) return Promise.resolve([]);
       if (path.endsWith('/replies')) return Promise.resolve([]);
+      if (path.endsWith('/email/limits')) return Promise.resolve({ configured: true, maxTotalBytes: 1, maxFiles: 1 });
+      if (path.includes('/media')) return Promise.resolve([]);
       return Promise.resolve({ id: 'f-1', name: 'Contact', slug: 'contact' });
     });
 
@@ -169,6 +181,8 @@ describe('FormSubmissionsPage', () => {
       if (path.endsWith('/submissions')) return Promise.resolve([submission]);
       if (path.endsWith('/fields')) return Promise.resolve([]);
       if (path.endsWith('/replies')) return Promise.resolve([]);
+      if (path.endsWith('/email/limits')) return Promise.resolve({ configured: true, maxTotalBytes: 1, maxFiles: 1 });
+      if (path.includes('/media')) return Promise.resolve([]);
       return Promise.resolve({ id: 'f-1', name: 'Contact', slug: 'contact' });
     });
 
@@ -215,6 +229,8 @@ describe('FormSubmissionsPage', () => {
       if (path.endsWith('/submissions')) return Promise.resolve([submission]);
       if (path.endsWith('/fields')) return Promise.resolve([]);
       if (path.endsWith('/replies')) return Promise.resolve([reply]);
+      if (path.endsWith('/email/limits')) return Promise.resolve({ configured: true, maxTotalBytes: 1, maxFiles: 1 });
+      if (path.includes('/media')) return Promise.resolve([]);
       return Promise.resolve({ id: 'f-1', name: 'Contact', slug: 'contact' });
     });
 
@@ -234,6 +250,8 @@ describe('FormSubmissionsPage', () => {
       if (path.endsWith('/submissions')) return Promise.resolve([submission]);
       if (path.endsWith('/fields')) return Promise.resolve([]);
       if (path.endsWith('/replies')) return Promise.resolve([]);
+      if (path.endsWith('/email/limits')) return Promise.resolve({ configured: true, maxTotalBytes: 1, maxFiles: 1 });
+      if (path.includes('/media')) return Promise.resolve([]);
       return Promise.resolve({ id: 'f-1', name: 'Contact', slug: 'contact' });
     });
     patchMock.mockResolvedValue({ ...submission, status: 'read' });

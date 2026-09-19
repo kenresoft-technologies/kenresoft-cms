@@ -11,10 +11,12 @@ import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } 
 import { CSS } from '@dnd-kit/utilities';
 import { Copy, GripVertical, ImageOff, Plus, Redo2, Trash2, Undo2 } from 'lucide-react';
 
+import { useRawHtmlAccess } from '@/lib/raw-html-access';
 import { mediaFileUrl, useMediaList } from '@/lib/queries/media';
 import { useReusableBlocks } from '@/lib/queries/reusable-blocks';
 import type { BlockInstance, BlockType, ChildBlockInstance } from '@/lib/types';
 import { MediaPickerDialog } from '@/components/media-picker-dialog';
+import { RawHtmlField } from '@/components/raw-html-field';
 import { RichTextEditor } from '@/components/rich-text-editor';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -184,6 +186,10 @@ export function BlockTreeEditor({ blocks, onChange }: BlockTreeEditorProps) {
 
 function AddBlockControl({ onAdd }: { onAdd: (type: BlockType) => void }) {
   const [selected, setSelected] = useState<BlockType>(BLOCK_TYPE_REGISTRY[0]!.type);
+  // Raw HTML can only be added when the deployment has enabled it and the user is an admin (the
+  // server enforces both; this just avoids offering an action that would be refused).
+  const { enabled: rawHtmlEnabled, isAdmin } = useRawHtmlAccess();
+  const available = BLOCK_TYPE_REGISTRY.filter((def) => def.type !== 'rawHtml' || (rawHtmlEnabled && isAdmin));
 
   return (
     <div className="flex items-center gap-2 rounded-lg border border-dashed p-3">
@@ -192,7 +198,7 @@ function AddBlockControl({ onAdd }: { onAdd: (type: BlockType) => void }) {
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          {BLOCK_TYPE_REGISTRY.map((def) => (
+          {available.map((def) => (
             <SelectItem key={def.type} value={def.type}>
               {def.label}
             </SelectItem>
@@ -402,6 +408,12 @@ function BlockConfigFieldInput({
         value={typeof value === 'string' ? value : undefined}
         onChange={onChange}
       />
+    );
+  }
+
+  if (fieldDef.kind === 'rawhtml') {
+    return (
+      <RawHtmlField label={fieldDef.label} value={typeof value === 'string' ? value : ''} onChange={(html) => onChange(html)} />
     );
   }
 

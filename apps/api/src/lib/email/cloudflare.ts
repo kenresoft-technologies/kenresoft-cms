@@ -22,6 +22,16 @@ export function createCloudflareEmailSender(env: Bindings): EmailSender {
         text: message.text,
         ...(message.html !== undefined ? { html: message.html } : {}),
         ...(message.replyTo !== undefined ? { reply_to: message.replyTo } : {}),
+        ...(message.attachments?.length
+          ? {
+              attachments: message.attachments.map((a) => ({
+                disposition: 'attachment' as const,
+                filename: a.filename,
+                type: a.contentType,
+                content: a.content,
+              })),
+            }
+          : {}),
       });
     },
   };

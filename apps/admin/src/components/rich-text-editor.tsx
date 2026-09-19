@@ -18,13 +18,13 @@ import {
   AlignRight,
   Bold,
   Code,
+  FileCode,
   Columns3,
   Eye,
   Heading2,
   Heading3,
   Heading4,
   Highlighter,
-  ImageOff,
   Image as ImageIcon,
   Info,
   Italic,
@@ -33,10 +33,12 @@ import {
   ListOrdered,
   ListTodo,
   Maximize2,
+  Minus,
   Minimize2,
   Pencil,
   Quote,
   Redo,
+  RemoveFormatting,
   Rows3,
   Strikethrough,
   Table2,
@@ -44,11 +46,12 @@ import {
   Undo,
 } from 'lucide-react';
 
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { htmlToMarkdown, markdownToHtml } from '@/lib/rich-text-markdown';
-import { mediaFileUrl, useMediaList } from '@/lib/queries/media';
+import { mediaFileUrl } from '@/lib/queries/media';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { MediaPickerDialog } from '@/components/media-picker-dialog';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
@@ -67,7 +70,7 @@ function isSafeUrl(value: string): boolean {
 }
 
 type Editor = NonNullable<ReturnType<typeof useEditor>>;
-type Mode = 'write' | 'preview' | 'markdown';
+type Mode = 'write' | 'preview' | 'markdown' | 'html';
 
 function ToolbarButton({
   active,
@@ -162,53 +165,29 @@ function LinkButton({ editor }: { editor: Editor }) {
   );
 }
 
-// Reuses the same Media Library the `media`-type field's picker draws from (field-input.tsx's
-// MediaField) rather than a separate upload flow — inserting a rich-text image is choosing
-// among files already uploaded, same as any other media reference in this CMS.
+// Inserting a rich-text image is choosing among files already in the Media Library — the same
+// roomy picker every other media reference in the CMS uses.
 function ImageButton({ editor }: { editor: Editor }) {
   const [open, setOpen] = useState(false);
-  const { data: mediaItems } = useMediaList();
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <ToolbarButton label="Image" onClick={() => setOpen(true)}>
-        <ImageIcon />
-      </ToolbarButton>
-      <DialogContent size="md">
-        <DialogHeader>
-          <DialogTitle>Insert image</DialogTitle>
-        </DialogHeader>
-        {mediaItems && mediaItems.length > 0 ? (
-          <div className="grid max-h-96 grid-cols-3 gap-3 overflow-y-auto">
-            {mediaItems.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => {
-                  editor
-                    .chain()
-                    .focus()
-                    .setImage({ src: mediaFileUrl(item.id), alt: item.altText ?? item.filename })
-                    .run();
-                  setOpen(false);
-                }}
-                className="aspect-square overflow-hidden rounded-md ring-2 ring-transparent hover:ring-primary"
-              >
-                {item.width && item.height ? (
-                  <img src={mediaFileUrl(item.id)} alt={item.altText ?? item.filename} className="size-full object-cover" />
-                ) : (
-                  <div className="flex size-full items-center justify-center bg-muted">
-                    <ImageOff className="size-5 text-muted-foreground" />
-                  </div>
-                )}
-              </button>
-            ))}
-          </div>
-        ) : (
-          <p className="text-sm text-muted-foreground">No media uploaded yet — upload one from the Media Library first.</p>
-        )}
-      </DialogContent>
-    </Dialog>
+    <MediaPickerDialog
+      open={open}
+      onOpenChange={setOpen}
+      title="Insert image"
+      onSelect={(mediaId, item) => {
+        editor
+          .chain()
+          .focus()
+          .setImage({ src: mediaFileUrl(mediaId), alt: item.altText ?? item.filename })
+          .run();
+      }}
+      trigger={
+        <ToolbarButton label="Image" onClick={() => setOpen(true)}>
+          <ImageIcon />
+        </ToolbarButton>
+      }
+    />
   );
 }
 
@@ -359,6 +338,18 @@ function Toolbar({ editor }: { editor: Editor }) {
 
       <ToolbarSeparator />
 
+      <ToolbarButton label="Horizontal rule" onClick={() => editor.chain().focus().setHorizontalRule().run()}>
+        <Minus />
+      </ToolbarButton>
+      <ToolbarButton
+        label="Clear formatting"
+        onClick={() => editor.chain().focus().unsetAllMarks().clearNodes().run()}
+      >
+        <RemoveFormatting />
+      </ToolbarButton>
+
+      <ToolbarSeparator />
+
       <ToolbarButton label="Undo" disabled={!editor.can().undo()} onClick={() => editor.chain().focus().undo().run()}>
         <Undo />
       </ToolbarButton>
@@ -366,22 +357,6 @@ function Toolbar({ editor }: { editor: Editor }) {
         <Redo />
       </ToolbarButton>
     </div>
-  );
-}
-
-function ModeTab({ active, onClick, icon, label }: { active: boolean; onClick: () => void; icon: React.ReactNode; label: string }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        'flex items-center gap-1.5 rounded-md px-2.5 py-1 text-sm font-medium transition-colors',
-        active ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
-      )}
-    >
-      {icon}
-      {label}
-    </button>
   );
 }
 
@@ -405,6 +380,7 @@ interface RichTextEditorProps {
 export function RichTextEditor({ value, onChange, placeholder }: RichTextEditorProps) {
   const [mode, setMode] = useState<Mode>('write');
   const [markdownDraft, setMarkdownDraft] = useState('');
+  const [htmlDraft, setHtmlDraft] = useState('');
   const [fullscreen, setFullscreen] = useState(false);
 
   // Tracks the HTML this editor itself last emitted, so the sync effect below only resets the
@@ -467,6 +443,13 @@ export function RichTextEditor({ value, onChange, placeholder }: RichTextEditorP
     } else if (next === 'markdown') {
       setMarkdownDraft(htmlToMarkdown(editor.getHTML()));
     }
+    // Same apply-on-leave contract as Markdown: pasted/edited HTML goes through the editor's own
+    // schema, so only supported markup survives (no scripts, event handlers, or unknown tags).
+    if (mode === 'html' && next !== 'html') {
+      editor.commands.setContent(htmlDraft);
+    } else if (next === 'html') {
+      setHtmlDraft(editor.getHTML());
+    }
     setMode(next);
   }
 
@@ -493,16 +476,27 @@ export function RichTextEditor({ value, onChange, placeholder }: RichTextEditorP
           without this, the row simply forces its own intrinsic width past the container,
           dragging the whole page wider than the viewport instead of wrapping to a second line. */}
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-input p-1">
-        <div className="flex flex-wrap items-center gap-1 rounded-lg bg-muted p-0.5">
-          <ModeTab active={mode === 'write'} onClick={() => switchMode('write')} icon={<Pencil className="size-3.5" />} label="Write" />
-          <ModeTab active={mode === 'preview'} onClick={() => switchMode('preview')} icon={<Eye className="size-3.5" />} label="Preview" />
-          <ModeTab
-            active={mode === 'markdown'}
-            onClick={() => switchMode('markdown')}
-            icon={<Code className="size-3.5" />}
-            label="Markdown"
-          />
-        </div>
+        {/* A dropdown rather than a tab per mode: four modes no longer fit the header row on narrow
+            screens, and a single control scales to more modes later. */}
+        <Select value={mode} onValueChange={(next) => switchMode(next as Mode)}>
+          <SelectTrigger size="sm" className="w-36" aria-label="Editor mode">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="write">
+              <Pencil className="size-3.5" /> Write
+            </SelectItem>
+            <SelectItem value="preview">
+              <Eye className="size-3.5" /> Preview
+            </SelectItem>
+            <SelectItem value="markdown">
+              <Code className="size-3.5" /> Markdown
+            </SelectItem>
+            <SelectItem value="html">
+              <FileCode className="size-3.5" /> HTML
+            </SelectItem>
+          </SelectContent>
+        </Select>
         {/* min-w-0 + truncate on the count: a flex child's default min-width:auto otherwise
             keeps it at its full text width even when the row has genuinely run out of room,
             which is exactly what pushed this row (and the whole page) wider than the viewport
@@ -529,7 +523,9 @@ export function RichTextEditor({ value, onChange, placeholder }: RichTextEditorP
           <Info className="size-3.5 shrink-0" />
           {mode === 'preview'
             ? 'Rendered preview of the saved content — switch to Write to edit.'
-            : 'Editing as Markdown — applied back to the document when you switch away.'}
+            : mode === 'html'
+              ? 'Paste or edit HTML — applied when you switch to Write or Preview. Unsupported tags, scripts and styles are dropped.'
+              : 'Editing as Markdown — applied back to the document when you switch away.'}
         </div>
       )}
 
@@ -537,17 +533,37 @@ export function RichTextEditor({ value, onChange, placeholder }: RichTextEditorP
           to fit its content instead of respecting flex-1's height and actually scrolling —
           the classic flex-child-with-overflow gotcha, invisible until fullscreen made this
           container's height fixed instead of intrinsic. */}
-      <div className={cn('flex flex-1 flex-col', fullscreen && 'min-h-0')}>
+      <div className={cn('flex flex-1 flex-col', fullscreen ? 'min-h-0 overflow-y-auto' : 'h-80 max-h-[80vh] min-h-40 resize-y overflow-y-auto')}>
         {mode === 'write' ? (
-          <EditorContent editor={editor} className={cn(fullscreen && 'flex-1 min-h-0 overflow-y-auto')} />
+          <EditorContent
+            editor={editor}
+            className={cn('flex-1 cursor-text', fullscreen && 'min-h-0 overflow-y-auto')}
+            onClick={(event) => {
+              // Clicking the empty area below the text should still put the cursor in the editor.
+              if (event.target === event.currentTarget) editor.commands.focus('end');
+            }}
+          />
         ) : null}
         {mode === 'preview' ? (
           <div
             className={cn(
               'ProseMirror px-2.5 py-2 text-base md:text-sm',
-              fullscreen ? 'flex-1 min-h-0 overflow-y-auto' : 'min-h-32',
+              'min-h-32 flex-1',
             )}
             dangerouslySetInnerHTML={{ __html: editor.getHTML() }}
+          />
+        ) : null}
+        {mode === 'html' ? (
+          <textarea
+            aria-label="HTML source"
+            value={htmlDraft}
+            onChange={(event) => setHtmlDraft(event.target.value)}
+            spellCheck={false}
+            placeholder="<h2>Paste HTML here</h2>"
+            className={cn(
+              'resize-none bg-transparent px-2.5 py-2 font-mono text-sm outline-none',
+              'min-h-32 flex-1',
+            )}
           />
         ) : null}
         {mode === 'markdown' ? (
@@ -557,7 +573,7 @@ export function RichTextEditor({ value, onChange, placeholder }: RichTextEditorP
             spellCheck={false}
             className={cn(
               'resize-none bg-transparent px-2.5 py-2 font-mono text-sm outline-none',
-              fullscreen ? 'flex-1 min-h-0' : 'min-h-32',
+              'min-h-32 flex-1',
             )}
           />
         ) : null}

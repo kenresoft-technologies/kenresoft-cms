@@ -28,12 +28,13 @@ import { getDb } from '../../lib/db';
 import { getEmailSender, isEmailProviderConfigured } from '../../lib/email';
 import { getAdminFrom } from '../../lib/email/admin-sender';
 import { sendFormSubmissionNotification } from '../../lib/form-notifications';
-import { sanitizeReplyHtml } from '../../lib/html-sanitizer';
-import { htmlToPlainText } from '../../lib/html-to-text';
+import { collectAttachments, describeAttachments } from '../../lib/email/attachments';
+import { buildBodies, parseComposeRequest } from '../../lib/email/compose';
 import { deleteMediaIfUnreferenced } from '../../lib/media-service';
 import { createOpenApiApp } from '../../lib/openapi';
 import { parseSubmissionRequestBody, submitForm } from '../../lib/submit-form';
 import { requireFormsAccess } from '../../middleware/require-forms-access';
+import { adminEmailRateLimit } from '../../middleware/admin-email-rate-limit';
 import { requireRole } from '../../middleware/require-role';
 import {
   createFormField,
@@ -134,6 +135,7 @@ function toFormSubmissionReply(row: DbFormSubmissionReply & { authorName: string
     to: row.to,
     subject: row.subject,
     bodyHtml: row.bodyHtml,
+    attachments: row.attachments ?? [],
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -650,104 +652,113 @@ formsRoute.openapi(
   },
 );
 
-formsRoute.openapi(
-  createRoute({
-    method: 'post',
-    path: '/{id}/submissions/{submissionId}/replies',
-    tags: ['Forms'],
-    summary: 'Send a reply to a submission by email',
-    description:
-      "Sends through this deployment's configured email provider, with Reply-To set to the " +
-      "sending staff member's own email so a further reply from the visitor lands in their " +
-      'real inbox. Requires a real EMAIL_PROVIDER to be configured — 400s otherwise.',
-    request: {
-      params: submissionParamsSchema,
-      body: { content: { 'application/json': { schema: createFormSubmissionReplySchema } } },
-    },
-    responses: {
-      201: {
-        description: 'The reply was sent and recorded.',
-        content: { 'application/json': { schema: formSubmissionReplySchema } },
-      },
-      400: {
-        description: 'This deployment has no email provider configured to send from.',
-        content: { 'application/json': { schema: notFoundSchema } },
-      },
-      404: {
-        description: 'No form or submission matching those ids.',
-        content: { 'application/json': { schema: notFoundSchema } },
-      },
-      502: {
-        description: 'The configured email provider rejected or failed to send the message.',
-        content: { 'application/json': { schema: notFoundSchema } },
-      },
-    },
-  }),
-  async (c) => {
-    const { id, submissionId } = c.req.valid('param');
-    const db = getDb(c);
-    const form = await getFormById(db, id);
-    if (!form) {
-      return c.json({ error: 'Form not found' }, 404);
-    }
-    const submission = await getFormSubmissionById(db, submissionId);
-    if (!submission || submission.formId !== form.id) {
-      return c.json({ error: 'Submission not found' }, 404);
-    }
+// Multipart (or JSON) so a reply can carry attachments — a plain route with a docs-only
+// registerPath below, like media upload. Sends via the same infrastructure as the Email page.
+formsRoute.post('/:id/submissions/:submissionId/replies', adminEmailRateLimit, async (c) => {
+  const id = c.req.param('id');
+  const submissionId = c.req.param('submissionId');
+  const db = getDb(c);
+  const form = await getFormById(db, id);
+  if (!form) {
+    return c.json({ error: 'Form not found' }, 404);
+  }
+  const submission = await getFormSubmissionById(db, submissionId);
+  if (!submission || submission.formId !== form.id) {
+    return c.json({ error: 'Submission not found' }, 404);
+  }
 
-    if (!isEmailProviderConfigured(c.env)) {
-      return c.json(
-        { error: 'This deployment has no email provider configured — see docs/DEPLOYMENT.md\'s recovery section.' },
-        400,
-      );
-    }
+  if (!isEmailProviderConfigured(c.env)) {
+    return c.json(
+      { error: 'This deployment has no email provider configured — see docs/DEPLOYMENT.md\'s recovery section.' },
+      400,
+    );
+  }
 
-    const { to, subject, bodyHtml: rawBodyHtml } = c.req.valid('json');
-    const author = c.get('user');
+  const parsed = await parseComposeRequest(c, createFormSubmissionReplySchema);
+  if (!parsed.ok) {
+    return c.json({ error: parsed.error }, 400);
+  }
+  const { fields, files, mediaIds } = parsed.value;
+  const { to, subject } = fields;
+  const author = c.get('user');
 
-    // Sanitized BEFORE it's ever sent or persisted — the Admin Tiptap editor is not the only
-    // path that can reach this endpoint, and the persisted value is later rendered with
-    // dangerouslySetInnerHTML for every role with Forms/Submissions access. A strict allow-list
-    // (apps/api/src/lib/html-sanitizer.ts) strips anything outside a small set of formatting
-    // tags and rejects javascript:/data:/vbscript: (and any other non-http(s)/mailto) URLs on
-    // links, regardless of what the client sent.
-    const bodyHtml = sanitizeReplyHtml(rawBodyHtml);
+  const collected = await collectAttachments(c.env, db, { files, mediaIds });
+  if (!collected.ok) {
+    return c.json({ error: collected.error }, 400);
+  }
 
-    const from = await getAdminFrom(db);
-    try {
-      await getEmailSender(c.env).send({
-        to,
-        subject,
-        html: bodyHtml,
-        text: htmlToPlainText(bodyHtml),
-        replyTo: author.email,
-        ...(from ? { from } : {}),
-      });
-    } catch (error) {
-      console.error('Failed to send a form-submission reply:', error);
-      return c.json({ error: 'The email provider rejected or failed to send this message.' }, 502);
-    }
+  // Sanitized BEFORE it's ever sent or persisted — the persisted value is later rendered with
+  // dangerouslySetInnerHTML for every role with Forms/Submissions access (html-sanitizer.ts).
+  const bodies = buildBodies(fields.bodyHtml);
+  const bodyHtml = bodies.html;
 
-    const reply = await createFormSubmissionReply(db, {
-      submissionId: submission.id,
-      authorUserId: author.id,
+  const from = await getAdminFrom(db);
+  try {
+    await getEmailSender(c.env).send({
       to,
       subject,
-      bodyHtml,
+      ...bodies,
+      replyTo: author.email,
+      ...(from ? { from } : {}),
+      ...(collected.attachments.length ? { attachments: collected.attachments } : {}),
     });
-    await recordAudit(db, {
-      actorUserId: author.id,
-      action: 'form_submission.replied',
-      targetType: 'form_submission',
-      targetId: submission.id,
-      metadata: { formId: id, to, subject },
-    });
-    // authorName isn't on SessionUser (only id/email/role/disabled) — the client already knows
-    // its own signed-in user's display name from the session it's holding, so there's no need
-    // for an extra DB read here just to echo it back.
-    return c.json(toFormSubmissionReply({ ...reply, authorName: null }), 201);
+  } catch (error) {
+    console.error('Failed to send a form-submission reply:', error);
+    return c.json({ error: 'The email provider rejected or failed to send this message.' }, 502);
+  }
+
+  const reply = await createFormSubmissionReply(db, {
+    submissionId: submission.id,
+    authorUserId: author.id,
+    to,
+    subject,
+    bodyHtml,
+    attachments: describeAttachments(collected.attachments),
+  });
+  await recordAudit(db, {
+    actorUserId: author.id,
+    action: 'form_submission.replied',
+    targetType: 'form_submission',
+    targetId: submission.id,
+    metadata: { formId: id, to, subject, attachments: collected.attachments.length },
+  });
+  // authorName isn't on SessionUser — the client already knows its own display name.
+  return c.json(toFormSubmissionReply({ ...reply, authorName: null }), 201);
+});
+
+formsRoute.openAPIRegistry.registerPath({
+  method: 'post',
+  path: '/{id}/submissions/{submissionId}/replies',
+  tags: ['Forms'],
+  summary: 'Send a reply to a submission by email',
+  description:
+    "Sends through this deployment's configured email provider with Reply-To set to the " +
+    "sending staff member's email. multipart/form-data with `to`, `subject`, `bodyHtml`, and " +
+    'optional `files` / `mediaIds` attachments (JSON without attachments also accepted). ' +
+    '400s if no EMAIL_PROVIDER is configured or attachments exceed the provider limits.',
+  request: {
+    params: submissionParamsSchema,
+    body: {
+      content: {
+        'multipart/form-data': {
+          schema: z.object({
+            to: z.string(),
+            subject: z.string(),
+            bodyHtml: z.string(),
+            files: z.array(z.string().openapi({ type: 'string', format: 'binary' })).optional(),
+            mediaIds: z.array(z.string()).optional(),
+          }),
+        },
+      },
+    },
   },
-);
+  responses: {
+    201: { description: 'The reply was sent and recorded.', content: { 'application/json': { schema: formSubmissionReplySchema } } },
+    400: { description: 'No provider configured, invalid input, or attachments over limit.', content: { 'application/json': { schema: notFoundSchema } } },
+    404: { description: 'No form or submission matching those ids.', content: { 'application/json': { schema: notFoundSchema } } },
+    502: { description: 'The provider failed to send.', content: { 'application/json': { schema: notFoundSchema } } },
+  },
+});
 
 // No role gate — triaging submissions (new/read/archived) is an editorial action, same as
 // entry create/edit, which also has no server-side role check.

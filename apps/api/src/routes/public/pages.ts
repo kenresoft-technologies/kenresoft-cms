@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { getDb } from '../../lib/db';
 import type { Bindings } from '../../lib/env';
 import { createOpenApiApp } from '../../lib/openapi';
+import { isRawHtmlEnabled, prepareBlocksForPublic } from '../../lib/raw-html-guard';
 import { publicCacheControlHeader, publicCacheKey } from '../../lib/public-cache';
 import { getPublishedPageByRoute, listPublishedPages } from '../../repositories/pages';
 import type { Page as DbPage } from '@kenresoft-cms/database';
@@ -15,7 +16,11 @@ export const publicPagesRoute = createOpenApiApp<{ Bindings: Bindings }>();
 const notFoundSchema = z.object({ error: z.string() });
 const byRouteQuerySchema = z.object({ route: z.string().min(1) });
 
-function toPage(row: DbPage): Page {
+// `rawHtmlEnabled` is read live on every request: turning the feature off hides every Raw HTML
+// block immediately, and while it is on the HTML is sanitized again on the way out (the stored
+// copy was already sanitized on write — this is defense in depth, and means a later sanitizer
+// improvement applies retroactively).
+function toPage(row: DbPage, rawHtmlEnabled: boolean): Page {
   return {
     id: row.id,
     route: row.route,
@@ -23,7 +28,7 @@ function toPage(row: DbPage): Page {
     status: row.status as Page['status'],
     publishAt: row.publishAt ? row.publishAt.toISOString() : null,
     templateId: row.templateId,
-    blocks: row.blocks.blocks,
+    blocks: prepareBlocksForPublic(row.blocks.blocks, rawHtmlEnabled),
     seo: row.seo ?? null,
     createdBy: row.createdBy,
     createdAt: row.createdAt.toISOString(),
@@ -107,6 +112,6 @@ publicPagesRoute.openapi(
     if (!page) {
       return c.json({ error: 'Page not found' }, 404);
     }
-    return c.json(toPage(page), 200);
+    return c.json(toPage(page, await isRawHtmlEnabled(db)), 200);
   },
 );

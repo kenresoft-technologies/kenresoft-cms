@@ -3,9 +3,12 @@ import { entrySchema, pageSchema } from '@kenresoft-cms/contracts';
 import type { Entry, EntryStatus, Page } from '@kenresoft-cms/contracts';
 import { z } from 'zod';
 
+import { loadRichTextFields, sanitizeEntryData } from '../../lib/entry-html';
+import type { RichTextFieldMap } from '../../lib/entry-html';
 import { getDb } from '../../lib/db';
 import type { Bindings } from '../../lib/env';
 import { createOpenApiApp } from '../../lib/openapi';
+import { isRawHtmlEnabled, prepareBlocksForPublic } from '../../lib/raw-html-guard';
 import { verifyPreviewToken } from '../../lib/preview-token';
 import { getContentTypeBySlug } from '../../repositories/content-types';
 import { getEntryBySlug } from '../../repositories/entries';
@@ -19,20 +22,24 @@ const previewParamSchema = z.object({ contentType: z.string().min(1), slug: z.st
 const previewQuerySchema = z.object({ token: z.string().min(1) });
 const pagePreviewQuerySchema = z.object({ route: z.string().min(1), token: z.string().min(1) });
 
-function toEntry(row: DbEntry): Entry {
+function toEntry(row: DbEntry, richText: RichTextFieldMap): Entry {
   return {
     id: row.id,
     contentTypeId: row.contentTypeId,
     slug: row.slug,
     status: row.status as EntryStatus,
-    data: row.data,
+    data: sanitizeEntryData(richText, row.contentTypeId, row.data),
     publishAt: row.publishAt ? row.publishAt.toISOString() : null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
 }
 
-function toPage(row: DbPage): Page {
+// `rawHtmlEnabled` is read live on every request: turning the feature off hides every Raw HTML
+// block immediately, and while it is on the HTML is sanitized again on the way out (the stored
+// copy was already sanitized on write — this is defense in depth, and means a later sanitizer
+// improvement applies retroactively).
+function toPage(row: DbPage, rawHtmlEnabled: boolean): Page {
   return {
     id: row.id,
     route: row.route,
@@ -40,7 +47,7 @@ function toPage(row: DbPage): Page {
     status: row.status as EntryStatus,
     publishAt: row.publishAt ? row.publishAt.toISOString() : null,
     templateId: row.templateId,
-    blocks: row.blocks.blocks,
+    blocks: prepareBlocksForPublic(row.blocks.blocks, rawHtmlEnabled),
     seo: row.seo ?? null,
     createdBy: row.createdBy,
     createdAt: row.createdAt.toISOString(),
@@ -84,7 +91,7 @@ publicPreviewRoute.openapi(
       return c.json({ error: 'Page not found' }, 404);
     }
 
-    return c.json(toPage(page), 200);
+    return c.json(toPage(page, await isRawHtmlEnabled(db)), 200);
   },
 );
 
@@ -131,6 +138,6 @@ publicPreviewRoute.openapi(
       return c.json({ error: 'Entry not found' }, 404);
     }
 
-    return c.json(toEntry(entry), 200);
+    return c.json(toEntry(entry, await loadRichTextFields(db)), 200);
   },
 );

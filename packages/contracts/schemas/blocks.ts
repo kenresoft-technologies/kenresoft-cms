@@ -105,7 +105,16 @@ export const REUSABLE_BLOCK_REF_CONFIG = z
   })
   .strict();
 
+// Pasted HTML, sanitized by the API on every write and again on every public read — see
+// apps/api/src/lib/raw-html-guard.ts. The size cap bounds both storage and sanitiser work.
+export const RAW_HTML_BLOCK_CONFIG = z
+  .object({
+    html: z.string().max(100000).optional(),
+  })
+  .strict();
+
 export const BLOCK_CONFIG_SCHEMAS: Record<BlockType, z.ZodTypeAny> = {
+  rawHtml: RAW_HTML_BLOCK_CONFIG,
   hero: HERO_BLOCK_CONFIG,
   richText: RICH_TEXT_BLOCK_CONFIG,
   image: IMAGE_BLOCK_CONFIG,

@@ -5,7 +5,9 @@ import { toast } from 'sonner';
 
 import { ApiError } from '@/lib/api-client';
 import { authClient } from '@/lib/auth-client';
-import { MAIL_CLIENTS, type MailClient } from '@/lib/types';
+import { useSettings } from '@/lib/queries/settings';
+import { MAIL_CLIENTS, roleAtLeast, type MailClient, type UserRole } from '@/lib/types';
+import { EmailSenderSettings } from '@/components/email-sender-settings';
 import {
   useGenerateRecoveryCodes,
   useRecoveryCodesStatus,
@@ -441,6 +443,13 @@ function SecurityTab({ twoFactorEnabled, isOwner }: { twoFactorEnabled: boolean;
   );
 }
 
+// Deployment-wide sender identity for staff-sent email — lives here (not on the Email page) since
+// it is account/identity configuration; only admins can change it.
+function EmailSenderTab() {
+  const { data: settings } = useSettings();
+  return <EmailSenderSettings settings={settings ?? null} readOnly={false} />;
+}
+
 export function ProfilePage() {
   const { data: session, isPending } = authClient.useSession();
 
@@ -500,6 +509,9 @@ export function ProfilePage() {
         <TabsList>
           <TabsTrigger value="profile">Profile</TabsTrigger>
           <TabsTrigger value="security">Security</TabsTrigger>
+          {roleAtLeast(user.role as UserRole, 'admin') ? (
+            <TabsTrigger value="email-sender">Email sender</TabsTrigger>
+          ) : null}
         </TabsList>
         <TabsContent value="profile">
           <ProfileTab
@@ -516,6 +528,11 @@ export function ProfilePage() {
         <TabsContent value="security">
           <SecurityTab twoFactorEnabled={Boolean(user.twoFactorEnabled)} isOwner={user.role === 'owner'} />
         </TabsContent>
+        {roleAtLeast(user.role as UserRole, 'admin') ? (
+          <TabsContent value="email-sender">
+            <EmailSenderTab />
+          </TabsContent>
+        ) : null}
       </Tabs>
     </div>
   );

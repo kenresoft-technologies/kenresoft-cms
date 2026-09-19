@@ -10,8 +10,39 @@ landed on `develop`.
 
 ## Unreleased
 
+### Security
+
+- **Rich text page blocks are now sanitised** on save and on every public read (and reusable
+  Rich text blocks too). Previously an editor could store a `<script>` there. Task-list checkboxes
+  in a Rich text *block* are dropped as a result.
+- **Entry `rich_text` fields are now sanitised** the same way: on every write (create, update,
+  import, restore) and on every admin and public read, so older stored values are cleaned too. Only
+  fields of type rich_text are touched. Task-list checkboxes are dropped.
+- HTML sanitiser: work limit against crafted input that took ~60s of CPU, and a nesting cap of 100.
+- Email subjects with line breaks are rejected (header injection).
+- Raw HTML permission is checked before any sanitising work.
+- Admin email sending is rate limited to 10 per minute per staff user. This adds an
+  `ADMIN_EMAIL_RATE_LIMITER` binding to `wrangler.toml`; it is created on your next deploy.
+
+### Fixed
+
+- Email page: Reply-To can be set (it was always the sender's own address); Email sender card now
+  comes first; long rich-text bodies scroll inside the editor instead of stretching the page.
+- Media picker thumbnails no longer overlap.
+
 ### Added
 
+- **Design HTML** format on the Email page (admin/owner only): paste a finished HTML email template
+  (for example from Canva) and send it with its table layout, inline styles and https images kept,
+  with a sandboxed preview of exactly what will be sent and an automatic plain-text version.
+  Scripts, forms, `<style>` blocks, relative links and `data:` images are removed.
+- A **Raw HTML block** for pages: paste HTML and see a preview of exactly what will be published.
+  Off by default (Settings → API), admin/owner-only, sanitized on the server on every save and
+  every public read, and switching it off hides every raw block immediately. See
+  `docs/RAW_HTML_BLOCK.md`. Requires `pnpm run update` (no migration) and republishing
+  `@kenresoft-cms/contracts` for standalone admin installs.
+- Fixed: the shared link check now rejects `javascript:` URLs hidden with tab/newline characters
+  (also hardens form-submission replies).
 - A **preferred mail client** setting on Profile (Default/Gmail/Outlook/Yahoo/Zoho) — the
   "Reply in email app" action on a form submission now opens that provider's own web compose
   window (pre-filled to/subject) instead of always falling back to the OS's default `mailto:`

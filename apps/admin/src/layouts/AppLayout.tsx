@@ -5,6 +5,7 @@ import {
   FileText,
   Images,
   Inbox,
+  Mail,
   Layers,
   LayoutDashboard,
   LayoutList,
@@ -73,6 +74,9 @@ const engagementItems = [
   { to: '/forms', label: 'Forms', end: false, icon: ClipboardList },
   { to: '/submissions', label: 'Submissions', end: false, icon: Inbox },
 ];
+
+// Sending needs editor or above (routes/admin/email.ts), so it's hidden below that.
+const emailItem = { to: '/email', label: 'Email', end: false, icon: Mail };
 
 const adminItems = [
   { to: '/users', label: 'Users', end: false, icon: Users },
@@ -146,6 +150,10 @@ export function AppLayout() {
     return <Navigate to="/login" replace />;
   }
 
+  const visibleEngagementItems = roleAtLeast(session.user.role as UserRole, 'editor')
+    ? [...engagementItems, emailItem]
+    : engagementItems;
+
   const visibleAdminItems = roleAtLeast(session.user.role as UserRole, 'admin')
     ? [...adminItems, auditLogItem, pluginsItem]
     : adminItems;
@@ -195,7 +203,7 @@ export function AppLayout() {
           <SidebarGroup>
             <SidebarGroupLabel>Media &amp; Forms</SidebarGroupLabel>
             <SidebarGroupContent>
-              <NavItems items={engagementItems} pathname={location.pathname} />
+              <NavItems items={visibleEngagementItems} pathname={location.pathname} />
             </SidebarGroupContent>
           </SidebarGroup>
           <SidebarGroup>

@@ -22,6 +22,8 @@ import { useForm } from '@/lib/queries/forms';
 import { useFormFields } from '@/lib/queries/form-fields';
 import { submissionAttachmentUrl, useFormSubmissions } from '@/lib/queries/form-submissions';
 import { useDeleteSubmissionGlobal, useUpdateSubmissionStatusGlobal } from '@/lib/queries/all-submissions';
+import { EmailAttachments } from '@/components/email-attachments';
+import { emptyAttachments } from '@/lib/queries/email';
 import { useSendSubmissionReply, useSubmissionReplies } from '@/lib/queries/form-submission-replies';
 import { getSubmissionSender } from '@/lib/submission-sender';
 import { isSubmissionAttachmentValue, type SubmissionAttachmentValue } from '@/lib/submission-attachments';
@@ -86,6 +88,7 @@ export function SubmissionDetailPage() {
   const [pendingDelete, setPendingDelete] = useState(false);
   const [subject, setSubject] = useState(`Re: ${form?.name ?? 'Form'} submission`);
   const [bodyHtml, setBodyHtml] = useState('');
+  const [attachments, setAttachments] = useState(emptyAttachments);
 
   const submission = useMemo(
     () => (submissions ?? []).find((s) => s.id === submissionId) ?? null,
@@ -132,9 +135,10 @@ export function SubmissionDetailPage() {
   async function handleSend() {
     if (!sender?.email) return;
     try {
-      await sendReply.mutateAsync({ to: sender.email, subject, bodyHtml });
+      await sendReply.mutateAsync({ to: sender.email, subject, bodyHtml, ...attachments });
       toast.success(`Reply sent to ${sender.email}`);
       setBodyHtml('');
+      setAttachments(emptyAttachments);
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : 'Failed to send reply');
     }
@@ -332,6 +336,17 @@ export function SubmissionDetailPage() {
                         To {reply.to} · {reply.subject}
                       </p>
                       <div className="ProseMirror text-sm break-words" dangerouslySetInnerHTML={{ __html: reply.bodyHtml }} />
+                      {reply.attachments?.length ? (
+                        <ul className="mt-1.5 flex flex-wrap gap-1.5">
+                          {reply.attachments.map((a, i) => (
+                            <li key={i} className="inline-flex items-center gap-1 rounded-md border bg-muted/30 px-2 py-0.5 text-xs">
+                              <Paperclip className="size-3" />
+                              {a.filename}
+                              <span className="text-muted-foreground">({formatBytes(a.size)})</span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
                     </div>
                   </div>
                 ))}
@@ -358,6 +373,7 @@ export function SubmissionDetailPage() {
                       <Input id="reply-subject" value={subject} onChange={(event) => setSubject(event.target.value)} />
                     </div>
                     <RichTextEditor value={bodyHtml} onChange={setBodyHtml} placeholder={`Write a reply to ${sender.email}…`} />
+                    <EmailAttachments value={attachments} onChange={setAttachments} />
                     <Button
                       type="button"
                       disabled={bodyIsEmpty || !subject.trim() || sendReply.isPending}

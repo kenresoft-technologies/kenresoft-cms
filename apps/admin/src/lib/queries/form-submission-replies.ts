@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { apiClient } from '@/lib/api-client';
+import { buildComposeFormData, type ComposedEmail } from '@/lib/queries/email';
 import type { FormSubmissionReply } from '@/lib/types';
 
 export function useSubmissionReplies(formId: string, submissionId: string) {
@@ -16,10 +17,10 @@ export function useSendSubmissionReply(formId: string, submissionId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (input: { to: string; subject: string; bodyHtml: string }) =>
-      apiClient.post<FormSubmissionReply>(
+    mutationFn: (input: ComposedEmail) =>
+      apiClient.upload<FormSubmissionReply>(
         `/api/v1/admin/forms/${formId}/submissions/${submissionId}/replies`,
-        input,
+        buildComposeFormData(input),
       ),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['form-submission-replies', formId, submissionId] });

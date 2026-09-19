@@ -11,6 +11,17 @@ export interface EmailMessage {
   // Overrides the provider's default From (EMAIL_FROM). Only set for admin-initiated mail, from
   // the configured sender identity; system mail leaves it unset.
   from?: string;
+  // Provider-agnostic; each provider maps this to its own wire format. Already validated and
+  // size-limited by collectAttachments() before it gets here.
+  attachments?: EmailAttachment[];
+}
+
+export interface EmailAttachment {
+  filename: string;
+  contentType: string;
+  content: Uint8Array;
+  // Set when the file came from the Media Library (recorded in the reply log; providers ignore).
+  mediaId?: string;
 }
 
 export interface EmailSender {
