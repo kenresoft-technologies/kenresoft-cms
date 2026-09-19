@@ -93,16 +93,6 @@ export const router = createBrowserRouter([
         }),
       },
       {
-        path: 'ui-content',
-        lazy: async () => ({ Component: (await import('@/pages/UiContentPage')).UiContentPage }),
-      },
-      {
-        path: 'ui-content/:typeId',
-        lazy: async () => ({
-          Component: (await import('@/pages/UiContentTypeDetailPage')).UiContentTypeDetailPage,
-        }),
-      },
-      {
         path: 'forms',
         lazy: async () => ({ Component: (await import('@/pages/FormsPage')).FormsPage }),
       },

@@ -27,6 +27,5 @@ export * from '../schemas/safe-url';
 export * from '../schemas/settings';
 export * from '../schemas/structured-settings';
 export * from '../schemas/templates';
-export * from '../schemas/ui-content';
 export * from '../schemas/users';
 export * from '../schemas/webhooks';
