@@ -26,12 +26,16 @@ vi.mock('@/components/rich-text-editor', () => ({
 }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
+import { MemoryRouter } from 'react-router';
+
 import { EmailPage } from '@/pages/EmailPage';
 
 function renderPage() {
   render(
     <QueryClientProvider client={new QueryClient()}>
-      <EmailPage />
+      <MemoryRouter>
+        <EmailPage />
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }
@@ -60,6 +64,7 @@ describe('EmailPage', () => {
     expect(await screen.findByText('Acme <hello@acme.test>')).toBeInTheDocument();
     await user.type(screen.getByLabelText('To'), 'someone@example.test');
     await user.type(screen.getByLabelText('Subject'), 'Hello');
+    await user.type(screen.getByLabelText('Reply-To'), 'me@zoho.test');
     await user.type(screen.getByLabelText('Body'), 'Hi there');
     await user.click(screen.getByRole('button', { name: /send email/i }));
 
@@ -68,6 +73,7 @@ describe('EmailPage', () => {
     expect(path).toBe('/api/v1/admin/email/send');
     expect(form.get('to')).toBe('someone@example.test');
     expect(form.get('subject')).toBe('Hello');
+    expect(form.get('replyTo')).toBe('me@zoho.test');
     expect(form.get('bodyHtml')).toContain('Hi there');
     expect(form.get('designHtml')).toBeNull();
   });
@@ -97,6 +103,9 @@ describe('EmailPage', () => {
     expect(frame.getAttribute('srcdoc')).not.toContain('onclick');
 
     await user.click(screen.getByRole('button', { name: /send email/i }));
+    // A designed email needs an explicit confirmation before it is sent.
+    expect(uploadMock).not.toHaveBeenCalled();
+    await user.click(await screen.findByRole('button', { name: /^send$/i }));
     await waitFor(() => expect(uploadMock).toHaveBeenCalled());
     const [, form] = uploadMock.mock.calls[0] as [string, FormData];
     expect(form.get('designHtml')).toBe('true');

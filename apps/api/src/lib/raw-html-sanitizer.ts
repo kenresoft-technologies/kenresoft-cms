@@ -30,6 +30,8 @@ interface SanitizerConfig {
   allowRelativeUrls: boolean;
   // Emitted on every <img> (e.g. loading="lazy").
   imageExtraAttributes: string[];
+  // Drop images that are 0-2px wide/high — the classic email tracking pixel.
+  dropTrackingPixels?: boolean;
 }
 
 const DIGITS = /^[0-9]{1,4}$/;
@@ -94,6 +96,7 @@ const EMAIL_STYLE_PROPERTIES = [
 ];
 
 const EMAIL_CONFIG: SanitizerConfig = {
+  dropTrackingPixels: true,
   allowedTags: new Set([...PAGE_TAGS, 'center', 'font']),
   voidTags: new Set(['br', 'hr', 'img', 'col']),
   globalAttributes: new Set([
@@ -231,6 +234,17 @@ function escapeRawText(text: string): string {
 
 const MAX_NESTING_DEPTH = 100;
 
+// A 0-2px image (by attribute or inline style) exists only to report that an email was opened.
+function isTrackingPixel(attrs: Map<string, string>): boolean {
+  const tiny = (value: string | undefined) => value !== undefined && /^s*[0-2](px)?s*$/i.test(value);
+  const style = attrs.get('style') ?? '';
+  return (
+    tiny(attrs.get('width')) ||
+    tiny(attrs.get('height')) ||
+    /(^|;)s*(width|height)s*:s*[0-2](px)?s*(;|$)/i.test(style)
+  );
+}
+
 function sanitizeWith(html: string, config: SanitizerConfig): string {
   const tokens = tokenize(html);
   const open: string[] = [];
@@ -266,6 +280,7 @@ function sanitizeWith(html: string, config: SanitizerConfig): string {
     if (!config.voidTags.has(token.tagName) && open.length >= MAX_NESTING_DEPTH) continue;
 
     const parsed = parseAttributes(token.rawAttributes);
+    if (token.tagName === 'img' && config.dropTrackingPixels && isTrackingPixel(parsed)) continue;
     const allowed = config.tagAttributes[token.tagName];
     const kept: string[] = [];
 
