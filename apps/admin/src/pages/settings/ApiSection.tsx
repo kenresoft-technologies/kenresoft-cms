@@ -176,6 +176,77 @@ function AuthSecuritySection() {
   );
 }
 
+// Off by default. Raw HTML blocks let an admin paste HTML into a page; the server sanitizes it on
+// every save and every public read (apps/api/src/lib/raw-html-guard.ts), only admins/owners may add
+// or change one, and switching this off hides every existing raw block on the public site at once.
+function RawHtmlBlocksSection({ settings, readOnly }: SectionProps) {
+  const updateSettings = useUpdateSettings();
+  const initial = settings?.featureFlags?.rawHtmlBlocks === true;
+  const [enabled, setEnabled] = useState(initial);
+  const [saved, setSaved] = useState(initial);
+  const [error, setError] = useState<string | null>(null);
+
+  const dirty = enabled !== saved;
+
+  async function handleSave() {
+    setError(null);
+    try {
+      await updateSettings.mutateAsync({
+        ...toSettingsInput(settings),
+        featureFlags: { ...(settings?.featureFlags ?? {}), rawHtmlBlocks: enabled },
+      });
+      setSaved(enabled);
+      toast.success('Settings saved');
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to save settings';
+      setError(message);
+      toast.error(message);
+    }
+  }
+
+  return (
+    <SettingsSection
+      title="Raw HTML blocks"
+      description="Let admins paste HTML into a page with the Raw HTML block."
+      footer={
+        <SettingsSaveBar
+          dirty={dirty}
+          pending={updateSettings.isPending}
+          readOnly={readOnly}
+          onSave={() => void handleSave()}
+          onDiscard={() => {
+            setEnabled(saved);
+            setError(null);
+          }}
+        />
+      }
+    >
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex flex-col gap-1">
+          <Label htmlFor="settings-raw-html-blocks">Enable Raw HTML blocks</Label>
+          <p className="max-w-md text-sm text-muted-foreground">
+            Off by default. Pasted HTML is cleaned on the server before it is saved and again before
+            it is published: scripts, iframes, forms, event handlers, unsafe links and positioning
+            styles are always removed. Only admins and owners can add or change these blocks, and
+            every change is recorded in the audit log.
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Turning this off hides every existing Raw HTML block on your public site immediately.
+          </p>
+        </div>
+        <Switch
+          id="settings-raw-html-blocks"
+          checked={enabled}
+          disabled={readOnly}
+          onCheckedChange={setEnabled}
+        />
+      </div>
+
+      {error ? <p className="text-sm text-destructive">{error}</p> : null}
+    </SettingsSection>
+  );
+}
+
 // Same mechanism/UI shape as DeveloperExperienceSection above (a dedicated card over one
 // Settings.featureFlags key), for the same reason: recordAudit() (apps/api/src/lib/audit.ts)
 // has no retention/pruning, so this table grows forever unless an owner opts out here.
@@ -461,6 +532,8 @@ export function ApiSection({ settings, readOnly }: SectionProps) {
       {/* The two most delicate, "don't toggle casually" controls in this section go last,
           deliberately de-prioritized below the more expected/benign API settings above. */}
       <AuditLoggingSection settings={settings} readOnly={readOnly} />
+
+      <RawHtmlBlocksSection settings={settings} readOnly={readOnly} />
 
       <DeveloperExperienceSection settings={settings} readOnly={readOnly} />
     </div>

@@ -10,12 +10,11 @@ import type { ReusableBlock } from '@kenresoft-cms/contracts';
 import { z } from 'zod';
 
 import { recordAudit } from '../../lib/audit';
-import { enqueueCachePurgePaths, processCachePurgeJobBatch } from '../../lib/cache-purge';
+import { invalidateAllPageCaches } from '../../lib/page-cache';
 import { getDb } from '../../lib/db';
 import { createOpenApiApp } from '../../lib/openapi';
 import { invalidatePublicReusableBlockCache } from '../../lib/public-cache';
 import { requireRole } from '../../middleware/require-role';
-import { listPages } from '../../repositories/pages';
 import {
   createReusableBlock,
   deleteReusableBlock,
@@ -62,25 +61,6 @@ function toReusableBlock(row: DbReusableBlock): ReusableBlock {
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
-}
-
-// A reusable block is a *live* reference (§3.4/§8) — editing or deleting one can change what
-// any number of pages actually render, and this route has no cheap way to know which pages
-// embed it (that's exactly the tradeoff §3.4 accepts). Conservatively purges every page's own
-// cache entry plus the list cache, queued through the existing cache_purge_jobs mechanism the
-// same way a bulk import or the scheduled auto-publish sweep already does, rather than
-// building an unproven per-page usage tracker.
-async function invalidateAllPageCaches(db: Database): Promise<void> {
-  const allPages = await listPages(db);
-  const paths = new Set<string>(['/api/v1/public/pages']);
-  for (const page of allPages) {
-    paths.add(`/api/v1/public/pages/by-route?route=${encodeURIComponent(page.route)}`);
-  }
-  const job = await enqueueCachePurgePaths(db, Array.from(paths));
-  // Awaited directly (not itself handed to ctx.waitUntil) — this whole function already runs
-  // inside the caller's own ctx.waitUntil(...), and a second, nested waitUntil registration
-  // isn't guaranteed to be drained before the outer one is considered settled.
-  await processCachePurgeJobBatch(db, job);
 }
 
 reusableBlocksRoute.openapi(

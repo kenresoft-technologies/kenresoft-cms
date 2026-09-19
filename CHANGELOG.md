@@ -12,6 +12,13 @@ landed on `develop`.
 
 ### Added
 
+- A **Raw HTML block** for pages: paste HTML and see a preview of exactly what will be published.
+  Off by default (Settings → API), admin/owner-only, sanitized on the server on every save and
+  every public read, and switching it off hides every raw block immediately. See
+  `docs/RAW_HTML_BLOCK.md`. Requires `pnpm run update` (no migration) and republishing
+  `@kenresoft-cms/contracts` for standalone admin installs.
+- Fixed: the shared link check now rejects `javascript:` URLs hidden with tab/newline characters
+  (also hardens form-submission replies).
 - A **preferred mail client** setting on Profile (Default/Gmail/Outlook/Yahoo/Zoho) — the
   "Reply in email app" action on a form submission now opens that provider's own web compose
   window (pre-filled to/subject) instead of always falling back to the OS's default `mailto:`

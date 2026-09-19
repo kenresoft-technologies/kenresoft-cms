@@ -6,12 +6,14 @@ import {
   updateTemplateSchema,
   validateBlockTree,
 } from '@kenresoft-cms/contracts';
+import type { UserRole } from '@kenresoft-cms/contracts';
 import type { BlockInstance, Template } from '@kenresoft-cms/contracts';
 import { z } from 'zod';
 
 import { recordAudit } from '../../lib/audit';
 import { getDb } from '../../lib/db';
 import { createOpenApiApp } from '../../lib/openapi';
+import { checkRawHtmlWrite, isRawHtmlEnabled } from '../../lib/raw-html-guard';
 import { requireRole } from '../../middleware/require-role';
 import {
   createTemplate,
@@ -77,6 +79,10 @@ templatesRoute.openapi(
         description: 'A block in the tree is invalid.',
         content: { 'application/json': { schema: notFoundSchema } },
       },
+      403: {
+        description: 'A Raw HTML block was added or changed by a non-admin.',
+        content: { 'application/json': { schema: notFoundSchema } },
+      },
     },
   }),
   async (c) => {
@@ -85,11 +91,17 @@ templatesRoute.openapi(
 
     const blockError = validateBlockTree(input.blocks as BlockInstance[]);
     if (blockError) return c.json({ error: blockError }, 400);
+    const rawCheck = checkRawHtmlWrite({
+      blocks: input.blocks as BlockInstance[],
+      role: c.get('user').role as UserRole,
+      enabled: await isRawHtmlEnabled(db),
+    });
+    if (!rawCheck.ok) return c.json({ error: rawCheck.error }, rawCheck.status);
 
     const template = await createTemplate(db, {
       name: input.name,
       contentTypeId: input.contentTypeId ?? null,
-      blocks: { blocks: input.blocks },
+      blocks: { blocks: rawCheck.blocks },
       isDefault: input.isDefault,
     });
     await recordAudit(db, {
@@ -141,6 +153,10 @@ templatesRoute.openapi(
         description: 'A block in the tree is invalid.',
         content: { 'application/json': { schema: notFoundSchema } },
       },
+      403: {
+        description: 'A Raw HTML block was added or changed by a non-admin.',
+        content: { 'application/json': { schema: notFoundSchema } },
+      },
       404: { description: 'No template with that id.', content: { 'application/json': { schema: notFoundSchema } } },
     },
   }),
@@ -154,6 +170,14 @@ templatesRoute.openapi(
     if (input.blocks) {
       const blockError = validateBlockTree(input.blocks as BlockInstance[]);
       if (blockError) return c.json({ error: blockError }, 400);
+      const rawCheck = checkRawHtmlWrite({
+        blocks: input.blocks as BlockInstance[],
+        existing: existing.blocks.blocks as BlockInstance[],
+        role: c.get('user').role as UserRole,
+        enabled: await isRawHtmlEnabled(db),
+      });
+      if (!rawCheck.ok) return c.json({ error: rawCheck.error }, rawCheck.status);
+      input.blocks = rawCheck.blocks;
     }
 
     const template = await updateTemplate(db, id, {

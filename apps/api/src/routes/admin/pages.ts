@@ -9,13 +9,15 @@ import {
   updatePageSchema,
   validateBlockTree,
 } from '@kenresoft-cms/contracts';
-import type { BlockInstance, Page, PageRevision } from '@kenresoft-cms/contracts';
+import type { BlockInstance, Page, PageRevision, UserRole } from '@kenresoft-cms/contracts';
 import { z } from 'zod';
 
 import { recordAudit } from '../../lib/audit';
 import { getDb } from '../../lib/db';
 import { createOpenApiApp } from '../../lib/openapi';
 import { signPreviewToken } from '../../lib/preview-token';
+import { checkRawHtmlWrite, isRawHtmlEnabled } from '../../lib/raw-html-guard';
+import { sanitizeRawHtml } from '../../lib/raw-html-sanitizer';
 import { invalidatePublicPageCache } from '../../lib/public-cache';
 import { requireRole } from '../../middleware/require-role';
 import { listContentTypesWithRoutePattern } from '../../repositories/content-types';
@@ -45,6 +47,33 @@ const revisionParamsSchema = z.object({ id: z.string().min(1), revisionId: z.str
 // looser entries floor — a Page's composition is closer to structure than day-to-day editorial
 // content (§4.1).
 const requirePageWriteRole = requireRole('admin', 'editor');
+
+// Returns exactly what would be stored for a Raw HTML block, so the editor's preview shows the
+// sanitized result rather than the pasted markup. Stateless and read-only; admin-only because the
+// Raw HTML block itself is.
+pagesRoute.openapi(
+  createRoute({
+    method: 'post',
+    path: '/sanitize-html',
+    tags: ['Pages'],
+    summary: 'Preview the sanitized form of pasted Raw HTML (admin only)',
+    middleware: requireRole('admin'),
+    request: {
+      body: {
+        content: {
+          'application/json': { schema: z.object({ html: z.string().max(100000) }) },
+        },
+      },
+    },
+    responses: {
+      200: {
+        description: 'The sanitized HTML.',
+        content: { 'application/json': { schema: z.object({ html: z.string() }) } },
+      },
+    },
+  }),
+  (c) => c.json({ html: sanitizeRawHtml(c.req.valid('json').html) }, 200),
+);
 
 function toPage(row: DbPage): Page {
   return {
@@ -135,6 +164,10 @@ pagesRoute.openapi(
         description: 'The route is already used by another page or content-type route pattern, or a block in the tree is invalid.',
         content: { 'application/json': { schema: notFoundSchema } },
       },
+      403: {
+        description: 'A Raw HTML block was added by a non-admin.',
+        content: { 'application/json': { schema: notFoundSchema } },
+      },
       404: {
         description: 'templateId was given but no template with that id exists.',
         content: { 'application/json': { schema: notFoundSchema } },
@@ -165,6 +198,17 @@ pagesRoute.openapi(
     if (blockError) {
       return c.json({ error: blockError }, 400);
     }
+    // Raw HTML blocks: feature flag + admin-only + sanitised before anything is stored.
+    const rawCheck = checkRawHtmlWrite({
+      blocks: blocks as BlockInstance[],
+      role: c.get('user').role as UserRole,
+      enabled: await isRawHtmlEnabled(db),
+    });
+    if (!rawCheck.ok) {
+      return c.json({ error: rawCheck.error }, rawCheck.status);
+    }
+    blocks = rawCheck.blocks;
+    const rawHtmlChangedOnCreate = rawCheck.rawHtmlChanged;
 
     const routeCollision = await getPageByRoute(db, input.route);
     if (routeCollision) {
@@ -189,6 +233,15 @@ pagesRoute.openapi(
       userId,
     );
     c.executionCtx.waitUntil(invalidateCacheForPage(page.route));
+    if (rawHtmlChangedOnCreate) {
+      await recordAudit(db, {
+        actorUserId: userId,
+        action: 'page.raw_html_changed',
+        targetType: 'page',
+        targetId: page.id,
+        metadata: { route: page.route },
+      });
+    }
     await recordAudit(db, {
       actorUserId: userId,
       action: 'page.created',
@@ -275,6 +328,7 @@ pagesRoute.openapi(
         description: 'The route is already used by another page or content-type route pattern, or a block in the tree is invalid.',
         content: { 'application/json': { schema: notFoundSchema } },
       },
+      403: { description: 'A Raw HTML block was added or changed by a non-admin.', content: { 'application/json': { schema: notFoundSchema } } },
       404: { description: 'No page with that id.', content: { 'application/json': { schema: notFoundSchema } } },
     },
   }),
@@ -286,10 +340,20 @@ pagesRoute.openapi(
     if (!existing) return c.json({ error: 'Page not found' }, 404);
 
     const input = c.req.valid('json');
+    let rawHtmlChanged = false;
 
     if (input.blocks) {
       const blockError = validateBlockTree(input.blocks as BlockInstance[]);
       if (blockError) return c.json({ error: blockError }, 400);
+      const rawCheck = checkRawHtmlWrite({
+        blocks: input.blocks as BlockInstance[],
+        existing: existing.blocks.blocks as BlockInstance[],
+        role: c.get('user').role as UserRole,
+        enabled: await isRawHtmlEnabled(db),
+      });
+      if (!rawCheck.ok) return c.json({ error: rawCheck.error }, rawCheck.status);
+      input.blocks = rawCheck.blocks;
+      rawHtmlChanged = rawCheck.rawHtmlChanged;
     }
 
     if (input.route && input.route !== existing.route) {
@@ -321,6 +385,15 @@ pagesRoute.openapi(
     if (!page) return c.json({ error: 'Page not found' }, 404);
 
     c.executionCtx.waitUntil(invalidateCacheForPage(page.route, previousRoute));
+    if (rawHtmlChanged) {
+      await recordAudit(db, {
+        actorUserId: userId,
+        action: 'page.raw_html_changed',
+        targetType: 'page',
+        targetId: page.id,
+        metadata: { route: page.route },
+      });
+    }
     await recordAudit(db, {
       actorUserId: userId,
       action: 'page.updated',
@@ -419,6 +492,14 @@ pagesRoute.openapi(
         description: 'The page, restored to the given revision (itself snapshotted first).',
         content: { 'application/json': { schema: pageSchema } },
       },
+      400: {
+        description: 'The revision contains a Raw HTML block and Raw HTML blocks are turned off.',
+        content: { 'application/json': { schema: notFoundSchema } },
+      },
+      403: {
+        description: 'The revision contains a Raw HTML block that a non-admin may not restore.',
+        content: { 'application/json': { schema: notFoundSchema } },
+      },
       404: {
         description: 'No page or revision matching those ids.',
         content: { 'application/json': { schema: notFoundSchema } },
@@ -431,6 +512,17 @@ pagesRoute.openapi(
     const userId = c.get('user').id;
     const existing = await getPageById(db, id);
     if (!existing) return c.json({ error: 'Page or revision not found' }, 404);
+
+    const revision = (await listPageRevisions(db, id)).find((r) => r.id === revisionId);
+    if (revision) {
+      const rawCheck = checkRawHtmlWrite({
+        blocks: revision.blocks.blocks as BlockInstance[],
+        existing: existing.blocks.blocks as BlockInstance[],
+        role: c.get('user').role as UserRole,
+        enabled: await isRawHtmlEnabled(db),
+      });
+      if (!rawCheck.ok) return c.json({ error: rawCheck.error }, rawCheck.status);
+    }
 
     const previousStatus = existing.status;
     const page = await restorePageRevision(db, id, revisionId, userId);
