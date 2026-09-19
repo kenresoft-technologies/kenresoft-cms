@@ -46,7 +46,7 @@ export function MediaPickerDialog({ open, onOpenChange, selectedId, onSelect, tr
           </Select>
         ) : null}
         {mediaItems && mediaItems.length > 0 ? (
-          <div className="grid max-h-96 grid-cols-3 gap-3 overflow-y-auto">
+          <div className="grid max-h-96 grid-cols-3 content-start gap-3 overflow-y-auto">
             {mediaItems.map((item) => (
               <button
                 key={item.id}
@@ -56,7 +56,7 @@ export function MediaPickerDialog({ open, onOpenChange, selectedId, onSelect, tr
                   onOpenChange(false);
                 }}
                 className={cn(
-                  'aspect-square overflow-hidden rounded-md ring-2 ring-transparent hover:ring-primary',
+                  'relative block aspect-square w-full overflow-hidden rounded-md ring-2 ring-transparent hover:ring-primary',
                   item.id === selectedId && 'ring-primary',
                 )}
               >
@@ -64,10 +64,10 @@ export function MediaPickerDialog({ open, onOpenChange, selectedId, onSelect, tr
                   <img
                     src={mediaFileUrl(item.id)}
                     alt={item.altText ?? item.filename}
-                    className="size-full object-cover"
+                    className="absolute inset-0 size-full object-cover"
                   />
                 ) : (
-                  <div className="flex size-full items-center justify-center bg-muted">
+                  <div className="absolute inset-0 flex items-center justify-center bg-muted">
                     <ImageOff className="size-5 text-muted-foreground" />
                   </div>
                 )}

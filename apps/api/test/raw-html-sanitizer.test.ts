@@ -162,3 +162,39 @@ describe('sanitizeEmailHtml', () => {
     expect(sanitizeEmailHtml(once)).toBe(once);
   });
 });
+
+describe('tokenizer resource limits', () => {
+  // These used to take ~60s (quadratic rescanning of unterminated tags). The default 5s test
+  // timeout is the assertion: they must now finish essentially instantly.
+  it('handles pathological unterminated-tag input in bounded time', () => {
+    const inputs = [
+      '<'.repeat(100000),
+      '<a "'.repeat(25000),
+      '<a'.repeat(50000),
+      '<p a="'.repeat(15000),
+      '<!--'.repeat(25000),
+    ];
+    for (const input of inputs) {
+      const out = sanitizeRawHtml(input);
+      expect(out).not.toContain('<script');
+      expect(sanitizeRawHtml(out)).toBe(out);
+      sanitizeEmailHtml(input);
+      sanitizeReplyHtml(input.slice(0, 20000));
+    }
+  });
+
+  it('does not change normal documents', () => {
+    const doc = '<table><tr><td>a &amp; b < c</td></tr></table>' + '<p>x</p>'.repeat(2000);
+    expect(sanitizeRawHtml(doc)).toContain('a &amp; b &lt; c');
+    expect(sanitizeRawHtml(doc).match(/<p>x<\/p>/g)?.length).toBe(2000);
+  });
+
+  it('caps nesting depth so absurdly deep documents stay bounded and balanced', () => {
+    const deep = '<div>'.repeat(20000) + 'x';
+    for (const out of [sanitizeRawHtml(deep), sanitizeEmailHtml(deep)]) {
+      expect(out.match(/<div>/g)?.length).toBe(100);
+      expect(out.match(/<\/div>/g)?.length).toBe(100);
+      expect(out).toContain('x');
+    }
+  });
+});

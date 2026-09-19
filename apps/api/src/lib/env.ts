@@ -5,6 +5,7 @@ export interface Bindings {
   AUTH_RATE_LIMITER: RateLimit;
   RECOVERY_RATE_LIMITER: RateLimit;
   PUBLIC_CONTENT_RATE_LIMITER: RateLimit;
+  ADMIN_EMAIL_RATE_LIMITER: RateLimit;
   // Commerce's customer-auth sub-path (register/login/logout/password-reset/verify-email) —
   // declared via PluginRegistration.publicRateLimits, applied generically by
   // apps/api/src/plugins/mount.ts (docs/PLUGINS.md), not hardcoded to Commerce there. Lives here

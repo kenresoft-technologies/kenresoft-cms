@@ -10,6 +10,23 @@ landed on `develop`.
 
 ## Unreleased
 
+### Security
+
+- **Rich text page blocks are now sanitised** on save and on every public read (and reusable
+  Rich text blocks too). Previously an editor could store a `<script>` there. Task-list checkboxes
+  in a Rich text *block* are dropped as a result; entry `rich_text` fields are unchanged.
+- HTML sanitiser: work limit against crafted input that took ~60s of CPU, and a nesting cap of 100.
+- Email subjects with line breaks are rejected (header injection).
+- Raw HTML permission is checked before any sanitising work.
+- Admin email sending is rate limited to 10 per minute per staff user. This adds an
+  `ADMIN_EMAIL_RATE_LIMITER` binding to `wrangler.toml`; it is created on your next deploy.
+
+### Fixed
+
+- Email page: Reply-To can be set (it was always the sender's own address); Email sender card now
+  comes first; long rich-text bodies scroll inside the editor instead of stretching the page.
+- Media picker thumbnails no longer overlap.
+
 ### Added
 
 - **Design HTML** format on the Email page (admin/owner only): paste a finished HTML email template

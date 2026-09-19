@@ -91,3 +91,40 @@ describe('admin email attachments', () => {
     expect((await limits.json<{ configured: boolean }>()).configured).toBe(true);
   });
 });
+
+describe('subject header-injection guard', () => {
+  it('rejects a subject containing line breaks', async () => {
+    const cookie = await signUpVerifiedAndGetCookie('crlf@example.test', {
+      password: 'correct horse battery staple',
+      name: 'Crlf',
+    });
+    clearTestEmails();
+    const res = await SELF.fetch('http://localhost/api/v1/admin/email/send', {
+      method: 'POST',
+      headers: { cookie, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        to: 'a@example.test',
+        subject: 'Hi' + String.fromCharCode(13, 10) + 'Bcc: victim@example.test',
+        bodyHtml: '<p>x</p>',
+      }),
+    });
+    expect(res.status).toBe(400);
+    expect(getTestEmails()).toHaveLength(0);
+  });
+
+  it('rate limits sending per staff user', async () => {
+    const cookie = await signUpVerifiedAndGetCookie('spammer@example.test', {
+      password: 'correct horse battery staple',
+      name: 'Spammer',
+    });
+    const send = () =>
+      SELF.fetch(
+        'http://localhost/api/v1/admin/email/send',
+        json(cookie, { to: 'a@example.test', subject: 'Hi', bodyHtml: '<p>Hello</p>' }),
+      );
+    const statuses: number[] = [];
+    for (let i = 0; i < 12; i++) statuses.push((await send()).status);
+    expect(statuses.slice(0, 10).every((s) => s === 200)).toBe(true);
+    expect(statuses.slice(10)).toEqual([429, 429]);
+  });
+});

@@ -116,3 +116,48 @@ describe('Raw HTML block safety', () => {
     expect(body.blocks).toEqual([]);
   });
 });
+
+describe('Raw HTML block abuse resistance', () => {
+  it('refuses a non-admin before doing any sanitising work, even for a huge block', async () => {
+    const owner = await signUpVerifiedAndGetCookie('raw-abuse-owner@example.test', { password: PASSWORD, name: 'Owner' });
+    const editor = await signUpVerifiedAndGetCookie('raw-abuse-editor@example.test', { password: PASSWORD, name: 'Editor' });
+    await SELF.fetch(
+      `${BASE}/api/v1/admin/settings`,
+      json(owner, 'PUT', { name: 'Site', featureFlags: { rawHtmlBlocks: true } }),
+    );
+
+    // 100KB of adversarial input from an editor: refused outright (403), not processed.
+    const huge = '<a "'.repeat(25000);
+    const res = await SELF.fetch(`${BASE}/api/v1/admin/pages`, json(editor, 'POST', page('/huge', huge)));
+    expect(res.status).toBe(403);
+  });
+
+});
+
+describe('Rich text block sanitising', () => {
+  it('cleans editor-written HTML on write and on the public read, for every role', async () => {
+    await signUpVerifiedAndGetCookie('rt-owner@example.test', { password: PASSWORD, name: 'Owner' });
+    const editor = await signUpVerifiedAndGetCookie('rt-editor@example.test', { password: PASSWORD, name: 'Editor' });
+    const evil = '<h2>Hi</h2><img src=x onerror=alert(1)><script>alert(2)</script><a href="javascript:alert(3)">x</a>';
+
+    const created = await SELF.fetch(
+      `${BASE}/api/v1/admin/pages`,
+      json(editor, 'POST', {
+        route: '/rt',
+        title: 'RT',
+        status: 'published',
+        blocks: [{ id: 'r1', type: 'richText', config: { html: evil } }],
+      }),
+    );
+    expect(created.status).toBe(201);
+    const stored = (await created.json<{ blocks: { config: { html: string } }[] }>()).blocks[0]!.config.html;
+    expect(stored).toContain('<h2>Hi</h2>');
+    for (const bad of ['<script', 'onerror', 'javascript:', 'alert']) expect(stored).not.toContain(bad);
+
+    const pub = await SELF.fetch(`${BASE}/api/v1/public/pages/by-route?route=/rt`);
+    const html = (await pub.json<{ blocks: { config: { html: string } }[] }>()).blocks[0]!.config.html;
+    expect(html).toContain('<h2>Hi</h2>');
+    expect(html).not.toContain('<script');
+    expect(html).not.toContain('onerror');
+  });
+});

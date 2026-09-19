@@ -4,6 +4,7 @@ import type { ReusableBlock } from '@kenresoft-cms/contracts';
 
 import { getDb } from '../../lib/db';
 import { createOpenApiApp } from '../../lib/openapi';
+import { sanitizeReusableBlockConfig } from '../../lib/raw-html-guard';
 import { publicCacheControlHeader, publicCacheKey } from '../../lib/public-cache';
 import { getReusableBlockById } from '../../repositories/reusable-blocks';
 import type { Bindings } from '../../lib/env';
@@ -19,7 +20,8 @@ function toReusableBlock(row: DbReusableBlock): ReusableBlock {
     id: row.id,
     name: row.name,
     type: row.type as ReusableBlock['type'],
-    config: row.config,
+    // Editor-authored HTML is re-sanitised on every public read (defense in depth).
+    config: sanitizeReusableBlockConfig(row.type, row.config),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };

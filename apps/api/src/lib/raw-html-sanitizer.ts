@@ -229,6 +229,8 @@ function escapeRawText(text: string): string {
     .replace(/>/g, '&gt;');
 }
 
+const MAX_NESTING_DEPTH = 100;
+
 function sanitizeWith(html: string, config: SanitizerConfig): string {
   const tokens = tokenize(html);
   const open: string[] = [];
@@ -258,6 +260,10 @@ function sanitizeWith(html: string, config: SanitizerConfig): string {
       while (open.length > index) output += `</${open.pop()}>`;
       continue;
     }
+
+    // Real documents nest a few dozen levels at most; tens of thousands of open tags only serve
+    // to make browsers and mail clients slow or crash, so anything deeper is dropped.
+    if (!config.voidTags.has(token.tagName) && open.length >= MAX_NESTING_DEPTH) continue;
 
     const parsed = parseAttributes(token.rawAttributes);
     const allowed = config.tagAttributes[token.tagName];

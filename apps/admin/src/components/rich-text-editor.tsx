@@ -181,7 +181,7 @@ function ImageButton({ editor }: { editor: Editor }) {
           <DialogTitle>Insert image</DialogTitle>
         </DialogHeader>
         {mediaItems && mediaItems.length > 0 ? (
-          <div className="grid max-h-96 grid-cols-3 gap-3 overflow-y-auto">
+          <div className="grid max-h-96 grid-cols-3 content-start gap-3 overflow-y-auto">
             {mediaItems.map((item) => (
               <button
                 key={item.id}
@@ -194,12 +194,16 @@ function ImageButton({ editor }: { editor: Editor }) {
                     .run();
                   setOpen(false);
                 }}
-                className="aspect-square overflow-hidden rounded-md ring-2 ring-transparent hover:ring-primary"
+                className="relative block aspect-square w-full overflow-hidden rounded-md ring-2 ring-transparent hover:ring-primary"
               >
                 {item.width && item.height ? (
-                  <img src={mediaFileUrl(item.id)} alt={item.altText ?? item.filename} className="size-full object-cover" />
+                  <img
+                    src={mediaFileUrl(item.id)}
+                    alt={item.altText ?? item.filename}
+                    className="absolute inset-0 size-full object-cover"
+                  />
                 ) : (
-                  <div className="flex size-full items-center justify-center bg-muted">
+                  <div className="absolute inset-0 flex items-center justify-center bg-muted">
                     <ImageOff className="size-5 text-muted-foreground" />
                   </div>
                 )}
@@ -544,7 +548,7 @@ export function RichTextEditor({ value, onChange, placeholder }: RichTextEditorP
           to fit its content instead of respecting flex-1's height and actually scrolling —
           the classic flex-child-with-overflow gotcha, invisible until fullscreen made this
           container's height fixed instead of intrinsic. */}
-      <div className={cn('flex flex-1 flex-col', fullscreen && 'min-h-0')}>
+      <div className={cn('flex flex-1 flex-col', fullscreen ? 'min-h-0' : 'max-h-[28rem] overflow-y-auto')}>
         {mode === 'write' ? (
           <EditorContent editor={editor} className={cn(fullscreen && 'flex-1 min-h-0 overflow-y-auto')} />
         ) : null}
