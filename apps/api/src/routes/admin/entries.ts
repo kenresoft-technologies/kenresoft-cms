@@ -16,6 +16,8 @@ import { z } from 'zod';
 import { recordAudit } from '../../lib/audit';
 import { enqueueCachePurgePaths, processCachePurgeJobBatch } from '../../lib/cache-purge';
 import { getDb } from '../../lib/db';
+import { loadRichTextFields, sanitizeEntryData } from '../../lib/entry-html';
+import type { RichTextFieldMap } from '../../lib/entry-html';
 import { invalidatePublicEntryCache } from '../../lib/public-cache';
 import { signPreviewToken } from '../../lib/preview-token';
 import { dispatchWebhookEvent } from '../../lib/webhooks';
@@ -63,22 +65,24 @@ const contentTypeScopedQuerySchema = z.object({ contentTypeId: z.string().min(1)
 const idParamSchema = z.object({ id: z.string().min(1) });
 const revisionParamsSchema = z.object({ id: z.string().min(1), revisionId: z.string().min(1) });
 
-function toEntry(row: DbEntry): Entry {
+// `richText`, when given, re-sanitises rich_text fields on the way out (the admin Preview renders
+// them as HTML, and older stored values predate write-time sanitising).
+function toEntry(row: DbEntry, richText?: RichTextFieldMap): Entry {
   return {
     id: row.id,
     contentTypeId: row.contentTypeId,
     slug: row.slug,
     status: row.status as EntryStatus,
-    data: row.data,
+    data: richText ? sanitizeEntryData(richText, row.contentTypeId, row.data) : row.data,
     publishAt: row.publishAt ? row.publishAt.toISOString() : null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
 }
 
-function toEntryWithContentType(row: DbEntryWithContentType): EntryWithContentType {
+function toEntryWithContentType(row: DbEntryWithContentType, richText: RichTextFieldMap): EntryWithContentType {
   return {
-    ...toEntry(row),
+    ...toEntry(row, richText),
     contentTypeName: row.contentTypeName,
     contentTypeSlug: row.contentTypeSlug,
     authorName: row.authorName,
@@ -156,7 +160,8 @@ entriesRoute.openapi(
     const db = getDb(c);
     const scope = folderId === undefined ? undefined : folderId === 'unfiled' ? null : folderId;
     const rows = await listEntriesWithContentType(db, contentTypeId, scope);
-    return c.json(rows.map(toEntryWithContentType), 200);
+    const richText = await loadRichTextFields(db);
+    return c.json(rows.map((row) => toEntryWithContentType(row, richText)), 200);
   },
 );
 
@@ -365,7 +370,7 @@ entriesRoute.openapi(
     if (!entry) {
       return c.json({ error: 'Entry not found' }, 404);
     }
-    return c.json(toEntry(entry), 200);
+    return c.json(toEntry(entry, await loadRichTextFields(db)), 200);
   },
 );
 
