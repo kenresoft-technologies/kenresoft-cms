@@ -1,0 +1,19 @@
+---
+// Config shape mirrors RAW_HTML_BLOCK_CONFIG (packages/contracts/schemas/blocks.ts). The API
+// sanitizes this HTML on every save AND again on every public read (allow-listed tags/attributes
+// only — no scripts, iframes, forms, event handlers, unsafe URLs or positioning styles), and stops
+// returning raw blocks entirely if an admin switches the feature off. So set:html here renders
+// already-sanitized markup. If you build your own frontend, render this block only from the
+// public API's output and never from any other source, and consider a Content-Security-Policy on
+// your site as a second layer.
+import type { BlockInstance } from '@kenresoft-cms/astro';
+
+interface Props {
+  config: BlockInstance['config'];
+}
+
+const { config } = Astro.props;
+const html = typeof config.html === 'string' ? config.html : '';
+---
+
+{html ? <div class="raw-html" set:html={html} /> : null}

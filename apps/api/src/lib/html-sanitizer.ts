@@ -35,8 +35,14 @@ const ALLOWED_ATTRIBUTES: Record<string, Set<string>> = {
 const ALLOWED_HREF_SCHEMES = ['http', 'https', 'mailto'];
 const SCHEME_PATTERN = /^([a-z][a-z0-9+.-]*):/i;
 
-function isSafeHref(value: string): boolean {
-  const trimmed = value.trim();
+// Browsers strip ASCII tab/newline/CR (and ignore leading C0 controls and spaces) when parsing a
+// URL, so `java<TAB>script:alert(1)` runs as javascript: even though a naive scheme regex sees
+// no scheme at all. Every control/whitespace character is removed before the scheme is checked.
+// eslint-disable-next-line no-control-regex
+const URL_STRIPPED_CHARS = /[\u0000-\u0020\u007f-\u009f]/g;
+
+export function isSafeHref(value: string): boolean {
+  const trimmed = value.replace(URL_STRIPPED_CHARS, '');
   if (trimmed.length === 0) return false;
   if (trimmed.startsWith('//')) return false; // protocol-relative — ambiguous, treated as unsafe
   const match = SCHEME_PATTERN.exec(trimmed);
@@ -44,18 +50,18 @@ function isSafeHref(value: string): boolean {
   return ALLOWED_HREF_SCHEMES.includes(match[1]!.toLowerCase());
 }
 
-function escapeText(text: string): string {
+export function escapeText(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-function escapeAttributeValue(value: string): string {
+export function escapeAttributeValue(value: string): string {
   return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 // Parses `key="value"` / `key='value'` / `key=value` / bare `key` pairs out of a tag's raw
 // attribute substring (already isolated from the surrounding `<tag ... >` by the tokenizer
 // below, which itself is quote-aware so this substring never contains an unescaped `>`).
-function parseAttributes(raw: string): Map<string, string> {
+export function parseAttributes(raw: string): Map<string, string> {
   const attrs = new Map<string, string>();
   const pattern = /([a-zA-Z_:][-a-zA-Z0-9_:.]*)\s*(?:=\s*("([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g;
   let match: RegExpExecArray | null;
@@ -67,14 +73,14 @@ function parseAttributes(raw: string): Map<string, string> {
   return attrs;
 }
 
-interface TagToken {
+export interface TagToken {
   type: 'tag';
   closing: boolean;
   tagName: string;
   rawAttributes: string;
 }
 
-interface TextToken {
+export interface TextToken {
   type: 'text';
   value: string;
 }
@@ -82,7 +88,7 @@ interface TextToken {
 // Quote-aware: scans for the next `>` that isn't inside a single- or double-quoted attribute
 // value, so a value like `title=">"` can never prematurely end the tag (and can't be abused to
 // smuggle a second, unsanitized tag past the parser).
-function tokenize(html: string): (TagToken | TextToken)[] {
+export function tokenize(html: string): (TagToken | TextToken)[] {
   const tokens: (TagToken | TextToken)[] = [];
   let i = 0;
   let textStart = 0;
@@ -91,6 +97,18 @@ function tokenize(html: string): (TagToken | TextToken)[] {
     if (html[i] !== '<') {
       i++;
       continue;
+    }
+
+    // A real comment ends at `-->` (not the first `>`), so a `>` or a tag-looking string inside
+    // it can never leak out as text or start a tag.
+    if (html.startsWith('<!--', i)) {
+      const commentEnd = html.indexOf('-->', i + 4);
+      if (commentEnd >= 0) {
+        if (textStart < i) tokens.push({ type: 'text', value: html.slice(textStart, i) });
+        i = commentEnd + 3;
+        textStart = i;
+        continue;
+      }
     }
 
     const tagStart = i;
@@ -115,15 +133,22 @@ function tokenize(html: string): (TagToken | TextToken)[] {
       continue;
     }
 
+    const inner = html.slice(tagStart + 1, j); // between < and >, exclusive
+    const closing = inner.startsWith('/');
+    // No whitespace allowed between `<` and the name — browsers treat "< b>" as text, not a tag.
+    const nameMatch = /^\/?([a-zA-Z][a-zA-Z0-9]*)/.exec(inner);
+    if (!nameMatch && !/^[!?]/.test(inner)) {
+      // Not a tag at all (e.g. "a < b > c"): the `<` is ordinary text, escaped by the caller.
+      i++;
+      continue;
+    }
+
     if (textStart < tagStart) {
       tokens.push({ type: 'text', value: html.slice(textStart, tagStart) });
     }
 
-    const inner = html.slice(tagStart + 1, j); // between < and >, exclusive
-    const closing = inner.startsWith('/');
-    const nameMatch = /^\/?\s*([a-zA-Z][a-zA-Z0-9]*)/.exec(inner);
     if (!nameMatch) {
-      // "<>" or "<123>" or similar — not a real tag; drop it silently as inert punctuation.
+      // A doctype / processing instruction / bogus comment (`<!...>`, `<?...>`) — dropped whole.
       textStart = j + 1;
       i = j + 1;
       continue;

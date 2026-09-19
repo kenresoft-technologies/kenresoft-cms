@@ -18,6 +18,7 @@ import type { BlockInstance, ChildBlockInstance, KenresoftClient } from '@kenres
 import CtaBlock from './CtaBlock.astro';
 import HeroBlock from './HeroBlock.astro';
 import ImageBlock from './ImageBlock.astro';
+import RawHtmlBlock from './RawHtmlBlock.astro';
 import RichTextBlock from './RichTextBlock.astro';
 import SpacerBlock from './SpacerBlock.astro';
 import ColumnsBlock from './ColumnsBlock.astro';
@@ -29,6 +30,7 @@ const BUILT_IN_BLOCKS: Record<string, unknown> = {
   cta: CtaBlock,
   columns: ColumnsBlock,
   spacer: SpacerBlock,
+  rawHtml: RawHtmlBlock,
 };
 
 interface Props {

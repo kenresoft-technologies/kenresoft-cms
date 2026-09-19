@@ -10,7 +10,7 @@ import type { BlockType } from '@/lib/types';
 export interface BlockFieldDef {
   key: string;
   label: string;
-  kind: 'text' | 'textarea' | 'url' | 'number' | 'media' | 'richtext' | 'reusableBlock';
+  kind: 'text' | 'textarea' | 'url' | 'number' | 'media' | 'richtext' | 'reusableBlock' | 'rawhtml';
   placeholder?: string;
 }
 
@@ -85,6 +85,13 @@ export const BLOCK_TYPE_REGISTRY: BlockTypeDef[] = [
     description: 'A live reference to a block managed on the Reusable Blocks page — editing it there updates every page using it.',
     allowsChildren: false,
     fields: [{ key: 'reusableBlockId', label: 'Reusable block', kind: 'reusableBlock' }],
+  },
+  {
+    type: 'rawHtml',
+    label: 'Raw HTML',
+    description: 'Pasted HTML, cleaned by the server. Admin-only, and off unless enabled in Settings → API.',
+    allowsChildren: false,
+    fields: [{ key: 'html', label: 'HTML', kind: 'rawhtml' }],
   },
 ];
 

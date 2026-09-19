@@ -193,7 +193,18 @@ export const RESERVED_ROUTE_PREFIXES = ['api', 'admin'] as const;
 // `{reusableBlockId}`, resolving to a live reference to a `reusable_blocks` row (never a copy)
 // at render time. It's never itself the *type* of a reusable_blocks row (no reference chains)
 // and never allowed to carry children (see BLOCK_TYPES_ALLOWING_CHILDREN below).
-export const BLOCK_TYPES = ['hero', 'richText', 'image', 'cta', 'columns', 'spacer', 'reusableBlockRef'] as const;
+// "rawHtml" is a leaf block holding pasted HTML, kept behind a feature flag, admin-only writes and
+// server-side sanitising (apps/api/src/lib/raw-html-guard.ts). It is never a reusable block type.
+export const BLOCK_TYPES = [
+  'hero',
+  'richText',
+  'image',
+  'cta',
+  'columns',
+  'spacer',
+  'reusableBlockRef',
+  'rawHtml',
+] as const;
 
 export type BlockType = (typeof BLOCK_TYPES)[number];
 
