@@ -26,6 +26,7 @@ import { z } from 'zod';
 import { recordAudit } from '../../lib/audit';
 import { getDb } from '../../lib/db';
 import { getEmailSender, isEmailProviderConfigured } from '../../lib/email';
+import { getAdminFrom } from '../../lib/email/admin-sender';
 import { sendFormSubmissionNotification } from '../../lib/form-notifications';
 import { sanitizeReplyHtml } from '../../lib/html-sanitizer';
 import { htmlToPlainText } from '../../lib/html-to-text';
@@ -712,6 +713,7 @@ formsRoute.openapi(
     // links, regardless of what the client sent.
     const bodyHtml = sanitizeReplyHtml(rawBodyHtml);
 
+    const from = await getAdminFrom(db);
     try {
       await getEmailSender(c.env).send({
         to,
@@ -719,6 +721,7 @@ formsRoute.openapi(
         html: bodyHtml,
         text: htmlToPlainText(bodyHtml),
         replyTo: author.email,
+        ...(from ? { from } : {}),
       });
     } catch (error) {
       console.error('Failed to send a form-submission reply:', error);

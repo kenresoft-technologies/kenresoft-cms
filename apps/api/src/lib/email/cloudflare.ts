@@ -16,7 +16,7 @@ export function createCloudflareEmailSender(env: Bindings): EmailSender {
         throw new Error('EMAIL_PROVIDER=cloudflare but EMAIL_FROM is not set');
       }
       await env.EMAIL.send({
-        from: env.EMAIL_FROM,
+        from: message.from ?? env.EMAIL_FROM,
         to: message.to,
         subject: message.subject,
         text: message.text,

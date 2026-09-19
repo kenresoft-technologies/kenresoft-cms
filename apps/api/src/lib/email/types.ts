@@ -8,6 +8,9 @@ export interface EmailMessage {
   // real inbox rather than the deployment's configured EMAIL_FROM, which may not even be a
   // monitored mailbox.
   replyTo?: string;
+  // Overrides the provider's default From (EMAIL_FROM). Only set for admin-initiated mail, from
+  // the configured sender identity; system mail leaves it unset.
+  from?: string;
 }
 
 export interface EmailSender {
