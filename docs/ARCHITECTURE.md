@@ -59,27 +59,7 @@ filter, and the Library gained a folder-management dialog and bulk move. A new
 `GET /api/v1/public/media/folders/{slug}` lets a frontend fetch a named collection (e.g.
 "home-page-hero") explicitly rather than guessing at ids from the flat library, edge-cached and
 invalidated the same way `public-cache.ts`'s other domains are; `@kenresoft-cms/astro` gained
-`media.byFolder({slug})`. **UI Content**: a new, independent content model sitting between
-Entries (editorial, content-type-modeled) and Reusable Blocks (global, live-referenced) for
-small structured UI objects (Hero, Carousel, Promo Banner, Feature Grid, Testimonials, …) —
-deliberately neither: not a `content_types`/`entries` row (would surface these in the Entries UI
-and the generic public content route) and not a `reusable_blocks` row (no schema/independent
-identity). Two new tables, `ui_content_types` (a type's own field shape stored inline as JSON,
-reusing content-types' exact `name/label/fieldType/required/config` vocabulary — deliberately not
-a normalized child table, since these types are expected to be small and static) and
-`ui_content_items` (`data` validated against its type's fields via a new, dynamically-built-per-
-type validator, `apps/api/src/lib/ui-content-validation.ts`, the same
-build-a-schema-from-field-definitions approach forms' own submission validation already uses).
-Admin CRUD under `/api/v1/admin/ui-content/types` (and nested `/{typeId}/items`), gated
-admin/editor like content-type field management; public read via
-`GET /api/v1/public/ui-content/{type}` and `.../{type}/{slug}`, a disabled item 404ing exactly
-like a nonexistent slug (Entries' own draft-is-nonexistent convention, applied to `enabled`
-here). A new `apps/admin` "UI content" section (between Reusable Blocks and Global Variables in
-the sidebar) reuses the existing per-field-type `FieldInput` component to render each field —
-confirmed by inspection that it only ever reads `name/label/fieldType/required/config` off the
-field it's given, so a lightweight adapter object (no id/contentTypeId/sortOrder/presentation/
-timestamps) drives it directly rather than duplicating ~250 lines of field-rendering logic.
-`@kenresoft-cms/astro` gained `uiContent.list({type})`/`uiContent.get({type, slug})`.
+`media.byFolder({slug})`.
 
 One real bug found and fixed during implementation, not hypothetical: drizzle-kit's generated
 migration for the new `media.folder_id` column (`ALTER TABLE media ADD folder_id text REFERENCES
@@ -92,8 +72,8 @@ migration SQL to add the clause explicitly before it was ever applied anywhere.
 Verified: `pnpm typecheck`/`pnpm lint` clean workspace-wide; new regression tests for every one
 of the six security fixes (`installation-bootstrap.test.ts`, `admin-origin-check.test.ts`,
 `forms-rbac.test.ts`, the XSS case added to `forms-routes.test.ts`, `site-builder-url-
-safety.test.ts`, `webhook-ssrf.test.ts`) and both feature additions (`media-folders-
-routes.test.ts`, `ui-content-routes.test.ts`), plus the pre-existing suite re-run to confirm no
+safety.test.ts`, `webhook-ssrf.test.ts`) and the media-folders feature addition (`media-folders-
+routes.test.ts`), plus the pre-existing suite re-run to confirm no
 regressions — see this repo's own PR/commit history for the exact pass/fail counts at the time
 of this change, since a live count would go stale here immediately.
 
