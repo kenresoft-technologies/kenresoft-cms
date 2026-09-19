@@ -14,7 +14,10 @@ landed on `develop`.
 
 - **Rich text page blocks are now sanitised** on save and on every public read (and reusable
   Rich text blocks too). Previously an editor could store a `<script>` there. Task-list checkboxes
-  in a Rich text *block* are dropped as a result; entry `rich_text` fields are unchanged.
+  in a Rich text *block* are dropped as a result.
+- **Entry `rich_text` fields are now sanitised** the same way: on every write (create, update,
+  import, restore) and on every admin and public read, so older stored values are cleaned too. Only
+  fields of type rich_text are touched. Task-list checkboxes are dropped.
 - HTML sanitiser: work limit against crafted input that took ~60s of CPU, and a nesting cap of 100.
 - Email subjects with line breaks are rejected (header injection).
 - Raw HTML permission is checked before any sanitising work.

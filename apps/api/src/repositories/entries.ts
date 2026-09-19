@@ -1,6 +1,8 @@
 import { and, contentTypes, desc, entries, entryRevisions, eq, isNull, lte, user } from '@kenresoft-cms/database';
 import type { Database, Entry, EntryRevision, NewEntry } from '@kenresoft-cms/database';
 
+import { sanitizeEntryDataForType } from '../lib/entry-html';
+
 export interface EntryWithContentType extends Entry {
   contentTypeName: string;
   contentTypeSlug: string;
@@ -46,7 +48,12 @@ export async function createEntry(
 
   const [entry] = await db
     .insert(entries)
-    .values({ ...input, contentTypeId, createdBy })
+    .values({
+      ...input,
+      ...(input.data ? { data: await sanitizeEntryDataForType(db, contentTypeId, input.data) } : {}),
+      contentTypeId,
+      createdBy,
+    })
     .returning();
   await snapshotRevision(db, entry!, createdBy);
   return entry!;
@@ -148,7 +155,11 @@ export async function updateEntry(
 
   const [entry] = await db
     .update(entries)
-    .set({ ...input, updatedAt: new Date() })
+    .set({
+      ...input,
+      ...(input.data ? { data: await sanitizeEntryDataForType(db, current.contentTypeId, input.data) } : {}),
+      updatedAt: new Date(),
+    })
     .where(eq(entries.id, id))
     .returning();
   return entry;
