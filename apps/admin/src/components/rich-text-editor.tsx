@@ -18,6 +18,7 @@ import {
   AlignRight,
   Bold,
   Code,
+  FileCode,
   Columns3,
   Eye,
   Heading2,
@@ -44,6 +45,7 @@ import {
   Undo,
 } from 'lucide-react';
 
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { htmlToMarkdown, markdownToHtml } from '@/lib/rich-text-markdown';
 import { mediaFileUrl, useMediaList } from '@/lib/queries/media';
 import { cn } from '@/lib/utils';
@@ -67,7 +69,7 @@ function isSafeUrl(value: string): boolean {
 }
 
 type Editor = NonNullable<ReturnType<typeof useEditor>>;
-type Mode = 'write' | 'preview' | 'markdown';
+type Mode = 'write' | 'preview' | 'markdown' | 'html';
 
 function ToolbarButton({
   active,
@@ -369,22 +371,6 @@ function Toolbar({ editor }: { editor: Editor }) {
   );
 }
 
-function ModeTab({ active, onClick, icon, label }: { active: boolean; onClick: () => void; icon: React.ReactNode; label: string }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        'flex items-center gap-1.5 rounded-md px-2.5 py-1 text-sm font-medium transition-colors',
-        active ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
-      )}
-    >
-      {icon}
-      {label}
-    </button>
-  );
-}
-
 interface RichTextEditorProps {
   value: string;
   onChange: (html: string) => void;
@@ -405,6 +391,7 @@ interface RichTextEditorProps {
 export function RichTextEditor({ value, onChange, placeholder }: RichTextEditorProps) {
   const [mode, setMode] = useState<Mode>('write');
   const [markdownDraft, setMarkdownDraft] = useState('');
+  const [htmlDraft, setHtmlDraft] = useState('');
   const [fullscreen, setFullscreen] = useState(false);
 
   // Tracks the HTML this editor itself last emitted, so the sync effect below only resets the
@@ -467,6 +454,13 @@ export function RichTextEditor({ value, onChange, placeholder }: RichTextEditorP
     } else if (next === 'markdown') {
       setMarkdownDraft(htmlToMarkdown(editor.getHTML()));
     }
+    // Same apply-on-leave contract as Markdown: pasted/edited HTML goes through the editor's own
+    // schema, so only supported markup survives (no scripts, event handlers, or unknown tags).
+    if (mode === 'html' && next !== 'html') {
+      editor.commands.setContent(htmlDraft);
+    } else if (next === 'html') {
+      setHtmlDraft(editor.getHTML());
+    }
     setMode(next);
   }
 
@@ -493,16 +487,27 @@ export function RichTextEditor({ value, onChange, placeholder }: RichTextEditorP
           without this, the row simply forces its own intrinsic width past the container,
           dragging the whole page wider than the viewport instead of wrapping to a second line. */}
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-input p-1">
-        <div className="flex flex-wrap items-center gap-1 rounded-lg bg-muted p-0.5">
-          <ModeTab active={mode === 'write'} onClick={() => switchMode('write')} icon={<Pencil className="size-3.5" />} label="Write" />
-          <ModeTab active={mode === 'preview'} onClick={() => switchMode('preview')} icon={<Eye className="size-3.5" />} label="Preview" />
-          <ModeTab
-            active={mode === 'markdown'}
-            onClick={() => switchMode('markdown')}
-            icon={<Code className="size-3.5" />}
-            label="Markdown"
-          />
-        </div>
+        {/* A dropdown rather than a tab per mode: four modes no longer fit the header row on narrow
+            screens, and a single control scales to more modes later. */}
+        <Select value={mode} onValueChange={(next) => switchMode(next as Mode)}>
+          <SelectTrigger size="sm" className="w-36" aria-label="Editor mode">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="write">
+              <Pencil className="size-3.5" /> Write
+            </SelectItem>
+            <SelectItem value="preview">
+              <Eye className="size-3.5" /> Preview
+            </SelectItem>
+            <SelectItem value="markdown">
+              <Code className="size-3.5" /> Markdown
+            </SelectItem>
+            <SelectItem value="html">
+              <FileCode className="size-3.5" /> HTML
+            </SelectItem>
+          </SelectContent>
+        </Select>
         {/* min-w-0 + truncate on the count: a flex child's default min-width:auto otherwise
             keeps it at its full text width even when the row has genuinely run out of room,
             which is exactly what pushed this row (and the whole page) wider than the viewport
@@ -529,7 +534,9 @@ export function RichTextEditor({ value, onChange, placeholder }: RichTextEditorP
           <Info className="size-3.5 shrink-0" />
           {mode === 'preview'
             ? 'Rendered preview of the saved content — switch to Write to edit.'
-            : 'Editing as Markdown — applied back to the document when you switch away.'}
+            : mode === 'html'
+              ? 'Paste or edit HTML — applied when you switch to Write or Preview. Unsupported tags, scripts and styles are dropped.'
+              : 'Editing as Markdown — applied back to the document when you switch away.'}
         </div>
       )}
 
@@ -548,6 +555,19 @@ export function RichTextEditor({ value, onChange, placeholder }: RichTextEditorP
               fullscreen ? 'flex-1 min-h-0 overflow-y-auto' : 'min-h-32',
             )}
             dangerouslySetInnerHTML={{ __html: editor.getHTML() }}
+          />
+        ) : null}
+        {mode === 'html' ? (
+          <textarea
+            aria-label="HTML source"
+            value={htmlDraft}
+            onChange={(event) => setHtmlDraft(event.target.value)}
+            spellCheck={false}
+            placeholder="<h2>Paste HTML here</h2>"
+            className={cn(
+              'resize-none bg-transparent px-2.5 py-2 font-mono text-sm outline-none',
+              fullscreen ? 'flex-1 min-h-0' : 'min-h-32',
+            )}
           />
         ) : null}
         {mode === 'markdown' ? (
