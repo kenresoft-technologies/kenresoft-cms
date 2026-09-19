@@ -11,11 +11,14 @@ import { EmailAttachments } from '@/components/email-attachments';
 import { emptyAttachments } from '@/lib/queries/email';
 import { EmailSenderSettings } from '@/components/email-sender-settings';
 import { PageHeader } from '@/components/page-header';
+import { SanitizedHtmlPreview } from '@/components/sanitized-html-preview';
 import { RichTextEditor } from '@/components/rich-text-editor';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
 
 function getPlainTextFromHtml(html: string) {
   const doc = new DOMParser().parseFromString(html, 'text/html');
@@ -36,6 +39,9 @@ export function EmailPage() {
   const [subject, setSubject] = useState('');
   const [bodyHtml, setBodyHtml] = useState('');
   const [attachments, setAttachments] = useState(emptyAttachments);
+  // 'design' = paste a finished HTML template and send it with its layout intact (admin/owner only).
+  const [mode, setMode] = useState<'message' | 'design'>('message');
+  const designMode = isAdmin && mode === 'design';
 
   const fromLabel = settings?.emailSenderEmail
     ? settings.emailSenderName
@@ -46,12 +52,18 @@ export function EmailPage() {
     limits?.configured !== false &&
     to.trim() !== '' &&
     subject.trim() !== '' &&
-    getPlainTextFromHtml(bodyHtml).trim() !== '' &&
+    (designMode ? bodyHtml.trim() !== '' : getPlainTextFromHtml(bodyHtml).trim() !== '') &&
     !sendEmail.isPending;
 
   async function handleSend() {
     try {
-      await sendEmail.mutateAsync({ to: to.trim(), subject: subject.trim(), bodyHtml, ...attachments });
+      await sendEmail.mutateAsync({
+        to: to.trim(),
+        subject: subject.trim(),
+        bodyHtml,
+        ...attachments,
+        ...(designMode ? { designHtml: true } : {}),
+      });
       toast.success(`Email sent to ${to.trim()}`);
       setTo('');
       setSubject('');
@@ -96,7 +108,47 @@ export function EmailPage() {
             <Label htmlFor="email-subject">Subject</Label>
             <Input id="email-subject" value={subject} onChange={(event) => setSubject(event.target.value)} />
           </div>
-          <RichTextEditor value={bodyHtml} onChange={setBodyHtml} placeholder="Write your message…" />
+          {isAdmin ? (
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="email-mode">Format</Label>
+              <Select
+                value={mode}
+                onValueChange={(next) => {
+                  setMode(next as 'message' | 'design');
+                  setBodyHtml('');
+                }}
+              >
+                <SelectTrigger id="email-mode" className="w-56">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="message">Message (rich text)</SelectItem>
+                  <SelectItem value="design">Design HTML (paste a template)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          ) : null}
+          {designMode ? (
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="email-design-html">HTML template</Label>
+              <Textarea
+                id="email-design-html"
+                value={bodyHtml}
+                spellCheck={false}
+                placeholder="Paste the full HTML of your email template (for example exported from Canva)"
+                className="min-h-48 font-mono text-sm"
+                onChange={(event) => setBodyHtml(event.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Layout, inline styles and https images are kept. Scripts, forms, style blocks, relative
+                links and embedded (data:) images are removed. Images must be hosted at a public https
+                address. The preview shows what will actually be sent.
+              </p>
+              <SanitizedHtmlPreview html={bodyHtml} endpoint="/api/v1/admin/email/sanitize-preview" heightClass="h-96" />
+            </div>
+          ) : (
+            <RichTextEditor value={bodyHtml} onChange={setBodyHtml} placeholder="Write your message…" />
+          )}
           <EmailAttachments value={attachments} onChange={setAttachments} />
           <div>
             <Button type="button" disabled={!canSend} onClick={() => void handleSend()}>

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { isSafeHref, sanitizeReplyHtml } from '../src/lib/html-sanitizer';
-import { sanitizeRawHtml } from '../src/lib/raw-html-sanitizer';
+import { sanitizeEmailHtml, sanitizeRawHtml } from '../src/lib/raw-html-sanitizer';
 
 const TAB = String.fromCharCode(9);
 const NEWLINE = String.fromCharCode(10);
@@ -108,5 +108,57 @@ describe('shared href check (also used by reply sanitising)', () => {
     expect(isSafeHref(`java${NEWLINE}script:alert(1)`)).toBe(false);
     expect(isSafeHref('https://example.com')).toBe(true);
     expect(sanitizeReplyHtml(`<a href="java${TAB}script:alert(1)">x</a>`)).toBe('<a>x</a>');
+  });
+});
+
+describe('sanitizeEmailHtml', () => {
+  const TEMPLATE =
+    '<!DOCTYPE html><html><head><title>T</title><style>.x{color:red}</style><meta charset="utf-8"></head>' +
+    '<body style="margin:0"><table width="600" align="center" cellpadding="0" cellspacing="0" border="0" ' +
+    'bgcolor="#ffffff" role="presentation" style="background-color:#ffffff"><tr>' +
+    '<td align="center" valign="top" style="padding:20px;font-family:Arial, sans-serif">' +
+    '<img src="https://cdn.example.com/logo.png" width="120" alt="Logo">' +
+    '<a href="https://example.com/go" style="background-color:#7c3aed;color:#fff;padding:12px 24px;text-decoration:none">Click</a>' +
+    '</td></tr></table></body></html>';
+
+  it('keeps a table-based template layout, presentational attributes, styles, https images and links', () => {
+    const out = sanitizeEmailHtml(TEMPLATE);
+    expect(out).toContain('<table width="600" align="center" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff" role="presentation"');
+    expect(out).toContain('<td align="center" valign="top" style="padding: 20px; font-family: Arial, sans-serif">');
+    expect(out).toContain('<img src="https://cdn.example.com/logo.png" width="120" alt="Logo">');
+    expect(out).toContain('href="https://example.com/go"');
+    expect(out).toContain('background-color: #7c3aed');
+    // Document scaffolding, <style> blocks and <title> content are gone.
+    for (const gone of ['<html', '<head', '<body', '<style', '<title', 'DOCTYPE', '.x{']) {
+      expect(out).not.toContain(gone);
+    }
+  });
+
+  it('removes scripts, forms, event handlers and unsafe or relative URLs and data: images', () => {
+    const out = sanitizeEmailHtml(
+      '<p onclick="x()">hi</p><script>alert(1)</script><form action="/x"><input></form>' +
+        '<img src="data:image/png;base64,AAAA"><img src="/relative.png"><img src="//evil.test/a.png">' +
+        '<a href="javascript:alert(1)">a</a><a href="/relative">b</a><a href="mailto:a@b.co">c</a>' +
+        `<a href="java${TAB}script:alert(1)">d</a>`,
+    );
+    expect(out).not.toContain('<script');
+    expect(out).not.toContain('onclick');
+    expect(out).not.toContain('<form');
+    expect(out).not.toContain('data:');
+    expect(out).not.toContain('javascript');
+    expect(out).not.toContain('/relative');
+    expect(out).toContain('<a href="mailto:a@b.co">c</a>');
+  });
+
+  it('applies the same style restrictions and rejects bad legacy attribute values', () => {
+    const out = sanitizeEmailHtml(
+      '<table width="expression(1)" align="evil" bgcolor="red;x" role="button" style="position: fixed; color: red; margin-left: -9px"><tr><td>x</td></tr></table>',
+    );
+    expect(out).toBe('<table style="color: red"><tr><td>x</td></tr></table>');
+  });
+
+  it('is idempotent on a full template', () => {
+    const once = sanitizeEmailHtml(TEMPLATE);
+    expect(sanitizeEmailHtml(once)).toBe(once);
   });
 });

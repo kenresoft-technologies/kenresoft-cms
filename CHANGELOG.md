@@ -12,6 +12,10 @@ landed on `develop`.
 
 ### Added
 
+- **Design HTML** format on the Email page (admin/owner only): paste a finished HTML email template
+  (for example from Canva) and send it with its table layout, inline styles and https images kept,
+  with a sandboxed preview of exactly what will be sent and an automatic plain-text version.
+  Scripts, forms, `<style>` blocks, relative links and `data:` images are removed.
 - A **Raw HTML block** for pages: paste HTML and see a preview of exactly what will be published.
   Off by default (Settings → API), admin/owner-only, sanitized on the server on every save and
   every public read, and switching it off hides every raw block immediately. See

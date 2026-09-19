@@ -3,6 +3,7 @@ import type { ZodType } from 'zod';
 
 import { sanitizeReplyHtml } from '../html-sanitizer';
 import { htmlToPlainText } from '../html-to-text';
+import { sanitizeEmailHtml } from '../raw-html-sanitizer';
 import type { EmailMessage } from './types';
 
 export interface ComposeRequest<T> {
@@ -61,4 +62,24 @@ export async function parseComposeRequest<T>(
 export function buildBodies(bodyHtml: string): Pick<EmailMessage, 'html' | 'text'> & { html: string } {
   const html = sanitizeReplyHtml(bodyHtml);
   return { html, text: htmlToPlainText(html) };
+}
+
+// Plain-text alternative for a designed email: table cells are separated (so columns don't run
+// together) and link targets are kept, since a plain-text reader can't click a button.
+function designHtmlToPlainText(html: string): string {
+  const withLinks = html.replace(
+    /<a\s[^>]*?href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi,
+    (_m, href: string, label: string) => {
+      const text = label.replace(/<[^>]+>/g, '').trim();
+      return text && text !== href ? `${text} (${href})` : href;
+    },
+  );
+  return htmlToPlainText(withLinks.replace(/<\/(td|th)>/gi, ' ').replace(/<\/(table|tr)>/gi, '\n'));
+}
+
+// 'Design HTML' mode: the layout is preserved, but only after the email-specific sanitizer (no
+// scripts, forms, iframes, event handlers, unsafe/relative URLs, data: images or positioning).
+export function buildDesignBodies(bodyHtml: string): { html: string; text: string } {
+  const html = sanitizeEmailHtml(bodyHtml);
+  return { html, text: designHtmlToPlainText(html) };
 }

@@ -45,4 +45,7 @@ your site as a second layer — the CMS cannot enforce headers on a site it does
 - The sanitizer is a small dependency-free tokenizer (no npm HTML parser runs in the Workers
   runtime used here). It is deliberately conservative: valid-but-unusual markup may be simplified or
   dropped rather than risk letting something through.
-- Email sending uses its own, stricter sanitizer and does not accept this block's layout markup.
+- Email: the normal Message format uses a strict rich-text sanitizer. Designed templates go through
+  the separate **Design HTML** mode on the Email page (admin/owner only), which uses an email preset
+  of the same sanitizer: table layout, inline styles and https images are kept; scripts, forms,
+  `<style>` blocks, relative links and `data:` images are removed.

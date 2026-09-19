@@ -1,13 +1,15 @@
 import { createRoute, z } from '@hono/zod-openapi';
-import { sendAdminEmailSchema } from '@kenresoft-cms/contracts';
+import { roleAtLeast, sendAdminEmailSchema } from '@kenresoft-cms/contracts';
+import type { UserRole } from '@kenresoft-cms/contracts';
 
 import { recordAudit } from '../../lib/audit';
 import { getDb } from '../../lib/db';
 import { getAdminFrom } from '../../lib/email/admin-sender';
 import { collectAttachments, getAttachmentLimits } from '../../lib/email/attachments';
-import { buildBodies, parseComposeRequest } from '../../lib/email/compose';
+import { buildBodies, buildDesignBodies, parseComposeRequest } from '../../lib/email/compose';
 import { getEmailSender, isEmailProviderConfigured } from '../../lib/email';
 import { createOpenApiApp } from '../../lib/openapi';
+import { sanitizeEmailHtml } from '../../lib/raw-html-sanitizer';
 import { requireRole } from '../../middleware/require-role';
 import type { Bindings } from '../../lib/env';
 import type { AuthedVariables } from '../../middleware/require-session';
@@ -55,6 +57,13 @@ emailRoute.post('/send', requireRole('admin', 'editor'), async (c) => {
   const db = getDb(c);
   const user = c.get('user');
 
+  // 'Design HTML' keeps the pasted template's layout, so it is admin/owner only — the same floor as
+  // the Raw HTML page block. Everyone else keeps the plain rich-text path.
+  const design = fields.designHtml === true || fields.designHtml === 'true';
+  if (design && !roleAtLeast(user.role as UserRole, 'admin')) {
+    return c.json({ error: 'Only an admin or owner can send designed HTML emails.' }, 403);
+  }
+
   const collected = await collectAttachments(c.env, db, { files, mediaIds });
   if (!collected.ok) {
     return c.json({ error: collected.error }, 400);
@@ -65,7 +74,7 @@ emailRoute.post('/send', requireRole('admin', 'editor'), async (c) => {
     await getEmailSender(c.env).send({
       to: fields.to,
       subject: fields.subject,
-      ...buildBodies(fields.bodyHtml),
+      ...(design ? buildDesignBodies(fields.bodyHtml) : buildBodies(fields.bodyHtml)),
       replyTo: fields.replyTo ?? user.email,
       ...(from ? { from } : {}),
       ...(collected.attachments.length ? { attachments: collected.attachments } : {}),
@@ -79,9 +88,20 @@ emailRoute.post('/send', requireRole('admin', 'editor'), async (c) => {
     actorUserId: user.id,
     action: 'email.sent',
     targetType: 'email',
-    metadata: { to: fields.to, subject: fields.subject, attachments: collected.attachments.length },
+    metadata: { to: fields.to, subject: fields.subject, attachments: collected.attachments.length, design },
   });
   return c.json({ from: from ?? null }, 200);
+});
+
+// Returns exactly what a designed email would contain after sanitising, so the composer's preview
+// shows the real result rather than the pasted markup. Stateless; admin/owner only.
+emailRoute.post('/sanitize-preview', requireRole('admin'), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const html = body && typeof body === 'object' ? (body as { html?: unknown }).html : undefined;
+  if (typeof html !== 'string' || html.length > 300_000) {
+    return c.json({ error: 'html (string, max 300000 characters) is required' }, 400);
+  }
+  return c.json({ html: sanitizeEmailHtml(html) }, 200);
 });
 
 emailRoute.openAPIRegistry.registerPath({
@@ -102,6 +122,7 @@ emailRoute.openAPIRegistry.registerPath({
             subject: z.string(),
             bodyHtml: z.string(),
             replyTo: z.string().optional(),
+            designHtml: z.string().optional(),
             files: z.array(z.string().openapi({ type: 'string', format: 'binary' })).optional(),
             mediaIds: z.array(z.string()).optional(),
           }),
