@@ -14,6 +14,7 @@ build/
 npm-debug.log*
 pnpm-debug.log*
 .DS_Store
+CLAUDE.md
 Thumbs.db
 coverage/
 test-results/

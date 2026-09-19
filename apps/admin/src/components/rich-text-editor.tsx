@@ -503,13 +503,19 @@ export function RichTextEditor({ value, onChange, placeholder }: RichTextEditorP
             label="Markdown"
           />
         </div>
-        <div className="flex items-center gap-2 pr-1">
-          <span className="text-xs text-muted-foreground">
+        {/* min-w-0 + truncate on the count: a flex child's default min-width:auto otherwise
+            keeps it at its full text width even when the row has genuinely run out of room,
+            which is exactly what pushed this row (and the whole page) wider than the viewport
+            on a narrow phone — this way it shrinks and ellipsizes instead. */}
+        <div className="flex min-w-0 items-center gap-2 pr-1">
+          <span className="min-w-0 truncate text-xs text-muted-foreground">
             {words} word{words === 1 ? '' : 's'} · {characters} character{characters === 1 ? '' : 's'}
           </span>
-          <ToolbarButton label={fullscreen ? 'Exit fullscreen' : 'Fullscreen'} onClick={() => setFullscreen((prev) => !prev)}>
-            {fullscreen ? <Minimize2 /> : <Maximize2 />}
-          </ToolbarButton>
+          <div className="shrink-0">
+            <ToolbarButton label={fullscreen ? 'Exit fullscreen' : 'Fullscreen'} onClick={() => setFullscreen((prev) => !prev)}>
+              {fullscreen ? <Minimize2 /> : <Maximize2 />}
+            </ToolbarButton>
+          </div>
         </div>
       </div>
 
