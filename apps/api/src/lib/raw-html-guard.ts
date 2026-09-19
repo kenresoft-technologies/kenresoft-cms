@@ -52,13 +52,26 @@ export function sanitizeRawHtmlBlocks<T extends AnyBlock>(blocks: T[]): T[] {
   ) as T[];
 }
 
+// The older Rich text block stores editor-authored HTML that public pages render directly, and
+// any role that can edit pages can write it — so it gets the same sanitising as Raw HTML on every
+// write and every public read. (Editors' toolbar output — headings, lists, links, images, tables,
+// code — survives; scripts, event handlers and unsafe URLs never do.)
+export function sanitizeRichTextBlocks<T extends AnyBlock>(blocks: T[]): T[] {
+  return mapTree(blocks, (block) =>
+    block.type === 'richText' && typeof block.config['html'] === 'string'
+      ? { ...block, config: { ...block.config, html: sanitizeRawHtml(htmlOf(block)) } }
+      : block,
+  ) as T[];
+}
+
 export function stripRawHtmlBlocks<T extends AnyBlock>(blocks: T[]): T[] {
   return mapTree(blocks, (block) => (block.type === 'rawHtml' ? null : block)) as T[];
 }
 
 // Applied to every block tree on its way out of a public/preview route.
 export function prepareBlocksForPublic<T extends AnyBlock>(blocks: T[], rawHtmlEnabled: boolean): T[] {
-  return rawHtmlEnabled ? sanitizeRawHtmlBlocks(blocks) : stripRawHtmlBlocks(blocks);
+  const prepared = rawHtmlEnabled ? sanitizeRawHtmlBlocks(blocks) : stripRawHtmlBlocks(blocks);
+  return sanitizeRichTextBlocks(prepared);
 }
 
 export type RawHtmlWriteCheck =
@@ -73,13 +86,19 @@ export function checkRawHtmlWrite(input: {
   role: UserRole;
   enabled: boolean;
 }): RawHtmlWriteCheck {
-  const sanitized = sanitizeRawHtmlBlocks(input.blocks as AnyBlock[]) as BlockInstance[];
-  const incoming = collect(sanitized as AnyBlock[]);
-  if (incoming.size === 0) return { ok: true, blocks: sanitized, rawHtmlChanged: false };
+  // Order matters: the cheap permission checks run on the RAW incoming values, and sanitising (the
+  // expensive step) only happens once the caller is known to be allowed to write a raw block —
+  // so a non-admin can never make the server do sanitising work by sending a huge raw block.
+  // Rich text blocks are cleaned for everyone, whatever their role (bounded by the block's own
+  // 50,000-character schema limit).
+  const cleaned = sanitizeRichTextBlocks(input.blocks as AnyBlock[]) as BlockInstance[];
+  const incoming = collect(cleaned as AnyBlock[]);
+  if (incoming.size === 0) return { ok: true, blocks: cleaned, rawHtmlChanged: false };
 
   const before = collect((input.existing ?? []) as AnyBlock[]);
   const changed = [...incoming].some(([id, html]) => before.get(id) !== html);
-  if (!changed) return { ok: true, blocks: sanitized, rawHtmlChanged: false };
+  // Unchanged blocks are exactly what is already stored (already sanitized when it was written).
+  if (!changed) return { ok: true, blocks: cleaned, rawHtmlChanged: false };
 
   if (!input.enabled) {
     return {
@@ -91,5 +110,11 @@ export function checkRawHtmlWrite(input: {
   if (!roleAtLeast(input.role, 'admin')) {
     return { ok: false, status: 403, error: 'Only an admin or owner can add or change a Raw HTML block.' };
   }
+  const sanitized = sanitizeRawHtmlBlocks(cleaned as AnyBlock[]) as BlockInstance[];
   return { ok: true, blocks: sanitized, rawHtmlChanged: true };
+}
+
+// A reusable block's config is one block's config (a Rich text one carries editor HTML).
+export function sanitizeReusableBlockConfig(type: string, config: Record<string, unknown>): Record<string, unknown> {
+  return sanitizeRichTextBlocks([{ id: 'reusable', type, config }])[0]!.config;
 }

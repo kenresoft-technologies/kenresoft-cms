@@ -10,6 +10,7 @@ import { buildBodies, buildDesignBodies, parseComposeRequest } from '../../lib/e
 import { getEmailSender, isEmailProviderConfigured } from '../../lib/email';
 import { createOpenApiApp } from '../../lib/openapi';
 import { sanitizeEmailHtml } from '../../lib/raw-html-sanitizer';
+import { adminEmailRateLimit } from '../../middleware/admin-email-rate-limit';
 import { requireRole } from '../../middleware/require-role';
 import type { Bindings } from '../../lib/env';
 import type { AuthedVariables } from '../../middleware/require-session';
@@ -45,7 +46,7 @@ emailRoute.openapi(
 // Multipart (or JSON) — a plain route with a docs-only registerPath, like media upload.
 // Sends from Settings' configured sender identity (falling back to EMAIL_FROM), with Reply-To
 // pointing at the staff member's real mailbox. No mailbox access of any kind is needed.
-emailRoute.post('/send', requireRole('admin', 'editor'), async (c) => {
+emailRoute.post('/send', requireRole('admin', 'editor'), adminEmailRateLimit, async (c) => {
   if (!isEmailProviderConfigured(c.env)) {
     return c.json({ error: 'This deployment has no email provider configured.' }, 400);
   }

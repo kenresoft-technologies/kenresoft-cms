@@ -29,7 +29,14 @@ export const upsertSettingsSchema = z.object({
 
 export const sendAdminEmailSchema = z.object({
   to: z.string().email(),
-  subject: z.string().trim().min(1).max(300),
+  // No line breaks: a subject is a mail header, and CR/LF in one is the classic header-injection
+  // vector (e.g. smuggling a Bcc line).
+  subject: z
+    .string()
+    .trim()
+    .min(1)
+    .max(300)
+    .refine((value) => !/[\r\n]/.test(value), 'Subject cannot contain line breaks'),
   // Designed templates (tables + inline styles) are large; providers cap the whole message anyway.
   bodyHtml: z.string().min(1).max(300_000),
   // Defaults to the sending staff member's own email.

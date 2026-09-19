@@ -34,6 +34,7 @@ import { deleteMediaIfUnreferenced } from '../../lib/media-service';
 import { createOpenApiApp } from '../../lib/openapi';
 import { parseSubmissionRequestBody, submitForm } from '../../lib/submit-form';
 import { requireFormsAccess } from '../../middleware/require-forms-access';
+import { adminEmailRateLimit } from '../../middleware/admin-email-rate-limit';
 import { requireRole } from '../../middleware/require-role';
 import {
   createFormField,
@@ -653,7 +654,7 @@ formsRoute.openapi(
 
 // Multipart (or JSON) so a reply can carry attachments — a plain route with a docs-only
 // registerPath below, like media upload. Sends via the same infrastructure as the Email page.
-formsRoute.post('/:id/submissions/:submissionId/replies', async (c) => {
+formsRoute.post('/:id/submissions/:submissionId/replies', adminEmailRateLimit, async (c) => {
   const id = c.req.param('id');
   const submissionId = c.req.param('submissionId');
   const db = getDb(c);

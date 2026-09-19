@@ -37,6 +37,8 @@ export function EmailPage() {
 
   const [to, setTo] = useState('');
   const [subject, setSubject] = useState('');
+  // Blank = replies go to the signed-in staff member's own address (the server's default).
+  const [replyTo, setReplyTo] = useState('');
   const [bodyHtml, setBodyHtml] = useState('');
   const [attachments, setAttachments] = useState(emptyAttachments);
   // 'design' = paste a finished HTML template and send it with its layout intact (admin/owner only).
@@ -60,12 +62,14 @@ export function EmailPage() {
       await sendEmail.mutateAsync({
         to: to.trim(),
         subject: subject.trim(),
+        ...(replyTo.trim() !== '' ? { replyTo: replyTo.trim() } : {}),
         bodyHtml,
         ...attachments,
         ...(designMode ? { designHtml: true } : {}),
       });
       toast.success(`Email sent to ${to.trim()}`);
       setTo('');
+      setReplyTo('');
       setSubject('');
       setBodyHtml('');
       setAttachments(emptyAttachments);
@@ -88,6 +92,8 @@ export function EmailPage() {
         </p>
       ) : null}
 
+      <EmailSenderSettings settings={settings ?? null} readOnly={!isAdmin} />
+
       <Card>
         <CardHeader>
           <CardTitle className="text-sm">New email</CardTitle>
@@ -96,8 +102,18 @@ export function EmailPage() {
           <div className="flex flex-col gap-1.5">
             <Label className="text-xs text-muted-foreground">From</Label>
             <p className="truncate rounded-md border bg-muted/30 px-3 py-2 text-sm">{fromLabel}</p>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="email-reply-to">Reply-To</Label>
+            <Input
+              id="email-reply-to"
+              type="email"
+              value={replyTo}
+              placeholder={session?.user.email ?? 'your email address'}
+              onChange={(event) => setReplyTo(event.target.value)}
+            />
             <p className="text-xs text-muted-foreground">
-              Replies go to {session?.user.email ?? 'your email address'}. Change the sender below.
+              Optional. Leave blank to receive replies at {session?.user.email ?? 'your own address'}.
             </p>
           </div>
           <div className="flex flex-col gap-1.5">
@@ -158,8 +174,6 @@ export function EmailPage() {
           </div>
         </CardContent>
       </Card>
-
-      <EmailSenderSettings settings={settings ?? null} readOnly={!isAdmin} />
     </div>
   );
 }

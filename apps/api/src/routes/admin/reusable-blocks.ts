@@ -10,6 +10,7 @@ import type { ReusableBlock } from '@kenresoft-cms/contracts';
 import { z } from 'zod';
 
 import { recordAudit } from '../../lib/audit';
+import { sanitizeReusableBlockConfig } from '../../lib/raw-html-guard';
 import { invalidateAllPageCaches } from '../../lib/page-cache';
 import { getDb } from '../../lib/db';
 import { createOpenApiApp } from '../../lib/openapi';
@@ -106,7 +107,10 @@ reusableBlocksRoute.openapi(
     const db = getDb(c);
     const configError = validateReusableBlockConfig(input.type, input.config);
     if (configError) return c.json({ error: configError }, 400);
-    const block = await createReusableBlock(db, input);
+    const block = await createReusableBlock(db, {
+      ...input,
+      config: sanitizeReusableBlockConfig(input.type, input.config),
+    });
     await recordAudit(db, {
       actorUserId: c.get('user').id,
       action: 'reusable_block.created',
@@ -188,7 +192,10 @@ reusableBlocksRoute.openapi(
     const configError = validateReusableBlockConfig(mergedType, mergedConfig);
     if (configError) return c.json({ error: configError }, 400);
 
-    const block = await updateReusableBlock(db, id, input);
+    const block = await updateReusableBlock(db, id, {
+      ...input,
+      ...(input.config ? { config: sanitizeReusableBlockConfig(mergedType, input.config) } : {}),
+    });
     c.executionCtx.waitUntil(invalidateAllPageCaches(db));
     c.executionCtx.waitUntil(invalidatePublicReusableBlockCache(id));
     await recordAudit(db, {

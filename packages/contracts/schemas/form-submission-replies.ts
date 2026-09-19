@@ -24,7 +24,12 @@ export const formSubmissionReplySchema = z.object({
 
 export const createFormSubmissionReplySchema = z.object({
   to: z.string().email(),
-  subject: z.string().min(1).max(300),
+  // No line breaks: a subject is a mail header (header-injection guard).
+  subject: z
+    .string()
+    .min(1)
+    .max(300)
+    .refine((value) => !/[\r\n]/.test(value), 'Subject cannot contain line breaks'),
   bodyHtml: z.string().min(1).max(20000),
 });
 

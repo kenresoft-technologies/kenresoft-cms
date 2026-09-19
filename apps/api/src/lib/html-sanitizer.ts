@@ -92,6 +92,14 @@ export function tokenize(html: string): (TagToken | TextToken)[] {
   const tokens: (TagToken | TextToken)[] = [];
   let i = 0;
   let textStart = 0;
+  // Total characters the tag scanner may examine across the whole input. A well-formed document
+  // scans each character about once (<= html.length), so this never affects real content; it
+  // only stops adversarial input (thousands of unterminated `<a "` fragments, each of which would
+  // otherwise rescan to the end of the string — quadratic time, measured at ~60s for 100KB).
+  // When exhausted, the rest of the input is treated as plain text, which the caller escapes.
+  let scanBudget = 2_000_000;
+  // `-->` missing from position i means it is missing from every later position too.
+  let noCommentEnd = false;
 
   while (i < html.length) {
     if (html[i] !== '<') {
@@ -99,9 +107,17 @@ export function tokenize(html: string): (TagToken | TextToken)[] {
       continue;
     }
 
+    // Only `<` followed by a letter, `/`, `!` or `?` can start anything tag-like; otherwise (`<<`,
+    // `< b`, `<3`) it is plain text and needs no scanning at all.
+    const next = html[i + 1];
+    if (next === undefined || !/[a-zA-Z/!?]/.test(next)) {
+      i++;
+      continue;
+    }
+
     // A real comment ends at `-->` (not the first `>`), so a `>` or a tag-looking string inside
     // it can never leak out as text or start a tag.
-    if (html.startsWith('<!--', i)) {
+    if (!noCommentEnd && html.startsWith('<!--', i)) {
       const commentEnd = html.indexOf('-->', i + 4);
       if (commentEnd >= 0) {
         if (textStart < i) tokens.push({ type: 'text', value: html.slice(textStart, i) });
@@ -109,12 +125,18 @@ export function tokenize(html: string): (TagToken | TextToken)[] {
         textStart = i;
         continue;
       }
+      noCommentEnd = true;
     }
 
     const tagStart = i;
     let j = i + 1;
     let quote: '"' | "'" | null = null;
     while (j < html.length) {
+      if (--scanBudget < 0) {
+        // Budget exhausted: everything from here on is text.
+        if (textStart < html.length) tokens.push({ type: 'text', value: html.slice(textStart) });
+        return tokens;
+      }
       const ch = html[j];
       if (quote) {
         if (ch === quote) quote = null;

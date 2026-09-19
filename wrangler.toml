@@ -89,6 +89,14 @@ name = "COMMERCE_CUSTOMER_AUTH_RATE_LIMITER"
 namespace_id = "1005"
 simple = { limit = 10, period = 60 }
 
+[[ratelimits]]
+# Admin-composed email (Email page and submission replies): 10 sends per 60s per staff user
+# (keyed by user id, not IP). Caps the damage a compromised or careless account can do — mail
+# spam, or provider quota/reputation burn — without getting in the way of normal use.
+name = "ADMIN_EMAIL_RATE_LIMITER"
+namespace_id = "1006"
+simple = { limit = 10, period = 60 }
+
 [triggers]
 # Scheduled publishing (§13) — checks for draft entries whose publishAt has elapsed.
 crons = ["*/5 * * * *"]

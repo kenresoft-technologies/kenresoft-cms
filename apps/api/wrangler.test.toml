@@ -63,3 +63,8 @@ BETTER_AUTH_URL = "http://localhost:8787"
 # layer. Never a real deployment value (getEmailSender falls back to the noop sender for
 # anything but "cloudflare"/"resend"/"test").
 EMAIL_PROVIDER = "test"
+
+[[ratelimits]]
+name = "ADMIN_EMAIL_RATE_LIMITER"
+namespace_id = "1006"
+simple = { limit = 10, period = 60 }
