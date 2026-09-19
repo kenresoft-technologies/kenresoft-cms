@@ -129,6 +129,10 @@ export const router = createBrowserRouter([
         }),
       },
       {
+        path: 'email',
+        lazy: async () => ({ Component: (await import('@/pages/EmailPage')).EmailPage }),
+      },
+      {
         path: 'settings',
         lazy: async () => ({ Component: (await import('@/pages/SettingsPage')).SettingsPage }),
       },

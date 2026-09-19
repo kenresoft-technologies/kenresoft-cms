@@ -50,3 +50,44 @@ describe('admin email sending identity', () => {
     expect(bad.status).toBe(400);
   });
 });
+
+describe('admin email attachments', () => {
+  it('attaches a verified file, rejects unsupported bytes, and enforces the file-count limit', async () => {
+    const cookie = await signUpVerifiedAndGetCookie('attacher@example.test', {
+      password: 'correct horse battery staple',
+      name: 'Attacher',
+    });
+    clearTestEmails();
+    const send = (form: FormData) =>
+      SELF.fetch('http://localhost/api/v1/admin/email/send', { method: 'POST', headers: { cookie }, body: form });
+    const base = () => {
+      const form = new FormData();
+      form.set('to', 'a@example.test');
+      form.set('subject', 'Docs');
+      form.set('bodyHtml', '<p>See attached</p>');
+      return form;
+    };
+
+    const pdf = new File([new TextEncoder().encode('%PDF-1.4 fake body')], 'report.pdf', { type: 'text/plain' });
+    const ok = base();
+    ok.append('files', pdf);
+    expect((await send(ok)).status).toBe(200);
+    const sent = getTestEmails().at(-1);
+    expect(sent?.attachments?.[0]?.filename).toBe('report.pdf');
+    expect(sent?.attachments?.[0]?.contentType).toBe('application/pdf');
+    expect(sent?.html).toContain('See attached');
+    expect(sent?.text).toContain('See attached');
+
+    const bad = base();
+    bad.append('files', new File([new TextEncoder().encode('MZ not allowed')], 'evil.pdf', { type: 'application/pdf' }));
+    const badRes = await send(bad);
+    expect(badRes.status).toBe(400);
+
+    const many = base();
+    for (let i = 0; i < 11; i++) many.append('files', pdf);
+    expect((await send(many)).status).toBe(400);
+
+    const limits = await SELF.fetch('http://localhost/api/v1/admin/email/limits', { headers: { cookie } });
+    expect((await limits.json<{ configured: boolean }>()).configured).toBe(true);
+  });
+});
