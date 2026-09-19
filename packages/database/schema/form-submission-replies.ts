@@ -25,6 +25,11 @@ export const formSubmissionReplies = sqliteTable(
     // (form-notifications.ts-style multipart email) is derived from this at send time, not
     // stored separately, since it's always mechanically re-derivable from the HTML.
     bodyHtml: text('body_html').notNull(),
+    // Metadata only (filename/type/size/source) for attachments sent with this reply — never the
+    // binary. Media Library attachments also carry their mediaId.
+    attachments: text('attachments', { mode: 'json' }).$type<
+      { filename: string; contentType: string; size: number; source: 'upload' | 'media'; mediaId?: string }[]
+    >(),
     createdAt: integer('created_at', { mode: 'timestamp' })
       .notNull()
       .default(sql`(unixepoch())`),

@@ -1,0 +1,1 @@
+ALTER TABLE `form_submission_replies` ADD `attachments` text;
