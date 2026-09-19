@@ -23,6 +23,12 @@ export const settings = sqliteTable('settings', {
   // e.g. "https://mysite.com{route}". Kept as its own column rather than overloading
   // `previewUrl` with two incompatible placeholder shapes.
   pagePreviewUrl: text('page_preview_url'),
+  // Optional From identity for admin-initiated emails (form replies, the admin "send email"
+  // route) — never for system mail (password reset, verification), which stays on EMAIL_FROM.
+  // The domain must be verified/onboarded with the configured EMAIL_PROVIDER. Null = use
+  // EMAIL_FROM as before.
+  emailSenderName: text('email_sender_name'),
+  emailSenderEmail: text('email_sender_email'),
   createdAt: integer('created_at', { mode: 'timestamp' })
     .notNull()
     .default(sql`(unixepoch())`),

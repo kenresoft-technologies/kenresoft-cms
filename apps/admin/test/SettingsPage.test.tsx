@@ -70,6 +70,8 @@ describe('SettingsPage', () => {
         featureFlags: null,
         previewUrl: null,
         pagePreviewUrl: null,
+        emailSenderName: null,
+        emailSenderEmail: null,
       }),
     );
   });

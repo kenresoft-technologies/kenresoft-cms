@@ -28,6 +28,8 @@ export function toSettingsInput(settings: Settings | null): SettingsInput {
     featureFlags: settings?.featureFlags ?? null,
     previewUrl: settings?.previewUrl ?? null,
     pagePreviewUrl: settings?.pagePreviewUrl ?? null,
+    emailSenderName: settings?.emailSenderName ?? null,
+    emailSenderEmail: settings?.emailSenderEmail ?? null,
   };
 }
 

@@ -18,6 +18,8 @@ export type SettingsInput = {
   featureFlags: Record<string, boolean> | null;
   previewUrl: string | null;
   pagePreviewUrl: string | null;
+  emailSenderName: string | null;
+  emailSenderEmail: string | null;
 };
 
 export function useUpdateSettings() {
