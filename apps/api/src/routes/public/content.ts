@@ -3,6 +3,8 @@ import { entrySchema } from '@kenresoft-cms/contracts';
 import type { Entry, EntryStatus } from '@kenresoft-cms/contracts';
 import { z } from 'zod';
 
+import { loadRichTextFields, sanitizeEntryData } from '../../lib/entry-html';
+import type { RichTextFieldMap } from '../../lib/entry-html';
 import { getDb } from '../../lib/db';
 import type { Bindings } from '../../lib/env';
 import { createOpenApiApp } from '../../lib/openapi';
@@ -17,13 +19,13 @@ const notFoundSchema = z.object({ error: z.string() });
 const contentTypeParamSchema = z.object({ contentType: z.string().min(1) });
 const entryParamSchema = z.object({ contentType: z.string().min(1), slug: z.string().min(1) });
 
-function toEntry(row: DbEntry): Entry {
+function toEntry(row: DbEntry, richText: RichTextFieldMap): Entry {
   return {
     id: row.id,
     contentTypeId: row.contentTypeId,
     slug: row.slug,
     status: row.status as EntryStatus,
-    data: row.data,
+    data: sanitizeEntryData(richText, row.contentTypeId, row.data),
     publishAt: row.publishAt ? row.publishAt.toISOString() : null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
@@ -75,7 +77,8 @@ publicContentRoute.openapi(
     }
 
     const entries = await listPublishedEntriesForContentType(db, contentType.id);
-    return c.json(entries.map(toEntry), 200);
+    const richText = await loadRichTextFields(db);
+    return c.json(entries.map((row) => toEntry(row, richText)), 200);
   },
 );
 
@@ -110,6 +113,6 @@ publicContentRoute.openapi(
       return c.json({ error: 'Entry not found' }, 404);
     }
 
-    return c.json(toEntry(entry), 200);
+    return c.json(toEntry(entry, await loadRichTextFields(db)), 200);
   },
 );
