@@ -30,9 +30,13 @@ export const upsertSettingsSchema = z.object({
 export const sendAdminEmailSchema = z.object({
   to: z.string().email(),
   subject: z.string().trim().min(1).max(300),
-  bodyHtml: z.string().min(1).max(100_000),
+  // Designed templates (tables + inline styles) are large; providers cap the whole message anyway.
+  bodyHtml: z.string().min(1).max(300_000),
   // Defaults to the sending staff member's own email.
   replyTo: z.string().email().optional(),
+  // 'Design HTML' mode: send the pasted template with layout preserved (admin/owner only). Accepts
+  // a real boolean (JSON) or the strings multipart forms produce.
+  designHtml: z.union([z.boolean(), z.enum(['true', 'false'])]).optional(),
 });
 
 export type Settings = z.infer<typeof settingsSchema>;

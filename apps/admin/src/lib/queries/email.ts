@@ -28,15 +28,18 @@ export interface ComposedEmail {
   bodyHtml: string;
   files: File[];
   mediaIds: string[];
+  // 'Design HTML' mode (admin/owner only): send the pasted template with its layout preserved.
+  designHtml?: boolean;
 }
 
 // One multipart shape for every admin-composed email (this page and submission replies) —
 // the server does all attachment validation and provider-specific encoding.
-export function buildComposeFormData({ to, subject, bodyHtml, files, mediaIds }: ComposedEmail): FormData {
+export function buildComposeFormData({ to, subject, bodyHtml, files, mediaIds, designHtml }: ComposedEmail): FormData {
   const form = new FormData();
   form.append('to', to);
   form.append('subject', subject);
   form.append('bodyHtml', bodyHtml);
+  if (designHtml) form.append('designHtml', 'true');
   for (const file of files) form.append('files', file);
   for (const id of mediaIds) form.append('mediaIds', id);
   return form;
