@@ -10,7 +10,6 @@ export const settings = sqliteTable('settings', {
     .primaryKey()
     .$defaultFn(() => crypto.randomUUID()),
   name: text('name').notNull(),
-  corsOrigin: text('cors_origin'),
   featureFlags: text('feature_flags', { mode: 'json' }).$type<Record<string, boolean>>(),
   // Live Preview's URL template for the public frontend, e.g. "https://mysite.com/{contentType}/
   // {slug}" — the CMS is frontend-agnostic (docs/ARCHITECTURE.md §15) and has no way to know an

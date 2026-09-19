@@ -434,72 +434,8 @@ function LivePreviewSection({ settings, readOnly }: SectionProps) {
 }
 
 export function ApiSection({ settings, readOnly }: SectionProps) {
-  const updateSettings = useUpdateSettings();
-
-  const [corsOrigin, setCorsOrigin] = useState(settings?.corsOrigin ?? '');
-  const [savedCorsOrigin, setSavedCorsOrigin] = useState(settings?.corsOrigin ?? '');
-  const [error, setError] = useState<string | null>(null);
-
-  const dirty = corsOrigin !== savedCorsOrigin;
-
-  async function handleSave() {
-    setError(null);
-    const trimmed = corsOrigin.trim();
-    if (trimmed && !/^https?:\/\/.+/i.test(trimmed)) {
-      setError('CORS origin must be a full URL starting with http:// or https://');
-      return;
-    }
-
-    try {
-      await updateSettings.mutateAsync({ ...toSettingsInput(settings), corsOrigin: trimmed || null });
-      setCorsOrigin(trimmed);
-      setSavedCorsOrigin(trimmed);
-      toast.success('Settings saved');
-    } catch (err) {
-      const message = err instanceof ApiError ? err.message : 'Failed to save settings';
-      setError(message);
-      toast.error(message);
-    }
-  }
-
-  function handleDiscard() {
-    setCorsOrigin(savedCorsOrigin);
-    setError(null);
-  }
-
   return (
     <div className="flex flex-col gap-6">
-      <SettingsSection
-        title="API access"
-        description="Controls how external origins are allowed to call this deployment's API."
-        footer={
-          <SettingsSaveBar
-            dirty={dirty}
-            pending={updateSettings.isPending}
-            readOnly={readOnly}
-            onSave={() => void handleSave()}
-            onDiscard={handleDiscard}
-          />
-        }
-      >
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="settings-cors-origin">CORS origin</Label>
-          <Input
-            id="settings-cors-origin"
-            placeholder="https://cms.example.com"
-            disabled={readOnly}
-            value={corsOrigin}
-            onChange={(event) => setCorsOrigin(event.target.value)}
-          />
-          <p className="text-sm text-muted-foreground">
-            Informational reference only — the actual allow-list is configured via the
-            CORS_ORIGINS environment binding (§9).
-          </p>
-        </div>
-
-        {error ? <p className="text-sm text-destructive">{error}</p> : null}
-      </SettingsSection>
-
       <SettingsSection title="API reference" description="Live documentation for this deployment's REST API.">
         <div className="flex flex-col gap-3">
           <a
