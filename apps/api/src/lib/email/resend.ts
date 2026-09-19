@@ -21,7 +21,7 @@ export function createResendEmailSender(env: Bindings): EmailSender {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          from: env.EMAIL_FROM,
+          from: message.from ?? env.EMAIL_FROM,
           to: message.to,
           subject: message.subject,
           text: message.text,

@@ -330,6 +330,13 @@
       "when": 1789675764023,
       "tag": "0046_sticky_pandemic",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "6",
+      "when": 1789793574376,
+      "tag": "0047_dear_synch",
+      "breakpoints": true
     }
   ]
 }
