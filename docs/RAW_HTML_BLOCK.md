@@ -38,7 +38,16 @@ somewhere untrusted).
 
 Render raw blocks only from the public API's output. The Astro example does so with `set:html` in
 `RawHtmlBlock.astro`. If you write your own frontend, also consider a Content-Security-Policy on
-your site as a second layer — the CMS cannot enforce headers on a site it doesn't serve.
+your site as a second layer — the CMS cannot enforce headers on a site it doesn't serve. A sensible
+starting point for a site that renders CMS HTML (adjust the image host to where your media is
+served):
+
+```
+Content-Security-Policy: default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'self'; img-src 'self' https: data:
+```
+
+Rich text blocks and entry `rich_text` fields are sanitized by the API with the same sanitizer, so
+the same rule applies to them: render the public API's output, never a stored copy.
 
 ## Known limits
 

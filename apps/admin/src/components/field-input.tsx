@@ -190,7 +190,7 @@ function MediaField({ field, value, onChange }: FieldInputProps) {
               open={open}
               onOpenChange={setOpen}
               selectedId={selectedId}
-              onSelect={onChange}
+              onSelect={(id) => onChange(id)}
               trigger={
                 <Button type="button" variant="outline" size="sm">
                   {selected ? 'Change media' : 'Choose media'}

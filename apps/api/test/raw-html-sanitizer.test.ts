@@ -197,4 +197,15 @@ describe('tokenizer resource limits', () => {
       expect(out).toContain('x');
     }
   });
+
+  it('drops tracking pixels from emails but keeps real images', () => {
+    const html =
+      '<img src="https://t.example/p.gif" width="1" height="1">' +
+      '<img src="https://t.example/q.gif" style="width:1px;height:1px">' +
+      '<img src="https://t.example/logo.png" width="120" height="40">';
+    const out = sanitizeEmailHtml(html);
+    expect(out).not.toContain('p.gif');
+    expect(out).not.toContain('q.gif');
+    expect(out).toContain('logo.png');
+  });
 });

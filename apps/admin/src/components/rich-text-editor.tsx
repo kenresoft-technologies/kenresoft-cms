@@ -25,7 +25,6 @@ import {
   Heading3,
   Heading4,
   Highlighter,
-  ImageOff,
   Image as ImageIcon,
   Info,
   Italic,
@@ -34,10 +33,12 @@ import {
   ListOrdered,
   ListTodo,
   Maximize2,
+  Minus,
   Minimize2,
   Pencil,
   Quote,
   Redo,
+  RemoveFormatting,
   Rows3,
   Strikethrough,
   Table2,
@@ -47,10 +48,10 @@ import {
 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { htmlToMarkdown, markdownToHtml } from '@/lib/rich-text-markdown';
-import { mediaFileUrl, useMediaList } from '@/lib/queries/media';
+import { mediaFileUrl } from '@/lib/queries/media';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { MediaPickerDialog } from '@/components/media-picker-dialog';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
@@ -164,57 +165,29 @@ function LinkButton({ editor }: { editor: Editor }) {
   );
 }
 
-// Reuses the same Media Library the `media`-type field's picker draws from (field-input.tsx's
-// MediaField) rather than a separate upload flow — inserting a rich-text image is choosing
-// among files already uploaded, same as any other media reference in this CMS.
+// Inserting a rich-text image is choosing among files already in the Media Library — the same
+// roomy picker every other media reference in the CMS uses.
 function ImageButton({ editor }: { editor: Editor }) {
   const [open, setOpen] = useState(false);
-  const { data: mediaItems } = useMediaList();
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <ToolbarButton label="Image" onClick={() => setOpen(true)}>
-        <ImageIcon />
-      </ToolbarButton>
-      <DialogContent size="md">
-        <DialogHeader>
-          <DialogTitle>Insert image</DialogTitle>
-        </DialogHeader>
-        {mediaItems && mediaItems.length > 0 ? (
-          <div className="grid max-h-96 grid-cols-3 content-start gap-3 overflow-y-auto">
-            {mediaItems.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => {
-                  editor
-                    .chain()
-                    .focus()
-                    .setImage({ src: mediaFileUrl(item.id), alt: item.altText ?? item.filename })
-                    .run();
-                  setOpen(false);
-                }}
-                className="relative block aspect-square w-full overflow-hidden rounded-md ring-2 ring-transparent hover:ring-primary"
-              >
-                {item.width && item.height ? (
-                  <img
-                    src={mediaFileUrl(item.id)}
-                    alt={item.altText ?? item.filename}
-                    className="absolute inset-0 size-full object-cover"
-                  />
-                ) : (
-                  <div className="absolute inset-0 flex items-center justify-center bg-muted">
-                    <ImageOff className="size-5 text-muted-foreground" />
-                  </div>
-                )}
-              </button>
-            ))}
-          </div>
-        ) : (
-          <p className="text-sm text-muted-foreground">No media uploaded yet — upload one from the Media Library first.</p>
-        )}
-      </DialogContent>
-    </Dialog>
+    <MediaPickerDialog
+      open={open}
+      onOpenChange={setOpen}
+      title="Insert image"
+      onSelect={(mediaId, item) => {
+        editor
+          .chain()
+          .focus()
+          .setImage({ src: mediaFileUrl(mediaId), alt: item.altText ?? item.filename })
+          .run();
+      }}
+      trigger={
+        <ToolbarButton label="Image" onClick={() => setOpen(true)}>
+          <ImageIcon />
+        </ToolbarButton>
+      }
+    />
   );
 }
 
@@ -362,6 +335,18 @@ function Toolbar({ editor }: { editor: Editor }) {
       <LinkButton editor={editor} />
       <ImageButton editor={editor} />
       <TableButtons editor={editor} />
+
+      <ToolbarSeparator />
+
+      <ToolbarButton label="Horizontal rule" onClick={() => editor.chain().focus().setHorizontalRule().run()}>
+        <Minus />
+      </ToolbarButton>
+      <ToolbarButton
+        label="Clear formatting"
+        onClick={() => editor.chain().focus().unsetAllMarks().clearNodes().run()}
+      >
+        <RemoveFormatting />
+      </ToolbarButton>
 
       <ToolbarSeparator />
 
@@ -548,15 +533,22 @@ export function RichTextEditor({ value, onChange, placeholder }: RichTextEditorP
           to fit its content instead of respecting flex-1's height and actually scrolling —
           the classic flex-child-with-overflow gotcha, invisible until fullscreen made this
           container's height fixed instead of intrinsic. */}
-      <div className={cn('flex flex-1 flex-col', fullscreen ? 'min-h-0' : 'max-h-[28rem] overflow-y-auto')}>
+      <div className={cn('flex flex-1 flex-col', fullscreen ? 'min-h-0 overflow-y-auto' : 'h-80 max-h-[80vh] min-h-40 resize-y overflow-y-auto')}>
         {mode === 'write' ? (
-          <EditorContent editor={editor} className={cn(fullscreen && 'flex-1 min-h-0 overflow-y-auto')} />
+          <EditorContent
+            editor={editor}
+            className={cn('flex-1 cursor-text', fullscreen && 'min-h-0 overflow-y-auto')}
+            onClick={(event) => {
+              // Clicking the empty area below the text should still put the cursor in the editor.
+              if (event.target === event.currentTarget) editor.commands.focus('end');
+            }}
+          />
         ) : null}
         {mode === 'preview' ? (
           <div
             className={cn(
               'ProseMirror px-2.5 py-2 text-base md:text-sm',
-              fullscreen ? 'flex-1 min-h-0 overflow-y-auto' : 'min-h-32',
+              'min-h-32 flex-1',
             )}
             dangerouslySetInnerHTML={{ __html: editor.getHTML() }}
           />
@@ -570,7 +562,7 @@ export function RichTextEditor({ value, onChange, placeholder }: RichTextEditorP
             placeholder="<h2>Paste HTML here</h2>"
             className={cn(
               'resize-none bg-transparent px-2.5 py-2 font-mono text-sm outline-none',
-              fullscreen ? 'flex-1 min-h-0' : 'min-h-32',
+              'min-h-32 flex-1',
             )}
           />
         ) : null}
@@ -581,7 +573,7 @@ export function RichTextEditor({ value, onChange, placeholder }: RichTextEditorP
             spellCheck={false}
             className={cn(
               'resize-none bg-transparent px-2.5 py-2 font-mono text-sm outline-none',
-              fullscreen ? 'flex-1 min-h-0' : 'min-h-32',
+              'min-h-32 flex-1',
             )}
           />
         ) : null}

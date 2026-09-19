@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Send } from 'lucide-react';
+import { Link } from 'react-router';
 import { toast } from 'sonner';
 
 import { ApiError } from '@/lib/api-client';
@@ -9,10 +10,19 @@ import { useSettings } from '@/lib/queries/settings';
 import { roleAtLeast, type UserRole } from '@/lib/types';
 import { EmailAttachments } from '@/components/email-attachments';
 import { emptyAttachments } from '@/lib/queries/email';
-import { EmailSenderSettings } from '@/components/email-sender-settings';
 import { PageHeader } from '@/components/page-header';
 import { SanitizedHtmlPreview } from '@/components/sanitized-html-preview';
 import { RichTextEditor } from '@/components/rich-text-editor';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -41,6 +51,7 @@ export function EmailPage() {
   const [replyTo, setReplyTo] = useState('');
   const [bodyHtml, setBodyHtml] = useState('');
   const [attachments, setAttachments] = useState(emptyAttachments);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   // 'design' = paste a finished HTML template and send it with its layout intact (admin/owner only).
   const [mode, setMode] = useState<'message' | 'design'>('message');
   const designMode = isAdmin && mode === 'design';
@@ -92,7 +103,6 @@ export function EmailPage() {
         </p>
       ) : null}
 
-      <EmailSenderSettings settings={settings ?? null} readOnly={!isAdmin} />
 
       <Card>
         <CardHeader>
@@ -102,6 +112,15 @@ export function EmailPage() {
           <div className="flex flex-col gap-1.5">
             <Label className="text-xs text-muted-foreground">From</Label>
             <p className="truncate rounded-md border bg-muted/30 px-3 py-2 text-sm">{fromLabel}</p>
+            {isAdmin ? (
+              <p className="text-xs text-muted-foreground">
+                Change the sender in{' '}
+                <Link to="/profile" className="text-primary hover:underline">
+                  Profile → Email sender
+                </Link>
+                .
+              </p>
+            ) : null}
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="email-reply-to">Reply-To</Label>
@@ -152,7 +171,7 @@ export function EmailPage() {
                 value={bodyHtml}
                 spellCheck={false}
                 placeholder="Paste the full HTML of your email template (for example exported from Canva)"
-                className="min-h-48 font-mono text-sm"
+                className="field-sizing-fixed h-72 max-h-[28rem] resize-y overflow-y-auto font-mono text-sm"
                 onChange={(event) => setBodyHtml(event.target.value)}
               />
               <p className="text-xs text-muted-foreground">
@@ -167,13 +186,31 @@ export function EmailPage() {
           )}
           <EmailAttachments value={attachments} onChange={setAttachments} />
           <div>
-            <Button type="button" disabled={!canSend} onClick={() => void handleSend()}>
+            <Button type="button" disabled={!canSend} onClick={() => (designMode ? setConfirmOpen(true) : void handleSend())}>
               <Send />
               {sendEmail.isPending ? 'Sending…' : 'Send email'}
             </Button>
           </div>
         </CardContent>
       </Card>
+
+      {/* A designed email is sent exactly as pasted (styled, image-rich), which makes it convincing
+          to a recipient — so it always needs a deliberate second step naming who gets it and from what. */}
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Send this designed email?</AlertDialogTitle>
+            <AlertDialogDescription>
+              It will be sent to {to.trim() || 'the recipient'} from {fromLabel}, looking exactly like the
+              preview. Only send content you are authorised to send in this organisation&apos;s name.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void handleSend()}>Send</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
