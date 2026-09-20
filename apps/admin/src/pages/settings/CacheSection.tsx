@@ -48,7 +48,7 @@ export function CacheSection({ readOnly }: { readOnly: boolean }) {
         toast.success(`Purged ${result.totalItems} ${result.totalItems === 1 ? 'cache key' : 'cache keys'} from the edge cache`);
       } else {
         toast.info(
-          `Purged ${result.processedItems} of ${result.totalItems} cache keys so far — the rest will finish automatically in the background`,
+          `Purged ${result.processedItems} of ${result.totalItems} cache keys so far. The rest will finish in the background`,
         );
       }
     } catch (err) {
@@ -60,17 +60,17 @@ export function CacheSection({ readOnly }: { readOnly: boolean }) {
     <div className="flex flex-col gap-6">
       <SettingsSection
         title="Public API cache"
-        description="Cloudflare's edge cache for the unauthenticated public API (§12) — invalidated automatically on every relevant write."
+        description="Cloudflare's edge cache for the unauthenticated public API (§12). Cleared automatically on every relevant write."
       >
         <div className="grid gap-4 sm:grid-cols-2">
           <TtlTile label="Entries" value="5 minutes" />
-          <TtlTile label="Media files" value="1 year (immutable — no edit endpoint)" />
+          <TtlTile label="Media files" value="1 year (files can't be edited)" />
         </div>
       </SettingsSection>
 
       <SettingsSection
         title="Manual purge"
-        description="Re-derives and deletes the cache key for every published entry and media file, in bounded batches — for when you don't want to wait out the TTL above."
+        description="Re-derives and deletes the cache key for every published entry and media file, in batches. Use it when you don't want to wait for the TTL above."
       >
         {readOnly ? (
           <p className="text-sm text-muted-foreground">Only an admin can purge the cache.</p>

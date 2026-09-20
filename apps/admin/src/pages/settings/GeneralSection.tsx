@@ -66,7 +66,7 @@ function SiteBrandingSection({ readOnly }: { readOnly: boolean }) {
   return (
     <SettingsSection
       title="Site branding"
-      description="The public site's own name, tagline, and logo — exposed at GET /api/v1/public/settings/general."
+      description="The public site's own name, tagline, and logo. Exposed at GET /api/v1/public/settings/general."
       footer={
         <SettingsSaveBar
           dirty={dirty}
@@ -148,7 +148,7 @@ export function GeneralSection({ settings, readOnly }: SectionProps) {
     <div className="flex flex-col gap-6">
       <SettingsSection
         title="Deployment identity"
-        description="The identity of this deployment — used across the admin, never exposed to the public API."
+        description="The identity of this deployment. Used across the admin and never exposed to the public API."
         footer={
           <SettingsSaveBar
             dirty={dirty}

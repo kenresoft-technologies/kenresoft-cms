@@ -66,7 +66,7 @@ export function LoginPage() {
     const { data: sessionData } = await authClient.getSession();
     if (!sessionData) {
       setError(
-        "Signed in, but your browser blocked the session cookie. This happens when the admin and API are served from different sites and your browser blocks third-party/cross-site cookies — check your browser's cookie settings for this site, or use a same-site deployment.",
+        "You're signed in, but your browser blocked the session cookie. This happens when the admin and API run on different sites and your browser blocks cross-site cookies. Check your cookie settings for this site, or host both on the same site.",
       );
     }
   }
@@ -129,7 +129,7 @@ export function LoginPage() {
         : await authClient.twoFactor.verifyTotp({ code: twoFactorCode });
 
       if (authError) {
-        setError(authError.message ?? 'Invalid code — please try again.');
+        setError(authError.message ?? 'Invalid code. Try again.');
         return;
       }
 
@@ -183,8 +183,8 @@ export function LoginPage() {
             A Cloudflare-native, API-first content platform.
           </h1>
           <p className="text-lg text-primary-foreground/75">
-            Model content, manage entries and media, and publish to any frontend — Astro,
-            Next.js, or your own — through one clean REST API.
+            Model content, manage entries and media, and publish to any frontend through one REST API.
+            Works with Astro, Next.js, or your own site.
           </p>
         </div>
         <p className="relative text-sm text-primary-foreground/60">
@@ -213,14 +213,14 @@ export function LoginPage() {
                 <h2 className="text-2xl font-semibold tracking-tight">Verify your email</h2>
                 <p className="text-base text-muted-foreground">
                   Please verify your email address before signing in. We've sent a verification link to{' '}
-                  <span className="font-medium text-foreground">{email}</span> — check your inbox.
+                  <span className="font-medium text-foreground">{email}</span>. Check your inbox.
                 </p>
               </div>
 
               {resendState === 'sent' ? (
                 <div className="flex items-start gap-2.5 rounded-lg border border-success/25 bg-success/10 px-4 py-3 text-sm text-success">
                   <MailCheck className="mt-0.5 size-4 shrink-0" />
-                  <span>If that email needs verifying, we've sent a new link — check your inbox.</span>
+                  <span>If that email needs verifying, we've sent a new link. Check your inbox.</span>
                 </div>
               ) : (
                 <Button
@@ -307,7 +307,7 @@ export function LoginPage() {
                 </h2>
                 <p className="text-base text-muted-foreground">
                   {mode === 'sign-in'
-                    ? 'Welcome back — enter your credentials to continue.'
+                    ? 'Welcome back. Sign in to continue.'
                     : 'The first account created on this deployment becomes its admin.'}
                 </p>
               </div>

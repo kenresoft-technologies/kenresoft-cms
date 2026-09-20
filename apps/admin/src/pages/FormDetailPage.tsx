@@ -204,7 +204,7 @@ function EditFormDialog({
         <DialogHeader>
           <DialogTitle>Edit form</DialogTitle>
           <DialogDescription>
-            Re-slugging changes the public submission URL — anything currently posting to the old
+            Re-slugging changes the public submission URL. Anything posting to the old
             slug will need updating.
           </DialogDescription>
         </DialogHeader>
