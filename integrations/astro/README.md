@@ -222,7 +222,34 @@ response.
 
 Login, register, and account screens are ordinary source files in **your** Astro project, styled however you like. The CMS never renders them. See `examples/astro-site/src/pages/account/` for a complete set.
 
-### Set up
+### Recommended: same-origin proxy (works on every domain layout)
+
+By default the API's session cookie belongs to the API's own origin. Your site's server never sees it, so no server-side "is this visitor signed in?" checks, and browsers that block third-party cookies drop it entirely. The fix that works everywhere, including two unrelated `*.workers.dev` hosts, is to make the cookie first-party: your site forwards `/cms/*` to the API, and the browser only ever talks to your site.
+
+```ts
+// src/pages/cms/[...path].ts
+import type { APIRoute } from 'astro';
+import { createCmsProxy } from '@kenresoft-cms/astro';
+
+export const prerender = false;
+const proxy = createCmsProxy({ url: import.meta.env.PUBLIC_KENRESOFT_CMS_URL });
+export const ALL: APIRoute = ({ request }) => proxy(request);
+```
+
+```ts
+// browser code: talk to your own origin
+const cms = createKenresoftClient({ url: '/cms' });
+// server (SSR) code: talk to the API directly, forwarding the now first-party cookie
+const cms = createKenresoftClient({ url: import.meta.env.PUBLIC_KENRESOFT_CMS_URL, cookies: Astro.request.headers.get('cookie') });
+```
+
+- Only `/api/v1/auth/*`, `/api/v1/public/*` and `/api/plugins/*/public/*` are forwarded; the admin API is never reachable through the proxy.
+- Your site's origin must still be in the API's `CORS_ORIGINS` (better-auth checks the `Origin` header on the forwarded requests).
+- **Rate limits:** the API limits per client IP, and behind a proxy every request comes from the proxy. To keep visitors separate, run `wrangler secret put TRUSTED_PROXY_SECRET` on the API, and pass the same value as `trustedProxySecret` to `createCmsProxy` (read it from your platform's server-side env, never a `PUBLIC_` variable). The API only honors the forwarded IP when the secret matches; unset, nothing changes.
+
+### Direct mode (no proxy)
+
+Simpler, but browser-only sessions:
 
 ```ts
 // src/lib/browser-client.ts

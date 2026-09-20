@@ -44,4 +44,9 @@ export interface Bindings {
   // rather not expose its full API surface (including authenticated-route shapes) to anonymous
   // requests. See docs/DEPLOYMENT.md.
   API_DOCS_ENABLED?: string;
+  // Opt-in, for a frontend that proxies /cms/* to this API (@kenresoft-cms/astro's
+  // createCmsProxy). A Worker secret (`wrangler secret put TRUSTED_PROXY_SECRET`), also given to
+  // the proxy: a request presenting it may name the real visitor's IP for rate limiting.
+  // Unset by default — see lib/client-ip.ts.
+  TRUSTED_PROXY_SECRET?: string;
 }

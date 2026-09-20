@@ -109,6 +109,7 @@ export interface KenresoftClientConfig {
 }
 
 export { getPreviewToken } from './get-preview-token';
+export { createCmsProxy, isProxiedPathAllowed, type CmsProxyOptions } from './proxy';
 
 // Commerce (packages/plugin-ecommerce) types, hand-mirrored from that plugin's own Zod route
 // schemas rather than imported — unlike @kenresoft-cms/contracts, the plugin package isn't
