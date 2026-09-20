@@ -3,6 +3,9 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 import Alert from '../../components/ui/Alert.astro';
 
 const token = Astro.url.searchParams.get('token');
+// The default emailed link is Core's own: it verifies server-side and redirects back here with no
+// token (or `?error=...` on an invalid/expired link). `?token=` still works for a custom link.
+const linkError = Astro.url.searchParams.get('error');
 ---
 
 <BaseLayout title="Verify your email — Kenresoft CMS" noIndex>
@@ -11,10 +14,20 @@ const token = Astro.url.searchParams.get('token');
 
     {
       !token ? (
-        <Alert tone="error">
-          This link is missing its verification token. Use the link from your verification email, or
-          <a href="/account/settings">check your account settings</a> once signed in.
-        </Alert>
+        linkError ? (
+          <>
+            <Alert tone="error">
+              This verification link is invalid or has expired. Log in to request a new one from your{' '}
+              <a href="/account">account page</a>.
+            </Alert>
+            <p class="auth-links"><a href="/account/login">Log in</a></p>
+          </>
+        ) : (
+          <>
+            <Alert tone="success">Your email is verified.</Alert>
+            <p class="auth-links"><a href="/account/login">Log in</a></p>
+          </>
+        )
       ) : (
         <>
           <div id="verify-loading" class="loading-note">Verifying…</div>
@@ -70,7 +83,10 @@ const token = Astro.url.searchParams.get('token');
             resendButtonEl.disabled = true;
             resendStatusEl.textContent = 'Sending…';
             try {
-              await getBrowserClient().commerce.customerAuth.resendVerificationEmail({ email: customer.email });
+              await getBrowserClient().commerce.customerAuth.resendVerificationEmail({
+                email: customer.email,
+                callbackUrl: `${window.location.origin}/account/verify-email`,
+              });
               resendStatusEl.textContent = 'Sent — check your inbox.';
             } catch (resendErr) {
               resendStatusEl.textContent = resendErr instanceof KenresoftApiError ? resendErr.message : 'Could not send the email.';

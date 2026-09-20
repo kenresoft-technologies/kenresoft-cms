@@ -248,7 +248,11 @@ export interface RegisterCustomerOptions {
   email: string;
   password: string;
   name: string;
-  phone?: string | null;
+  /**
+   * Where the emailed verification link sends the customer once verified (their own site, e.g.
+   * `${origin}/account/verify-email`). Must be an origin in the deployment's CORS_ORIGINS.
+   */
+  callbackUrl?: string;
 }
 
 export interface LoginCustomerOptions {
@@ -258,6 +262,11 @@ export interface LoginCustomerOptions {
 
 export interface RequestCustomerPasswordResetOptions {
   email: string;
+  /**
+   * The customer's own reset page; the emailed link becomes `<redirectUrl>?token=...`. Must be an
+   * origin in the deployment's CORS_ORIGINS, otherwise the email falls back to the admin app's page.
+   */
+  redirectUrl?: string;
 }
 
 export interface ConfirmCustomerPasswordResetOptions {
@@ -271,6 +280,8 @@ export interface VerifyCustomerEmailOptions {
 
 export interface ResendCustomerVerificationEmailOptions {
   email: string;
+  /** Same meaning as RegisterCustomerOptions.callbackUrl. */
+  callbackUrl?: string;
 }
 
 export interface UpdateCustomerProfileOptions {
@@ -558,15 +569,20 @@ export interface KenresoftClient {
    */
   commerce: {
     /**
-     * Customer account registration/login/logout/password-reset/email-verification — the
-     * genuinely unauthenticated auth surface itself (packages/plugin-ecommerce/src/routes/
-     * customer-auth.ts). Separate from Core's own better-auth staff accounts entirely; a
-     * storefront customer and a CMS staff member are different identity systems.
+     * Customer account registration/login/logout/password-reset/email-verification. There is ONE
+     * identity system: these are thin wrappers over Core's own /api/v1/auth/* (better-auth) and
+     * /api/v1/public/password-reset/* routes — the very same accounts and sessions CMS staff use.
+     * A customer is simply an account with no CMS role, so signing up here can never confer CMS
+     * access, and the session cookie is the same one `commerce.customer`/cart/checkout read.
      */
     customerAuth: {
-      /** Throws KenresoftApiError (409) if that email is already registered. Signs the browser in on success. */
-      register(options: RegisterCustomerOptions): Promise<CommerceCustomer>;
-      /** Throws KenresoftApiError (401) for any invalid-credentials reason — deliberately identical whether the email exists, the password is wrong, or the account is disabled. */
+      /**
+       * Creates an account (no CMS access) and emails a verification link. The customer is NOT
+       * signed in until they verify their email, so this resolves without a session. Registering an
+       * already-registered email resolves identically (never reveals whether an account exists).
+       */
+      register(options: RegisterCustomerOptions): Promise<{ requiresEmailVerification: true }>;
+      /** Throws KenresoftApiError (401) for invalid credentials; (403) if the email isn't verified yet (a fresh verification email is sent). Resolves with the signed-in customer's profile. */
       login(options: LoginCustomerOptions): Promise<CommerceCustomer>;
       /** Idempotent — safe to call with no session. */
       logout(): Promise<void>;
@@ -574,7 +590,7 @@ export interface KenresoftClient {
       requestPasswordReset(options: RequestCustomerPasswordResetOptions): Promise<{ message: string }>;
       /** Throws KenresoftApiError (400) for an invalid/expired token. */
       confirmPasswordReset(options: ConfirmCustomerPasswordResetOptions): Promise<{ message: string }>;
-      /** Throws KenresoftApiError (400) for an invalid/expired token. */
+      /** For a site that builds its own verification link; throws KenresoftApiError for an invalid/expired token. (The default emailed link verifies server-side and redirects to `callbackUrl`.) */
       verifyEmail(options: VerifyCustomerEmailOptions): Promise<{ message: string }>;
       /** Always resolves with the same generic message regardless of whether the email matches an account or is already verified — never reveals either. */
       resendVerificationEmail(options: ResendCustomerVerificationEmailOptions): Promise<{ message: string }>;
@@ -587,7 +603,7 @@ export interface KenresoftClient {
       /** The current customer, or null with no valid session (never throws for that specific case). */
       get(): Promise<CommerceCustomer | null>;
       update(options: UpdateCustomerProfileOptions): Promise<CommerceCustomer>;
-      /** Throws KenresoftApiError (400) for an incorrect currentPassword. Revokes every other session. */
+      /** Core's better-auth change-password. Throws KenresoftApiError for an incorrect currentPassword. Revokes every other session. */
       changePassword(options: ChangeCustomerPasswordOptions): Promise<{ message: string }>;
       addresses: {
         list(): Promise<CommerceCustomerAddress[]>;
@@ -692,6 +708,35 @@ export function createKenresoftClient(config: KenresoftClientConfig): KenresoftC
 
     if (response.status === 204) return undefined as T;
     return (await response.json()) as T;
+  }
+
+  // Core's shared auth surface (better-auth, mounted at /api/v1/auth) — the ONE identity system
+  // customers and CMS staff both use. better-auth's error bodies are `{ code, message }`.
+  async function coreRequest<T>(path: string, init?: RequestInit): Promise<T> {
+    const response = await doFetch(`${baseUrl}${path}`, {
+      credentials: 'include',
+      ...init,
+      headers: { 'Content-Type': 'application/json', ...init?.headers },
+    });
+    if (!response.ok) {
+      const body = (await response.json().catch(() => null)) as { message?: string; error?: string } | null;
+      throw new KenresoftApiError(
+        response.status,
+        body?.message ?? body?.error ?? `Kenresoft CMS API request failed: ${init?.method ?? 'GET'} ${path} -> ${response.status}`,
+      );
+    }
+    if (response.status === 204) return undefined as T;
+    return (await response.json().catch(() => undefined)) as T;
+  }
+
+  async function currentCustomer(): Promise<CommerceCustomer | null> {
+    const response = await doFetch(`${commerceBase}/customer`, { credentials: 'include' });
+    if (response.status === 401) return null;
+    if (!response.ok) {
+      const body = (await response.json().catch(() => null)) as { error?: string } | null;
+      throw new KenresoftApiError(response.status, body?.error ?? `Kenresoft CMS API request failed: GET /customer -> ${response.status}`);
+    }
+    return (await response.json()) as CommerceCustomer;
   }
 
   // Mirrors request()'s own "404 -> null" convention below, for the one commerce read that has
@@ -832,43 +877,56 @@ export function createKenresoftClient(config: KenresoftClientConfig): KenresoftC
     },
     commerce: {
       customerAuth: {
-        register(options) {
-          return commerceRequest<CommerceCustomer>('/customer-auth/register', { method: 'POST', body: JSON.stringify(options) });
+        async register({ callbackUrl, ...options }) {
+          await coreRequest('/api/v1/auth/sign-up/email', {
+            method: 'POST',
+            body: JSON.stringify({ ...options, ...(callbackUrl ? { callbackURL: callbackUrl } : {}) }),
+          });
+          return { requiresEmailVerification: true };
         },
-        login(options) {
-          return commerceRequest<CommerceCustomer>('/customer-auth/login', { method: 'POST', body: JSON.stringify(options) });
+        async login(options) {
+          await coreRequest('/api/v1/auth/sign-in/email', { method: 'POST', body: JSON.stringify(options) });
+          const customer = await currentCustomer();
+          if (!customer) throw new KenresoftApiError(401, 'Signed in, but no session cookie reached the browser.');
+          return customer;
         },
         async logout() {
-          await commerceRequest<undefined>('/customer-auth/logout', { method: 'POST' });
+          await coreRequest('/api/v1/auth/sign-out', { method: 'POST', body: '{}' });
         },
         requestPasswordReset(options) {
-          return commerceRequest<{ message: string }>('/customer-auth/password-reset/request', { method: 'POST', body: JSON.stringify(options) });
+          return coreRequest<{ message: string }>('/api/v1/public/password-reset/request', { method: 'POST', body: JSON.stringify(options) });
         },
         confirmPasswordReset(options) {
-          return commerceRequest<{ message: string }>('/customer-auth/password-reset/confirm', { method: 'POST', body: JSON.stringify(options) });
+          return coreRequest<{ message: string }>('/api/v1/public/password-reset/confirm', { method: 'POST', body: JSON.stringify(options) });
         },
-        verifyEmail({ token }) {
-          return commerceRequest<{ message: string }>(`/customer-auth/verify-email?token=${encodeURIComponent(token)}`);
+        async verifyEmail({ token }) {
+          await coreRequest(`/api/v1/auth/verify-email?token=${encodeURIComponent(token)}`);
+          return { message: 'Email verified.' };
         },
-        resendVerificationEmail(options) {
-          return commerceRequest<{ message: string }>('/customer-auth/verify-email/resend', { method: 'POST', body: JSON.stringify(options) });
+        async resendVerificationEmail({ callbackUrl, ...options }) {
+          await coreRequest('/api/v1/auth/send-verification-email', {
+            method: 'POST',
+            body: JSON.stringify({ ...options, ...(callbackUrl ? { callbackURL: callbackUrl } : {}) }),
+          }).catch((err: unknown) => {
+            // Same generic outcome whether or not the address needs verifying (already verified, unknown).
+            if (!(err instanceof KenresoftApiError) || err.status >= 500) throw err;
+          });
+          return { message: 'If that email is registered and not yet verified, a new verification email has been sent.' };
         },
       },
       customer: {
-        async get() {
-          const response = await doFetch(`${commerceBase}/customer`, { credentials: 'include' });
-          if (response.status === 401) return null;
-          if (!response.ok) {
-            const body = (await response.json().catch(() => null)) as { error?: string } | null;
-            throw new KenresoftApiError(response.status, body?.error ?? `Kenresoft CMS API request failed: GET /customer -> ${response.status}`);
-          }
-          return (await response.json()) as CommerceCustomer;
+        get() {
+          return currentCustomer();
         },
         update(options) {
           return commerceRequest<CommerceCustomer>('/customer', { method: 'PATCH', body: JSON.stringify(options) });
         },
-        changePassword(options) {
-          return commerceRequest<{ message: string }>('/customer/password', { method: 'PATCH', body: JSON.stringify(options) });
+        async changePassword(options) {
+          await coreRequest('/api/v1/auth/change-password', {
+            method: 'POST',
+            body: JSON.stringify({ ...options, revokeOtherSessions: true }),
+          });
+          return { message: 'Password changed.' };
         },
         addresses: {
           list() {
