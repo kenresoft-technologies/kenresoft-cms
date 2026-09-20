@@ -31,8 +31,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 
 function getPlainTextFromHtml(html: string) {
-  const doc = new DOMParser().parseFromString(html, 'text/html');
-  return doc.body.textContent ?? '';
+  let previous: string;
+  let current = html;
+  do {
+    previous = current;
+    current = current.replace(/<[^>]*>/g, '');
+  } while (current !== previous);
+  return current.replace(/&nbsp;/g, ' ');
 }
 
 // A first-class place to send email from the CMS: compose to any recipient, from the configured

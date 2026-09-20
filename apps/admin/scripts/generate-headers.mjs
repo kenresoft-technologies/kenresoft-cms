@@ -29,7 +29,7 @@ if (!apiUrl) {
 // from the real built output rather than hard-coded, so it can never silently drift from
 // whatever Vite/index.html actually ships.
 const html = readFileSync(join(DIST_DIR, 'index.html'), 'utf8');
-const inlineScriptMatch = html.match(/<script>([\s\S]*?)<\/script>/);
+const inlineScriptMatch = html.match(/<script>([\s\S]*?)<\/script\s*>/i);
 if (!inlineScriptMatch) {
   throw new Error(
     'Expected an inline <script> in dist/index.html (the dark-mode bootstrap) to hash for CSP ' +
