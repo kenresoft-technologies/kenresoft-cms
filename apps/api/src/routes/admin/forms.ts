@@ -26,7 +26,7 @@ import { z } from 'zod';
 import { recordAudit } from '../../lib/audit';
 import { getDb } from '../../lib/db';
 import { getEmailSender, isEmailProviderConfigured } from '../../lib/email';
-import { getAdminFrom } from '../../lib/email/admin-sender';
+import { getAdminFrom, getDefaultReplyTo } from '../../lib/email/admin-sender';
 import { sendFormSubmissionNotification } from '../../lib/form-notifications';
 import { collectAttachments, describeAttachments } from '../../lib/email/attachments';
 import { buildBodies, parseComposeRequest } from '../../lib/email/compose';
@@ -698,7 +698,7 @@ formsRoute.post('/:id/submissions/:submissionId/replies', adminEmailRateLimit, a
       to,
       subject,
       ...bodies,
-      replyTo: author.email,
+      replyTo: fields.replyTo ?? (await getDefaultReplyTo(db, author.email)),
       ...(from ? { from } : {}),
       ...(collected.attachments.length ? { attachments: collected.attachments } : {}),
     });
@@ -732,8 +732,8 @@ formsRoute.openAPIRegistry.registerPath({
   tags: ['Forms'],
   summary: 'Send a reply to a submission by email',
   description:
-    "Sends through this deployment's configured email provider with Reply-To set to the " +
-    "sending staff member's email. multipart/form-data with `to`, `subject`, `bodyHtml`, and " +
+    "Sends through this deployment's configured email provider with Reply-To defaulting to the " +
+    "configured Email sender address (else the staff member's email); optional `replyTo` overrides it. multipart/form-data with `to`, `subject`, `bodyHtml`, and " +
     'optional `files` / `mediaIds` attachments (JSON without attachments also accepted). ' +
     '400s if no EMAIL_PROVIDER is configured or attachments exceed the provider limits.',
   request: {
@@ -745,6 +745,7 @@ formsRoute.openAPIRegistry.registerPath({
             to: z.string(),
             subject: z.string(),
             bodyHtml: z.string(),
+            replyTo: z.string().optional(),
             files: z.array(z.string().openapi({ type: 'string', format: 'binary' })).optional(),
             mediaIds: z.array(z.string()).optional(),
           }),
