@@ -187,9 +187,13 @@ describe('unified identity (real D1)', () => {
     expect(message.html).toContain(encodeURIComponent(callbackURL));
 
     const token = extractVerificationToken('verify-me@example.test');
-    const verify = await SELF.fetch(`${AUTH}/verify-email?token=${encodeURIComponent(token)}&callbackURL=${encodeURIComponent(callbackURL)}`, {
-      redirect: 'manual',
-    });
+    // A verification with a callbackURL answers with a redirect, which better-auth throws as an
+    // APIError (the same escaping-rejection quirk withExpectedInternalRejection documents).
+    const verify = await withExpectedInternalRejection(() =>
+      SELF.fetch(`${AUTH}/verify-email?token=${encodeURIComponent(token)}&callbackURL=${encodeURIComponent(callbackURL)}`, {
+        redirect: 'manual',
+      }),
+    );
     expect([200, 302]).toContain(verify.status);
     if (verify.status === 302) expect(verify.headers.get('location')).toContain('/account/verified');
 
