@@ -16,7 +16,13 @@ export const user = sqliteTable("user", {
     .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
     .$onUpdate(() => /* @__PURE__ */ new Date())
     .notNull(),
-  role: text("role").default("editor").notNull(),
+  // 'none' = a normal website/application user with NO CMS access (e.g. a storefront
+  // customer); every other value is a CMS role (contracts' USER_ROLES). The default is the
+  // no-access value on purpose: anything that creates a user without explicitly, server-side
+  // granting a CMS role (public sign-up included) must never yield CMS access. Only
+  // authorized server-side code (bootstrap owner, Add User, role change, ownership transfer)
+  // ever writes a CMS role; the client can never set this field (auth-options.ts, input: false).
+  role: text("role").default("none").notNull(),
   disabled: integer("disabled", { mode: "boolean" }).default(false).notNull(),
   // Whether this user can see the Developer panel (apps/admin/src/lib/developer-mode.ts) when
   // the deployment-wide Developer Mode flag is also on. Owner/admin always qualify regardless
