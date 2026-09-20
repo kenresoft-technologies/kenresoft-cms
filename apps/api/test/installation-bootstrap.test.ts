@@ -49,7 +49,7 @@ describe('installation bootstrap (P0 security fix)', () => {
     const { results } = await env.DB.prepare('SELECT role FROM user WHERE email = ?')
       .bind('attacker@example.test')
       .all<{ role: string }>();
-    expect(results[0]?.role).toBe('editor');
+    expect(results[0]?.role).toBe('none');
     expect(results[0]?.role).not.toBe('owner');
   });
 

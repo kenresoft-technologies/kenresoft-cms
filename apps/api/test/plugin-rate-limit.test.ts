@@ -6,9 +6,8 @@ import type { Bindings } from '../src/lib/env';
 
 // Mirrors auth-rate-limit.test.ts's own pattern exactly: a mocked `.limit()` rather than driving
 // the real Cloudflare Rate Limiting binding through many real requests — the real binding's
-// actual accumulation behavior is proven correct once, for real, in the commerce-customer-auth
-// integration tests' own comment (a throwaway debug run showed exactly 10 successes then 429s
-// from the 11th call); this file is purely about createPluginRateLimitMiddleware's own logic
+// actual accumulation behavior (exactly 10 successes, then 429s from the 11th call, cumulative for a
+// whole test file) was confirmed once with a throwaway debug run against a real endpoint; this file is purely about createPluginRateLimitMiddleware's own logic
 // (dynamic binding-name lookup, fail-open-with-warning on a missing binding), not the binding.
 function appWith(bindingName: string, env: Record<string, unknown>) {
   const app = new Hono<{ Bindings: Bindings }>();

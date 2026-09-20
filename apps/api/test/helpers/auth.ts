@@ -1,5 +1,7 @@
 import { SELF, env } from 'cloudflare:test';
 
+import { createAuth } from '../../src/lib/auth';
+import type { Bindings } from '../../src/lib/env';
 import { getTestEmails } from '../../src/lib/email';
 
 // Whenever better-auth's real internals throw an APIError during a request a test deliberately
@@ -57,7 +59,7 @@ export function extractVerificationToken(email: string): string {
 // getting a privileged fixture quickly, not a claim that production behaves this way.
 export async function signUpVerifiedAndGetCookie(
   email: string,
-  options: { password?: string; name?: string; promoteFirstUserToOwner?: boolean } = {},
+  options: { password?: string; name?: string; promoteFirstUserToOwner?: boolean; role?: string } = {},
 ): Promise<string> {
   const password = options.password ?? 'correct horse battery staple';
   const name = options.name ?? 'Test User';
@@ -78,11 +80,18 @@ export async function signUpVerifiedAndGetCookie(
     throw new Error(`verification failed for ${email}: ${verifyResponse.status}`);
   }
 
-  if (promoteFirstUserToOwner) {
+  // Real sign-up now yields a user with NO CMS access (role 'none' — anything that merely creates an
+  // account must never confer a CMS role). Test fixtures that need a privileged session grant one
+  // directly in D1, never through app code: the first account becomes Owner (unless disabled), every
+  // later one gets `options.role` (default 'editor', what Add User has always produced).
+  let grantedRole: string | undefined = options.role;
+  if (!grantedRole && promoteFirstUserToOwner) {
     const { results } = await env.DB.prepare('SELECT COUNT(*) as count FROM user').all<{ count: number }>();
-    if ((results[0]?.count ?? 0) === 1) {
-      await env.DB.prepare('UPDATE user SET role = ? WHERE email = ?').bind('owner', email).run();
-    }
+    if ((results[0]?.count ?? 0) === 1) grantedRole = 'owner';
+  }
+  grantedRole ??= 'editor';
+  if (grantedRole !== 'none') {
+    await env.DB.prepare('UPDATE user SET role = ? WHERE email = ?').bind(grantedRole, email).run();
   }
 
   const signInResponse = await SELF.fetch('https://example.com/api/v1/auth/sign-in/email', {
@@ -95,4 +104,27 @@ export async function signUpVerifiedAndGetCookie(
     throw new Error(`sign-in did not return a session cookie for ${email}`);
   }
   return setCookie.split(';')[0]!;
+}
+
+// Creates a normal website user (role 'none' — e.g. a Commerce storefront customer) through the
+// real, shared better-auth instance and returns a real session cookie for it. Uses better-auth's
+// server-side API (not the rate-limited HTTP routes), so a test file can create many users without
+// tripping AUTH_RATE_LIMITER's per-file budget.
+export async function registerWebsiteUser(
+  email: string,
+  options: { password?: string; name?: string; verified?: boolean } = {},
+): Promise<{ customer: { id: string; email: string; name: string }; cookie: string }> {
+  const password = options.password ?? 'correct horse battery staple';
+  const name = options.name ?? 'Test Customer';
+  const auth = createAuth(env as unknown as Bindings);
+  const result = await auth.api.signUpEmail({ body: { email, password, name } });
+  const id = (result.user as { id: string }).id;
+  const customer = { id, email, name };
+  // Unverified users can't sign in at all (requireEmailVerification), so there is no cookie.
+  if (options.verified === false) return { customer, cookie: '' };
+  await env.DB.prepare('UPDATE user SET email_verified = 1 WHERE id = ?').bind(id).run();
+  const signIn = await auth.api.signInEmail({ body: { email, password }, asResponse: true });
+  const setCookie = signIn.headers.get('set-cookie');
+  if (!setCookie) throw new Error(`sign-in did not return a session cookie for ${email}`);
+  return { customer, cookie: setCookie.split(';')[0]! };
 }
