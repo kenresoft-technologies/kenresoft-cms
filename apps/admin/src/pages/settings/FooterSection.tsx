@@ -72,7 +72,7 @@ export function FooterSection({ readOnly }: SectionProps) {
   return (
     <SettingsSection
       title="Footer"
-      description="Site footer content — exposed at GET /api/v1/public/settings/footer."
+      description="Site footer content. Exposed at GET /api/v1/public/settings/footer."
       footer={
         <SettingsSaveBar
           dirty={dirty}

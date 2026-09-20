@@ -63,7 +63,7 @@ export function SeoSection({ readOnly }: SectionProps) {
   return (
     <SettingsSection
       title="SEO"
-      description="Site-default SEO fallbacks — exposed at GET /api/v1/public/settings/seo. Page-specific SEO belongs on the relevant content type or entry, not here."
+      description="Site-default SEO fallbacks. Exposed at GET /api/v1/public/settings/seo. Page-specific SEO belongs on the relevant content type or entry, not here."
       footer={
         <SettingsSaveBar
           dirty={dirty}

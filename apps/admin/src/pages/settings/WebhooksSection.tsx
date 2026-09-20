@@ -56,7 +56,7 @@ function SecretRevealDialog({ secret, onClose }: { secret: string | null; onClos
         <DialogHeader>
           <DialogTitle>Signing secret</DialogTitle>
           <DialogDescription>
-            Shown only this once — save it now. Use it to verify the{' '}
+            Shown only once. Save it now. Use it to verify the{' '}
             <code className="rounded bg-muted px-1">X-Kenresoft-Signature</code> header (HMAC-SHA256
             of the raw request body) on every delivery.
           </DialogDescription>
@@ -200,7 +200,7 @@ function WebhookFormDialog({
             <span>
               Allow private destinations
               <span className="block text-xs font-normal text-muted-foreground">
-                Off by default — localhost, private-network, link-local, and cloud-metadata
+                Off by default. Localhost, private-network, link-local, and cloud-metadata
                 addresses are blocked. Only enable this if you're deliberately pointing this
                 webhook at something on your own private network.
               </span>
@@ -289,7 +289,7 @@ export function WebhooksSection() {
     try {
       const updated = await regenerateSecret.mutateAsync(id);
       setRevealedSecret(updated.secret);
-      toast.success('Secret regenerated — the old one no longer works');
+      toast.success('Secret regenerated. The old one no longer works');
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : 'Failed to regenerate secret');
     }
@@ -322,7 +322,7 @@ export function WebhooksSection() {
       <CardContent className="pt-2">
         {!webhooks || webhooks.length === 0 ? (
           <p className="py-6 text-center text-sm text-muted-foreground">
-            No webhooks configured yet — add one to get notified when entries are created, updated, or published.
+            No webhooks yet. Add one to get notified when entries are created, updated, or published.
           </p>
         ) : (
           <Table>

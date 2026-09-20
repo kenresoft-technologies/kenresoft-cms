@@ -103,7 +103,7 @@ function QuickReferenceDialog() {
             <code className="mt-1 block rounded bg-muted px-2 py-1.5 text-xs break-all">
               POST {API_URL}/api/v1/public/forms/&lt;slug&gt;/submissions
             </code>
-            <p className="mt-1 text-muted-foreground">Unauthenticated — any frontend can POST a JSON body here directly.</p>
+            <p className="mt-1 text-muted-foreground">No login needed. Any frontend can POST a JSON body here.</p>
           </div>
           <div>
             <p className="font-medium">Validation</p>
@@ -116,8 +116,8 @@ function QuickReferenceDialog() {
           <div>
             <p className="font-medium">Sanitization</p>
             <p className="text-muted-foreground">
-              Every angle bracket (&lt; and &gt;) is stripped from string values before storage —
-              a submission can't inject HTML or script tags into what you see in the inbox.
+              Every angle bracket (&lt; and &gt;) is stripped from string values before storage.
+              A submission can't inject HTML or script tags into your inbox.
             </p>
           </div>
           <div>
@@ -166,7 +166,7 @@ const FORM_TEMPLATES: FormTemplate[] = [
   {
     name: 'Contact',
     slug: 'contact',
-    description: 'Name, email, and a message — the standard "get in touch" form.',
+    description: 'Name, email, and a message. The standard contact form.',
     fields: [
       { name: 'name', label: 'Name', fieldType: 'text', required: true },
       { name: 'email', label: 'Email', fieldType: 'email', required: true },
@@ -176,13 +176,13 @@ const FORM_TEMPLATES: FormTemplate[] = [
   {
     name: 'Newsletter signup',
     slug: 'newsletter',
-    description: 'Just an email address — for a footer or landing-page opt-in.',
+    description: 'Just an email address. For a footer or landing page signup.',
     fields: [{ name: 'email', label: 'Email', fieldType: 'email', required: true }],
   },
   {
     name: 'Job Application',
     slug: 'job-application',
-    description: 'Name, email, and a resume upload — for a careers page.',
+    description: 'Name, email, and a resume upload. For a careers page.',
     fields: [
       { name: 'name', label: 'Name', fieldType: 'text', required: true },
       { name: 'email', label: 'Email', fieldType: 'email', required: true },
@@ -192,7 +192,7 @@ const FORM_TEMPLATES: FormTemplate[] = [
   {
     name: 'Event RSVP',
     slug: 'event-rsvp',
-    description: 'Name, email, attendance, and a guest count — for an event landing page.',
+    description: 'Name, email, attendance, and a guest count. For an event page.',
     fields: [
       { name: 'name', label: 'Name', fieldType: 'text', required: true },
       { name: 'email', label: 'Email', fieldType: 'email', required: true },
@@ -209,7 +209,7 @@ const FORM_TEMPLATES: FormTemplate[] = [
   {
     name: 'Support Request',
     slug: 'support-request',
-    description: 'Name, email, subject, priority, and a description — for a help/support page.',
+    description: 'Name, email, subject, priority, and a description. For a support page.',
     fields: [
       { name: 'name', label: 'Name', fieldType: 'text', required: true },
       { name: 'email', label: 'Email', fieldType: 'email', required: true },
@@ -282,7 +282,7 @@ function ExamplesDialog() {
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Start from a template</DialogTitle>
-          <DialogDescription>Creates a real form with these fields already added — edit or delete anything after.</DialogDescription>
+          <DialogDescription>Creates a real form with these fields already added. You can edit or delete anything after.</DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-3">
           {FORM_TEMPLATES.map((template) => (

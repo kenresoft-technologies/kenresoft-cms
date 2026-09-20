@@ -87,7 +87,7 @@ export function SocialSection({ readOnly }: SectionProps) {
   return (
     <SettingsSection
       title="Social"
-      description="Social links for this site — exposed at GET /api/v1/public/settings/social as { links: [...] }."
+      description="Social links for this site. Exposed at GET /api/v1/public/settings/social as { links: [...] }."
       footer={
         <SettingsSaveBar
           dirty={dirty}
