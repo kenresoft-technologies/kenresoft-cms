@@ -33,7 +33,12 @@ function formatSubmissionAsText(fields: FieldLabelSource[], data: Record<string,
 }
 
 function escapeHtml(value: string): string {
-  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function formatSubmissionAsHtml(fields: FieldLabelSource[], data: Record<string, unknown>): string {

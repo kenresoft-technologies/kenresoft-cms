@@ -2,7 +2,7 @@ import type { Context } from 'hono';
 import type { ZodType } from 'zod';
 
 import { sanitizeReplyHtml } from '../html-sanitizer';
-import { htmlToPlainText } from '../html-to-text';
+import { htmlToPlainText, stripTags } from '../html-to-text';
 import { sanitizeEmailHtml } from '../raw-html-sanitizer';
 import type { EmailMessage } from './types';
 
@@ -70,7 +70,7 @@ function designHtmlToPlainText(html: string): string {
   const withLinks = html.replace(
     /<a\s[^>]*?href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi,
     (_m, href: string, label: string) => {
-      const text = label.replace(/<[^>]+>/g, '').trim();
+      const text = stripTags(label).trim();
       return text && text !== href ? `${text} (${href})` : href;
     },
   );
