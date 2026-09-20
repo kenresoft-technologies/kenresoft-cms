@@ -12,3 +12,11 @@ export async function getAdminFrom(db: Database): Promise<string | undefined> {
   }
   return row.emailSenderName ? `${row.emailSenderName} <${row.emailSenderEmail}>` : row.emailSenderEmail;
 }
+
+// Default Reply-To for admin-initiated mail: the configured sender address (so replies reach the
+// mailbox the deployment presents itself as), else the sending staff member's own address. A
+// per-message override always wins over both.
+export async function getDefaultReplyTo(db: Database, staffEmail: string): Promise<string> {
+  const row = await getSettings(db);
+  return row?.emailSenderEmail ?? staffEmail;
+}

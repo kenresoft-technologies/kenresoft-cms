@@ -31,6 +31,9 @@ export const createFormSubmissionReplySchema = z.object({
     .max(300)
     .refine((value) => !/[\r\n]/.test(value), 'Subject cannot contain line breaks'),
   bodyHtml: z.string().min(1).max(20000),
+  // Defaults to the configured Email sender address (Profile → Email sender), then the staff
+  // member's own email.
+  replyTo: z.string().email().optional(),
 });
 
 export type EmailAttachmentMeta = z.infer<typeof emailAttachmentMetaSchema>;

@@ -42,6 +42,14 @@ describe('admin email sending identity', () => {
     expect(sent?.from).toBe('Acme Support <hello@acme.test>');
     expect(sent?.replyTo).toBe('me@zoho.test');
 
+    // No override: Reply-To defaults to the configured sender address, not the staff member's.
+    const third = await SELF.fetch(
+      'http://localhost/api/v1/admin/email/send',
+      json(cookie, { to: 'c@example.test', subject: 'Def', bodyHtml: '<p>Hi</p>' }),
+    );
+    expect(third.status).toBe(200);
+    expect(getTestEmails().at(-1)?.replyTo).toBe('hello@acme.test');
+
     const bad = await SELF.fetch('http://localhost/api/v1/admin/settings', {
       method: 'PUT',
       headers: { 'content-type': 'application/json', cookie },

@@ -30,7 +30,7 @@ export interface ComposedEmail {
   mediaIds: string[];
   // 'Design HTML' mode (admin/owner only): send the pasted template with its layout preserved.
   designHtml?: boolean;
-  // Optional; the server defaults Reply-To to the sending staff member's own address.
+  // Optional; the server defaults Reply-To to the configured Email sender address (else the staff member's own).
   replyTo?: string;
 }
 
