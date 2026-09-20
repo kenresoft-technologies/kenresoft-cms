@@ -18,13 +18,12 @@ import { Label } from '@/components/ui/label';
 // `name` falls back to a placeholder rather than '' when there's no row yet — upsertSettingsSchema
 // requires a non-empty name, and GeneralSection is the only section that guards for that
 // client-side. Without this fallback, saving any other section first (e.g. this Developer Mode
-// toggle, or CORS origin) on a brand-new deployment 400s with an opaque "Validation failed"
+// toggle) on a brand-new deployment 400s with an opaque "Validation failed"
 // before General has ever been touched. The placeholder is a normal, renameable value — visiting
 // General afterward corrects it same as always.
 export function toSettingsInput(settings: Settings | null): SettingsInput {
   return {
     name: settings?.name ?? 'My deployment',
-    corsOrigin: settings?.corsOrigin ?? null,
     featureFlags: settings?.featureFlags ?? null,
     previewUrl: settings?.previewUrl ?? null,
     pagePreviewUrl: settings?.pagePreviewUrl ?? null,

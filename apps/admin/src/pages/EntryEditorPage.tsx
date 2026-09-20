@@ -123,7 +123,7 @@ function LivePreviewButton({
 
   async function handlePreview() {
     if (isDirty) {
-      toast.error('Save your changes first — Live Preview shows what is currently saved.');
+      toast.error('Save your changes first. Live Preview shows the saved version.');
       return;
     }
     if (!settings?.previewUrl) {

@@ -129,7 +129,7 @@ export function NavigationSection({ readOnly }: SectionProps) {
   return (
     <SettingsSection
       title="Navigation"
-      description="Primary site navigation — exposed at GET /api/v1/public/settings/navigation as { items: [...] }."
+      description="Primary site navigation. Exposed at GET /api/v1/public/settings/navigation as { items: [...] }."
       footer={
         <SettingsSaveBar
           dirty={dirty}

@@ -50,7 +50,6 @@ describe('SettingsPage', () => {
     putMock.mockResolvedValue({
       id: 's-1',
       name: 'Acme Corp',
-      corsOrigin: null,
       featureFlags: null,
       updatedAt: '2026-01-01T00:00:00.000Z',
     });
@@ -66,7 +65,6 @@ describe('SettingsPage', () => {
     await waitFor(() =>
       expect(putMock).toHaveBeenCalledWith('/api/v1/admin/settings', {
         name: 'Acme Corp',
-        corsOrigin: null,
         featureFlags: null,
         previewUrl: null,
         pagePreviewUrl: null,
@@ -123,7 +121,6 @@ describe('SettingsPage', () => {
     await waitFor(() => expect(screen.getByLabelText('Default title')).toBeInTheDocument());
 
     await userEvent.click(screen.getByRole('button', { name: 'API' }));
-    expect(screen.getByLabelText('CORS origin')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /API reference/ })).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: /Appearance/ }));
@@ -200,7 +197,6 @@ describe('SettingsPage', () => {
         return Promise.resolve({
           id: 's-1',
           name: 'Acme Corp',
-          corsOrigin: null,
           featureFlags: null,
           updatedAt: '2026-01-01T00:00:00.000Z',
         });

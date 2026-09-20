@@ -60,7 +60,7 @@ export function ContactSection({ readOnly }: SectionProps) {
   return (
     <SettingsSection
       title="Contact"
-      description="Publicly readable contact details for this site — exposed at GET /api/v1/public/settings/contact."
+      description="Publicly readable contact details for this site. Exposed at GET /api/v1/public/settings/contact."
       footer={
         <SettingsSaveBar
           dirty={dirty}

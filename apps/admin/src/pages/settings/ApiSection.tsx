@@ -67,14 +67,14 @@ function DeveloperExperienceSection({ settings, readOnly }: SectionProps) {
         <div className="flex flex-col gap-1">
           <Label htmlFor="settings-developer-mode">Developer Mode</Label>
           <p className="max-w-md text-sm text-muted-foreground">
-            Adds a "Developer" action to Content Types, Entries, Forms, and Media — endpoints,
+            Adds a "Developer" action to Content Types, Entries, Forms, and Media: endpoints,
             example requests/responses, and ready-to-copy Astro/TypeScript/JavaScript/React/
             Next.js/cURL snippets. Off by default so content managers see a purely
             content-focused CMS.
           </p>
           <p className="text-xs text-muted-foreground">
             Owner and Admin always see it once this is on. For Editor and Author, grant it per
-            person from the Users page — never to Viewer.
+            person from the Users page. Never to Viewer.
           </p>
         </div>
         <Switch
@@ -112,8 +112,8 @@ function EmailDeliverySection() {
           <>
             <p className="max-w-md text-sm text-muted-foreground">
               {status?.emailConfigured
-                ? 'A real email provider is fully configured — password-reset and account-verification emails deliver normally.'
-                : "Email isn't fully configured for this deployment (EMAIL_PROVIDER, and its required RESEND_API_KEY/EMAIL_FROM or EMAIL binding, must all be set). Password-reset requests and new sign-ups still succeed, but no email is actually sent — set EMAIL_PROVIDER in wrangler.toml (see docs/DEPLOYMENT.md) to enable delivery."}
+                ? 'A real email provider is fully configured. Password-reset and account-verification emails deliver normally.'
+                : "Email isn't fully configured for this deployment (EMAIL_PROVIDER, and its required RESEND_API_KEY/EMAIL_FROM or EMAIL binding, must all be set). Password-reset requests and new sign-ups still succeed, but no email is sent. Set EMAIL_PROVIDER in wrangler.toml (see docs/DEPLOYMENT.md) to enable delivery."}
             </p>
             <Badge
               variant="outline"
@@ -156,8 +156,8 @@ function AuthSecuritySection() {
           <>
             <p className="max-w-md text-sm text-muted-foreground">
               {status?.authSecretConfigured
-                ? 'BETTER_AUTH_SECRET is set to a real value — sessions are signed with a secret only this deployment knows.'
-                : "BETTER_AUTH_SECRET isn't set, which is why you can't be viewing this — every session-touching request refuses to run in this state. Set it with `wrangler secret put BETTER_AUTH_SECRET` (see docs/DEPLOYMENT.md)."}
+                ? 'BETTER_AUTH_SECRET is set to a real value. Sessions are signed with a secret only this deployment knows.'
+                : "BETTER_AUTH_SECRET isn't set, which is why you can't be viewing this. Every session request is refused in this state. Set it with `wrangler secret put BETTER_AUTH_SECRET` (see docs/DEPLOYMENT.md)."}
             </p>
             <Badge
               variant="outline"
@@ -296,7 +296,7 @@ function AuditLoggingSection({ settings, readOnly }: SectionProps) {
         <div className="flex flex-col gap-1">
           <Label htmlFor="settings-audit-logging">Audit logging</Label>
           <p className="max-w-md text-sm text-muted-foreground">
-            The audit log has no automatic pruning — every recorded event stays in the database
+            The audit log has no automatic pruning. Every recorded event stays in the database
             forever, which is exactly what you want for accountability, but does mean it grows
             without bound over time. Turning this off stops new events from being recorded; it
             doesn't delete what's already there.
@@ -384,7 +384,7 @@ function LivePreviewSection({ settings, readOnly }: SectionProps) {
           Live Preview lets you view a draft (or any unpublished change) exactly as it'll look on
           your real site, before you publish it. It needs your frontend to have a page for
           rendering one entry (or Page), and for that page to check for a <code className="rounded bg-muted px-1 py-0.5 text-xs">preview_token</code>{' '}
-          link parameter — when present, it fetches the entry/page through the preview endpoint
+          link parameter. When present, it fetches the entry/page through the preview endpoint
           instead of the normal public one, which is the only way this works for a draft that
           isn't published yet. Below, tell us the URL pattern each one uses on your site.
         </p>
@@ -402,7 +402,7 @@ function LivePreviewSection({ settings, readOnly }: SectionProps) {
         <p className="text-sm text-muted-foreground">
           <code className="rounded bg-muted px-1 py-0.5 text-xs">{'{contentType}'}</code> and{' '}
           <code className="rounded bg-muted px-1 py-0.5 text-xs">{'{slug}'}</code> are replaced with the
-          entry's own values — for <code className="rounded bg-muted px-1 py-0.5 text-xs">examples/astro-site</code>{' '}
+          entry's own values. For <code className="rounded bg-muted px-1 py-0.5 text-xs">examples/astro-site</code>{' '}
           running locally, that's <code className="rounded bg-muted px-1 py-0.5 text-xs">http://localhost:4321/blog/{'{slug}'}</code>{' '}
           (this example only reads <code className="rounded bg-muted px-1 py-0.5 text-xs">{'{slug}'}</code>, since it
           has one content type hardcoded to the <code className="rounded bg-muted px-1 py-0.5 text-xs">/blog</code>{' '}
@@ -423,7 +423,7 @@ function LivePreviewSection({ settings, readOnly }: SectionProps) {
           <code className="rounded bg-muted px-1 py-0.5 text-xs">{'{route}'}</code> is replaced with
           the Page's own <code className="rounded bg-muted px-1 py-0.5 text-xs">route</code> (e.g.{' '}
           <code className="rounded bg-muted px-1 py-0.5 text-xs">/about</code>). This only takes effect
-          once your frontend actually renders Pages — not yet true for{' '}
+          once your frontend actually renders Pages. That is not yet true for{' '}
           <code className="rounded bg-muted px-1 py-0.5 text-xs">examples/astro-site</code>.
         </p>
       </div>
@@ -434,72 +434,8 @@ function LivePreviewSection({ settings, readOnly }: SectionProps) {
 }
 
 export function ApiSection({ settings, readOnly }: SectionProps) {
-  const updateSettings = useUpdateSettings();
-
-  const [corsOrigin, setCorsOrigin] = useState(settings?.corsOrigin ?? '');
-  const [savedCorsOrigin, setSavedCorsOrigin] = useState(settings?.corsOrigin ?? '');
-  const [error, setError] = useState<string | null>(null);
-
-  const dirty = corsOrigin !== savedCorsOrigin;
-
-  async function handleSave() {
-    setError(null);
-    const trimmed = corsOrigin.trim();
-    if (trimmed && !/^https?:\/\/.+/i.test(trimmed)) {
-      setError('CORS origin must be a full URL starting with http:// or https://');
-      return;
-    }
-
-    try {
-      await updateSettings.mutateAsync({ ...toSettingsInput(settings), corsOrigin: trimmed || null });
-      setCorsOrigin(trimmed);
-      setSavedCorsOrigin(trimmed);
-      toast.success('Settings saved');
-    } catch (err) {
-      const message = err instanceof ApiError ? err.message : 'Failed to save settings';
-      setError(message);
-      toast.error(message);
-    }
-  }
-
-  function handleDiscard() {
-    setCorsOrigin(savedCorsOrigin);
-    setError(null);
-  }
-
   return (
     <div className="flex flex-col gap-6">
-      <SettingsSection
-        title="API access"
-        description="Controls how external origins are allowed to call this deployment's API."
-        footer={
-          <SettingsSaveBar
-            dirty={dirty}
-            pending={updateSettings.isPending}
-            readOnly={readOnly}
-            onSave={() => void handleSave()}
-            onDiscard={handleDiscard}
-          />
-        }
-      >
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="settings-cors-origin">CORS origin</Label>
-          <Input
-            id="settings-cors-origin"
-            placeholder="https://cms.example.com"
-            disabled={readOnly}
-            value={corsOrigin}
-            onChange={(event) => setCorsOrigin(event.target.value)}
-          />
-          <p className="text-sm text-muted-foreground">
-            Informational reference only — the actual allow-list is configured via the
-            CORS_ORIGINS environment binding (§9).
-          </p>
-        </div>
-
-        {error ? <p className="text-sm text-destructive">{error}</p> : null}
-      </SettingsSection>
-
       <SettingsSection title="API reference" description="Live documentation for this deployment's REST API.">
         <div className="flex flex-col gap-3">
           <a

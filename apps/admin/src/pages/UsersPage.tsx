@@ -237,7 +237,7 @@ function TemporaryPasswordDialog({
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      toast.error('Could not copy — select and copy the password manually');
+      toast.error('Could not copy. Select and copy the password manually.');
     }
   }
 
@@ -247,7 +247,7 @@ function TemporaryPasswordDialog({
         <DialogHeader>
           <DialogTitle>{created?.user.name} was added</DialogTitle>
           <DialogDescription>
-            Share this temporary password with them directly — it won't be shown again. They can change
+            Share this temporary password with them directly. It won't be shown again. They can change
             it from their Profile page after signing in.
           </DialogDescription>
         </DialogHeader>
@@ -307,7 +307,7 @@ function AddUserDialog({ onCreated }: { onCreated: (result: { user: AdminUser; t
           <DialogTitle>Add user</DialogTitle>
           <DialogDescription>
             Creates the account with a random temporary password, shown once after you submit. A
-            verification email will also be sent to this address — the new user must verify it before
+            verification email will also be sent to this address. The new user must verify it before
             they can sign in. New users default to editor.
           </DialogDescription>
         </DialogHeader>
@@ -366,10 +366,10 @@ function SessionsDialog({ user }: { user: AdminUser }) {
         </DialogTrigger>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Sessions — {user.name}</DialogTitle>
+            <DialogTitle>Sessions for {user.name}</DialogTitle>
             <DialogDescription>
               Every device currently signed in as this user. Revoking one signs that device out
-              immediately — it will need to sign in again.
+              immediately. It will need to sign in again.
             </DialogDescription>
           </DialogHeader>
 
@@ -494,7 +494,7 @@ function DisableUserControl({ user }: { user: AdminUser }) {
         open={elevateOpen}
         onOpenChange={setElevateOpen}
         onElevated={() => void performToggle(true)}
-        description="Disabling an administrator is a security-sensitive action — re-enter your password to continue."
+        description="Disabling an administrator is a security-sensitive action. Enter your password to continue."
       />
     </>
   );
