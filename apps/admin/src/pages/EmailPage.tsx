@@ -52,7 +52,7 @@ export function EmailPage() {
 
   const [to, setTo] = useState('');
   const [subject, setSubject] = useState('');
-  // Blank = replies go to the signed-in staff member's own address (the server's default).
+  // Blank = the server's default: the configured Email sender address, else the staff member's own.
   const [replyTo, setReplyTo] = useState('');
   const [bodyHtml, setBodyHtml] = useState('');
   const [attachments, setAttachments] = useState(emptyAttachments);
@@ -66,6 +66,7 @@ export function EmailPage() {
       ? `${settings.emailSenderName} <${settings.emailSenderEmail}>`
       : settings.emailSenderEmail
     : "Deployment default sender (system 'no-reply' address)";
+  const defaultReplyTo = settings?.emailSenderEmail ?? session?.user.email ?? 'your own address';
   const canSend =
     limits?.configured !== false &&
     to.trim() !== '' &&
@@ -133,11 +134,11 @@ export function EmailPage() {
               id="email-reply-to"
               type="email"
               value={replyTo}
-              placeholder={session?.user.email ?? 'your email address'}
+              placeholder={defaultReplyTo}
               onChange={(event) => setReplyTo(event.target.value)}
             />
             <p className="text-xs text-muted-foreground">
-              Optional. Leave blank to receive replies at {session?.user.email ?? 'your own address'}.
+              Optional. Leave blank to receive replies at {defaultReplyTo} (your Email sender address).
             </p>
           </div>
           <div className="flex flex-col gap-1.5">

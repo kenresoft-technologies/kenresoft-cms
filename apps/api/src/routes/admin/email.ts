@@ -4,7 +4,7 @@ import type { UserRole } from '@kenresoft-cms/contracts';
 
 import { recordAudit } from '../../lib/audit';
 import { getDb } from '../../lib/db';
-import { getAdminFrom } from '../../lib/email/admin-sender';
+import { getAdminFrom, getDefaultReplyTo } from '../../lib/email/admin-sender';
 import { collectAttachments, getAttachmentLimits } from '../../lib/email/attachments';
 import { buildBodies, buildDesignBodies, parseComposeRequest } from '../../lib/email/compose';
 import { getEmailSender, isEmailProviderConfigured } from '../../lib/email';
@@ -45,7 +45,7 @@ emailRoute.openapi(
 
 // Multipart (or JSON) — a plain route with a docs-only registerPath, like media upload.
 // Sends from Settings' configured sender identity (falling back to EMAIL_FROM), with Reply-To
-// pointing at the staff member's real mailbox. No mailbox access of any kind is needed.
+// defaulting to that sender address (else the staff member's own), overridable per message. No mailbox access of any kind is needed.
 emailRoute.post('/send', requireRole('admin', 'editor'), adminEmailRateLimit, async (c) => {
   if (!isEmailProviderConfigured(c.env)) {
     return c.json({ error: 'This deployment has no email provider configured.' }, 400);
@@ -76,7 +76,7 @@ emailRoute.post('/send', requireRole('admin', 'editor'), adminEmailRateLimit, as
       to: fields.to,
       subject: fields.subject,
       ...(design ? buildDesignBodies(fields.bodyHtml) : buildBodies(fields.bodyHtml)),
-      replyTo: fields.replyTo ?? user.email,
+      replyTo: fields.replyTo ?? (await getDefaultReplyTo(db, user.email)),
       ...(from ? { from } : {}),
       ...(collected.attachments.length ? { attachments: collected.attachments } : {}),
     });

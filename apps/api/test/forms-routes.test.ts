@@ -580,6 +580,30 @@ describe('forms routes (real D1)', () => {
       expect(replies[0]!.id).toBe(created.id);
     });
 
+    it('defaults Reply-To to the configured sender address, and lets a reply override it', async () => {
+      const cookie = await authedCookie('reply-default-admin@example.test');
+      const headers = { Cookie: cookie, 'Content-Type': 'application/json' };
+      const { form, submission } = await createSubmission(cookie);
+
+      // With a sender address configured it becomes the default; a per-reply override beats it.
+      await SELF.fetch('https://example.com/api/v1/admin/settings', {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify({ name: 'Site', emailSenderEmail: 'hello@acme.test' }),
+      });
+      const replyUrl = `https://example.com/api/v1/admin/forms/${form.id}/submissions/${submission.id}/replies`;
+      const post = (extra: object, subject: string) =>
+        SELF.fetch(replyUrl, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ to: 'jane@example.com', subject, bodyHtml: '<p>x</p>', ...extra }),
+        });
+      expect((await post({}, 'Re: default')).status).toBe(201);
+      expect((await post({ replyTo: 'other@example.com' }, 'Re: override')).status).toBe(201);
+      expect(getTestEmails().find((m) => m.subject === 'Re: default')!.replyTo).toBe('hello@acme.test');
+      expect(getTestEmails().find((m) => m.subject === 'Re: override')!.replyTo).toBe('other@example.com');
+    });
+
     it('rejects a viewer sending a reply', async () => {
       const ownerCookie = await authedCookie('reply-viewer-owner@example.test');
       const { form, submission } = await createSubmission(ownerCookie);

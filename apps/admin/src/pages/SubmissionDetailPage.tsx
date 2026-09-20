@@ -23,6 +23,7 @@ import { useFormFields } from '@/lib/queries/form-fields';
 import { submissionAttachmentUrl, useFormSubmissions } from '@/lib/queries/form-submissions';
 import { useDeleteSubmissionGlobal, useUpdateSubmissionStatusGlobal } from '@/lib/queries/all-submissions';
 import { EmailAttachments } from '@/components/email-attachments';
+import { useSettings } from '@/lib/queries/settings';
 import { emptyAttachments } from '@/lib/queries/email';
 import { useSendSubmissionReply, useSubmissionReplies } from '@/lib/queries/form-submission-replies';
 import { getSubmissionSender } from '@/lib/submission-sender';
@@ -88,6 +89,10 @@ export function SubmissionDetailPage() {
   const [pendingDelete, setPendingDelete] = useState(false);
   const [subject, setSubject] = useState(`Re: ${form?.name ?? 'Form'} submission`);
   const [bodyHtml, setBodyHtml] = useState('');
+  // Blank = server default: the configured Email sender address, else the staff member's own.
+  const [replyTo, setReplyTo] = useState('');
+  const { data: settings } = useSettings();
+  const defaultReplyTo = settings?.emailSenderEmail ?? session?.user.email ?? 'your own address';
   const [attachments, setAttachments] = useState(emptyAttachments);
 
   const submission = useMemo(
@@ -135,9 +140,10 @@ export function SubmissionDetailPage() {
   async function handleSend() {
     if (!sender?.email) return;
     try {
-      await sendReply.mutateAsync({ to: sender.email, subject, bodyHtml, ...attachments });
+      await sendReply.mutateAsync({ to: sender.email, subject, bodyHtml, ...(replyTo.trim() ? { replyTo: replyTo.trim() } : {}), ...attachments });
       toast.success(`Reply sent to ${sender.email}`);
       setBodyHtml('');
+      setReplyTo('');
       setAttachments(emptyAttachments);
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : 'Failed to send reply');
@@ -371,6 +377,19 @@ export function SubmissionDetailPage() {
                         Subject
                       </Label>
                       <Input id="reply-subject" value={subject} onChange={(event) => setSubject(event.target.value)} />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <Label htmlFor="reply-reply-to" className="text-xs text-muted-foreground">
+                        Reply-To (optional)
+                      </Label>
+                      <Input
+                        id="reply-reply-to"
+                        type="email"
+                        value={replyTo}
+                        placeholder={defaultReplyTo}
+                        onChange={(event) => setReplyTo(event.target.value)}
+                      />
+                      <p className="text-xs text-muted-foreground">Leave blank to use {defaultReplyTo} (your Email sender address).</p>
                     </div>
                     <RichTextEditor value={bodyHtml} onChange={setBodyHtml} placeholder={`Write a reply to ${sender.email}…`} />
                     <EmailAttachments value={attachments} onChange={setAttachments} />

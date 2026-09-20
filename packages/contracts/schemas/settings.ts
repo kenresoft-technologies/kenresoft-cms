@@ -37,7 +37,7 @@ export const sendAdminEmailSchema = z.object({
     .refine((value) => !/[\r\n]/.test(value), 'Subject cannot contain line breaks'),
   // Designed templates (tables + inline styles) are large; providers cap the whole message anyway.
   bodyHtml: z.string().min(1).max(300_000),
-  // Defaults to the sending staff member's own email.
+  // Defaults to the configured Email sender address, then the sending staff member's own email.
   replyTo: z.string().email().optional(),
   // 'Design HTML' mode: send the pasted template with layout preserved (admin/owner only). Accepts
   // a real boolean (JSON) or the strings multipart forms produce.
