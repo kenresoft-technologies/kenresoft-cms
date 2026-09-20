@@ -12,7 +12,7 @@ landed on `develop`.
 
 ### Added
 
-- `@kenresoft-cms/astro`: a generic `client.auth` API (sign up/in/out, session, email verification, password reset/change, two-factor) over Core's existing better-auth and password-reset routes. `commerce.customerAuth` now delegates to it. `KenresoftApiError` gained an optional `code`. No API or database changes. Republish `@kenresoft-cms/astro` to ship it.
+- `@kenresoft-cms/astro`: a generic `client.auth` API (sign up/in/out, session, email verification, password reset/change, two-factor) over Core's existing better-auth and password-reset routes. `commerce.customerAuth` now delegates to it. `KenresoftApiError` gained an optional `code`; the client gained a `cookies` option for SSR and `commerce.customerAuth.verifyTwoFactor()`. Package version 0.5.0. No API or database changes.
 
 ### Breaking
 

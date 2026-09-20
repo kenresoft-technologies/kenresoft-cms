@@ -97,6 +97,15 @@ export interface KenresoftClientConfig {
    * See `getPreviewToken()` below and `integrations/astro/README.md`'s "Live Preview" section.
    */
   previewToken?: string | null;
+  /**
+   * The incoming request's `cookie` header, for server-side rendering: forwarded on every call
+   * so `auth.getSession()` / `commerce.customer.get()` can tell who the visitor is during SSR
+   * (e.g. `cookies: Astro.request.headers.get('cookie')`). Only useful when the site and API
+   * share a cookie domain — on separate sites the browser never sends the API's cookie to your
+   * site, so run the check in the browser instead. Ignored when a custom `fetch` is supplied
+   * (you're then handling headers yourself).
+   */
+  cookies?: string | null;
 }
 
 export { getPreviewToken } from './get-preview-token';
@@ -567,10 +576,8 @@ export interface KenresoftClient {
    * checkout, and Paystack payment confirmation. Only present/meaningful on a deployment that
    * has the commerce plugin installed and enabled; calling these against one that doesn't will
    * 404 the same way any disabled-plugin route does (docs/PLUGINS.md's enablement section).
-   * Deliberately guest-only for now — customer account registration/login/order-history and
-   * saved addresses aren't wired into this client yet (a real, separate follow-up: guest
-   * checkout is already Commerce's own complete, independently-supported purchase path, per
-   * docs/PLUGINS.md's Phase 2b/2c design, not a stopgap).
+   * Guest checkout and signed-in customers are both supported: a guest cart travels as a cookie,
+   * a customer is a Core account (see `auth` above and `customerAuth` below).
    */
   commerce: {
     /**
@@ -599,6 +606,12 @@ export interface KenresoftClient {
       verifyEmail(options: VerifyCustomerEmailOptions): Promise<{ message: string }>;
       /** Always resolves with the same generic message regardless of whether the email matches an account or is already verified — never reveals either. */
       resendVerificationEmail(options: ResendCustomerVerificationEmailOptions): Promise<{ message: string }>;
+      /**
+       * Finishes a `login()` that rejected with `code: 'TWO_FACTOR_REQUIRED'`: verifies the
+       * authenticator (or single-use backup) code through `auth.twoFactor`, then resolves the
+       * signed-in customer's profile.
+       */
+      verifyTwoFactor(options: { code: string; method?: 'totp' | 'backup-code'; trustDevice?: boolean }): Promise<CommerceCustomer>;
     };
     /**
      * The signed-in customer's own profile/addresses/order-history — every method throws
@@ -686,7 +699,16 @@ export interface KenresoftClient {
 
 export function createKenresoftClient(config: KenresoftClientConfig): KenresoftClient {
   const baseUrl = config.url.replace(/\/$/, '');
-  const doFetch = config.fetch ?? fetch;
+  const cookieHeader = config.cookies;
+  const doFetch: typeof fetch =
+    config.fetch ??
+    (cookieHeader
+      ? (input, init) => {
+          const headers = new Headers(init?.headers);
+          headers.set('cookie', cookieHeader);
+          return fetch(input, { ...init, headers });
+        }
+      : fetch);
   const commerceBase = `${baseUrl}/api/plugins/commerce/public/v1`;
   const defaultPreviewToken = config.previewToken ?? null;
 
@@ -877,6 +899,13 @@ export function createKenresoftClient(config: KenresoftClientConfig): KenresoftC
             // for accounts with two-factor enabled.
             throw new KenresoftApiError(401, 'Two-factor authentication is required for this account.', undefined, 'TWO_FACTOR_REQUIRED');
           }
+          const customer = await currentCustomer();
+          if (!customer) throw new KenresoftApiError(401, 'Signed in, but no session cookie reached the browser.');
+          return customer;
+        },
+        async verifyTwoFactor({ method = 'totp', ...options }) {
+          if (method === 'backup-code') await auth.twoFactor.verifyBackupCode(options);
+          else await auth.twoFactor.verifyTotp(options);
           const customer = await currentCustomer();
           if (!customer) throw new KenresoftApiError(401, 'Signed in, but no session cookie reached the browser.');
           return customer;

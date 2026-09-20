@@ -182,3 +182,40 @@ describe('commerce.customerAuth delegates to the generic auth client', () => {
     );
   });
 });
+
+describe('cookies option and commerce two-factor completion', () => {
+  it('forwards the given cookie header on every call for server-side rendering', async () => {
+    const seen: (string | null)[] = [];
+    const original = globalThis.fetch;
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      seen.push(new Headers(init?.headers).get('cookie'));
+      return Response.json(null);
+    }) as typeof fetch;
+    try {
+      const client = createKenresoftClient({ url: B, cookies: 'session=abc' });
+      await client.auth.getSession();
+      assert.deepEqual(seen, ['session=abc']);
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+
+  it('verifyTwoFactor completes through auth.twoFactor, then returns the customer profile', async () => {
+    const { client, calls } = fakeApi((url) =>
+      url.endsWith('/customer') ? Response.json({ id: 'u1', email: 'a@b.co', name: 'A', phone: null, emailVerified: true }) : undefined,
+    );
+    const customer = await client.commerce.customerAuth.verifyTwoFactor({ code: '123456' });
+    await client.commerce.customerAuth.verifyTwoFactor({ code: 'bk', method: 'backup-code' });
+    assert.equal(customer.id, 'u1');
+    assert.deepEqual(
+      calls.map((c) => c.url.slice(B.length)),
+      [
+        '/api/v1/auth/two-factor/verify-totp',
+        '/api/plugins/commerce/public/v1/customer',
+        '/api/v1/auth/two-factor/verify-backup-code',
+        '/api/plugins/commerce/public/v1/customer',
+      ],
+    );
+    assert.deepEqual(calls[0]!.body, { code: '123456' });
+  });
+});

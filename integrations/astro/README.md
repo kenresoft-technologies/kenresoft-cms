@@ -234,7 +234,7 @@ export { KenresoftApiError };
 
 1. **Add your site's origin to the API's `CORS_ORIGINS`** (e.g. `https://www.example.com,http://localhost:4321`). Every auth call sends `credentials: 'include'`; the API only answers credentialed requests from listed origins. The same list is what allows `callbackUrl` / `redirectUrl` values, so the emailed links can point back at your own pages.
 2. **Call the mutating methods from the browser** (a `<script>` tag or a client island), not from Astro frontmatter. The session cookie is set on the API's origin, so it has to land in the visitor's own cookie jar, and better-auth checks the `Origin` header on state-changing requests, which browsers send and server-side `fetch` does not.
-3. For a server-rendered "is this visitor signed in?" check, forward the incoming request's `cookie` header through a custom `fetch` (see `examples/astro-site/src/lib/site-client.ts`). That only works when your site and the API share a cookie domain. On separate origins, check `auth.getSession()` in the browser instead.
+3. For a server-rendered "is this visitor signed in?" check, pass the incoming request's cookie header: `createKenresoftClient({ url, cookies: Astro.request.headers.get('cookie') })`, then `await client.auth.getSession()` (see `examples/astro-site/src/lib/site-client.ts`). That works when your site and the API share a cookie domain (e.g. `www.example.com` and `api.example.com`, with the API's cookie scoped to the parent domain). On unrelated origins the browser never sends the API's cookie to your site, so no SDK can see it during SSR; check `auth.getSession()` in the browser instead.
 
 ### Build your own flows
 
@@ -275,7 +275,7 @@ Failures throw `KenresoftApiError` with `status`, `message`, and, for better-aut
 
 ### Commerce
 
-`client.commerce.customerAuth.*` and `client.commerce.customer.changePassword()` call `client.auth` under the hood, so a session created either way is the same session the cart, checkout, and account routes read. `commerce.customerAuth.login()` returns the customer profile and rejects with `code: 'TWO_FACTOR_REQUIRED'` for a two-factor account; use `client.auth.signIn()` plus `client.auth.twoFactor.*` for those.
+`client.commerce.customerAuth.*` and `client.commerce.customer.changePassword()` call `client.auth` under the hood, so a session created either way is the same session the cart, checkout, and account routes read. `commerce.customerAuth.login()` returns the customer profile. For a two-factor account it rejects with `code: 'TWO_FACTOR_REQUIRED'`; catch that, ask for the code, and call `commerce.customerAuth.verifyTwoFactor({ code })` (or `{ code, method: 'backup-code' }`), which resolves the customer.
 
 ## Local development
 
