@@ -37,6 +37,7 @@ function buildTestApp(payments: PluginPaymentsService, logger: PluginLogger = fa
       media: { get: async () => null, upload: async () => { throw new Error('unused'); }, delete: async () => false },
       config: { get: async () => ({}) },
       email: { send: async () => {} },
+      identity: { getUser: async () => null },
       payments,
       logger,
     };
@@ -109,7 +110,6 @@ describe('commerce plugin: payments (real D1)', () => {
     await env.DB.exec('DELETE FROM plugin_commerce_orders');
     await env.DB.exec('DELETE FROM plugin_commerce_cart_items');
     await env.DB.exec('DELETE FROM plugin_commerce_carts');
-    await env.DB.exec('DELETE FROM plugin_commerce_customers');
     await env.DB.exec('DELETE FROM plugin_commerce_product_variants');
     await env.DB.exec('DELETE FROM plugin_commerce_products');
     await env.DB.exec('DELETE FROM plugin_commerce_idempotency_keys');

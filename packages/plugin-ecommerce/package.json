@@ -11,7 +11,6 @@
     "lint": "eslint ."
   },
   "dependencies": {
-    "@better-auth/utils": "0.4.2",
     "@hono/zod-openapi": "^1.6.1",
     "@kenresoft-cms/contracts": "workspace:*",
     "@kenresoft-cms/database": "workspace:*",

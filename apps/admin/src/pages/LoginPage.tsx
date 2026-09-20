@@ -4,12 +4,11 @@ import { Link, Navigate } from 'react-router';
 
 import kenresoftLogoMark from '@/assets/kenresoft-cms-logo-mark.svg';
 import { authClient } from '@/lib/auth-client';
+import { hasCmsAccess } from '@/lib/types';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-
-type Mode = 'sign-in' | 'sign-up';
 
 // This page's own larger scale, not a change to the shared Input/Button components (which
 // stay their normal size for the dozens of dense, data-table-heavy screens elsewhere in the
@@ -32,8 +31,6 @@ function BrandMark({ className }: { className?: string }) {
 
 export function LoginPage() {
   const { data: session, isPending } = authClient.useSession();
-  const [mode, setMode] = useState<Mode>('sign-in');
-  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -68,6 +65,14 @@ export function LoginPage() {
       setError(
         "You're signed in, but your browser blocked the session cookie. This happens when the admin and API run on different sites and your browser blocks cross-site cookies. Check your cookie settings for this site, or host both on the same site.",
       );
+      return;
+    }
+    // Accounts are shared with the website (a storefront customer signs in with the same
+    // credentials) — a valid session without a CMS role isn't an admin user. The server refuses
+    // every admin route for it anyway; this just says so instead of showing a broken dashboard.
+    if (!hasCmsAccess((sessionData.user as { role?: string }).role)) {
+      await authClient.signOut();
+      setError('This account does not have access to the CMS. Ask an administrator to grant you a role.');
     }
   }
 
@@ -83,10 +88,7 @@ export function LoginPage() {
     // pointed at a real deployment: a CORS-rejected request throws instead of resolving to
     // `{ error }`, and with no catch here that left isSubmitting stuck true with no feedback).
     try {
-      const { data, error: authError } =
-        mode === 'sign-in'
-          ? await authClient.signIn.email({ email, password })
-          : await authClient.signUp.email({ email, password, name });
+      const { data, error: authError } = await authClient.signIn.email({ email, password });
 
       if (authError) {
         // The server already re-sent a fresh verification email itself on this rejection
@@ -97,7 +99,7 @@ export function LoginPage() {
           setNeedsVerification(true);
           return;
         }
-        setError(authError.message ?? (mode === 'sign-in' ? 'Sign in failed' : 'Sign up failed'));
+        setError(authError.message ?? 'Sign in failed');
         return;
       }
 
@@ -152,12 +154,6 @@ export function LoginPage() {
     } finally {
       setResendState('sent');
     }
-  }
-
-  function switchMode() {
-    setMode((prev) => (prev === 'sign-in' ? 'sign-up' : 'sign-in'));
-    setError(null);
-    setShowPassword(false);
   }
 
   return (
@@ -302,33 +298,11 @@ export function LoginPage() {
           ) : (
             <>
               <div className="flex flex-col gap-2">
-                <h2 className="text-3xl font-semibold tracking-tight">
-                  {mode === 'sign-in' ? 'Sign in' : 'Create your account'}
-                </h2>
-                <p className="text-base text-muted-foreground">
-                  {mode === 'sign-in'
-                    ? 'Welcome back. Sign in to continue.'
-                    : 'The first account created on this deployment becomes its admin.'}
-                </p>
+                <h2 className="text-3xl font-semibold tracking-tight">Sign in</h2>
+                <p className="text-base text-muted-foreground">Welcome back. Sign in to continue.</p>
               </div>
 
               <form className="flex flex-col gap-5" onSubmit={handleSubmit}>
-            {mode === 'sign-up' ? (
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="name" className="text-sm">
-                  Name
-                </Label>
-                <Input
-                  id="name"
-                  autoComplete="name"
-                  required
-                  value={name}
-                  onChange={(event) => setName(event.target.value)}
-                  className={FIELD_CLASS}
-                />
-              </div>
-            ) : null}
-
             <div className="flex flex-col gap-2">
               <Label htmlFor="email" className="text-sm">
                 Email
@@ -349,17 +323,15 @@ export function LoginPage() {
                 <Label htmlFor="password" className="text-sm">
                   Password
                 </Label>
-                {mode === 'sign-in' ? (
-                  <Link to="/forgot-password" className="text-sm text-muted-foreground hover:text-foreground">
-                    Forgot password?
-                  </Link>
-                ) : null}
+                <Link to="/forgot-password" className="text-sm text-muted-foreground hover:text-foreground">
+                  Forgot password?
+                </Link>
               </div>
               <div className="relative">
                 <Input
                   id="password"
                   type={showPassword ? 'text' : 'password'}
-                  autoComplete={mode === 'sign-in' ? 'current-password' : 'new-password'}
+                  autoComplete="current-password"
                   required
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
@@ -385,27 +357,16 @@ export function LoginPage() {
 
             <Button type="submit" disabled={isSubmitting} className={`${FIELD_CLASS} mt-1 gap-2 text-base`}>
               {isSubmitting ? <Loader2 className="size-5 animate-spin" /> : null}
-              {isSubmitting
-                ? mode === 'sign-in'
-                  ? 'Signing in…'
-                  : 'Creating account…'
-                : mode === 'sign-in'
-                  ? 'Sign in'
-                  : 'Create account'}
+              {isSubmitting ? 'Signing in…' : 'Sign in'}
             </Button>
           </form>
 
-          <div className="flex items-center gap-3 text-sm">
-            <span className="h-px flex-1 bg-border" />
-            <span className="text-muted-foreground">
-              {mode === 'sign-in' ? "Don't have an account?" : 'Already have an account?'}
-            </span>
-            <span className="h-px flex-1 bg-border" />
-          </div>
-
-              <Button type="button" variant="outline" onClick={switchMode} className={`${FIELD_CLASS} text-base`}>
-                {mode === 'sign-in' ? 'Create an account' : 'Sign in instead'}
-              </Button>
+              {/* This is the CMS entry point only. Website visitors register and sign in on the
+                  site itself; both use the same underlying accounts (one identity, two front
+                  doors), and CMS access is granted to an account by an administrator. */}
+              <p className="text-center text-sm text-muted-foreground">
+                CMS accounts are created by an administrator. Not on the team? Sign in on the website instead.
+              </p>
             </>
           )}
         </div>

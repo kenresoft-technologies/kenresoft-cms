@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import { sqliteTable, text, integer, index, uniqueIndex } from 'drizzle-orm/sqlite-core';
 import type { AnySQLiteColumn } from 'drizzle-orm/sqlite-core';
 
+import { user } from '../auth';
 import { media } from '../media';
 
 // Owned by packages/plugin-ecommerce (docs/PLUGINS.md's migration-ownership convention) — lives
@@ -149,81 +150,24 @@ export const pluginCommerceProductImages = sqliteTable(
   (table) => [index('plugin_commerce_product_images_product_id_idx').on(table.productId)],
 );
 
-// Phase 2b: Cart & Customer. Deliberately separate from better-auth's own `user` table (auth.ts)
-// — a storefront customer is a different actor on a different surface than CMS staff
-// (owner/admin/editor/author/viewer), and this plugin depends only on `better-auth/crypto`'s
-// standalone hashing primitives, never on better-auth's identity/session/instance (docs/
-// PLUGINS.md's Commerce section has the full reasoning).
-export const pluginCommerceCustomers = sqliteTable(
-  'plugin_commerce_customers',
-  {
-    id: text('id')
-      .primaryKey()
-      .$defaultFn(() => crypto.randomUUID()),
-    // Always stored lowercased/trimmed by the repository layer, not DB collation.
-    email: text('email').notNull().unique(),
-    passwordHash: text('password_hash').notNull(),
-    name: text('name').notNull(),
-    phone: text('phone'),
-    emailVerified: integer('email_verified', { mode: 'boolean' }).notNull().default(false),
-    // Disabling revokes every session for this customer (plugin_commerce_customer_sessions),
-    // mirroring the CMS's own user.disabled behavior.
-    disabled: integer('disabled', { mode: 'boolean' }).notNull().default(false),
-    createdAt: integer('created_at', { mode: 'timestamp' })
-      .notNull()
-      .default(sql`(unixepoch())`),
-    updatedAt: integer('updated_at', { mode: 'timestamp' })
-      .notNull()
-      .default(sql`(unixepoch())`),
-  },
-  // No separate plain index on email — the unique index above already serves lookups.
-);
-
-// A raw session token is only ever handed to the customer's browser (the session cookie) — only
-// its SHA-256 hash is ever persisted, the same pattern this codebase already uses for recovery
-// codes and CMS password-reset tokens (crypto.subtle.digest + constantTimeEqual).
-export const pluginCommerceCustomerSessions = sqliteTable(
-  'plugin_commerce_customer_sessions',
-  {
-    id: text('id')
-      .primaryKey()
-      .$defaultFn(() => crypto.randomUUID()),
-    customerId: text('customer_id')
-      .notNull()
-      .references(() => pluginCommerceCustomers.id, { onDelete: 'cascade' }),
-    tokenHash: text('token_hash').notNull().unique(),
-    // Fixed 30-day TTL at creation — no sliding refresh-on-activity this pass.
-    expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(),
-    createdAt: integer('created_at', { mode: 'timestamp' })
-      .notNull()
-      .default(sql`(unixepoch())`),
-  },
-  (table) => [index('plugin_commerce_customer_sessions_customer_id_idx').on(table.customerId)],
-);
-
-// Password-reset and email-verification tokens, hashed at rest the same way session tokens are.
-// Single-use is enforced by deletion on consume (repository layer) — the same mechanism
-// recovery-codes/password-reset already use in this codebase, not a separate usedAt column.
-// Requesting a new token of the same purpose deletes any existing unconsumed one first.
-export const pluginCommerceCustomerTokens = sqliteTable(
-  'plugin_commerce_customer_tokens',
-  {
-    id: text('id')
-      .primaryKey()
-      .$defaultFn(() => crypto.randomUUID()),
-    customerId: text('customer_id')
-      .notNull()
-      .references(() => pluginCommerceCustomers.id, { onDelete: 'cascade' }),
-    tokenHash: text('token_hash').notNull().unique(),
-    purpose: text('purpose', { enum: ['password_reset', 'email_verification'] }).notNull(),
-    // Password-reset: 1 hour, matching the CMS's own. Email-verification: 24 hours.
-    expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(),
-    createdAt: integer('created_at', { mode: 'timestamp' })
-      .notNull()
-      .default(sql`(unixepoch())`),
-  },
-  (table) => [index('plugin_commerce_customer_tokens_customer_id_idx').on(table.customerId)],
-);
+// Phase 2b: Cart & Customer. A storefront customer is a plain Core `user` row (packages/database/
+// schema/auth.ts) with role 'none' — one identity/session/password/verification system for CMS
+// staff and website users alike (better-auth; docs/PLUGINS.md's Commerce section). This table
+// holds ONLY Commerce-specific customer data, keyed by that user id — nothing about credentials,
+// sessions, or verification lives here. Every `customerId` column below (addresses, carts, orders)
+// stores the core user id.
+export const pluginCommerceCustomerProfiles = sqliteTable('plugin_commerce_customer_profiles', {
+  userId: text('user_id')
+    .primaryKey()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  phone: text('phone'),
+  createdAt: integer('created_at', { mode: 'timestamp' })
+    .notNull()
+    .default(sql`(unixepoch())`),
+  updatedAt: integer('updated_at', { mode: 'timestamp' })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
 
 export const pluginCommerceCustomerAddresses = sqliteTable(
   'plugin_commerce_customer_addresses',
@@ -233,7 +177,7 @@ export const pluginCommerceCustomerAddresses = sqliteTable(
       .$defaultFn(() => crypto.randomUUID()),
     customerId: text('customer_id')
       .notNull()
-      .references(() => pluginCommerceCustomers.id, { onDelete: 'cascade' }),
+      .references(() => user.id, { onDelete: 'cascade' }),
     label: text('label'),
     recipientName: text('recipient_name').notNull(),
     line1: text('line1').notNull(),
@@ -265,7 +209,7 @@ export const pluginCommerceCarts = sqliteTable(
     id: text('id')
       .primaryKey()
       .$defaultFn(() => crypto.randomUUID()),
-    customerId: text('customer_id').references(() => pluginCommerceCustomers.id, { onDelete: 'set null' }),
+    customerId: text('customer_id').references(() => user.id, { onDelete: 'set null' }),
     // Defaults from the plugin's own config.defaultCurrency at creation; a cart stays
     // single-currency for the rest of its life even though a product's own currency can differ.
     currency: text('currency').notNull(),
@@ -340,7 +284,7 @@ export const pluginCommerceOrders = sqliteTable(
     // financial/legal record) — see the deferred customer-deletion note in docs/PLUGINS.md's
     // Commerce section. The order's own customerEmail/customerName below are the durable record
     // once this is null, whether from a guest order or a since-deleted customer.
-    customerId: text('customer_id').references(() => pluginCommerceCustomers.id, { onDelete: 'set null' }),
+    customerId: text('customer_id').references(() => user.id, { onDelete: 'set null' }),
     customerEmail: text('customer_email').notNull(),
     customerName: text('customer_name').notNull(),
     // pending: just created, awaiting payment (Phase 2d wires a real gateway to this transition).
@@ -527,12 +471,8 @@ export type PluginCommerceProductVariant = typeof pluginCommerceProductVariants.
 export type NewPluginCommerceProductVariant = typeof pluginCommerceProductVariants.$inferInsert;
 export type PluginCommerceProductImage = typeof pluginCommerceProductImages.$inferSelect;
 export type NewPluginCommerceProductImage = typeof pluginCommerceProductImages.$inferInsert;
-export type PluginCommerceCustomer = typeof pluginCommerceCustomers.$inferSelect;
-export type NewPluginCommerceCustomer = typeof pluginCommerceCustomers.$inferInsert;
-export type PluginCommerceCustomerSession = typeof pluginCommerceCustomerSessions.$inferSelect;
-export type NewPluginCommerceCustomerSession = typeof pluginCommerceCustomerSessions.$inferInsert;
-export type PluginCommerceCustomerToken = typeof pluginCommerceCustomerTokens.$inferSelect;
-export type NewPluginCommerceCustomerToken = typeof pluginCommerceCustomerTokens.$inferInsert;
+export type PluginCommerceCustomerProfile = typeof pluginCommerceCustomerProfiles.$inferSelect;
+export type NewPluginCommerceCustomerProfile = typeof pluginCommerceCustomerProfiles.$inferInsert;
 export type PluginCommerceCustomerAddress = typeof pluginCommerceCustomerAddresses.$inferSelect;
 export type NewPluginCommerceCustomerAddress = typeof pluginCommerceCustomerAddresses.$inferInsert;
 export type PluginCommerceCart = typeof pluginCommerceCarts.$inferSelect;

@@ -10,7 +10,6 @@ const ALLOWED_ORIGIN = 'http://localhost:5173';
 const DISALLOWED_ORIGIN = 'https://attacker.example';
 
 const CART_BASE = 'https://example.com/api/plugins/commerce/public/v1/cart';
-const AUTH_BASE = 'https://example.com/api/plugins/commerce/public/v1/customer-auth';
 
 async function freshAdminCookie(): Promise<string> {
   return signUpVerifiedAndGetCookie('commerce-origin-admin@example.test', { password: 'correct horse battery staple', name: 'Admin' });
@@ -35,8 +34,6 @@ describe('commerce plugin: Origin/CSRF check on cookie-authenticated mutations (
   beforeEach(async () => {
     await env.DB.exec('DELETE FROM plugin_commerce_cart_items');
     await env.DB.exec('DELETE FROM plugin_commerce_carts');
-    await env.DB.exec('DELETE FROM plugin_commerce_customer_sessions');
-    await env.DB.exec('DELETE FROM plugin_commerce_customers');
     await env.DB.exec('DELETE FROM plugin_commerce_products');
     await env.DB.exec('DELETE FROM session');
     await env.DB.exec('DELETE FROM account');
@@ -75,16 +72,16 @@ describe('commerce plugin: Origin/CSRF check on cookie-authenticated mutations (
     expect(res.status).toBe(200);
   });
 
-  it('rejects a body-less mutation (logout) from a disallowed Origin — the gap a CORS preflight alone would miss, since a body-less POST is a "simple" cross-origin request under the Fetch spec', async () => {
-    const res = await SELF.fetch(`${AUTH_BASE}/logout`, {
-      method: 'POST',
+  it('rejects a body-less mutation (DELETE /cart) from a disallowed Origin — the gap a CORS preflight alone would miss, since a body-less POST is a "simple" cross-origin request under the Fetch spec', async () => {
+    const res = await SELF.fetch(CART_BASE, {
+      method: 'DELETE',
       headers: { Origin: DISALLOWED_ORIGIN },
     });
     expect(res.status).toBe(403);
   });
 
   it('allows a mutation with no Origin header at all (non-browser clients; this project’s own SELF.fetch test harness never sends one)', async () => {
-    const res = await SELF.fetch(`${AUTH_BASE}/logout`, { method: 'POST' });
+    const res = await SELF.fetch(CART_BASE, { method: 'DELETE' });
     expect(res.status).toBe(204);
   });
 });

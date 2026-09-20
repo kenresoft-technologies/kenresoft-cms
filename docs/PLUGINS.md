@@ -187,10 +187,9 @@ its own public mount:
   **fails open** with a loud `console.warn` (visible in `wrangler tail`) rather than hard-failing
   every request on that sub-path — a forgotten deployment step shouldn't take down login
   entirely, but the gap must stay loud, not silent.
-- Commerce declares one rule: `{ pathPrefix: '/customer-auth', bindingName:
-  'COMMERCE_CUSTOMER_AUTH_RATE_LIMITER' }` (10/60s per IP, mirroring `AUTH_RATE_LIMITER`'s own
-  posture), covering register/login/logout/password-reset/verify-email as one sub-path. Cart/
-  customer-profile routes rely on the generic limiter only.
+- Commerce originally declared one rule (`/customer-auth`, 10/60s per IP). It no longer does: customer
+  auth moved to Core's own `/api/v1/auth/*`, already covered by `AUTH_RATE_LIMITER` (see "Commerce:
+  unified identity" below). The mechanism stays for any plugin that needs a tighter sub-path limit.
 
 ## Migrations: how a plugin owns a table here
 
@@ -868,3 +867,36 @@ Paystack key prefixes plus an unrecognized-prefix case (`unknown`); a new
 `commerce-payment-status.test.ts` exercises the real route end-to-end against real D1 (session
 required, and the response's own key set asserted to be exactly `{configured, environment,
 provider}`).
+
+## Commerce: unified identity (customers are core users) — 2026-09-20
+
+Supersedes the "hand-rolled customer accounts" design above (kept for history). A Commerce customer
+is now an ordinary better-auth `user` with role `'none'` (no CMS access) — the same
+`user`/`account`/`session` tables, password hashing, email verification and password reset CMS staff
+use. There is one identity system, and plugins build profiles on top of it.
+
+- **Plugin SDK:** `PluginPublicContext.identity.getUser()` (Core resolves the shared better-auth
+  session server-side; `cmsRole` is null for a website user; disabled accounts resolve to null) and
+  `PluginContext.accounts.sendVerificationEmail()` (staff-triggered resend through better-auth). A
+  plugin never reads a session cookie, hashes a password, or trusts a client-supplied role.
+- **Commerce data:** `plugin_commerce_customer_profiles` (`user_id` PK → `user.id`, `phone`) holds only
+  Commerce-specific customer data. `customerId` on addresses/carts/orders now stores the core user id
+  (FK → `user.id`). Removed: `plugin_commerce_customers`, `_customer_sessions`, `_customer_tokens`, the
+  `/customer-auth/*` routes, the `/customer/password` route, `COMMERCE_CUSTOMER_AUTH_RATE_LIMITER`.
+- **Storefront flows use Core:** sign-up/sign-in/sign-out/verify/resend/change-password are
+  `/api/v1/auth/*` (already covered by `AUTH_RATE_LIMITER`); password reset is
+  `/api/v1/public/password-reset/{request,confirm}` with an optional `redirectUrl` (honored only for
+  non-CMS accounts and only for an origin in `CORS_ORIGINS`). Email verification is mandatory before a
+  customer's first sign-in (as it already was for staff); the emailed link for a `none` user is
+  better-auth's own verification URL, redirecting to the `callbackURL` the site passed at sign-up.
+- **Guest checkout is unchanged.** The guest cart → customer cart merge moved from the removed login
+  handler into `resolveExistingCart` (`lib/cart-resolution.ts`): the first cart/checkout request made
+  while signed in and still carrying a guest-cart cookie merges it (same atomic, hijack-safe merge).
+- **Admin customers** (`/customers`, admin floor) only ever address role-`none` users — never staff.
+  Disabling revokes that user's sessions. Staff-side "resend verification" goes through Core.
+- **Migration** (`0051_unified_identity.sql`): each legacy customer becomes a user with the same id and
+  password hash. If a customer's email already belonged to a core user, their cart/orders/addresses are
+  linked to that existing user (no second account, no credential change). Old customer sessions and
+  tokens are dropped, so customers sign in again. The DB-level default of `user.role` was NOT rewritten
+  (SQLite would need a `user` table rebuild, whose cascades would delete every session/account);
+  better-auth's `additionalFields.defaultValue: 'none'` is the effective default.

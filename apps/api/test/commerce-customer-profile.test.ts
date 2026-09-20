@@ -1,38 +1,27 @@
-import { createDb } from '@kenresoft-cms/database';
-import { createCustomerSession } from '@kenresoft-cms/plugin-ecommerce/src/repository/customer-sessions';
-import { createCustomer } from '@kenresoft-cms/plugin-ecommerce/src/repository/customers';
+import { createAuth } from '../src/lib/auth';
+import type { Bindings } from '../src/lib/env';
 import { SELF, env } from 'cloudflare:test';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-// Customers/sessions are created directly via the repository, not the HTTP /customer-auth/*
-// endpoints — this file is about /customer/* (profile/password/addresses), which isn't
-// rate-limited the same way, and staying off the shared customer-auth budget avoids any
-// interaction with commerce-customer-auth.test.ts's own note about that bucket.
+import { registerWebsiteUser } from './helpers/auth';
+
+// Customers are real core users (role 'none') with real better-auth sessions, created through
+// better-auth's server-side API (not the rate-limited HTTP sign-up route).
 const CUSTOMER_BASE = 'https://example.com/api/plugins/commerce/public/v1/customer';
 
-async function registeredCustomer(email: string, password = 'correct horse battery staple') {
-  const db = createDb(env.DB);
-  const customer = await createCustomer(db, { email, name: 'Test Customer', password });
-  const rawToken = await createCustomerSession(db, customer.id);
-  return { customer, cookie: `commerce_customer_session=${rawToken}` };
+async function registeredCustomer(email: string) {
+  return registerWebsiteUser(email);
 }
 
 describe('commerce plugin: customer profile/password/addresses (real D1)', () => {
   beforeEach(async () => {
     await env.DB.exec('DELETE FROM plugin_commerce_customer_addresses');
-    await env.DB.exec('DELETE FROM plugin_commerce_customer_sessions');
-    await env.DB.exec('DELETE FROM plugin_commerce_customers');
   });
 
   it('rejects every route without a session', async () => {
     const responses = await Promise.all([
       SELF.fetch(CUSTOMER_BASE),
       SELF.fetch(CUSTOMER_BASE, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: '{}' }),
-      SELF.fetch(`${CUSTOMER_BASE}/password`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: '{}',
-      }),
       SELF.fetch(`${CUSTOMER_BASE}/addresses`),
       SELF.fetch(`${CUSTOMER_BASE}/addresses`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }),
     ]);
@@ -57,34 +46,44 @@ describe('commerce plugin: customer profile/password/addresses (real D1)', () =>
     expect(await patchRes.json()).toMatchObject({ name: 'Updated Name', phone: '+1-555-0100' });
   });
 
-  it('changes the password, rejects a wrong current password, and revokes other sessions', async () => {
+  it('the customer session IS the core session: changing the password through Core revokes other sessions', async () => {
     const { customer, cookie } = await registeredCustomer('password-test@example.test');
-    const db = createDb(env.DB);
-    const otherRawToken = await createCustomerSession(db, customer.id);
-    const otherCookie = `commerce_customer_session=${otherRawToken}`;
 
-    const wrongCurrent = await SELF.fetch(`${CUSTOMER_BASE}/password`, {
-      method: 'PATCH',
-      headers: { Cookie: cookie, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ currentPassword: 'not the real password', newPassword: 'a whole new password' }),
+    // A second device: a second real better-auth session for the same user.
+    const auth = createAuth(env as unknown as Bindings);
+    const second = await auth.api.signInEmail({
+      body: { email: customer.email, password: 'correct horse battery staple' },
+      asResponse: true,
     });
-    expect(wrongCurrent.status).toBe(400);
+    const otherCookie = second.headers.get('set-cookie')!.split(';')[0]!;
+    expect((await SELF.fetch(CUSTOMER_BASE, { headers: { Cookie: otherCookie } })).status).toBe(200);
 
-    const change = await SELF.fetch(`${CUSTOMER_BASE}/password`, {
+    // Password change is Core's better-auth endpoint, not a Commerce route (Commerce has none).
+    const missing = await SELF.fetch(`${CUSTOMER_BASE}/password`, {
       method: 'PATCH',
       headers: { Cookie: cookie, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ currentPassword: 'correct horse battery staple', newPassword: 'a whole new password' }),
+      body: JSON.stringify({ currentPassword: 'x', newPassword: 'y' }),
+    });
+    expect(missing.status).toBe(404);
+
+    const change = await SELF.fetch('https://example.com/api/v1/auth/change-password', {
+      method: 'POST',
+      headers: { Cookie: cookie, 'Content-Type': 'application/json', Origin: 'http://localhost:5173' },
+      body: JSON.stringify({
+        currentPassword: 'correct horse battery staple',
+        newPassword: 'a whole new password',
+        revokeOtherSessions: true,
+      }),
     });
     expect(change.status).toBe(200);
 
-    // The "other" session (a different browser/device) is revoked by the password change.
-    const otherMe = await SELF.fetch(CUSTOMER_BASE, { headers: { Cookie: otherCookie } });
-    expect(otherMe.status).toBe(401);
-
-    // This request's own session cookie was replaced with a fresh one in the response, not left
-    // dangling — the caller isn't logged out by their own password change.
-    const setCookieHeader = change.headers.get('set-cookie');
-    expect(setCookieHeader).toContain('commerce_customer_session=');
+    // Every old session (the other device AND the pre-change one) is revoked, and better-auth hands
+    // back a fresh session for the browser that made the change — so the caller isn't logged out by
+    // their own password change.
+    expect((await SELF.fetch(CUSTOMER_BASE, { headers: { Cookie: otherCookie } })).status).toBe(401);
+    expect((await SELF.fetch(CUSTOMER_BASE, { headers: { Cookie: cookie } })).status).toBe(401);
+    const freshCookie = change.headers.get('set-cookie')!.split(';')[0]!;
+    expect((await SELF.fetch(CUSTOMER_BASE, { headers: { Cookie: freshCookie } })).status).toBe(200);
   });
 
   it('manages addresses: create, list, update, delete, and default-address exclusivity', async () => {

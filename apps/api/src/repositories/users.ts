@@ -1,6 +1,7 @@
 import { and, count, desc, eq, inArray, ne, session, user } from '@kenresoft-cms/database';
+import { USER_ROLES } from '@kenresoft-cms/contracts';
 import type { Database } from '@kenresoft-cms/database';
-import type { UserRole } from '@kenresoft-cms/contracts';
+import type { AccountRole } from '@kenresoft-cms/contracts';
 
 export interface UserWithLastActive {
   id: string;
@@ -14,12 +15,29 @@ export interface UserWithLastActive {
   lastActiveAt: Date | null;
 }
 
+// Who is asking — only the Owner may ever see or address the Owner account. Everyone else
+// (Admin, Editor, Viewer — deliberately NOT ranked against each other here) gets the Owner
+// filtered out of every list and a plain "not found" on any direct lookup, so the Owner can't be
+// discovered through search, pagination, a guessed id, or a different error code.
+export interface UserViewer {
+  role: string;
+}
+
+function canSeeOwner(viewer: UserViewer): boolean {
+  return viewer.role === 'owner';
+}
+
 // D1's drizzle query builder makes a groupBy+max join awkward, and the user count here is
 // small (single-site admin roster) — cheaper to fetch both tables and reduce in JS than to
 // fight the SQL for it.
-export async function listUsersWithLastActive(db: Database): Promise<UserWithLastActive[]> {
+//
+// Lists CMS staff only (real CMS roles) — normal website users (role 'none', e.g. Commerce
+// customers) can number in the thousands and are managed by whatever feature owns them, not this
+// staff roster.
+export async function listUsersWithLastActive(db: Database, viewer: UserViewer): Promise<UserWithLastActive[]> {
+  const roles = canSeeOwner(viewer) ? [...USER_ROLES] : USER_ROLES.filter((role) => role !== 'owner');
   const [users, sessions] = await Promise.all([
-    db.query.user.findMany({ orderBy: [desc(user.createdAt)] }),
+    db.query.user.findMany({ where: inArray(user.role, roles), orderBy: [desc(user.createdAt)] }),
     db.select({ userId: session.userId, updatedAt: session.updatedAt }).from(session),
   ]);
 
@@ -48,6 +66,14 @@ export function getUserById(db: Database, id: string) {
   return db.query.user.findFirst({ where: eq(user.id, id) });
 }
 
+// getUserById, but as seen by `viewer`: an Owner target is invisible (undefined — callers 404)
+// to anyone who isn't the Owner. Every user-addressed admin route uses this, never the raw lookup.
+export async function getUserVisibleTo(db: Database, id: string, viewer: UserViewer) {
+  const target = await getUserById(db, id);
+  if (target?.role === 'owner' && !canSeeOwner(viewer)) return undefined;
+  return target;
+}
+
 export function getUserByEmail(db: Database, email: string) {
   return db.query.user.findFirst({ where: eq(user.email, email) });
 }
@@ -70,11 +96,11 @@ export async function countGuardians(db: Database, options?: { excluding?: strin
 // atomic D1 batch — two independent awaited statements would leave a real window where the
 // first succeeds and the second fails (network blip, the target row changing concurrently),
 // landing the deployment with zero owners despite this being described as a swap.
-export function updateUserRoleQuery(db: Database, id: string, role: UserRole) {
+export function updateUserRoleQuery(db: Database, id: string, role: AccountRole) {
   return db.update(user).set({ role }).where(eq(user.id, id)).returning();
 }
 
-export async function updateUserRole(db: Database, id: string, role: UserRole) {
+export async function updateUserRole(db: Database, id: string, role: AccountRole) {
   const [row] = await updateUserRoleQuery(db, id, role);
   return row!;
 }

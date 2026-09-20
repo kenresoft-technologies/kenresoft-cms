@@ -1,3 +1,4 @@
+import { hasCmsAccess } from '@kenresoft-cms/contracts';
 import type { UserRole } from '@kenresoft-cms/contracts';
 import type { MiddlewareHandler } from 'hono';
 
@@ -47,6 +48,14 @@ export const requireSession: MiddlewareHandler<{
   // defense-in-depth, but this check is what actually enforces it if that ever lagged.
   if (sessionUser.disabled) {
     return c.json({ error: 'Unauthorized' }, 401);
+  }
+
+  // A signed-in website user (role 'none' — e.g. a Commerce customer, who shares this exact
+  // session system) is authenticated but has no CMS access: 403, not 401, since they ARE signed
+  // in. Enforced here, server-side, on every /admin and plugin-admin route at once — never from a
+  // role the client claims.
+  if (!hasCmsAccess(sessionUser.role)) {
+    return c.json({ error: 'Forbidden' }, 403);
   }
 
   c.set('user', sessionUser);

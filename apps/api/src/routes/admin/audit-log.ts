@@ -50,7 +50,15 @@ auditLogRoute.openapi(
   async (c) => {
     const { actorUserId, action, from, to, limit, offset } = c.req.valid('query');
     const db = getDb(c);
-    const rows = await listAuditLog(db, { actorUserId, action, from, to, limit, offset });
+    const rows = await listAuditLog(db, {
+      actorUserId,
+      action,
+      from,
+      to,
+      limit,
+      offset,
+      hideOwner: c.get('user').role !== 'owner',
+    });
     return c.json(rows.map(toAuditLogEntry), 200);
   },
 );

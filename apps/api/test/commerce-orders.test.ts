@@ -1,10 +1,8 @@
 import { createDb } from '@kenresoft-cms/database';
-import { createCustomerSession } from '@kenresoft-cms/plugin-ecommerce/src/repository/customer-sessions';
-import { createCustomer } from '@kenresoft-cms/plugin-ecommerce/src/repository/customers';
 import { SELF, env } from 'cloudflare:test';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { signUpVerifiedAndGetCookie } from './helpers/auth';
+import { registerWebsiteUser, signUpVerifiedAndGetCookie } from './helpers/auth';
 
 const ADMIN_BASE = 'https://example.com/api/plugins/commerce/v1';
 const CART_BASE = 'https://example.com/api/plugins/commerce/public/v1/cart';
@@ -52,10 +50,7 @@ async function createVariant(adminCookie: string, productId: string, overrides: 
 }
 
 async function registeredCustomer(email: string) {
-  const db = createDb(env.DB);
-  const customer = await createCustomer(db, { email, name: 'Test Customer', password: 'correct horse battery staple' });
-  const rawToken = await createCustomerSession(db, customer.id);
-  return { customer, cookie: `commerce_customer_session=${rawToken}` };
+  return registerWebsiteUser(email);
 }
 
 // Payment settlement is authoritative and lives entirely outside PATCH /orders/{id}/status
@@ -87,8 +82,6 @@ describe('commerce plugin: order management (real D1)', () => {
     await env.DB.exec('DELETE FROM plugin_commerce_orders');
     await env.DB.exec('DELETE FROM plugin_commerce_cart_items');
     await env.DB.exec('DELETE FROM plugin_commerce_carts');
-    await env.DB.exec('DELETE FROM plugin_commerce_customer_sessions');
-    await env.DB.exec('DELETE FROM plugin_commerce_customers');
     await env.DB.exec('DELETE FROM plugin_commerce_product_variants');
     await env.DB.exec('DELETE FROM plugin_commerce_products');
     await env.DB.exec('DELETE FROM session');
