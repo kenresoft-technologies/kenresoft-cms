@@ -1,18 +1,18 @@
 import { createRoute, z } from '@hono/zod-openapi';
 import { createPluginOpenApiApp, requirePluginRole } from '@kenresoft-cms/plugin-sdk';
 import type { PluginBindings, PluginVariables } from '@kenresoft-cms/plugin-sdk';
-import { desc, or, like, pluginCommerceCustomers } from '@kenresoft-cms/database';
-import type { PluginCommerceCustomer, PluginCommerceCustomerAddress } from '@kenresoft-cms/database';
+import type { PluginCommerceCustomerAddress } from '@kenresoft-cms/database';
 
-import { sendVerificationEmail } from '../lib/verification-email';
 import { listAddressesForCustomer } from '../repository/customer-addresses';
-import { getCustomerById, setCustomerDisabled } from '../repository/customers';
-import { deleteAllSessionsForCustomer } from '../repository/customer-sessions';
+import type { CustomerRecord } from '../repository/customers';
+import { getCustomerById, listCustomers, setCustomerDisabled } from '../repository/customers';
 
 // CMS-staff-facing, session-gated like every other admin route — but gated at 'admin' rather
 // than catalog's 'editor' floor: customer PII (email, address, phone) is closer to this
 // codebase's own webhooks/Users-management sensitivity than day-to-day catalog editing
-// (docs/PLUGINS.md's Commerce section).
+// (docs/PLUGINS.md's Commerce section). Customers are website users of the one shared identity
+// system (role 'none'); these routes only ever see and touch those, never CMS staff accounts. A
+// customer's password, sessions and email verification are Core's, not managed here.
 export const adminCustomersRoutes = createPluginOpenApiApp<{ Bindings: PluginBindings; Variables: PluginVariables }>();
 
 const errorSchema = z.object({ error: z.string() });
@@ -27,7 +27,7 @@ const customerSummarySchema = z.object({
   createdAt: z.string(),
 });
 
-function toCustomerSummary(row: PluginCommerceCustomer) {
+function toCustomerSummary(row: CustomerRecord) {
   return {
     id: row.id,
     email: row.email,
@@ -84,10 +84,7 @@ adminCustomersRoutes.openapi(
   async (c) => {
     const { search } = c.req.valid('query');
     const ctx = c.get('pluginContext');
-    const rows = await ctx.db.query.pluginCommerceCustomers.findMany({
-      where: search ? or(like(pluginCommerceCustomers.email, `%${search}%`), like(pluginCommerceCustomers.name, `%${search}%`)) : undefined,
-      orderBy: desc(pluginCommerceCustomers.createdAt),
-    });
+    const rows = await listCustomers(ctx.db, search);
     return c.json(rows.map(toCustomerSummary), 200);
   },
 );
@@ -146,7 +143,6 @@ adminCustomersRoutes.openapi(
     if (!existing) return c.json({ error: 'Customer not found' }, 404);
 
     const updated = await setCustomerDisabled(ctx.db, id, disabled);
-    if (disabled) await deleteAllSessionsForCustomer(ctx.db, id);
 
     return c.json(toCustomerSummary(updated!), 200);
   },
@@ -157,7 +153,7 @@ adminCustomersRoutes.openapi(
     method: 'post',
     path: '/{id}/resend-verification-email',
     tags: ['Commerce Admin: Customers'],
-    summary: 'Resend the email-verification link on a customer\'s behalf',
+    summary: "Resend the email-verification link on a customer's behalf",
     middleware: requirePluginRole('admin'),
     request: { params: idParamSchema },
     responses: {
@@ -173,10 +169,11 @@ adminCustomersRoutes.openapi(
     if (!customer) return c.json({ error: 'Customer not found' }, 404);
 
     if (customer.emailVerified) {
-      return c.json({ message: 'This customer\'s email is already verified — nothing sent.' }, 200);
+      return c.json({ message: "This customer's email is already verified, nothing sent." }, 200);
     }
 
-    await sendVerificationEmail(ctx.db, c.executionCtx.waitUntil.bind(c.executionCtx), ctx.email, ctx.config, customer);
+    // Core's shared verification flow (better-auth), not a Commerce-specific token.
+    await ctx.accounts.sendVerificationEmail({ email: customer.email });
     return c.json({ message: 'Verification email sent.' }, 200);
   },
 );

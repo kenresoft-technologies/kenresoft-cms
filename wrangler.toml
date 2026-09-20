@@ -80,16 +80,6 @@ namespace_id = "1004"
 simple = { limit = 300, period = 60 }
 
 [[ratelimits]]
-# Commerce's customer-auth sub-path (register/login/logout/password-reset/verify-email) —
-# declared by the plugin-ecommerce package via PluginRegistration.publicRateLimits and applied
-# generically by apps/api/src/plugins/mount.ts (docs/PLUGINS.md); nothing about this binding is
-# hardcoded into Core beyond its name. Same posture as AUTH_RATE_LIMITER, for the same reason —
-# this is a real login/registration surface, brute-forceable without it.
-name = "COMMERCE_CUSTOMER_AUTH_RATE_LIMITER"
-namespace_id = "1005"
-simple = { limit = 10, period = 60 }
-
-[[ratelimits]]
 # Admin-composed email (Email page and submission replies): 10 sends per 60s per staff user
 # (keyed by user id, not IP). Caps the damage a compromised or careless account can do — mail
 # spam, or provider quota/reputation burn — without getting in the way of normal use.

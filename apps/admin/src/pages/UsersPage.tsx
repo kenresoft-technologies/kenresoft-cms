@@ -119,13 +119,13 @@ const ASSIGNABLE_ROLES = USER_ROLES.filter((role) => role !== 'owner');
 // Distinct colors below Owner (which keeps its own primary tint above) — gives the Users page
 // the same at-a-glance role scan as Strapi's role badges. Viewer stays unaccented, matching its
 // standing as this deployment's lowest-privilege, nothing-granted tier.
-const ROLE_BADGE_TONE: Partial<Record<UserRole, string>> = {
+const ROLE_BADGE_TONE: Partial<Record<AdminUser['role'], string>> = {
   admin: 'border-swatch-3/30 bg-swatch-3/14 text-swatch-3',
   editor: 'border-swatch-2/30 bg-swatch-2/14 text-swatch-2',
   author: 'border-swatch-4/30 bg-swatch-4/14 text-swatch-4',
 };
 
-const ROLE_SELECT_TONE: Partial<Record<UserRole, string>> = {
+const ROLE_SELECT_TONE: Partial<Record<AdminUser['role'], string>> = {
   admin: 'text-swatch-3',
   editor: 'text-swatch-2',
   author: 'text-swatch-4',

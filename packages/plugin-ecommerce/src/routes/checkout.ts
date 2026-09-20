@@ -115,7 +115,7 @@ async function performCheckout(
     return { status: 400, body: { error: 'Your cart is empty' } };
   }
 
-  const customer = await getCustomerFromRequest(c, ctx.db);
+  const customer = await getCustomerFromRequest(ctx);
   const email = input.email ?? customer?.email;
   const name = input.name ?? customer?.name;
   if (!email || !name) {

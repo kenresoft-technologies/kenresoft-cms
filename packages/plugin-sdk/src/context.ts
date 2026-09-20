@@ -22,6 +22,31 @@ export interface PluginSessionUser {
   disabled: boolean;
 }
 
+// The signed-in user behind a request to a plugin's PUBLIC routes, resolved by Core from the one
+// shared better-auth session — a plugin never reads a cookie, hashes a password, or stores a
+// session itself. `cmsRole` is null for a normal website user (no CMS access); a plugin must never
+// treat any value supplied by the client as a role — only this server-resolved one.
+export interface PluginIdentityUser {
+  id: string;
+  email: string;
+  name: string;
+  emailVerified: boolean;
+  cmsRole: UserRole | null;
+}
+
+export interface PluginIdentityService {
+  // Null when there's no session, or the account is disabled. Memoized per request.
+  getUser(): Promise<PluginIdentityUser | null>;
+}
+
+// Admin-side account actions a plugin may trigger for a user of the shared identity system — always
+// executed by Core through better-auth, never re-implemented by the plugin.
+export interface PluginAccountsService {
+  // Sends (or re-sends) the standard email-verification message. `callbackUrl`, if given, is where
+  // the link sends the user after verifying (Core validates it against its trusted origins).
+  sendVerificationEmail(input: { email: string; callbackUrl?: string }): Promise<void>;
+}
+
 export interface PluginMediaSummary {
   id: string;
   filename: string;
@@ -157,6 +182,7 @@ export interface PluginContext {
   config: PluginConfigService;
   events: PluginEventBus;
   email: PluginEmailService;
+  accounts: PluginAccountsService;
   payments: PluginPaymentsService;
   logger: PluginLogger;
 }
@@ -179,6 +205,8 @@ export interface PluginPublicContext {
   media: PluginMediaService;
   config: Pick<PluginConfigService, 'get'>;
   email: PluginEmailService;
+  // Who (if anyone) is signed in — the same identity/session CMS staff use (docs/PLUGINS.md).
+  identity: PluginIdentityService;
   // Public precisely because checkout/payment-confirmation routes must work for a guest with no
   // session at all (docs/PLUGINS.md's Commerce section) — the same reasoning `email` already
   // established here for password-reset-style flows.

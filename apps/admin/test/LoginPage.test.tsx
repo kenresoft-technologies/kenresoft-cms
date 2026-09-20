@@ -9,16 +9,16 @@ import { ThemeProvider } from '@/lib/theme';
 const {
   useSessionMock,
   signInEmailMock,
-  signUpEmailMock,
   getSessionMock,
+  signOutMock,
   verifyTotpMock,
   verifyBackupCodeMock,
   sendVerificationEmailMock,
 } = vi.hoisted(() => ({
   useSessionMock: vi.fn(),
   signInEmailMock: vi.fn(),
-  signUpEmailMock: vi.fn(),
   getSessionMock: vi.fn(),
+  signOutMock: vi.fn(),
   verifyTotpMock: vi.fn(),
   verifyBackupCodeMock: vi.fn(),
   sendVerificationEmailMock: vi.fn(),
@@ -28,7 +28,7 @@ vi.mock('@/lib/auth-client', () => ({
   authClient: {
     useSession: useSessionMock,
     signIn: { email: signInEmailMock },
-    signUp: { email: signUpEmailMock },
+    signOut: signOutMock,
     getSession: getSessionMock,
     twoFactor: { verifyTotp: verifyTotpMock, verifyBackupCode: verifyBackupCodeMock },
     sendVerificationEmail: sendVerificationEmailMock,
@@ -52,12 +52,12 @@ describe('LoginPage', () => {
   beforeEach(() => {
     useSessionMock.mockReset();
     signInEmailMock.mockReset();
-    signUpEmailMock.mockReset();
+    signOutMock.mockReset();
     getSessionMock.mockReset();
     verifyTotpMock.mockReset();
     verifyBackupCodeMock.mockReset();
     sendVerificationEmailMock.mockReset();
-    getSessionMock.mockResolvedValue({ data: { user: { email: 'user@example.test' } } });
+    getSessionMock.mockResolvedValue({ data: { user: { email: 'user@example.test', role: 'editor' } } });
   });
 
   it('redirects to / when a session already exists', () => {
@@ -137,25 +137,30 @@ describe('LoginPage', () => {
     expect(screen.getByRole('button', { name: 'Sign in' })).not.toBeDisabled();
   });
 
-  it('switches to sign-up mode, collects a name, and submits without a client-set role', async () => {
+  it('is the CMS entry point only: it offers no self-registration', () => {
     useSessionMock.mockReturnValue({ data: null, isPending: false });
-    signUpEmailMock.mockResolvedValue({ error: null });
 
     renderLoginPage();
 
-    await userEvent.click(screen.getByRole('button', { name: 'Create an account' }));
-    expect(screen.getByText('Create your account')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Create an account' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Name')).not.toBeInTheDocument();
+    expect(screen.getByText(/CMS accounts are created by an administrator/i)).toBeInTheDocument();
+  });
 
-    await userEvent.type(screen.getByLabelText('Name'), 'Ada Lovelace');
-    await userEvent.type(screen.getByLabelText('Email'), 'ada@example.test');
+  it('signs out and explains when the account is valid but has no CMS role (e.g. a website user)', async () => {
+    useSessionMock.mockReturnValue({ data: null, isPending: false });
+    signInEmailMock.mockResolvedValue({ error: null });
+    getSessionMock.mockResolvedValue({ data: { user: { email: 'shopper@example.test', role: 'none' } } });
+    signOutMock.mockResolvedValue({});
+
+    renderLoginPage();
+
+    await userEvent.type(screen.getByLabelText('Email'), 'shopper@example.test');
     await userEvent.type(screen.getByLabelText('Password'), 'correct horse battery staple');
-    await userEvent.click(screen.getByRole('button', { name: 'Create account' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
 
-    expect(signUpEmailMock).toHaveBeenCalledWith({
-      email: 'ada@example.test',
-      password: 'correct horse battery staple',
-      name: 'Ada Lovelace',
-    });
+    await waitFor(() => expect(screen.getByText(/does not have access to the CMS/i)).toBeInTheDocument());
+    expect(signOutMock).toHaveBeenCalled();
   });
 
   it('prompts for a 2FA code when sign-in reports twoFactorRedirect, then verifies it', async () => {
@@ -238,17 +243,5 @@ describe('LoginPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Back to sign in' }));
 
     expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument();
-  });
-
-  it('toggles back to sign-in mode', async () => {
-    useSessionMock.mockReturnValue({ data: null, isPending: false });
-
-    renderLoginPage();
-
-    await userEvent.click(screen.getByRole('button', { name: 'Create an account' }));
-    await userEvent.click(screen.getByRole('button', { name: 'Sign in instead' }));
-
-    expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument();
-    expect(screen.queryByLabelText('Name')).not.toBeInTheDocument();
   });
 });

@@ -123,7 +123,7 @@ cartRoutes.openapi(
 
     if (!cart) {
       const config = (await ctx.config.get()) as CommerceConfig;
-      const customer = await getCustomerFromRequest(c, ctx.db);
+      const customer = await getCustomerFromRequest(ctx);
       if (customer) {
         cart = await getOrCreateCartForCustomer(ctx.db, customer.id, config.defaultCurrency);
       } else {
