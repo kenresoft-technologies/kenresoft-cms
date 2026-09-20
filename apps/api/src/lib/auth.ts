@@ -1,6 +1,7 @@
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { APIError, createAuthMiddleware } from 'better-auth/api';
+import { hasCmsAccess } from '@kenresoft-cms/contracts';
 import { createDb } from '@kenresoft-cms/database';
 
 import { recordAudit } from './audit';
@@ -26,7 +27,16 @@ export function isAuthSecretConfigured(secret: string | undefined): boolean {
 // admin/users.ts's Add User) — everything else (session lookups, the admin password
 // re-check) omits it and falls back to better-auth awaiting the send inline, which is fine
 // for paths that never send mail. See docs/ARCHITECTURE.md's Changelog for why this exists.
-export function createAuth(env: Bindings, executionCtx?: Pick<ExecutionContext, 'waitUntil'>) {
+//
+// `options.staffOnboarding` marks an account being created on a CMS staff member's behalf (Add
+// User): its role is granted right after sign-up, i.e. AFTER better-auth has already triggered the
+// verification email, so the email can't tell from the (still 'none') role alone that it should
+// point at the admin app rather than at a website.
+export function createAuth(
+  env: Bindings,
+  executionCtx?: Pick<ExecutionContext, 'waitUntil'>,
+  options: { staffOnboarding?: boolean } = {},
+) {
   if (!isAuthSecretConfigured(env.BETTER_AUTH_SECRET)) {
     // Loud and unmissable (visible via `wrangler tail`, and every auth-touching request 500s)
     // rather than the silent, "worked fine, just insecurely" failure mode this replaces —
@@ -73,9 +83,27 @@ export function createAuth(env: Bindings, executionCtx?: Pick<ExecutionContext, 
     // success" signal. Built from the same ADMIN_URL/CORS_ORIGINS fallback password-reset.ts
     // already uses for its own link — no new env var.
     emailVerification: {
-      sendVerificationEmail: async ({ user, token }) => {
-        const verifyUrl = `${env.ADMIN_URL ?? env.CORS_ORIGINS.split(',')[0]}/verify-email?token=${token}`;
+      sendVerificationEmail: async ({ user, token, url }) => {
         const sender = getEmailSender(env);
+        const role = (user as { role?: string }).role;
+        if (!options.staffOnboarding && !hasCmsAccess(role)) {
+          // A website user (e.g. a Commerce customer): better-auth's own verification URL, which
+          // verifies the token and redirects to the `callbackURL` the site passed at sign-up
+          // (validated against trustedOrigins above) — never the admin app, which a customer has
+          // no business landing in.
+          await sender.send({
+            to: user.email,
+            subject: 'Verify your email',
+            text: `Verify your email address to finish setting up your account.
+
+Verify here: ${url}
+
+This link expires in 1 hour. If you didn't expect this, you can ignore this email.`,
+            html: `<p>Verify your email address to finish setting up your account.</p><p><a href="${url}">Verify your email</a></p><p>This link expires in 1 hour. If you didn't expect this, you can ignore this email.</p>`,
+          });
+          return;
+        }
+        const verifyUrl = `${env.ADMIN_URL ?? env.CORS_ORIGINS.split(',')[0]}/verify-email?token=${token}`;
         await sender.send({
           to: user.email,
           subject: 'Verify your email — Kenresoft CMS',
@@ -128,7 +156,13 @@ export function createAuth(env: Bindings, executionCtx?: Pick<ExecutionContext, 
           const newSession = ctx.context.newSession;
           const returned = ctx.context.returned as { user?: { id?: string } } | undefined;
           const newUserId = newSession?.user.id ?? returned?.user?.id;
-          if (newUserId) {
+          // For an already-registered email, better-auth deliberately returns a SYNTHETIC user
+          // (random id, no row) so the response can't be used to enumerate accounts — auditing that
+          // id would violate the audit_log -> user foreign key and 500 the whole sign-up, both
+          // leaking the account's existence and breaking the enumeration-safe response. Only audit
+          // a sign-up that actually created a row.
+          const created = newUserId ? await db.query.user.findFirst({ where: (u, { eq }) => eq(u.id, newUserId) }) : undefined;
+          if (newUserId && created) {
             await recordAudit(db, {
               actorUserId: newUserId,
               action: 'auth.sign_up',

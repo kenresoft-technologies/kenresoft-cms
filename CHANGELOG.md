@@ -10,6 +10,12 @@ landed on `develop`.
 
 ## Unreleased
 
+### Breaking
+
+- **One identity system for the CMS and its plugins.** Website/application users are now ordinary accounts with no CMS access (new role `none`), and new accounts default to it. **Before this, a public sign-up defaulted to Editor** — after updating, sign-ups get no CMS access; only an Owner/Admin can grant a role. Existing users keep their roles.
+- **Commerce customers moved onto the core accounts.** `pnpm run update` migrates existing customers (same password, same orders/carts/addresses). Their old sessions end, so they sign in once more, and a customer must verify their email before signing in. The storefront `/customer-auth/*` routes are gone: use `/api/v1/auth/*` and `/api/v1/public/password-reset/*` (`@kenresoft-cms/astro`'s `commerce.customerAuth` does this for you; `register()` no longer signs the customer in).
+- **The Owner is hidden from other users**: not in the Users list or audit log for anyone else, and looking up or changing the Owner as a non-Owner is a 404.
+
 ### Security
 
 - **Rich text page blocks are now sanitised** on save and on every public read (and reusable
@@ -26,6 +32,7 @@ landed on `develop`.
 
 ### Fixed
 
+- Signing up with an email that already has an account no longer returns a server error.
 - Email page: Reply-To can be set (it was always the sender's own address); Email sender card now
   comes first; long rich-text bodies scroll inside the editor instead of stretching the page.
 - Media picker thumbnails no longer overlap.

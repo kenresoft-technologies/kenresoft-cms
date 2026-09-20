@@ -6,6 +6,11 @@ const newPasswordSchema = z.string().min(8).max(200);
 
 export const requestPasswordResetSchema = z.object({
   email: z.string().email(),
+  // Website users (no CMS access — e.g. storefront customers) reset their password on their OWN
+  // site, not the admin SPA: the emailed link is `<redirectUrl>?token=...`. Only honored when its
+  // origin is in this deployment's CORS_ORIGINS allow-list, and never for CMS staff (who always
+  // get the admin link) — the client never gets to point a staff reset email anywhere.
+  redirectUrl: z.string().url().optional(),
 });
 
 export const confirmPasswordResetSchema = z.object({

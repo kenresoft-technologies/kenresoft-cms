@@ -1,10 +1,10 @@
 import { createRoute, z } from '@hono/zod-openapi';
 import { createPluginOpenApiApp } from '@kenresoft-cms/plugin-sdk';
 import type { PluginBindings, PluginPublicVariables } from '@kenresoft-cms/plugin-sdk';
-import type { Context } from 'hono';
-import type { Database, PluginCommerceCustomer, PluginCommerceCustomerAddress } from '@kenresoft-cms/database';
+import type { PluginCommerceCustomerAddress } from '@kenresoft-cms/database';
 
-import { getCustomerFromRequest, setCustomerSessionCookie } from '../lib/customer-session';
+import { getCustomerFromRequest } from '../lib/customer-session';
+import type { CommerceCustomer } from '../lib/customer-session';
 import { requireTrustedOriginForMutations } from '../lib/origin-check';
 import {
   listAddressesForCustomer,
@@ -13,13 +13,14 @@ import {
   updateAddress,
   deleteAddress,
 } from '../repository/customer-addresses';
-import { updateCustomer, updateCustomerPassword, verifyCustomerPassword } from '../repository/customers';
-import { createCustomerSession, deleteAllSessionsForCustomer } from '../repository/customer-sessions';
+import { getProfilePhone, updateOwnProfile } from '../repository/customers';
 import { getOrderById, listOrderItems, listOrdersForCustomer } from '../repository/orders';
 import type { PluginCommerceOrder, PluginCommerceOrderItem } from '@kenresoft-cms/database';
 
-// The session-required counterpart to customer-auth.ts — every route here 401s without a valid
-// customer session (getCustomerFromRequest), reusing the same cookie customer-auth.ts sets.
+// The session-required customer surface — every route here 401s without a signed-in user. The
+// session is Core's shared better-auth session (a customer signs up/in/out, verifies email and
+// resets or changes their password through Core's /api/v1/auth/* and /api/v1/public/password-reset
+// routes, not through Commerce). Commerce only owns the profile/addresses/orders behind it.
 export const customerRoutes = createPluginOpenApiApp<{ Bindings: PluginBindings; Variables: PluginPublicVariables }>();
 
 customerRoutes.use('*', requireTrustedOriginForMutations());
@@ -33,7 +34,7 @@ customerRoutes.use('*', requireTrustedOriginForMutations());
 // it — a real ordering bug this project caught via its own commerce-customer-profile.test.ts.
 customerRoutes.use('*', async (c, next) => {
   const ctx = c.get('pluginContext');
-  const customer = await getCustomerFromRequest(c, ctx.db);
+  const customer = await getCustomerFromRequest(ctx);
   if (!customer) {
     return c.json({ error: 'Not signed in' }, 401);
   }
@@ -42,8 +43,8 @@ customerRoutes.use('*', async (c, next) => {
 
 const errorSchema = z.object({ error: z.string() });
 
-function requireCustomer(c: Context, db: Database) {
-  return getCustomerFromRequest(c, db);
+function requireCustomer(ctx: Parameters<typeof getCustomerFromRequest>[0]) {
+  return getCustomerFromRequest(ctx);
 }
 
 const customerSchema = z.object({
@@ -54,8 +55,8 @@ const customerSchema = z.object({
   emailVerified: z.boolean(),
 });
 
-function toCustomer(row: PluginCommerceCustomer) {
-  return { id: row.id, email: row.email, name: row.name, phone: row.phone, emailVerified: row.emailVerified };
+function toCustomer(row: CommerceCustomer, phone: string | null) {
+  return { id: row.id, email: row.email, name: row.name, phone, emailVerified: row.emailVerified };
 }
 
 customerRoutes.openapi(
@@ -71,9 +72,9 @@ customerRoutes.openapi(
   }),
   async (c) => {
     const ctx = c.get('pluginContext');
-    const customer = await requireCustomer(c, ctx.db);
+    const customer = await requireCustomer(ctx);
     if (!customer) return c.json({ error: 'Not signed in' }, 401);
-    return c.json(toCustomer(customer), 200);
+    return c.json(toCustomer(customer, await getProfilePhone(ctx.db, customer.id)), 200);
   },
 );
 
@@ -95,49 +96,13 @@ customerRoutes.openapi(
   }),
   async (c) => {
     const ctx = c.get('pluginContext');
-    const customer = await requireCustomer(c, ctx.db);
+    const customer = await requireCustomer(ctx);
     if (!customer) return c.json({ error: 'Not signed in' }, 401);
 
     const input = c.req.valid('json');
-    const updated = await updateCustomer(ctx.db, customer.id, input);
-    return c.json(toCustomer(updated!), 200);
-  },
-);
-
-const changePasswordSchema = z.object({ currentPassword: z.string().min(1), newPassword: z.string().min(8) });
-
-customerRoutes.openapi(
-  createRoute({
-    method: 'patch',
-    path: '/password',
-    tags: ['Commerce Customer'],
-    summary: 'Change password (revokes every other session)',
-    request: { body: { content: { 'application/json': { schema: changePasswordSchema } } } },
-    responses: {
-      200: { description: 'Password changed; a fresh session cookie is set for this request.', content: { 'application/json': { schema: z.object({ message: z.string() }) } } },
-      400: { description: 'Current password is incorrect.', content: { 'application/json': { schema: errorSchema } } },
-      401: { description: 'No valid customer session.', content: { 'application/json': { schema: errorSchema } } },
-    },
-  }),
-  async (c) => {
-    const ctx = c.get('pluginContext');
-    const customer = await requireCustomer(c, ctx.db);
-    if (!customer) return c.json({ error: 'Not signed in' }, 401);
-
-    const input = c.req.valid('json');
-    if (!(await verifyCustomerPassword(customer, input.currentPassword))) {
-      return c.json({ error: 'Current password is incorrect' }, 400);
-    }
-
-    await updateCustomerPassword(ctx.db, customer.id, input.newPassword);
-    // Revoke every session (including the one making this request), then issue a fresh one for
-    // this browser so the caller isn't logged out by their own password change while every other
-    // device/session genuinely is.
-    await deleteAllSessionsForCustomer(ctx.db, customer.id);
-    const rawToken = await createCustomerSession(ctx.db, customer.id);
-    setCustomerSessionCookie(c, rawToken);
-
-    return c.json({ message: 'Password changed.' }, 200);
+    await updateOwnProfile(ctx.db, customer.id, input);
+    const refreshed = (await getCustomerFromRequest(ctx))!;
+    return c.json(toCustomer({ ...refreshed, name: input.name ?? refreshed.name }, input.phone !== undefined ? input.phone : await getProfilePhone(ctx.db, customer.id)), 200);
   },
 );
 
@@ -197,7 +162,7 @@ customerRoutes.openapi(
   }),
   async (c) => {
     const ctx = c.get('pluginContext');
-    const customer = await requireCustomer(c, ctx.db);
+    const customer = await requireCustomer(ctx);
     if (!customer) return c.json({ error: 'Not signed in' }, 401);
     const addresses = await listAddressesForCustomer(ctx.db, customer.id);
     return c.json(addresses.map(toAddress), 200);
@@ -218,7 +183,7 @@ customerRoutes.openapi(
   }),
   async (c) => {
     const ctx = c.get('pluginContext');
-    const customer = await requireCustomer(c, ctx.db);
+    const customer = await requireCustomer(ctx);
     if (!customer) return c.json({ error: 'Not signed in' }, 401);
 
     const input = c.req.valid('json');
@@ -256,7 +221,7 @@ customerRoutes.openapi(
   }),
   async (c) => {
     const ctx = c.get('pluginContext');
-    const customer = await requireCustomer(c, ctx.db);
+    const customer = await requireCustomer(ctx);
     if (!customer) return c.json({ error: 'Not signed in' }, 401);
 
     const { id } = c.req.valid('param');
@@ -285,7 +250,7 @@ customerRoutes.openapi(
   }),
   async (c) => {
     const ctx = c.get('pluginContext');
-    const customer = await requireCustomer(c, ctx.db);
+    const customer = await requireCustomer(ctx);
     if (!customer) return c.json({ error: 'Not signed in' }, 401);
 
     const { id } = c.req.valid('param');
@@ -350,7 +315,7 @@ customerRoutes.openapi(
   }),
   async (c) => {
     const ctx = c.get('pluginContext');
-    const customer = await requireCustomer(c, ctx.db);
+    const customer = await requireCustomer(ctx);
     if (!customer) return c.json({ error: 'Not signed in' }, 401);
     const orders = await listOrdersForCustomer(ctx.db, customer.id);
     return c.json(orders.map(toOrderSummary), 200);
@@ -374,7 +339,7 @@ customerRoutes.openapi(
   }),
   async (c) => {
     const ctx = c.get('pluginContext');
-    const customer = await requireCustomer(c, ctx.db);
+    const customer = await requireCustomer(ctx);
     if (!customer) return c.json({ error: 'Not signed in' }, 401);
 
     const { id } = c.req.valid('param');

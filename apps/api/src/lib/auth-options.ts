@@ -52,12 +52,17 @@ export const authOptions = {
   },
   user: {
     additionalFields: {
+      // 'none' (the default) = a normal website/application user with NO CMS access — e.g. a
+      // Commerce storefront customer signing up through this same better-auth instance. A CMS
+      // role is only ever granted by trusted server-side code (bootstrap owner, Add User, the
+      // role-change and ownership-transfer routes) — never by the client (input: false rejects
+      // it at sign-up AND update-user), and never as a side effect of merely creating an
+      // account. requireSession (middleware/require-session.ts) refuses any session whose role
+      // isn't a real CMS role on every /admin route.
       role: {
         type: 'string',
         required: true,
-        defaultValue: 'editor',
-        // Never client-settable at signup — only a trusted admin action may grant a role
-        // above 'editor'.
+        defaultValue: 'none',
         input: false,
       },
       // A disabled account is treated as unauthenticated (require-session.ts) even though its

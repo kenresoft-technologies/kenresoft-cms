@@ -1,10 +1,8 @@
 import { createDb } from '@kenresoft-cms/database';
-import { createCustomerSession } from '@kenresoft-cms/plugin-ecommerce/src/repository/customer-sessions';
-import { createCustomer } from '@kenresoft-cms/plugin-ecommerce/src/repository/customers';
 import { SELF, env } from 'cloudflare:test';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { signUpVerifiedAndGetCookie } from './helpers/auth';
+import { registerWebsiteUser, signUpVerifiedAndGetCookie } from './helpers/auth';
 
 const ADMIN_BASE = 'https://example.com/api/plugins/commerce/v1';
 const CART_BASE = 'https://example.com/api/plugins/commerce/public/v1/cart';
@@ -46,18 +44,13 @@ async function createVariant(adminCookie: string, productId: string, overrides: 
 }
 
 async function registeredCustomer(email: string) {
-  const db = createDb(env.DB);
-  const customer = await createCustomer(db, { email, name: 'Test Customer', password: 'correct horse battery staple' });
-  const rawToken = await createCustomerSession(db, customer.id);
-  return { customer, cookie: `commerce_customer_session=${rawToken}` };
+  return registerWebsiteUser(email);
 }
 
 describe('commerce plugin: cart (real D1)', () => {
   beforeEach(async () => {
     await env.DB.exec('DELETE FROM plugin_commerce_cart_items');
     await env.DB.exec('DELETE FROM plugin_commerce_carts');
-    await env.DB.exec('DELETE FROM plugin_commerce_customer_sessions');
-    await env.DB.exec('DELETE FROM plugin_commerce_customers');
     await env.DB.exec('DELETE FROM plugin_commerce_product_variants');
     await env.DB.exec('DELETE FROM plugin_commerce_product_images');
     await env.DB.exec('DELETE FROM plugin_commerce_products');
@@ -231,7 +224,7 @@ describe('commerce plugin: cart (real D1)', () => {
     expect(await after.json()).toEqual({ id: null, currency: null, items: [] });
   });
 
-  it('logging in merges a guest cart into the customer’s own cart, summing and capping quantities atomically', async () => {
+  it('the first cart request made while signed in merges a guest cart into the customer’s own cart, summing and capping quantities atomically', async () => {
     const adminCookie = await freshAdminCookie();
     const product = await createPublishedProduct(adminCookie);
     const variant = await createVariant(adminCookie, product.id, { stockQty: 3 });
@@ -254,15 +247,9 @@ describe('commerce plugin: cart (real D1)', () => {
     });
     expect(preLogin.status).toBe(200);
 
-    // Log in as that customer while presenting the guest cart cookie too — merge should fire.
-    const login = await SELF.fetch('https://example.com/api/plugins/commerce/public/v1/customer-auth/login', {
-      method: 'POST',
-      headers: { Cookie: `${guestCookie}; ${customerCookie}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: 'cart-merge@example.test', password: 'correct horse battery staple' }),
-    });
-    expect(login.status).toBe(200);
-
-    const merged = await SELF.fetch(CART_BASE, { headers: { Cookie: customerCookie } });
+    // Sign-in is Core's (better-auth), so the merge fires on the first cart request that carries
+    // both the customer's session AND the leftover guest cart cookie.
+    const merged = await SELF.fetch(CART_BASE, { headers: { Cookie: `${guestCookie}; ${customerCookie}` } });
     const mergedBody = await merged.json<{ items: Array<{ quantity: number }> }>();
     // 2 (guest) + 2 (customer's own) = 4, capped at stockQty=3.
     expect(mergedBody.items).toHaveLength(1);
@@ -302,7 +289,7 @@ describe('commerce plugin: cart (real D1)', () => {
     expect(res.status).toBe(400);
   });
 
-  it('a forged guest-cart cookie naming another customer’s real cart cannot hijack it on login', async () => {
+  it('a forged guest-cart cookie naming another customer’s real cart cannot hijack it when signed in', async () => {
     const adminCookie = await freshAdminCookie();
     const product = await createPublishedProduct(adminCookie);
 
@@ -320,12 +307,8 @@ describe('commerce plugin: cart (real D1)', () => {
     // Without mergeGuestCartIntoCustomerCart independently re-verifying customerId IS NULL, this
     // would delete the victim's real cart and move its item onto the attacker's own cart.
     const { cookie: attackerCookie } = await registeredCustomer('cart-hijack-attacker@example.test');
-    const login = await SELF.fetch('https://example.com/api/plugins/commerce/public/v1/customer-auth/login', {
-      method: 'POST',
-      headers: { Cookie: `commerce_guest_cart=${victimCart.id}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: 'cart-hijack-attacker@example.test', password: 'correct horse battery staple' }),
-    });
-    expect(login.status).toBe(200);
+    const attackerFirst = await SELF.fetch(CART_BASE, { headers: { Cookie: `commerce_guest_cart=${victimCart.id}; ${attackerCookie}` } });
+    expect(attackerFirst.status).toBe(200);
 
     // The victim's cart is untouched: still exists, still has its own item.
     const victimAfter = await SELF.fetch(CART_BASE, { headers: { Cookie: victimCookie } });

@@ -7,6 +7,23 @@ Status: Proposed / Ready for implementation
 
 ## Changelog
 
+**v0.24 (2026-09-20)** — one identity system across the CMS and its plugins. Normal website/
+application users (e.g. Commerce storefront customers) are now plain better-auth `user` rows with the
+new `'none'` role (no CMS access) — the default for every new account, so a public sign-up can never
+confer a CMS role (previously a public sign-up defaulted to `editor`). Only trusted server-side code
+grants a CMS role (bootstrap Owner, Add User, the admin role route, ownership transfer); `role` stays
+`input: false` in better-auth's `additionalFields`. `requireSession` returns 403 for any signed-in
+user without a real CMS role, so every `/admin` and plugin-admin route refuses website users
+server-side. The Owner is invisible to everyone else: absent from the users list and (for non-owners)
+the audit log, and every direct lookup or mutation of the Owner by a non-Owner is an indistinguishable
+404 (`getUserVisibleTo`, `apps/api/src/repositories/users.ts`); Admin/Editor/Viewer are deliberately not
+ranked against each other for visibility. Commerce's own customer accounts, sessions and verification/
+reset tokens were removed (`docs/PLUGINS.md`): migration `0051_unified_identity.sql` turns every legacy
+customer into a core user (same id, same password hash, `none` role), re-points carts/orders/addresses at
+the user id and drops `plugin_commerce_customers`/`_customer_sessions`/`_customer_tokens`. Also fixed:
+a public sign-up for an already-registered email 500'd (the sign-up audit hook wrote an audit row for
+better-auth's synthetic anti-enumeration user, violating the audit_log→user foreign key).
+
 **v0.23 (2026-09-16)** — a security-hardening pass across six areas found in a repository audit,
 plus two focused feature additions. **Secure first-owner bootstrap (P0)**: removed the
 `databaseHooks.user.create.before` hook that granted "owner" to a bare first signup

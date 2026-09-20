@@ -1,5 +1,6 @@
 import { createRoute } from '@hono/zod-openapi';
 import { confirmPasswordResetSchema, genericMessageSchema, requestPasswordResetSchema } from '@kenresoft-cms/contracts';
+import { hasCmsAccess } from '@kenresoft-cms/contracts';
 import { hashPassword } from 'better-auth/crypto';
 import { z } from 'zod';
 
@@ -19,6 +20,22 @@ export const publicPasswordResetRoute = createOpenApiApp<{ Bindings: Bindings }>
 publicPasswordResetRoute.use('*', recoveryRateLimit);
 
 const errorSchema = z.object({ error: z.string() });
+
+function isTrustedRedirect(redirectUrl: string, corsOrigins: string): boolean {
+  let origin: string;
+  try {
+    const parsed = new URL(redirectUrl);
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return false;
+    origin = parsed.origin;
+  } catch {
+    return false;
+  }
+  return corsOrigins
+    .split(',')
+    .map((allowed) => allowed.trim())
+    .filter(Boolean)
+    .includes(origin);
+}
 
 const GENERIC_REQUEST_MESSAGE = {
   message: 'If an account exists for that email, a password reset link has been sent.',
@@ -46,13 +63,20 @@ publicPasswordResetRoute.openapi(
     },
   }),
   async (c) => {
-    const { email } = c.req.valid('json');
+    const { email, redirectUrl } = c.req.valid('json');
     const db = getDb(c);
     const user = await getUserByEmail(db, email);
 
     if (user && !user.disabled) {
       const token = await createPasswordResetToken(db, user.id);
-      const resetUrl = `${c.env.ADMIN_URL ?? c.env.CORS_ORIGINS.split(',')[0]}/reset-password?token=${token}`;
+      // CMS staff always get the admin link. A website user (no CMS access — e.g. a storefront
+      // customer) gets a link to their own site, but only if the caller-supplied redirectUrl's
+      // origin is one this deployment already trusts (CORS_ORIGINS) — never an arbitrary URL.
+      const resetBase =
+        !hasCmsAccess(user.role) && redirectUrl && isTrustedRedirect(redirectUrl, c.env.CORS_ORIGINS)
+          ? redirectUrl
+          : `${c.env.ADMIN_URL ?? c.env.CORS_ORIGINS.split(',')[0]}/reset-password`;
+      const resetUrl = `${resetBase}${resetBase.includes('?') ? '&' : '?'}token=${token}`;
       const sender = getEmailSender(c.env);
       const send = sender.send({
         to: user.email,

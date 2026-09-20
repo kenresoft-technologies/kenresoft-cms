@@ -80,7 +80,10 @@ import AccountNav from '../../components/account/AccountNav.astro';
       resendButtonEl.disabled = true;
       resendStatusEl.textContent = 'Sending…';
       try {
-        await getBrowserClient().commerce.customerAuth.resendVerificationEmail({ email: customer.email });
+        await getBrowserClient().commerce.customerAuth.resendVerificationEmail({
+          email: customer.email,
+          callbackUrl: `${window.location.origin}/account/verify-email`,
+        });
         resendStatusEl.textContent = 'Verification email sent — check your inbox.';
       } catch (err) {
         resendStatusEl.textContent = err instanceof KenresoftApiError ? err.message : 'Could not send the email. Please try again.';

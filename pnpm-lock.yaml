@@ -380,9 +380,6 @@ importers:
 
   packages/plugin-ecommerce:
     dependencies:
-      '@better-auth/utils':
-        specifier: 0.4.2
-        version: 0.4.2
       '@hono/zod-openapi':
         specifier: ^1.6.1
         version: 1.6.1(hono@4.13.5)(zod@4.5.4)

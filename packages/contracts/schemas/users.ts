@@ -1,12 +1,14 @@
 import { z } from 'zod';
 
-import { USER_ROLES } from './enums';
+import { ACCOUNT_ROLES } from './enums';
 
 export const adminUserSchema = z.object({
   id: z.string(),
   name: z.string(),
   email: z.string(),
-  role: z.enum(USER_ROLES),
+  // 'none' = a website user with no CMS access (only returned for a role change that just
+  // revoked access; the users list itself only ever contains CMS staff).
+  role: z.enum(ACCOUNT_ROLES),
   disabled: z.boolean(),
   // Whether this account has completed better-auth's email-verification flow
   // (apps/api/src/lib/auth.ts) — an account can't sign in until this is true, regardless of
@@ -20,7 +22,8 @@ export const adminUserSchema = z.object({
 });
 
 export const updateUserRoleSchema = z.object({
-  role: z.enum(USER_ROLES),
+  // 'none' revokes CMS access without deleting the account (it stays a normal website user).
+  role: z.enum(ACCOUNT_ROLES),
 });
 
 export const updateUserDisabledSchema = z.object({

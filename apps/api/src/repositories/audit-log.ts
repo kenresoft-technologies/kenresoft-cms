@@ -1,4 +1,4 @@
-import { and, auditLog, desc, eq, gte, lte, user } from '@kenresoft-cms/database';
+import { and, auditLog, desc, eq, gte, lte, sql, user } from '@kenresoft-cms/database';
 import type { Database } from '@kenresoft-cms/database';
 
 export interface AuditLogEntryWithActor {
@@ -21,6 +21,9 @@ export interface ListAuditLogFilters {
   to?: Date | undefined;
   limit?: number | undefined;
   offset?: number | undefined;
+  // Set for every viewer who isn't the Owner: the Owner must not be discoverable by anyone else,
+  // so rows where the Owner is the actor, or the target of a user-directed action, are left out.
+  hideOwner?: boolean | undefined;
 }
 
 // Left-joined with user (not inner) — actorUserId is nullable for system/pre-account actions
@@ -32,6 +35,10 @@ export function listAuditLog(db: Database, filters: ListAuditLogFilters = {}): P
     filters.action ? eq(auditLog.action, filters.action) : undefined,
     filters.from ? gte(auditLog.createdAt, filters.from) : undefined,
     filters.to ? lte(auditLog.createdAt, filters.to) : undefined,
+    filters.hideOwner
+      ? sql`(${auditLog.actorUserId} is null or ${auditLog.actorUserId} not in (select id from user where role = 'owner'))
+          and not (${auditLog.targetType} = 'user' and ${auditLog.targetId} in (select id from user where role = 'owner'))`
+      : undefined,
   ].filter((condition) => condition !== undefined);
 
   return db

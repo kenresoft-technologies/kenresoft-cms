@@ -23,7 +23,7 @@ import { requireRole } from '../../middleware/require-role';
 import {
   deleteUser,
   getUserByEmail,
-  getUserById,
+  getUserVisibleTo,
   listUsersWithLastActive,
   updateUserDeveloperToolsAccess,
   updateUserDisabled,
@@ -70,7 +70,7 @@ usersRoute.openapi(
   }),
   async (c) => {
     const db = getDb(c);
-    const users = await listUsersWithLastActive(db);
+    const users = await listUsersWithLastActive(db, c.get('user'));
     const response: AdminUser[] = users.map((user) => ({
       id: user.id,
       name: user.name,
@@ -107,8 +107,8 @@ function generateTemporaryPassword(): string {
 // mailbox ownership, only that the admin created the account. A separate onboarding email
 // (below) carries the temporary password itself; both go through the same pluggable email
 // layer (§9), noop-and-logged when EMAIL_PROVIDER is unset. New signups already default to
-// 'editor' (src/lib/auth.ts's bootstrap hook only grants 'owner' to a literal first-ever
-// signup) — an admin can promote or reassign them afterward via the existing role control.
+// 'none' (no CMS access); this route then explicitly grants 'editor' — an admin can promote or
+// reassign them afterward via the existing role control.
 //
 // Known technical debt, not solved here: this still emails the temporary password itself in
 // plaintext (see below), rather than a claim-link flow that would avoid a password ever
@@ -152,7 +152,7 @@ usersRoute.openapi(
     }
 
     const temporaryPassword = generateTemporaryPassword();
-    const result = await createAuth(c.env, c.executionCtx).api.signUpEmail({
+    const result = await createAuth(c.env, c.executionCtx, { staffOnboarding: true }).api.signUpEmail({
       body: { name, email, password: temporaryPassword },
     });
     // better-auth's signUpEmail return type is now a union: a full shape with the
@@ -163,11 +163,15 @@ usersRoute.openapi(
     // user), so this is a type-only artifact, not a runtime gap. Cast once via unknown, same
     // as require-session.ts's identical situation.
     const newUser = result.user as unknown as { id: string; name: string; email: string; role: string; createdAt: Date | string };
+    // Every new account starts with NO CMS access (better-auth's default role is 'none' — a
+    // sign-up by itself must never confer a CMS role). This is the trusted, admin-gated server
+    // step that explicitly grants one; 'editor' matches what Add User has always produced.
+    await updateUserRole(db, newUser.id, 'editor');
     const response: AdminUser = {
       id: newUser.id,
       name: newUser.name,
       email: newUser.email,
-      role: newUser.role as UserRole,
+      role: 'editor',
       disabled: false,
       emailVerified: false,
       developerToolsAccess: false,
@@ -234,7 +238,7 @@ usersRoute.openapi(
   async (c) => {
     const { id } = c.req.valid('param');
     const db = getDb(c);
-    const target = await getUserById(db, id);
+    const target = await getUserVisibleTo(db, id, c.get('user'));
     if (!target) {
       return c.json({ error: 'User not found' }, 404);
     }
@@ -316,7 +320,7 @@ usersRoute.openapi(
   async (c) => {
     const { id } = c.req.valid('param');
     const db = getDb(c);
-    const target = await getUserById(db, id);
+    const target = await getUserVisibleTo(db, id, c.get('user'));
     if (!target) {
       return c.json({ error: 'User not found' }, 404);
     }
@@ -388,7 +392,7 @@ usersRoute.openapi(
   async (c) => {
     const { id } = c.req.valid('param');
     const db = getDb(c);
-    const target = await getUserById(db, id);
+    const target = await getUserVisibleTo(db, id, c.get('user'));
     if (!target) {
       return c.json({ error: 'User not found' }, 404);
     }
@@ -468,7 +472,7 @@ usersRoute.openapi(
   async (c) => {
     const { id } = c.req.valid('param');
     const db = getDb(c);
-    const target = await getUserById(db, id);
+    const target = await getUserVisibleTo(db, id, c.get('user'));
     if (!target) {
       return c.json({ error: 'User not found' }, 404);
     }
@@ -520,7 +524,7 @@ usersRoute.openapi(
   async (c) => {
     const { id } = c.req.valid('param');
     const db = getDb(c);
-    const target = await getUserById(db, id);
+    const target = await getUserVisibleTo(db, id, c.get('user'));
     if (!target) {
       return c.json({ error: 'User not found' }, 404);
     }

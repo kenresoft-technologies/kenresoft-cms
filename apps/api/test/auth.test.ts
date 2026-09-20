@@ -70,15 +70,15 @@ describe('better-auth wiring (real D1)', () => {
   // Ordinary public signup can never claim Owner, first or not — that's now exclusively the
   // job of the one-time installation-bootstrap flow (routes/system/bootstrap-owner.ts,
   // installation-bootstrap.test.ts, docs/ARCHITECTURE.md §10's Changelog).
-  it('defaults the first signup to editor, not owner', async () => {
+  it('defaults the first signup to no CMS access (none), not owner', async () => {
     const response = await signUp('first@example.test');
     expect(response.status).toBe(200);
 
     const user = await db.query.user.findFirst();
-    expect(user).toMatchObject({ email: 'first@example.test', role: 'editor' });
+    expect(user).toMatchObject({ email: 'first@example.test', role: 'none' });
   });
 
-  it('defaults subsequent signups to editor too', async () => {
+  it('defaults subsequent signups to no CMS access (none) too', async () => {
     await signUp('first@example.test');
     const response = await signUp('editor@example.test');
     expect(response.status).toBe(200);
@@ -86,7 +86,7 @@ describe('better-auth wiring (real D1)', () => {
     const editor = await db.query.user.findFirst({
       where: (user, { eq }) => eq(user.email, 'editor@example.test'),
     });
-    expect(editor?.role).toBe('editor');
+    expect(editor?.role).toBe('none');
   });
 
   it('ignores a client-supplied role at signup (input: false)', async () => {
@@ -97,13 +97,13 @@ describe('better-auth wiring (real D1)', () => {
     const attacker = await db.query.user.findFirst({
       where: (user, { eq }) => eq(user.email, 'attacker@example.test'),
     });
-    expect(attacker?.role).toBe('editor');
+    expect(attacker?.role).toBe('none');
   });
 
   it('emailVerified is false at signup for an ordinary account — only ever flipped by consuming a real verification token', async () => {
     await signUp('plain-signup@example.test');
     const user = await db.query.user.findFirst({ where: (user, { eq }) => eq(user.email, 'plain-signup@example.test') });
-    expect(user).toMatchObject({ role: 'editor', emailVerified: false });
+    expect(user).toMatchObject({ role: 'none', emailVerified: false });
   });
 
   it('signs in and receives a session cookie once verified', async () => {

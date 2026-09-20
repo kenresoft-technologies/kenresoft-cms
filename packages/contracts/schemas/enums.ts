@@ -114,6 +114,23 @@ export const USER_ROLES = ['owner', 'admin', 'editor', 'author', 'viewer'] as co
 
 export type UserRole = (typeof USER_ROLES)[number];
 
+// One identity system for everyone (better-auth's `user`): CMS staff and normal website/
+// application users (e.g. Commerce storefront customers) are the same kind of account. A website
+// user simply has no CMS role — the literal `'none'`, which is also the default for every new
+// account, so nothing that merely creates a user (public sign-up included) can ever yield CMS
+// access. USER_ROLES above stays the closed list of real CMS roles; ROLE_RANK/roleAtLeast never
+// see 'none'. Only authorized server-side code ever writes a CMS role — never the client
+// (apps/api/src/lib/auth-options.ts, `input: false`).
+export const NO_CMS_ACCESS = 'none' as const;
+
+export const ACCOUNT_ROLES = [...USER_ROLES, NO_CMS_ACCESS] as const;
+
+export type AccountRole = (typeof ACCOUNT_ROLES)[number];
+
+export function hasCmsAccess(role: string | null | undefined): role is UserRole {
+  return (USER_ROLES as readonly string[]).includes(role ?? '');
+}
+
 // Higher number = more privilege. Centralizes what used to be ~19 hand-copied exact-string
 // role comparisons across apps/api and apps/admin into one ranked comparison — requireRole()
 // (apps/api/src/middleware/require-role.ts) and apps/admin's roleAtLeast() both key off this,

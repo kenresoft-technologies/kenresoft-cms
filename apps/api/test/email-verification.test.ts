@@ -98,11 +98,12 @@ describe('email verification (real D1)', () => {
     const verificationEmail = emails.find((message) => message.html?.includes('/verify-email?token='));
     expect(verificationEmail).toBeDefined();
     expect(verificationEmail!.html).toMatch(/<a href="[^"]*\/verify-email\?token=[^"]+"/);
-    // Built from ADMIN_URL when set (unset in wrangler.test.toml, so this falls back to the
-    // first CORS_ORIGINS entry) — either way it must point at the Admin app's own
-    // /verify-email page, never at this Worker's own baseURL-based redirect URL.
-    expect(verificationEmail!.html).toContain(`${env.CORS_ORIGINS.split(',')[0]}/verify-email?token=`);
-    expect(verificationEmail!.html).not.toContain(`${env.BETTER_AUTH_URL}/api/v1/auth/verify-email`);
+    // A public sign-up is a website user (no CMS role), not CMS staff — so its link is
+    // better-auth's own verification URL (verifies, then redirects to the callbackURL the site
+    // passed), NOT the Admin app's /verify-email page that a CMS staff invitation points at.
+    // (The staff/Add User flavor is asserted in the Add User tests below.)
+    expect(verificationEmail!.html).toContain('/api/v1/auth/verify-email?token=');
+    expect(verificationEmail!.html).not.toContain(`${env.CORS_ORIGINS.split(',')[0]}/verify-email?token=`);
   });
 
   it('unverified sign-in is rejected, produces no session, and re-sends a fresh verification email', async () => {

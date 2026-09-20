@@ -1,10 +1,12 @@
 import { createDb } from '@kenresoft-cms/database';
-import { roleAtLeast } from '@kenresoft-cms/contracts';
+import { hasCmsAccess, roleAtLeast } from '@kenresoft-cms/contracts';
 import type {
   PluginBindings,
   PluginConfigService,
+  PluginAccountsService,
   PluginContext,
   PluginEmailService,
+  PluginIdentityService,
   PluginLogger,
   PluginMediaService,
   PluginPaymentsService,
@@ -16,6 +18,7 @@ import type {
 import type { Database } from '@kenresoft-cms/database';
 import type { MiddlewareHandler } from 'hono';
 
+import { createAuth } from '../lib/auth';
 import { getEmailSender } from '../lib/email';
 import { deleteMediaFile, getMedia, uploadMedia } from '../lib/media-service';
 import { getPaymentProvider } from '../lib/payments';
@@ -99,6 +102,51 @@ function createPluginPaymentsService(env: PluginBindings): PluginPaymentsService
   return getPaymentProvider(env as unknown as Bindings);
 }
 
+// Resolves the signed-in user from the ONE shared better-auth session (the same cookie CMS staff
+// sign in with) — a plugin never sees a cookie or a session row. Returns null for no session or a
+// disabled account. Skips better-auth entirely for a request with no cookies at all (an
+// anonymous storefront visitor), and memoizes so several routes/middleware in one request pay for
+// one lookup. Same env-bridging cast as the email/payments services above.
+function createPluginIdentityService(env: PluginBindings, headers: Headers): PluginIdentityService {
+  let cached: ReturnType<PluginIdentityService['getUser']> | undefined;
+  return {
+    getUser() {
+      cached ??= (async () => {
+        if (!headers.get('cookie')) return null;
+        const result = await createAuth(env as unknown as Bindings).api.getSession({ headers });
+        if (!result) return null;
+        const user = result.user as unknown as {
+          id: string;
+          email: string;
+          name: string;
+          emailVerified: boolean;
+          role: string;
+          disabled: boolean;
+        };
+        if (user.disabled) return null;
+        return {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          emailVerified: user.emailVerified,
+          cmsRole: hasCmsAccess(user.role) ? user.role : null,
+        };
+      })();
+      return cached;
+    },
+  };
+}
+
+function createPluginAccountsService(env: PluginBindings, executionCtx: Pick<ExecutionContext, 'waitUntil'>): PluginAccountsService {
+  return {
+    async sendVerificationEmail({ email, callbackUrl }) {
+      await createAuth(env as unknown as Bindings, executionCtx).api.sendVerificationEmail({
+        body: { email, ...(callbackUrl ? { callbackURL: callbackUrl } : {}) },
+      });
+    },
+  };
+}
+
 function createPluginLogger(pluginId: string): PluginLogger {
   const prefix = `[plugin:${pluginId}]`;
   return {
@@ -131,6 +179,7 @@ export function createPluginContextMiddleware(
       config: createPluginConfigService(db, plugin),
       events: pluginEventBus,
       email: createPluginEmailService(c.env),
+      accounts: createPluginAccountsService(c.env, c.executionCtx),
       payments: createPluginPaymentsService(c.env),
       logger: createPluginLogger(plugin.manifest.id),
     };
@@ -153,6 +202,7 @@ export function createPluginPublicContextMiddleware(
       media: createPluginMediaService(db, c.env.MEDIA_BUCKET),
       config: createPluginConfigService(db, plugin),
       email: createPluginEmailService(c.env),
+      identity: createPluginIdentityService(c.env, c.req.raw.headers),
       payments: createPluginPaymentsService(c.env),
       logger: createPluginLogger(plugin.manifest.id),
     };
