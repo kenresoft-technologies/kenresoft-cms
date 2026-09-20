@@ -216,6 +216,67 @@ Submissions are rate limited and validated server-side against the form's actual
 definitions. This client doesn't duplicate that validation, it just surfaces the server's
 response.
 
+## Authentication
+
+`client.auth` is the generic frontend auth API for any Astro (or other) site that has accounts. It calls the CMS's own better-auth (`/api/v1/auth/*`) and password-reset (`/api/v1/public/password-reset/*`) routes: one identity system, no separate auth service, and nothing specific to Commerce. Accounts a visitor registers here have no CMS role, so signing up on your site can never grant admin access. (Commerce's `client.commerce.customerAuth` is a thin adapter over this same object.)
+
+Login, register, and account screens are ordinary source files in **your** Astro project, styled however you like. The CMS never renders them. See `examples/astro-site/src/pages/account/` for a complete set.
+
+### Set up
+
+```ts
+// src/lib/browser-client.ts
+import { createKenresoftClient, KenresoftApiError } from '@kenresoft-cms/astro';
+
+export const cms = createKenresoftClient({ url: import.meta.env.PUBLIC_KENRESOFT_CMS_URL });
+export { KenresoftApiError };
+```
+
+1. **Add your site's origin to the API's `CORS_ORIGINS`** (e.g. `https://www.example.com,http://localhost:4321`). Every auth call sends `credentials: 'include'`; the API only answers credentialed requests from listed origins. The same list is what allows `callbackUrl` / `redirectUrl` values, so the emailed links can point back at your own pages.
+2. **Call the mutating methods from the browser** (a `<script>` tag or a client island), not from Astro frontmatter. The session cookie is set on the API's origin, so it has to land in the visitor's own cookie jar, and better-auth checks the `Origin` header on state-changing requests, which browsers send and server-side `fetch` does not.
+3. For a server-rendered "is this visitor signed in?" check, forward the incoming request's `cookie` header through a custom `fetch` (see `examples/astro-site/src/lib/site-client.ts`). That only works when your site and the API share a cookie domain. On separate origins, check `auth.getSession()` in the browser instead.
+
+### Build your own flows
+
+```astro
+<form id="login"> <!-- your markup --> </form>
+<script>
+  import { cms, KenresoftApiError } from '../lib/browser-client';
+
+  document.getElementById('login')!.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget as HTMLFormElement);
+    try {
+      const result = await cms.auth.signIn({ email: String(data.get('email')), password: String(data.get('password')) });
+      if (result.twoFactorRequired) return showCodeInput(); // then cms.auth.twoFactor.verifyTotp({ code })
+      window.location.href = '/account';
+    } catch (err) {
+      if (err instanceof KenresoftApiError && err.code === 'EMAIL_NOT_VERIFIED') return showResendLink();
+      showError(err instanceof KenresoftApiError ? err.message : 'Something went wrong.');
+    }
+  });
+</script>
+```
+
+| Method | Endpoint | Notes |
+| --- | --- | --- |
+| `signUp({ email, password, name, callbackUrl? })` | `POST /api/v1/auth/sign-up/email` | Emails a verification link; resolves `{ requiresEmailVerification: true }` with no session. An already-registered email resolves identically. |
+| `signIn({ email, password, rememberMe? })` | `POST /api/v1/auth/sign-in/email` | Resolves `{ twoFactorRequired, user }`. Throws 401 `INVALID_EMAIL_OR_PASSWORD` / 403 `EMAIL_NOT_VERIFIED` (a fresh link is sent). |
+| `signOut()` | `POST /api/v1/auth/sign-out` | Idempotent. |
+| `getSession()` | `GET /api/v1/auth/get-session` | `{ user, session }`, or `null` when signed out (never throws for that). |
+| `verifyEmail({ token })` | `GET /api/v1/auth/verify-email` | For a `callbackUrl` page that receives `?token=`. |
+| `resendVerificationEmail({ email, callbackUrl? })` | `POST /api/v1/auth/send-verification-email` | Always the same generic message. |
+| `requestPasswordReset({ email, redirectUrl? })` | `POST /api/v1/public/password-reset/request` | Always the same generic message. The link becomes `<redirectUrl>?token=…`. |
+| `resetPassword({ token, newPassword })` | `POST /api/v1/public/password-reset/confirm` | 400 for an invalid or expired token. |
+| `changePassword({ currentPassword, newPassword, revokeOtherSessions? })` | `POST /api/v1/auth/change-password` | Needs a session; signs out other devices by default. |
+| `twoFactor.enable / verifyTotp / verifyBackupCode / disable / generateBackupCodes` | `/api/v1/auth/two-factor/*` | TOTP plus backup codes only (no SMS/email codes). |
+
+Failures throw `KenresoftApiError` with `status`, `message`, and, for better-auth errors, a machine-readable `code`. Password-reset and verification responses are deliberately generic so they never reveal whether an account exists. Auth requests are also rate limited server-side (429).
+
+### Commerce
+
+`client.commerce.customerAuth.*` and `client.commerce.customer.changePassword()` call `client.auth` under the hood, so a session created either way is the same session the cart, checkout, and account routes read. `commerce.customerAuth.login()` returns the customer profile and rejects with `code: 'TWO_FACTOR_REQUIRED'` for a two-factor account; use `client.auth.signIn()` plus `client.auth.twoFactor.*` for those.
+
 ## Local development
 
 ```bash

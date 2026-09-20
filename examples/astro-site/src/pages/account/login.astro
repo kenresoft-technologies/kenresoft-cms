@@ -8,7 +8,8 @@ const redirectTo = sanitizeRedirect(Astro.url.searchParams.get('redirect'));
 
 // Already signed in? Skip the form entirely rather than showing it and having the submit fail.
 const cms = createServerClient(Astro.request.headers.get('cookie'));
-const existingCustomer = await cms.commerce.customer.get().catch(() => null);
+// Generic Core auth (client.auth) — nothing here is Commerce-specific.
+const existingCustomer = await cms.auth.getSession().catch(() => null);
 if (existingCustomer) {
   return Astro.redirect(redirectTo);
 }
@@ -33,6 +34,15 @@ if (existingCustomer) {
       <button type="submit" class="button button-primary" id="login-submit">Log in</button>
     </form>
 
+    <form id="two-factor-form" novalidate hidden>
+      <label class="field">
+        <span>Authentication code</span>
+        <input type="text" name="code" required inputmode="numeric" autocomplete="one-time-code" />
+      </label>
+      <Alert tone="error" id="two-factor-error" hidden />
+      <button type="submit" class="button button-primary">Verify</button>
+    </form>
+
     <p class="auth-links">
       <a href={`/account/forgot-password`}>Forgot your password?</a>
     </p>
@@ -49,6 +59,26 @@ if (existingCustomer) {
   const errorEl = document.getElementById('login-error') as HTMLElement;
   const submitButton = document.getElementById('login-submit') as HTMLButtonElement;
 
+  const twoFactorForm = document.getElementById('two-factor-form') as HTMLFormElement;
+  const twoFactorError = document.getElementById('two-factor-error') as HTMLElement;
+
+  function goNext() {
+    const redirectTo = new URLSearchParams(window.location.search).get('redirect');
+    window.location.href = redirectTo && redirectTo.startsWith('/') && !redirectTo.startsWith('//') ? redirectTo : '/account';
+  }
+
+  twoFactorForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    twoFactorError.hidden = true;
+    try {
+      await getBrowserClient().auth.twoFactor.verifyTotp({ code: String(new FormData(twoFactorForm).get('code')) });
+      goNext();
+    } catch (err) {
+      twoFactorError.textContent = err instanceof KenresoftApiError ? err.message : 'Could not verify the code.';
+      twoFactorError.hidden = false;
+    }
+  });
+
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     errorEl.hidden = true;
@@ -57,12 +87,16 @@ if (existingCustomer) {
 
     const data = new FormData(form);
     try {
-      await getBrowserClient().commerce.customerAuth.login({
+      const result = await getBrowserClient().auth.signIn({
         email: String(data.get('email')),
         password: String(data.get('password')),
       });
-      const redirectTo = new URLSearchParams(window.location.search).get('redirect');
-      window.location.href = redirectTo && redirectTo.startsWith('/') && !redirectTo.startsWith('//') ? redirectTo : '/account';
+      if (result.twoFactorRequired) {
+        form.hidden = true;
+        twoFactorForm.hidden = false;
+        return;
+      }
+      goNext();
     } catch (err) {
       // Deliberately the exact message the API returns — "Invalid email or password", identical
       // whether the email exists, the password is wrong, or the account is disabled (never

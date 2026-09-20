@@ -31,7 +31,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "prepublishOnly": "pnpm run build",
-    "test": "node --experimental-strip-types --test test/*.test.ts",
+    "test": "node --experimental-strip-types --import ./test/register-ts-resolver.mjs --test test/*.test.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint ."
   },

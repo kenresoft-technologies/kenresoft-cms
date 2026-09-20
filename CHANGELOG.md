@@ -10,6 +10,10 @@ landed on `develop`.
 
 ## Unreleased
 
+### Added
+
+- `@kenresoft-cms/astro`: a generic `client.auth` API (sign up/in/out, session, email verification, password reset/change, two-factor) over Core's existing better-auth and password-reset routes. `commerce.customerAuth` now delegates to it. `KenresoftApiError` gained an optional `code`. No API or database changes. Republish `@kenresoft-cms/astro` to ship it.
+
 ### Breaking
 
 - **One identity system for the CMS and its plugins.** Website/application users are now ordinary accounts with no CMS access (new role `none`), and new accounts default to it. **Before this, a public sign-up defaulted to Editor** — after updating, sign-ups get no CMS access; only an Owner/Admin can grant a role. Existing users keep their roles.
