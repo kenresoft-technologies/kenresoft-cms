@@ -216,6 +216,94 @@ Submissions are rate limited and validated server-side against the form's actual
 definitions. This client doesn't duplicate that validation, it just surfaces the server's
 response.
 
+## Authentication
+
+`client.auth` is the generic frontend auth API for any Astro (or other) site that has accounts. It calls the CMS's own better-auth (`/api/v1/auth/*`) and password-reset (`/api/v1/public/password-reset/*`) routes: one identity system, no separate auth service, and nothing specific to Commerce. Accounts a visitor registers here have no CMS role, so signing up on your site can never grant admin access. (Commerce's `client.commerce.customerAuth` is a thin adapter over this same object.)
+
+Login, register, and account screens are ordinary source files in **your** Astro project, styled however you like. The CMS never renders them. See `examples/astro-site/src/pages/account/` for a complete set.
+
+### Recommended: same-origin proxy (works on every domain layout)
+
+By default the API's session cookie belongs to the API's own origin. Your site's server never sees it, so no server-side "is this visitor signed in?" checks, and browsers that block third-party cookies drop it entirely. The fix that works everywhere, including two unrelated `*.workers.dev` hosts, is to make the cookie first-party: your site forwards `/cms/*` to the API, and the browser only ever talks to your site.
+
+```ts
+// src/pages/cms/[...path].ts
+import type { APIRoute } from 'astro';
+import { createCmsProxy } from '@kenresoft-cms/astro';
+
+export const prerender = false;
+const proxy = createCmsProxy({ url: import.meta.env.PUBLIC_KENRESOFT_CMS_URL });
+export const ALL: APIRoute = ({ request }) => proxy(request);
+```
+
+```ts
+// browser code: talk to your own origin
+const cms = createKenresoftClient({ url: '/cms' });
+// server (SSR) code: talk to the API directly, forwarding the now first-party cookie
+const cms = createKenresoftClient({ url: import.meta.env.PUBLIC_KENRESOFT_CMS_URL, cookies: Astro.request.headers.get('cookie') });
+```
+
+- Only `/api/v1/auth/*`, `/api/v1/public/*` and `/api/plugins/*/public/*` are forwarded; the admin API is never reachable through the proxy.
+- Your site's origin must still be in the API's `CORS_ORIGINS` (better-auth checks the `Origin` header on the forwarded requests).
+- **Rate limits:** the API limits per client IP, and behind a proxy every request comes from the proxy. To keep visitors separate, run `wrangler secret put TRUSTED_PROXY_SECRET` on the API, and pass the same value as `trustedProxySecret` to `createCmsProxy` (read it from your platform's server-side env, never a `PUBLIC_` variable). The API only honors the forwarded IP when the secret matches; unset, nothing changes.
+
+### Direct mode (no proxy)
+
+Simpler, but browser-only sessions, and it depends on the browser allowing cross-site cookies. Measured against a real deployment with the site and API on different sites: it works in Chromium and in Firefox's default mode, and **fails in Safari's engine (WebKit) and in Firefox with third-party cookies blocked**, where the session cookie is dropped after sign-in. Proxy mode worked in every browser tried. (Two Workers under the same account's `*.workers.dev` count as the *same* site, so that layout won't reproduce this; a custom domain for the API, or a site on another domain, will.)
+
+```ts
+// src/lib/browser-client.ts
+import { createKenresoftClient, KenresoftApiError } from '@kenresoft-cms/astro';
+
+export const cms = createKenresoftClient({ url: import.meta.env.PUBLIC_KENRESOFT_CMS_URL });
+export { KenresoftApiError };
+```
+
+1. **Add your site's origin to the API's `CORS_ORIGINS`** (e.g. `https://www.example.com,http://localhost:4321`). Every auth call sends `credentials: 'include'`; the API only answers credentialed requests from listed origins. The same list is what allows `callbackUrl` / `redirectUrl` values, so the emailed links can point back at your own pages.
+2. **Call the mutating methods from the browser** (a `<script>` tag or a client island), not from Astro frontmatter. The session cookie is set on the API's origin, so it has to land in the visitor's own cookie jar, and better-auth checks the `Origin` header on state-changing requests, which browsers send and server-side `fetch` does not.
+3. For a server-rendered "is this visitor signed in?" check, pass the incoming request's cookie header: `createKenresoftClient({ url, cookies: Astro.request.headers.get('cookie') })`, then `await client.auth.getSession()` (see `examples/astro-site/src/lib/site-client.ts`). That works when your site and the API share a cookie domain (e.g. `www.example.com` and `api.example.com`, with the API's cookie scoped to the parent domain). On unrelated origins the browser never sends the API's cookie to your site, so no SDK can see it during SSR; check `auth.getSession()` in the browser instead.
+
+### Build your own flows
+
+```astro
+<form id="login"> <!-- your markup --> </form>
+<script>
+  import { cms, KenresoftApiError } from '../lib/browser-client';
+
+  document.getElementById('login')!.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget as HTMLFormElement);
+    try {
+      const result = await cms.auth.signIn({ email: String(data.get('email')), password: String(data.get('password')) });
+      if (result.twoFactorRequired) return showCodeInput(); // then cms.auth.twoFactor.verifyTotp({ code })
+      window.location.href = '/account';
+    } catch (err) {
+      if (err instanceof KenresoftApiError && err.code === 'EMAIL_NOT_VERIFIED') return showResendLink();
+      showError(err instanceof KenresoftApiError ? err.message : 'Something went wrong.');
+    }
+  });
+</script>
+```
+
+| Method | Endpoint | Notes |
+| --- | --- | --- |
+| `signUp({ email, password, name, callbackUrl? })` | `POST /api/v1/auth/sign-up/email` | Emails a verification link; resolves `{ requiresEmailVerification: true }` with no session. An already-registered email resolves identically. |
+| `signIn({ email, password, rememberMe? })` | `POST /api/v1/auth/sign-in/email` | Resolves `{ twoFactorRequired, user }`. Throws 401 `INVALID_EMAIL_OR_PASSWORD` / 403 `EMAIL_NOT_VERIFIED` (a fresh link is sent). |
+| `signOut()` | `POST /api/v1/auth/sign-out` | Idempotent. |
+| `getSession()` | `GET /api/v1/auth/get-session` | `{ user, session }`, or `null` when signed out (never throws for that). |
+| `verifyEmail({ token })` | `GET /api/v1/auth/verify-email` | For a `callbackUrl` page that receives `?token=`. |
+| `resendVerificationEmail({ email, callbackUrl? })` | `POST /api/v1/auth/send-verification-email` | Always the same generic message. |
+| `requestPasswordReset({ email, redirectUrl? })` | `POST /api/v1/public/password-reset/request` | Always the same generic message. The link becomes `<redirectUrl>?token=…`. |
+| `resetPassword({ token, newPassword })` | `POST /api/v1/public/password-reset/confirm` | 400 for an invalid or expired token. |
+| `changePassword({ currentPassword, newPassword, revokeOtherSessions? })` | `POST /api/v1/auth/change-password` | Needs a session; signs out other devices by default. |
+| `twoFactor.enable / verifyTotp / verifyBackupCode / disable / generateBackupCodes` | `/api/v1/auth/two-factor/*` | TOTP plus backup codes only (no SMS/email codes). |
+
+Failures throw `KenresoftApiError` with `status`, `message`, and, for better-auth errors, a machine-readable `code`. Password-reset and verification responses are deliberately generic so they never reveal whether an account exists. Auth requests are also rate limited server-side (429).
+
+### Commerce
+
+`client.commerce.customerAuth.*` and `client.commerce.customer.changePassword()` call `client.auth` under the hood, so a session created either way is the same session the cart, checkout, and account routes read. `commerce.customerAuth.login()` returns the customer profile. For a two-factor account it rejects with `code: 'TWO_FACTOR_REQUIRED'`; catch that, ask for the code, and call `commerce.customerAuth.verifyTwoFactor({ code })` (or `{ code, method: 'backup-code' }`), which resolves the customer.
+
 ## Local development
 
 ```bash

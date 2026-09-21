@@ -6,7 +6,7 @@ import { sanitizeRedirect } from '../../lib/redirect';
 
 const redirectTo = sanitizeRedirect(Astro.url.searchParams.get('redirect'));
 const cms = createServerClient(Astro.request.headers.get('cookie'));
-const existingCustomer = await cms.commerce.customer.get().catch(() => null);
+const existingCustomer = await cms.auth.getSession().catch(() => null);
 if (existingCustomer) {
   return Astro.redirect(redirectTo);
 }
@@ -61,7 +61,7 @@ if (existingCustomer) {
       // Accounts are Core's (one identity system, shared with CMS staff) and require a verified
       // email before the first sign-in, so registering doesn't sign anyone in: it emails a link
       // that verifies server-side and lands back on /account/verify-email.
-      await getBrowserClient().commerce.customerAuth.register({
+      await getBrowserClient().auth.signUp({
         name: String(data.get('name')),
         email: String(data.get('email')),
         password: String(data.get('password')),

@@ -8,7 +8,9 @@ import { createKenresoftClient, KenresoftApiError, type KenresoftClient } from '
 let client: KenresoftClient | null = null;
 
 export function getBrowserClient(): KenresoftClient {
-  client ??= createKenresoftClient({ url: import.meta.env.PUBLIC_KENRESOFT_CMS_URL });
+  // '/cms' is this site's own same-origin proxy (src/pages/cms/[...path].ts), so the session
+  // cookie is first-party. Point `url` straight at the API instead to skip the proxy.
+  client ??= createKenresoftClient({ url: '/cms' });
   return client;
 }
 

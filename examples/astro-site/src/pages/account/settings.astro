@@ -110,7 +110,7 @@ import Alert from '../../components/ui/Alert.astro';
 
     const data = new FormData(passwordForm);
     try {
-      await cms.commerce.customer.changePassword({
+      await cms.auth.changePassword({
         currentPassword: String(data.get('currentPassword')),
         newPassword: String(data.get('newPassword')),
       });

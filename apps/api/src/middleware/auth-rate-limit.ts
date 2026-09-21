@@ -1,6 +1,7 @@
 import type { MiddlewareHandler } from 'hono';
 
 import type { Bindings } from '../lib/env';
+import { getClientIp } from '../lib/client-ip';
 
 // Only POST — GET covers get-session, which the admin SPA calls on every load/navigation, so
 // limiting it would cause real false-positive lockouts for normal use. POST covers sign-in,
@@ -10,7 +11,7 @@ export const authRateLimit: MiddlewareHandler<{ Bindings: Bindings }> = async (c
     return next();
   }
 
-  const rateLimitKey = c.req.header('CF-Connecting-IP') ?? 'local-dev';
+  const rateLimitKey = getClientIp(c.req.raw.headers, c.env);
   const { success } = await c.env.AUTH_RATE_LIMITER.limit({ key: rateLimitKey });
   if (!success) {
     // Every caller of a POST /api/v1/auth/* route goes through better-auth's own client

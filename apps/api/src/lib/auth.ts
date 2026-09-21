@@ -8,6 +8,7 @@ import { recordAudit } from './audit';
 import { authOptions } from './auth-options';
 import { getEmailSender } from './email';
 import type { Bindings } from './env';
+import { getClientIp } from './client-ip';
 
 // better-auth's own hardcoded fallback (confirmed against the installed 1.7.2 source,
 // context/create-context.mjs) — it only refuses to start on this value when its own
@@ -53,7 +54,7 @@ export function createAuth(
   const db = createDb(env.DB);
 
   function clientIp(headers: Headers | undefined): string {
-    return headers?.get('CF-Connecting-IP') ?? 'local-dev';
+    return getClientIp(headers, env);
   }
 
   return betterAuth({

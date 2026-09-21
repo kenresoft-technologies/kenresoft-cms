@@ -1,0 +1,9 @@
+{
+  "name": "kenresoft-cms-example-astro",
+  // Without this flag, a Worker's fetch() to another Worker on the same Cloudflare account/zone
+  // (this site calling the CMS API on *.workers.dev, or a custom domain in the same zone) fails
+  // with "error code: 1042" (an HTTP 404 with that body). It makes fetch() behave as a normal
+  // public-internet request. Alternative: a service binding to the API Worker, passed to
+  // createCmsProxy()/createKenresoftClient() as `fetch`.
+  "compatibility_flags": ["global_fetch_strictly_public"]
+}

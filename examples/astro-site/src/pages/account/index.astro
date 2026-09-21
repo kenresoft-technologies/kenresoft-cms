@@ -80,7 +80,7 @@ import AccountNav from '../../components/account/AccountNav.astro';
       resendButtonEl.disabled = true;
       resendStatusEl.textContent = 'Sending…';
       try {
-        await getBrowserClient().commerce.customerAuth.resendVerificationEmail({
+        await getBrowserClient().auth.resendVerificationEmail({
           email: customer.email,
           callbackUrl: `${window.location.origin}/account/verify-email`,
         });

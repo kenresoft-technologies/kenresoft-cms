@@ -11,6 +11,7 @@ import { getCredentialAccount, updateAccountPassword } from '../../repositories/
 import { deleteAllSessionsForUser } from '../../repositories/sessions';
 import { getUserByEmail } from '../../repositories/users';
 import type { Bindings } from '../../lib/env';
+import { getClientIp } from '../../lib/client-ip';
 
 export const systemRoute = createOpenApiApp<{ Bindings: Bindings }>();
 
@@ -114,7 +115,7 @@ systemRoute.openapi(
 
     // Rate limited only once the feature is confirmed enabled — inlined rather than the shared
     // recoveryRateLimit middleware so the 404-when-unset check above always runs first.
-    const rateLimitKey = c.req.header('CF-Connecting-IP') ?? 'local-dev';
+    const rateLimitKey = getClientIp(c.req.raw.headers, c.env);
     const { success } = await c.env.RECOVERY_RATE_LIMITER.limit({ key: rateLimitKey });
     if (!success) {
       return c.json({ error: 'Too many requests, please try again later' }, 429);

@@ -1,6 +1,7 @@
 import type { MiddlewareHandler } from 'hono';
 
 import type { Bindings } from '../lib/env';
+import { getClientIp } from '../lib/client-ip';
 
 // Generic application of a plugin-declared PluginPublicRateLimitRule (docs/PLUGINS.md) —
 // apps/api/src/plugins/mount.ts calls this once per declared rule, passing only the binding
@@ -19,7 +20,7 @@ export function createPluginRateLimitMiddleware(bindingName: string): Middleware
       return next();
     }
 
-    const rateLimitKey = c.req.header('CF-Connecting-IP') ?? 'local-dev';
+    const rateLimitKey = getClientIp(c.req.raw.headers, c.env);
     const { success } = await limiter.limit({ key: rateLimitKey });
     if (!success) {
       return c.json({ code: 'TOO_MANY_REQUESTS', message: 'Too many requests, please try again later' }, 429);

@@ -10,6 +10,7 @@ import type { Bindings } from '../../lib/env';
 import { listFormFields } from '../../repositories/form-fields';
 import { getFormBySlug } from '../../repositories/forms';
 import type { FormSubmission as DbFormSubmission } from '@kenresoft-cms/database';
+import { getClientIp } from '../../lib/client-ip';
 
 export const publicFormsRoute = createOpenApiApp<{ Bindings: Bindings }>();
 
@@ -39,7 +40,7 @@ publicFormsRoute.post('/:slug/submissions', async (c) => {
   // Rate limited per client IP (§9) — CF-Connecting-IP is set by Cloudflare's edge and can't
   // be spoofed by the client; falls back to a shared key in local dev, where that header
   // usually isn't present.
-  const rateLimitKey = c.req.header('CF-Connecting-IP') ?? 'local-dev';
+  const rateLimitKey = getClientIp(c.req.raw.headers, c.env);
   const { success } = await c.env.FORM_SUBMISSION_RATE_LIMITER.limit({ key: rateLimitKey });
   if (!success) {
     return c.json({ error: 'Too many submissions, please try again later' }, 429);
