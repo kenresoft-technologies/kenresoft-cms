@@ -3,6 +3,7 @@ import { Copy, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { ApiError } from '@/lib/api-client';
+import { DOCS_LINKS } from '@/lib/docs-links';
 import { useContentTypes } from '@/lib/queries/content-types';
 import {
   useCreateWebhook,
@@ -312,7 +313,12 @@ export function WebhooksSection() {
       <CardHeader className="flex flex-row items-center justify-between border-b pb-4">
         <div>
           <CardTitle className="text-lg">Webhooks</CardTitle>
-          <CardDescription>Notify external systems when content changes.</CardDescription>
+          <CardDescription>
+            Notify external systems when content changes.{' '}
+            <a href={DOCS_LINKS.webhooks} target="_blank" rel="noreferrer" className="font-medium text-primary hover:underline">
+              Webhooks guide
+            </a>
+          </CardDescription>
         </div>
         <Button size="sm" className="gap-1.5" onClick={() => setCreateOpen(true)}>
           <Plus className="size-4" />

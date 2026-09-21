@@ -75,7 +75,7 @@ created becomes the deployment's **owner** (`docs/ARCHITECTURE.md` §10 has the 
    (one at a time). Re-running `pnpm run setup` is also safe: it keeps existing values.
 3. **Rename a Worker** (its `*.workers.dev` URL): `pnpm run rename-worker`.
 4. **Back up media**: `pnpm --filter @kenresoft-cms/api backup-media` (D1 has its own free
-   30-day Time Travel; R2 has no built-in equivalent).
+   30-day Time Travel; R2 has no built-in equivalent). See [Backups](https://docs.kenresoft.com/cms/deployment/backups/).
 
 Details for all of these: [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 
