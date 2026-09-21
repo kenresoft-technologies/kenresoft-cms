@@ -134,9 +134,9 @@ async function scaffoldAstroStarter(target, targetArg) {
   console.log('  pnpm dev');
   console.log(
     "\nSee this project's own README.md for what to change first (the placeholder content " +
-      'type/form slugs), and the Kenresoft CMS repo\'s docs/ASTRO.md for everything the client ' +
-      'supports beyond this starting point:\n' +
-      'https://github.com/kenresoft-technologies/kenresoft-cms/blob/main/docs/ASTRO.md',
+      'type/form slugs), and the official docs for everything the client supports beyond ' +
+      'this starting point:\n' +
+      'https://docs.kenresoft.com/cms/astro/new-site/',
   );
 }
 
@@ -166,8 +166,8 @@ async function scaffoldFullCms(target, targetArg) {
   );
   console.log(
     '\nTo pull in future CMS updates later, just run: pnpm run update — it fetches and merges ' +
-      'the latest\nupstream code automatically before redeploying. See docs/DEPLOYMENT.md\'s ' +
-      '"Updating an existing install" section.',
+      'the latest\nupstream code automatically before redeploying. See ' +
+      'https://docs.kenresoft.com/cms/deployment/updates/',
   );
 }
 

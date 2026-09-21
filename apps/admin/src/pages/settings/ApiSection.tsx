@@ -3,6 +3,7 @@ import { ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { API_URL, ApiError } from '@/lib/api-client';
+import { DOCS_LINKS } from '@/lib/docs-links';
 import { useSystemStatus } from '@/lib/queries/password-recovery';
 import { useUpdateSettings } from '@/lib/queries/settings';
 import type { Settings } from '@/lib/types';
@@ -113,7 +114,15 @@ function EmailDeliverySection() {
             <p className="max-w-md text-sm text-muted-foreground">
               {status?.emailConfigured
                 ? 'A real email provider is fully configured. Password-reset and account-verification emails deliver normally.'
-                : "Email isn't fully configured for this deployment (EMAIL_PROVIDER, and its required RESEND_API_KEY/EMAIL_FROM or EMAIL binding, must all be set). Password-reset requests and new sign-ups still succeed, but no email is sent. Set EMAIL_PROVIDER in wrangler.toml (see docs/DEPLOYMENT.md) to enable delivery."}
+                : "Email isn't fully configured for this deployment (EMAIL_PROVIDER, and its required RESEND_API_KEY/EMAIL_FROM or EMAIL binding, must all be set). Password-reset requests and new sign-ups still succeed, but no email is sent. Set EMAIL_PROVIDER in wrangler.toml to enable delivery."}{' '}
+              <a
+                href={DOCS_LINKS.email}
+                target="_blank"
+                rel="noreferrer"
+                className="font-medium text-primary hover:underline"
+              >
+                Email setup guide
+              </a>
             </p>
             <Badge
               variant="outline"
@@ -436,8 +445,17 @@ function LivePreviewSection({ settings, readOnly }: SectionProps) {
 export function ApiSection({ settings, readOnly }: SectionProps) {
   return (
     <div className="flex flex-col gap-6">
-      <SettingsSection title="API reference" description="Live documentation for this deployment's REST API.">
+      <SettingsSection title="API reference" description="Live documentation for this deployment's REST API. Guides and tutorials live in the official documentation.">
         <div className="flex flex-col gap-3">
+          <a
+            href={DOCS_LINKS.publicApi}
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center gap-2 text-sm font-medium text-primary hover:underline"
+          >
+            Official documentation: public API
+            <ExternalLink className="size-3.5" />
+          </a>
           <a
             href={`${API_URL}/api/v1/docs`}
             target="_blank"

@@ -5,6 +5,7 @@ import {
   FileText,
   Images,
   Inbox,
+  BookOpen,
   Mail,
   Layers,
   LayoutDashboard,
@@ -19,6 +20,7 @@ import {
   Users,
   Variable,
 } from 'lucide-react';
+import { DOCS_LINKS } from '@/lib/docs-links';
 import { Link, Navigate, NavLink, Outlet, useLocation } from 'react-router';
 
 import kenresoftLogoMark from '@/assets/kenresoft-cms-logo-mark.svg';
@@ -248,6 +250,12 @@ export function AppLayout() {
                   <User />
                   Profile
                 </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <a href={DOCS_LINKS.home} target="_blank" rel="noreferrer">
+                  <BookOpen />
+                  Documentation
+                </a>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => authClient.signOut()}>

@@ -1,5 +1,9 @@
 # Kenresoft CMS
 
+> **Official documentation: https://docs.kenresoft.com**
+> Getting started, deployment, the CLI, Astro integration, plugins, and troubleshooting. This
+> README keeps only the quick start.
+
 A reusable, Cloudflare-native, API-first content management platform. Content lives in
 Cloudflare D1, media lives in Cloudflare R2, the API runs on Cloudflare Workers (Hono), and the
 admin dashboard talks to that API over plain HTTPS, never to the database directly.
@@ -7,6 +11,14 @@ admin dashboard talks to that API over plain HTTPS, never to the database direct
 Self-hosted, not a hosted service: deploying it means provisioning resources in **your own**
 Cloudflare account. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full architecture
 and technical specification (the source of truth for design decisions).
+
+Where to find things:
+
+1. **Install it**: the quick start below, or [Installation](https://docs.kenresoft.com/cms/getting-started/installation/).
+2. **Developer docs**: [Developer guide](https://docs.kenresoft.com/cms/developer/) and [Astro](https://docs.kenresoft.com/cms/astro/).
+3. **API reference**: every deployment serves it itself at `/api/v1/docs` (interactive Scalar UI)
+   and `/api/v1/openapi.json` (machine-readable spec). The [public API guide](https://docs.kenresoft.com/cms/developer/public-api/)
+   explains how to use them.
 
 ## What you get
 

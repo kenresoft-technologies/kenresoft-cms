@@ -136,7 +136,7 @@ export async function configureEmail({ wranglerTomlPath, apiDir, status, ci = fa
         { value: 'cancel', label: 'Cancel' },
       ]);
   if (choice === 'keep' || choice === 'cancel') {
-    console.log(alreadyConfigured ? '✓ Email configuration left unchanged.' : 'Skipping email setup (see docs/DEPLOYMENT.md to configure it later).');
+    console.log(alreadyConfigured ? '✓ Email configuration left unchanged.' : 'Skipping email setup (to configure it later, see https://docs.kenresoft.com/cms/deployment/email/).');
     return { changed: false };
   }
 
@@ -187,7 +187,7 @@ export async function configureEmail({ wranglerTomlPath, apiDir, status, ci = fa
     console.log(
       'Cloudflare Email selected — add a [[send_email]] binding to wrangler.toml and run ' +
         "`wrangler email sending enable` yourself (needs interactive domain verification this " +
-        'script cannot automate). See docs/DEPLOYMENT.md.',
+        'script cannot automate). See https://docs.kenresoft.com/cms/deployment/email/',
     );
   }
 

@@ -9,7 +9,8 @@ const USAGE = `Usage:
   npx @kenresoft-cms/create astro [--cms-url <url>] [--no-install]   connect this Astro project to a CMS
   npx @kenresoft-cms/create astro --update [--force] [--no-install]   refresh the managed integration files
 
-Run from the root of an existing Astro project. Never touches your CMS deployment.`;
+Run from the root of an existing Astro project. Never touches your CMS deployment.
+Full guide: https://docs.kenresoft.com/cms/astro/existing-site/`;
 
 export function parseAstroArgs(argv) {
   const opts = { update: false, force: false, noInstall: false, cmsUrl: undefined, help: false, dir: undefined };
@@ -98,5 +99,6 @@ export async function runAstroCommand(argv, { log = console.log, deps } = {}) {
       ? '\nFinished with conflicts — nothing you own was overwritten.'
       : '\nDone. Only files listed above were touched; your routes, layouts, components and styles are untouched.',
   );
+  log('Docs: https://docs.kenresoft.com/cms/astro/existing-site/ (troubleshooting: https://docs.kenresoft.com/cms/troubleshooting/astro/)');
   return result.conflicted ? 2 : 0;
 }
