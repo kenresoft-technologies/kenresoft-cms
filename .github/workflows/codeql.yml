@@ -16,10 +16,14 @@ permissions:
 jobs:
   analyze:
     name: Analyze (javascript-typescript)
+    # Code scanning is free on public repositories but needs GitHub Advanced Security on private
+    # ones, so a private deployment that inherited this workflow skips it instead of failing.
+    if: github.event.repository.private == false
     runs-on: ubuntu-latest
     permissions:
       contents: read
       security-events: write # required for github/codeql-action to upload results to the Security tab
+      actions: read # required by codeql-action on private repositories to read the workflow run
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

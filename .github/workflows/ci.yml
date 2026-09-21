@@ -34,7 +34,14 @@ jobs:
         run: pnpm lint
 
       - name: Test
-        run: pnpm test
+        # The CMS's own test suite is for the source repository. A deployment that inherited this
+        # workflow already gets these tests' coverage upstream, and its private-repo runners (2 vCPU
+        # vs 4 for public repos) are too small for the API's workerd suite, so it skips them by
+        # default. Set the repository variable RUN_FULL_TESTS=true to run them anyway.
+        if: github.event.repository.private == false || vars.RUN_FULL_TESTS == 'true'
+        # One package at a time: apps/admin's jsdom suite running alongside apps/api's workerd
+        # suite can starve the API tests into timeouts on small runners.
+        run: pnpm -r --workspace-concurrency=1 test && pnpm run test:scripts
 
       - name: Build
         run: pnpm build
