@@ -72,6 +72,55 @@ page, a form example, and comments pointing at exactly what to change for your o
 types. See [`docs/ASTRO.md`](docs/ASTRO.md#connecting-your-own-separately-hosted-astro-project)
 for the full walkthrough, or `packages/create/templates/astro-starter` for what it scaffolds.
 
+### Already have an Astro site? Connect it, and keep it updated
+
+Three separate things get updated, on three separate schedules. None of them touches another.
+
+1. **The CMS** (API, admin, database migrations): `pnpm run update`, run inside your CMS
+   repository. It never modifies any Astro website.
+2. **The Kenresoft integration in your Astro site** (the few files Kenresoft generated for you):
+   `npx @kenresoft-cms/create astro --update`, run inside your Astro project. It never modifies
+   the CMS.
+3. **The `@kenresoft-cms/astro` package** in your Astro site. The `--update` command above also
+   moves this to the newest compatible version. It looks the version up on npm explicitly instead
+   of relying on a caret range, because while packages are `0.x`, `^0.3.0` will not reach `0.4.0`.
+
+**Connect an existing Astro project** (run from its root):
+
+```bash
+npx @kenresoft-cms/create astro --cms-url https://your-cms-api.example.com
+```
+
+1. It checks this is an Astro project (Astro 5 or newer) and reads your Astro version.
+2. It installs `@kenresoft-cms/astro` if missing (or upgrades a version too old to work).
+3. It adds the same-origin `/cms/*` proxy, so the session cookie stays first-party to your site.
+4. It adds `PUBLIC_KENRESOFT_CMS_URL` to `.env` and `.env.example`, only if not already set.
+5. It prints what it created, changed, skipped, and what you still need to do by hand.
+
+Running it again is safe: it changes nothing that is already in place.
+
+**Files Kenresoft owns** (marked `@kenresoft-managed`, tracked in `.kenresoft/integration.json`):
+
+- `src/pages/cms/[...path].ts`, the proxy
+- `src/lib/kenresoft.ts`, the client helpers (`cms`, `cmsForRequest`, `browserCms`)
+- `.kenresoft/integration.json`, the record of what it wrote
+
+Everything else (pages, layouts, components, styles, `astro.config`, wrangler config, your own
+`.env` values) is yours and is never overwritten. If a file already sits at a managed path and
+isn't byte-identical to what Kenresoft would write, it is reported as a **conflict** and left
+alone (exit code 2). Re-run with `--force` to replace it deliberately. Things it can't safely edit
+for you (an adapter, the `global_fetch_strictly_public` Workers flag, `TRUSTED_PROXY_SECRET`, your
+CMS's `CORS_ORIGINS`) are listed under "Needs manual action".
+
+**Update later:**
+
+```bash
+npx @kenresoft-cms/create astro --update
+```
+
+It refreshes the package and any managed file you haven't edited, and reports conflicts for the
+ones you have. `--no-install` edits `package.json` only, if you want to run the install yourself.
+
 ## Advanced: Individual Components
 
 The complete installation above is two independent Cloudflare Workers under the hood, deployed
