@@ -3,9 +3,8 @@
 // Without it, the API's session cookie belongs to the API's own origin: the site's server never
 // sees it (no SSR session checks) and browsers that block third-party cookies drop it entirely.
 // With it, the browser talks only to the site (`/cms/*`), the site forwards to the API, and the
-// API's Set-Cookie lands on the site's own host — so both the browser and SSR see it, on any
-// domain layout (including two unrelated *.workers.dev hosts, where a shared-parent-domain
-// cookie is impossible).
+// API's Set-Cookie lands on the site's own host — so both the browser and SSR see it, whatever
+// the domain layout (the site and API on unrelated domains, or on subdomains of one).
 //
 // Framework-agnostic: a plain (Request) => Response handler. In Astro:
 //

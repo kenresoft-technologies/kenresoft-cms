@@ -249,7 +249,7 @@ const cms = createKenresoftClient({ url: import.meta.env.PUBLIC_KENRESOFT_CMS_UR
 
 ### Direct mode (no proxy)
 
-Simpler, but browser-only sessions:
+Simpler, but browser-only sessions, and it depends on the browser allowing cross-site cookies. Measured against a real deployment with the site and API on different sites: it works in Chromium and in Firefox's default mode, and **fails in Safari's engine (WebKit) and in Firefox with third-party cookies blocked**, where the session cookie is dropped after sign-in. Proxy mode worked in every browser tried. (Two Workers under the same account's `*.workers.dev` count as the *same* site, so that layout won't reproduce this; a custom domain for the API, or a site on another domain, will.)
 
 ```ts
 // src/lib/browser-client.ts
