@@ -214,6 +214,21 @@ you want to see it in action locally: `cd examples/astro-site && PUBLIC_KENRESOF
 There is no supported deploy path or update mechanism for it, and none is planned. That's by
 design, not an oversight.
 
+### Sessions and sign-in from your own frontend
+
+If your frontend has accounts (customers, members, anything signing in), set it up like this. Every step below was verified on real Cloudflare Workers.
+
+1. **Put the API behind a same-origin proxy on your site.** Add a route at `/cms/*` that forwards to the API with `createCmsProxy()` from `@kenresoft-cms/astro` (see that package's README). Browser code then talks to `/cms`, so the session cookie is first-party to your site. That is what makes sign-in survive browsers that block cross-site cookies (Safari, Firefox with third-party cookies blocked) and lets server-rendered pages read the session. Without the proxy ("direct mode") sign-in works in Chromium but was measured failing in WebKit and in Firefox with third-party cookies blocked.
+2. **Add your site's origin(s) to `CORS_ORIGINS`** on the API (step 4). Better-auth checks the `Origin` header on the requests the proxy forwards.
+3. **Set the same `TRUSTED_PROXY_SECRET` on the API and on your frontend** (`wrangler secret put TRUSTED_PROXY_SECRET`, server-side only, never a `PUBLIC_` variable) and pass it to `createCmsProxy({ trustedProxySecret })`. The API rate-limits per client IP; behind a proxy every request arrives from the proxy's address, so without the secret all visitors share one rate-limit bucket. The API only trusts the forwarded visitor IP when the secret matches; unset, nothing changes.
+4. **If the frontend is a Cloudflare Worker, enable the `global_fetch_strictly_public` compatibility flag** (or call the API through a service binding). Without it, a Worker calling another Worker on the same account fails with `error code: 1042`, which surfaces as a 404. `examples/astro-site/wrangler.jsonc` shows the flag.
+5. **Configure a real email provider before you launch** (`EMAIL_PROVIDER`, `EMAIL_FROM`, and `RESEND_API_KEY` or the Cloudflare `EMAIL` binding), and set `ADMIN_URL`. Every account must verify its email before signing in, so verification and password reset depend on working email. With no provider configured, the message links are written to the Worker's logs (`wrangler tail`) so the first owner can still get in, but that is a stopgap, not a launch setup.
+6. **Do a real pass on the deployed instance before launch:** register, verify, sign in, reset a password, enable two-factor on the owner account, and check `GET /api/v1/system/status` (`emailConfigured` and `authSecretConfigured` should both be true).
+
+**Optional: bot protection on public sign-up (Cloudflare Turnstile).** A public site's register form gets probed quickly. To require a human check: create a Turnstile widget in the Cloudflare dashboard, set its secret on the API (`wrangler secret put TURNSTILE_SECRET_KEY`), and render the widget in your register form, passing the token it produces to `auth.signUp({ turnstileToken })`. With the secret unset, nothing changes. When set, `POST /api/v1/auth/sign-up/email` answers 400 `TURNSTILE_REQUIRED` without a token and 403 `TURNSTILE_FAILED` for a bad or reused token, and 503 if Cloudflare's verification can't be reached (it fails closed). A token is single-use, so reset the widget after a failed attempt. Staff accounts (Add User) and the sign-in routes are not affected.
+
+**Known limits.** Server-side content fetches from a frontend all arrive from the frontend Worker's address, so a very busy site can hit the public API's per-IP limit (300 requests per minute); cache those fetches or use a service binding if that applies to you. Two Workers under the same account's `workers.dev` count as one site to browsers, so that layout will not reproduce cross-site cookie problems; a custom domain or a site on another domain will.
+
 ## 8. The admin app
 
 `apps/admin` deploys as its **own Worker** (`apps/admin/wrangler.toml`, static assets, not

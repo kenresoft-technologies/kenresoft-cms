@@ -83,3 +83,11 @@ describe('createCmsProxy', () => {
     assert.equal(sent2.get('x-kenresoft-proxy-secret'), null);
   });
 });
+
+describe('createCmsProxy turnstile header', () => {
+  it('forwards x-turnstile-token so a protected sign-up works through the proxy', async () => {
+    const { proxy, seen } = setup(() => Response.json({}));
+    await proxy(new Request(`${site}/cms/api/v1/auth/sign-up/email`, { method: 'POST', headers: { 'x-turnstile-token': 'tok', 'content-type': 'application/json' }, body: '{}' }));
+    assert.equal(new Headers(seen[0]!.init.headers).get('x-turnstile-token'), 'tok');
+  });
+});

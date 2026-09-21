@@ -2,6 +2,7 @@
 
 interface ImportMetaEnv {
   readonly PUBLIC_KENRESOFT_CMS_URL: string;
+  readonly PUBLIC_TURNSTILE_SITE_KEY?: string;
 }
 
 interface ImportMeta {
