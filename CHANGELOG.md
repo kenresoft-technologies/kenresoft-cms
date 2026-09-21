@@ -12,7 +12,7 @@ landed on `develop`.
 
 ### Changed
 
-- The CMS now points to the official documentation at https://docs.kenresoft.com: a Documentation item in the admin user menu, links on Settings > API and the email status message, docs links at the end of `pnpm run setup`, `pnpm run update` and `npx @kenresoft-cms/create astro`, and a docs banner on the README. Published `@kenresoft-cms/create` 0.3.1, `@kenresoft-cms/astro` 0.6.2 and `@kenresoft-cms/contracts` 0.5.1 carry the new help text and READMEs. The admin change needs `pnpm run update` to appear on an existing deployment.
+- The CMS now points to the official documentation at https://docs.kenresoft.com/cms: a Documentation item in the admin user menu, links on Settings > API and the email status message, docs links at the end of `pnpm run setup`, `pnpm run update` and `npx @kenresoft-cms/create astro`, and a docs banner on the README. Published `@kenresoft-cms/create` 0.3.1, `@kenresoft-cms/astro` 0.6.2 and `@kenresoft-cms/contracts` 0.5.1 carry the new help text and READMEs. The admin change needs `pnpm run update` to appear on an existing deployment.
 - The GitHub Actions workflows now suit private deployments as well as this repository. CodeQL and Dependency Review run only on public repositories (on a private one they need GitHub Advanced Security and used to fail), and the full test suite runs only on public repositories or when the repository variable `RUN_FULL_TESTS` is `true`. Typecheck, lint and build still run everywhere. Tests now run one workspace package at a time, which avoids timeouts on small runners. No action needed on existing deployments.
 
 ### Fixed
