@@ -1,5 +1,7 @@
 # Schema-Driven Frontend & Site Builder — Phase 0 Architecture Assessment
 
+> The published, maintained documentation is at https://docs.kenresoft.com. This is an in-repo design record; user-facing guides: https://docs.kenresoft.com/cms/guides/.
+
 ## Status
 
 Phase 0 (this document's original architecture assessment) is reviewed and accepted. §14's

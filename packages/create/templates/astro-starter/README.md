@@ -41,7 +41,7 @@ Before it works against a deployed CMS:
 3. Recommended: set the same `TRUSTED_PROXY_SECRET` on the CMS API and on this Worker (`wrangler secret put TRUSTED_PROXY_SECRET` in both), so per-visitor rate limits work behind the proxy.
 4. Optional bot protection on register: create a Cloudflare Turnstile widget, set `PUBLIC_TURNSTILE_SITE_KEY` here and `TURNSTILE_SECRET_KEY` on the API.
 
-The full checklist is in the CMS repo's `docs/DEPLOYMENT.md`, "Sessions and sign-in from your own frontend".
+The full checklist is in the official docs: <https://docs.kenresoft.com/cms/astro/authentication/>.
 
 ## Where to go from here
 

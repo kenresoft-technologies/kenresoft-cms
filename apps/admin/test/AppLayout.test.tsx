@@ -99,6 +99,20 @@ describe('AppLayout', () => {
     expect(screen.getByText('admin@example.test')).toBeInTheDocument();
   });
 
+  it('links to the official documentation from the user menu', async () => {
+    useSessionMock.mockReturnValue({
+      data: { user: { email: 'admin@example.test', role: 'admin' } },
+      isPending: false,
+    });
+
+    renderAppLayout();
+    await userEvent.click(screen.getByText('admin@example.test'));
+
+    const link = await screen.findByRole('menuitem', { name: /Documentation/ });
+    expect(link).toHaveAttribute('href', 'https://docs.kenresoft.com/cms/');
+    expect(link).toHaveAttribute('target', '_blank');
+  });
+
   it('opens the command palette from the header button and navigates from it', async () => {
     useSessionMock.mockReturnValue({
       data: { user: { email: 'admin@example.test', role: 'admin' } },

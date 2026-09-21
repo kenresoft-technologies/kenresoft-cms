@@ -1,5 +1,7 @@
 # @kenresoft-cms/create
 
+> **Official documentation:** guides, tutorials and troubleshooting live at https://docs.kenresoft.com. This README covers the CLI itself; see https://docs.kenresoft.com/cms/reference/cli/ and https://docs.kenresoft.com/cms/astro/existing-site/ for the full guides.
+
 Scaffolds a new [Kenresoft CMS](https://github.com/kenresoft-technologies/kenresoft-cms) install with a real `git clone` of the monorepo template (its current default branch), named without having to remember the repo URL. Real git history is kept deliberately, not stripped — it's what lets `pnpm run update` later pull in new CMS code with a normal, low-conflict merge instead of every changed file coming back as a conflict.
 
 ```bash
