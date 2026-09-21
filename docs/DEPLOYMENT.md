@@ -14,7 +14,9 @@ the API Worker) provisioned automatically the first time you deploy. See below.
   the API Worker (only, see "Two Workers, one install" below) through Cloudflare's own guided
   setup. **Verified with a real click-through**, not just reasoned about: it correctly deploys
   the API Worker end to end.
+
   [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/kenresoft-technologies/kenresoft-cms)
+
   `wrangler.toml` deliberately lives at the **repository root**, not inside `apps/api/` where
   the Worker's own source code is. The button only detects a config there, and a subdirectory
   URL makes Cloudflare treat that subdirectory as the *entire* contents of the new repo it
