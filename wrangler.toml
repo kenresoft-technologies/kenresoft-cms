@@ -98,11 +98,12 @@ API_VERSION = "v1"
 # local dev either way (see .dev.vars.example) since .dev.vars overrides plain vars too, not just
 # secrets.
 #
-# CORS only matters for browser-originated requests — apps/admin is the only one today (the
-# Astro integration fetches server-side, no Origin header involved). Add your admin app's real
-# deployed origin here (or under your own [env.*] block, if you introduce one) once you've
-# deployed it — docs/DEPLOYMENT.md's admin section covers this, including the
-# deploy-once-then-add-origin ordering it requires.
+# CORS only matters for requests that carry an Origin header: apps/admin, and any website that
+# signs users in or submits forms through the same-origin proxy (the proxy forwards the browser's
+# Origin, and better-auth checks it; plain server-side content reads send none). Add your admin
+# app's real deployed origin here (or under your own [env.*] block, if you introduce one) once
+# you've deployed it — docs/DEPLOYMENT.md's admin section covers this, including the
+# deploy-once-then-add-origin ordering it requires. Add your website's origin the same way.
 #
 # Testing from another device on your LAN (`dev:live` runs with --host, so a phone can reach it
 # via the host machine's LAN IP) needs its own allow-list entry, since that's a different
