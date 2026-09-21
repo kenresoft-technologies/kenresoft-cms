@@ -6,4 +6,6 @@ export const DOCS_LINKS = {
   home: `${DOCS_URL}/cms/`,
   publicApi: `${DOCS_URL}/cms/developer/public-api/`,
   email: `${DOCS_URL}/cms/deployment/email/`,
+  webhooks: `${DOCS_URL}/cms/guides/webhooks/`,
+  recovery: `${DOCS_URL}/cms/deployment/recovery/`,
 } as const;

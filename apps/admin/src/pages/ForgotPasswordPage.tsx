@@ -3,6 +3,7 @@ import { AlertCircle, ArrowLeft, KeyRound, Loader2, MailCheck } from 'lucide-rea
 import { Link } from 'react-router';
 
 import kenresoftLogoMark from '@/assets/kenresoft-cms-logo-mark.svg';
+import { DOCS_LINKS } from '@/lib/docs-links';
 import { useRequestPasswordReset, useSystemStatus } from '@/lib/queries/password-recovery';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Button } from '@/components/ui/button';
@@ -66,7 +67,10 @@ export function ForgotPasswordPage() {
                 <p className="text-base text-muted-foreground">
                   This deployment doesn't have email delivery configured yet, so no reset link was actually
                   sent to <span className="font-medium text-foreground">{email}</span>. Ask whoever manages this
-                  CMS to reset your password directly, or use a recovery code if you have one.
+                  CMS to reset your password directly, or use a recovery code if you have one.{' '}
+                  <a href={DOCS_LINKS.recovery} target="_blank" rel="noreferrer" className="font-medium text-primary hover:underline">
+                    Recovery guide
+                  </a>
                 </p>
               ) : (
                 <p className="text-base text-muted-foreground">

@@ -202,6 +202,7 @@ async function main() {
 
   console.log('Password reset. Every existing session for this account was signed out.');
   console.log("Consider also regenerating this owner's recovery codes once signed back in.");
+  console.log('Recovery guide: https://docs.kenresoft.com/cms/deployment/recovery/');
 }
 
 main().catch((error) => {
