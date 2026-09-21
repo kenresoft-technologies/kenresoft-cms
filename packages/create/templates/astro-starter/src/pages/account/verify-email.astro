@@ -1,0 +1,37 @@
+---
+import Layout from '../../layouts/Layout.astro';
+
+const token = Astro.url.searchParams.get('token');
+// The emailed link verifies on the CMS API, then sends the visitor here: with no parameters when it
+// worked, or `?error=...` for an invalid or expired link. `?token=` also works for a custom link.
+const linkError = Astro.url.searchParams.get('error');
+---
+
+<Layout title="Verify your email">
+  <h1>Verify your email</h1>
+
+  {linkError && <p role="alert">This verification link is invalid or has expired. Try logging in to get a fresh one.</p>}
+  {!linkError && token && <p id="status">Verifying…</p>}
+  {!linkError && !token && <p>Your email is verified. <a href="/account/login">Log in</a></p>}
+
+  {token && !linkError && <p id="done" hidden>Your email is verified. <a href="/account/login">Log in</a></p>}
+</Layout>
+
+<script>
+  import { browserCms, KenresoftApiError } from '../../lib/browser-cms';
+
+  const token = new URLSearchParams(window.location.search).get('token');
+  const status = document.getElementById('status');
+  const done = document.getElementById('done');
+  if (token && status && done) {
+    browserCms.auth
+      .verifyEmail({ token })
+      .then(() => {
+        status.hidden = true;
+        done.hidden = false;
+      })
+      .catch((err) => {
+        status.textContent = err instanceof KenresoftApiError ? err.message : 'Could not verify your email.';
+      });
+  }
+</script>

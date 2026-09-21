@@ -2,10 +2,17 @@
 
 interface ImportMetaEnv {
   readonly PUBLIC_KENRESOFT_CMS_URL: string;
+  /** Optional: a Cloudflare Turnstile site key. Set it (and TURNSTILE_SECRET_KEY on the API) to require a human check on register. */
+  readonly PUBLIC_TURNSTILE_SITE_KEY?: string;
 }
 
 interface ImportMeta {
   readonly env: ImportMetaEnv;
+}
+
+// The Workers runtime env (bindings, vars, secrets), importable at request time.
+declare module 'cloudflare:workers' {
+  export const env: Record<string, unknown>;
 }
 
 declare namespace App {

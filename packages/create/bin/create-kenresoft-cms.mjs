@@ -172,6 +172,14 @@ async function scaffoldFullCms(target, targetArg) {
 }
 
 async function main() {
+  // `npx @kenresoft-cms/create astro [--update]` — connect/refresh an EXISTING Astro project.
+  // Distinct from `--astro`, which scaffolds a brand-new starter. Everything else (a bare
+  // target name, `--astro`) behaves exactly as before.
+  if (process.argv[2] === 'astro') {
+    const { runAstroCommand } = await import('../lib/astro/command.mjs');
+    process.exitCode = await runAstroCommand(process.argv.slice(3));
+    return;
+  }
   const { astro, targetArg } = parseArgs(process.argv.slice(2));
   // resolve(), not join() — join() has no special handling for an already-absolute targetArg
   // and would concatenate it onto cwd instead (e.g. `npm create ... C:\Users\me\site` became

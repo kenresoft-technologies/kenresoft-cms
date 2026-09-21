@@ -1,0 +1,7 @@
+{
+  "name": "my-kenresoft-cms-site",
+  // Needed on Cloudflare: without it, this Worker calling your CMS API Worker (same account, or a
+  // custom domain in the same zone) fails with "error code: 1042" (shown as an HTTP 404). Not
+  // needed if the API is on a different Cloudflare account. Alternative: a service binding.
+  "compatibility_flags": ["global_fetch_strictly_public"]
+}
