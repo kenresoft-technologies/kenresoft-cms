@@ -48,6 +48,13 @@ export interface SignInOptions {
   password: string;
   /** Keep the session across browser restarts. Defaults to the server's own default. */
   rememberMe?: boolean;
+  /**
+   * Where the verification link sends the user, for the email the API re-sends automatically when
+   * someone tries to sign in before verifying (the 403 `EMAIL_NOT_VERIFIED` case). Pass the same
+   * page you give `signUp`; without it that link lands on the API's own root. Must be an origin in
+   * the deployment's CORS_ORIGINS.
+   */
+  callbackUrl?: string;
 }
 
 /**
@@ -163,8 +170,11 @@ export function createAuth(baseUrl: string, doFetch: typeof fetch): KenresoftAut
       await post('/api/v1/auth/sign-up/email', { ...options, ...(callbackUrl ? { callbackURL: callbackUrl } : {}) });
       return { requiresEmailVerification: true };
     },
-    async signIn(options) {
-      const result = await post<{ twoFactorRedirect?: boolean; user?: AuthUser } | undefined>('/api/v1/auth/sign-in/email', options);
+    async signIn({ callbackUrl, ...options }) {
+      const result = await post<{ twoFactorRedirect?: boolean; user?: AuthUser } | undefined>('/api/v1/auth/sign-in/email', {
+        ...options,
+        ...(callbackUrl ? { callbackURL: callbackUrl } : {}),
+      });
       if (result?.twoFactorRedirect) return { twoFactorRequired: true };
       return { twoFactorRequired: false, user: result?.user ?? null };
     },

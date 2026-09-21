@@ -50,6 +50,14 @@ describe('client.auth', () => {
     assert.deepEqual(await tf.client.auth.signIn({ email: 'a@b.co', password: 'pw' }), { twoFactorRequired: true });
   });
 
+  it('signIn forwards callbackUrl as callbackURL so the auto-resent verification email lands on the site', async () => {
+    const { client, calls } = fakeApi(() => Response.json({ user: { id: 'u1', email: 'a@b.co', name: 'A', emailVerified: true } }));
+    await client.auth.signIn({ email: 'a@b.co', password: 'pw', callbackUrl: 'https://site.example/verify' });
+    assert.deepEqual(calls[0]!.body, { email: 'a@b.co', password: 'pw', callbackURL: 'https://site.example/verify' });
+    await client.auth.signIn({ email: 'a@b.co', password: 'pw' });
+    assert.deepEqual(calls[1]!.body, { email: 'a@b.co', password: 'pw' });
+  });
+
   it('surfaces better-auth errors as KenresoftApiError with status, message and code', async () => {
     const { client } = fakeApi(() => Response.json({ code: 'EMAIL_NOT_VERIFIED', message: 'Email not verified' }, { status: 403 }));
     await assert.rejects(

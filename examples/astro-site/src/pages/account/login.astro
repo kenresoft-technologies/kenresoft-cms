@@ -90,6 +90,8 @@ if (existingCustomer) {
       const result = await getBrowserClient().auth.signIn({
         email: String(data.get('email')),
         password: String(data.get('password')),
+        // If they haven't verified yet, the re-sent verification email should land back on this site.
+        callbackUrl: `${window.location.origin}/account/verify-email`,
       });
       if (result.twoFactorRequired) {
         form.hidden = true;
