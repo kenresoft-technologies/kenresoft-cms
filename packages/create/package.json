@@ -14,7 +14,7 @@
   "bin": {
     "create-kenresoft-cms": "./bin/create-kenresoft-cms.mjs"
   },
-  "files": ["bin", "templates"],
+  "files": ["bin", "lib", "templates"],
   "publishConfig": {
     "access": "public"
   },
@@ -22,6 +22,7 @@
     "node": ">=20"
   },
   "scripts": {
+    "test": "node --test test/*.test.mjs",
     "lint": "eslint ."
   },
   "devDependencies": {
