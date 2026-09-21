@@ -25,6 +25,24 @@ local clone of the CMS itself (`http://localhost:8787` by default).
   Same deal: create a matching Form in your CMS admin, or change the slug/fields to match one you
   already have.
 
+## Accounts and sign-in (already wired)
+
+Register, log in, verify email, reset password, two-factor and a protected `/account` page are included under `src/pages/account/`. Style them however you like; they're plain Astro pages using `browserCms.auth` (in the browser) and `cmsForRequest(request).auth` (server-side).
+
+How the pieces fit:
+
+- **The proxy** (`src/pages/cms/[...path].ts`) forwards `/cms/*` to your CMS API, so the session cookie is first-party to *your* site. That is what keeps sign-in working in Safari and in Firefox with third-party cookies blocked, and what lets server-rendered pages see who is signed in. Only the public and auth surface is forwarded, never the admin API. Browser code uses `src/lib/browser-cms.ts` (talks to `/cms`).
+- **`wrangler.jsonc`** sets `global_fetch_strictly_public`. On Cloudflare, without it this Worker calling your API Worker fails with `error code: 1042` (shown as a 404).
+
+Before it works against a deployed CMS:
+
+1. Add this site's origin (for example `https://www.example.com`) to the CMS API's `CORS_ORIGINS`.
+2. Set up real email on the CMS (`EMAIL_PROVIDER`, `EMAIL_FROM`, and `RESEND_API_KEY` or the Cloudflare email binding). Every account must verify its email before signing in.
+3. Recommended: set the same `TRUSTED_PROXY_SECRET` on the CMS API and on this Worker (`wrangler secret put TRUSTED_PROXY_SECRET` in both), so per-visitor rate limits work behind the proxy.
+4. Optional bot protection on register: create a Cloudflare Turnstile widget, set `PUBLIC_TURNSTILE_SITE_KEY` here and `TURNSTILE_SECRET_KEY` on the API.
+
+The full checklist is in the CMS repo's `docs/DEPLOYMENT.md`, "Sessions and sign-in from your own frontend".
+
 ## Where to go from here
 
 This starter intentionally does the minimum to prove the connection works end to end. For

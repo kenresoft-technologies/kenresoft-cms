@@ -1,0 +1,24 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { cmsForRequest } from '../../lib/cms';
+
+// A real, server-verified protected page: no valid session cookie means a redirect before any
+// account content is rendered (not client-side hiding).
+const session = await cmsForRequest(Astro.request).auth.getSession().catch(() => null);
+if (!session) return Astro.redirect('/account/login');
+---
+
+<Layout title="Your account">
+  <h1>Your account</h1>
+  <p>Signed in as <strong>{session.user.name}</strong> ({session.user.email}).</p>
+  <button id="sign-out" type="button">Sign out</button>
+</Layout>
+
+<script>
+  import { browserCms } from '../../lib/browser-cms';
+
+  document.getElementById('sign-out')?.addEventListener('click', async () => {
+    await browserCms.auth.signOut();
+    window.location.href = '/account/login';
+  });
+</script>

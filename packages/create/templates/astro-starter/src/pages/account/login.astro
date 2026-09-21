@@ -1,0 +1,77 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { cmsForRequest } from '../../lib/cms';
+
+// Already signed in? Skip the form.
+const session = await cmsForRequest(Astro.request).auth.getSession().catch(() => null);
+if (session) return Astro.redirect('/account');
+---
+
+<Layout title="Log in">
+  <h1>Log in</h1>
+
+  <form id="login-form">
+    <label>Email <input type="email" name="email" required autocomplete="email" /></label>
+    <label>Password <input type="password" name="password" required autocomplete="current-password" /></label>
+    <button type="submit">Log in</button>
+  </form>
+
+  <form id="two-factor-form" hidden>
+    <label>Authentication code <input type="text" name="code" required inputmode="numeric" autocomplete="one-time-code" /></label>
+    <button type="submit">Verify</button>
+  </form>
+
+  <p id="message" role="alert" hidden></p>
+
+  <p><a href="/account/forgot-password">Forgot your password?</a> · <a href="/account/register">Create an account</a></p>
+</Layout>
+
+<script>
+  import { browserCms, KenresoftApiError } from '../../lib/browser-cms';
+
+  const loginForm = document.getElementById('login-form') as HTMLFormElement;
+  const twoFactorForm = document.getElementById('two-factor-form') as HTMLFormElement;
+  const message = document.getElementById('message') as HTMLElement;
+
+  const show = (text: string) => {
+    message.textContent = text;
+    message.hidden = false;
+  };
+
+  loginForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    message.hidden = true;
+    const data = new FormData(loginForm);
+    try {
+      const result = await browserCms.auth.signIn({
+        email: String(data.get('email')),
+        password: String(data.get('password')),
+        // If they haven't verified yet, the re-sent verification email should land back on this site.
+        callbackUrl: `${window.location.origin}/account/verify-email`,
+      });
+      if (result.twoFactorRequired) {
+        loginForm.hidden = true;
+        twoFactorForm.hidden = false;
+        return;
+      }
+      window.location.href = '/account';
+    } catch (err) {
+      if (err instanceof KenresoftApiError && err.code === 'EMAIL_NOT_VERIFIED') {
+        show('Please verify your email first. We just sent you a fresh link.');
+      } else {
+        show(err instanceof KenresoftApiError ? err.message : 'Could not log in. Please try again.');
+      }
+    }
+  });
+
+  twoFactorForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    message.hidden = true;
+    try {
+      await browserCms.auth.twoFactor.verifyTotp({ code: String(new FormData(twoFactorForm).get('code')) });
+      window.location.href = '/account';
+    } catch (err) {
+      show(err instanceof KenresoftApiError ? err.message : 'Could not verify the code.');
+    }
+  });
+</script>
