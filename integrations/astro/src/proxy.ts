@@ -53,7 +53,9 @@ export function createCmsProxy(options: CmsProxyOptions): (request: Request) => 
     if (!incoming.pathname.startsWith(`${basePath}/`)) return new Response('Not found', { status: 404 });
 
     // URL parsing already collapsed any `..` segments, so this can't climb out of the allow-list.
-    const upstreamPath = incoming.pathname.slice(basePath.length);
+    // A site with Astro's `trailingSlash: 'always'` redirects /cms/api/v1/x to /cms/api/v1/x/, and the
+    // API's routes reject the trailing slash, so drop it before forwarding.
+    const upstreamPath = incoming.pathname.slice(basePath.length).replace(/\/+$/, '');
     if (!isProxiedPathAllowed(upstreamPath)) return new Response('Not found', { status: 404 });
 
     const headers = new Headers();

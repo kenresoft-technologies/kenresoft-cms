@@ -40,6 +40,13 @@ describe('createCmsProxy', () => {
     assert.equal(seen[0]!.init.redirect, 'manual');
   });
 
+  it('drops a trailing slash before forwarding, for sites with trailingSlash: "always"', async () => {
+    const { proxy, seen } = setup(() => Response.json({ ok: true }));
+    const res = await proxy(new Request(`${site}/cms/api/v1/public/pages/?x=1`));
+    assert.equal(res.status, 200);
+    assert.equal(seen[0]!.url, 'https://api.example.com/api/v1/public/pages?x=1');
+  });
+
   it('passes every Set-Cookie and a redirect Location back untouched', async () => {
     const { proxy } = setup(() => {
       const headers = new Headers({ location: 'https://www.example.com/account/verify-email' });
