@@ -1,6 +1,6 @@
 # @kenresoft-cms/admin: Admin Worker
 
-> **Official documentation:** guides, tutorials and troubleshooting live at https://docs.kenresoft.com. Deployment and configuration: https://docs.kenresoft.com/cms/deployment/.
+> **Official documentation:** guides, tutorials and troubleshooting live at https://docs.kenresoft.com/cms/. Deployment and configuration: https://docs.kenresoft.com/cms/deployment/.
 
 The Kenresoft CMS admin dashboard: a React + Vite single-page application, deployed as its own
 Cloudflare Worker serving **static assets only**. No server-side code, no API logic, no

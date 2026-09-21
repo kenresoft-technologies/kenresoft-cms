@@ -1,6 +1,6 @@
 # @kenresoft-cms/astro: Astro Integration
 
-> **Official documentation:** guides, tutorials and troubleshooting live at https://docs.kenresoft.com. Full Astro guides: https://docs.kenresoft.com/cms/astro/. This README is the package reference.
+> **Official documentation:** guides, tutorials and troubleshooting live at https://docs.kenresoft.com/cms/. Full Astro guides: https://docs.kenresoft.com/cms/astro/. This README is the package reference.
 
 A typed client for consuming a Kenresoft CMS deployment's **public API** from Astro (or any other
 JS/TS frontend). This is not a CMS component, not a Cloudflare Worker, and not independently

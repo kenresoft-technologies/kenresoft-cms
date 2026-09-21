@@ -1,6 +1,6 @@
 # Kenresoft CMS
 
-> **Official documentation: https://docs.kenresoft.com**
+> **Official documentation: https://docs.kenresoft.com/cms/**
 > Getting started, deployment, the CLI, Astro integration, plugins, and troubleshooting. This
 > README keeps only the quick start.
 

@@ -1,6 +1,6 @@
 # Astro Integration
 
-> The published, maintained documentation is at https://docs.kenresoft.com. This file is the in-repo reference: https://docs.kenresoft.com/cms/astro/.
+> The published, maintained documentation is at https://docs.kenresoft.com/cms/. This file is the in-repo reference: https://docs.kenresoft.com/cms/astro/.
 
 **Status: Phase 1 (local integration) complete, 2026-08-27. Phase 2 (production deployment)
 not started.** See `docs/ARCHITECTURE.md` §15 for how this fits the broader architecture, and

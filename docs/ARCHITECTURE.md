@@ -1,6 +1,6 @@
 # Kenresoft CMS — Architecture & Technical Specification
 
-> The published, maintained documentation is at https://docs.kenresoft.com. This file is the in-repo design source of truth: https://docs.kenresoft.com/cms/concepts/architecture/.
+> The published, maintained documentation is at https://docs.kenresoft.com/cms/. This file is the in-repo design source of truth: https://docs.kenresoft.com/cms/concepts/architecture/.
 
 Version 0.8 — Foundation Specification
 First production target: a real corporate website
