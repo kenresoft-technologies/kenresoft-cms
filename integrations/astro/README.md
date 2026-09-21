@@ -287,7 +287,7 @@ export { KenresoftApiError };
 
 | Method | Endpoint | Notes |
 | --- | --- | --- |
-| `signUp({ email, password, name, callbackUrl? })` | `POST /api/v1/auth/sign-up/email` | Emails a verification link; resolves `{ requiresEmailVerification: true }` with no session. An already-registered email resolves identically. |
+| `signUp({ email, password, name, callbackUrl?, turnstileToken? })` | `POST /api/v1/auth/sign-up/email` | Emails a verification link; resolves `{ requiresEmailVerification: true }` with no session. If the deployment sets `TURNSTILE_SECRET_KEY`, pass the token from a Turnstile widget as `turnstileToken` (400 `TURNSTILE_REQUIRED` / 403 `TURNSTILE_FAILED` otherwise). An already-registered email resolves identically. |
 | `signIn({ email, password, rememberMe? })` | `POST /api/v1/auth/sign-in/email` | Resolves `{ twoFactorRequired, user }`. Throws 401 `INVALID_EMAIL_OR_PASSWORD` / 403 `EMAIL_NOT_VERIFIED` (a fresh link is sent). |
 | `signOut()` | `POST /api/v1/auth/sign-out` | Idempotent. |
 | `getSession()` | `GET /api/v1/auth/get-session` | `{ user, session }`, or `null` when signed out (never throws for that). |

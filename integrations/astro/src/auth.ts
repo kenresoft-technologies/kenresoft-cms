@@ -41,6 +41,12 @@ export interface SignUpOptions {
   name: string;
   /** Where the emailed verification link sends the user once verified. Must be an origin in the deployment's CORS_ORIGINS. */
   callbackUrl?: string;
+  /**
+   * The token from a Cloudflare Turnstile widget on your register form. Required only when the
+   * deployment has `TURNSTILE_SECRET_KEY` set (otherwise ignored); without it the API rejects
+   * sign-up with 400 `TURNSTILE_REQUIRED`, and 403 `TURNSTILE_FAILED` for a bad or reused token.
+   */
+  turnstileToken?: string;
 }
 
 export interface SignInOptions {
@@ -163,11 +169,16 @@ export function createAuth(baseUrl: string, doFetch: typeof fetch): KenresoftAut
     return (await response.json().catch(() => undefined)) as T;
   }
 
-  const post = <T>(path: string, body: unknown = {}) => call<T>(path, { method: 'POST', body: JSON.stringify(body) });
+  const post = <T>(path: string, body: unknown = {}, headers?: Record<string, string>) =>
+    call<T>(path, { method: 'POST', body: JSON.stringify(body), ...(headers ? { headers } : {}) });
 
   return {
-    async signUp({ callbackUrl, ...options }) {
-      await post('/api/v1/auth/sign-up/email', { ...options, ...(callbackUrl ? { callbackURL: callbackUrl } : {}) });
+    async signUp({ callbackUrl, turnstileToken, ...options }) {
+      await post(
+        '/api/v1/auth/sign-up/email',
+        { ...options, ...(callbackUrl ? { callbackURL: callbackUrl } : {}) },
+        turnstileToken ? { 'x-turnstile-token': turnstileToken } : undefined,
+      );
       return { requiresEmailVerification: true };
     },
     async signIn({ callbackUrl, ...options }) {

@@ -49,4 +49,8 @@ export interface Bindings {
   // the proxy: a request presenting it may name the real visitor's IP for rate limiting.
   // Unset by default — see lib/client-ip.ts.
   TRUSTED_PROXY_SECRET?: string;
+  // Opt-in bot protection for public website sign-up (middleware/turnstile.ts). A Worker secret
+  // (`wrangler secret put TURNSTILE_SECRET_KEY`), the secret half of a Cloudflare Turnstile widget
+  // whose site key lives in your frontend. Unset (the default), sign-up needs no human check.
+  TURNSTILE_SECRET_KEY?: string;
 }

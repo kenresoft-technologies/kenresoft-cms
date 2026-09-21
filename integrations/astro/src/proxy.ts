@@ -32,7 +32,7 @@ export interface CmsProxyOptions {
   fetch?: typeof fetch;
 }
 
-const FORWARDED_REQUEST_HEADERS = ['cookie', 'content-type', 'accept', 'accept-language', 'idempotency-key', 'origin', 'user-agent'];
+const FORWARDED_REQUEST_HEADERS = ['cookie', 'content-type', 'accept', 'accept-language', 'idempotency-key', 'origin', 'user-agent', 'x-turnstile-token'];
 const STRIPPED_RESPONSE_HEADERS = ['content-encoding', 'content-length', 'transfer-encoding', 'connection'];
 
 export function isProxiedPathAllowed(path: string): boolean {

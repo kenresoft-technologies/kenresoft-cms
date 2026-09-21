@@ -227,3 +227,25 @@ describe('cookies option and commerce two-factor completion', () => {
     assert.deepEqual(calls[0]!.body, { code: '123456' });
   });
 });
+
+describe('turnstile', () => {
+  it('signUp sends the Turnstile token as a header, not in the body, and omits it when not given', async () => {
+    const seen: (string | null)[] = [];
+    const original = globalThis.fetch;
+    globalThis.fetch = (async (_i: RequestInfo | URL, init?: RequestInit) => {
+      seen.push(new Headers(init?.headers).get('x-turnstile-token'));
+      seen.push(String(init?.body));
+      return Response.json({});
+    }) as typeof fetch;
+    try {
+      const client = createKenresoftClient({ url: B });
+      await client.auth.signUp({ email: 'a@b.co', password: 'pw', name: 'A', turnstileToken: 'tok123' });
+      await client.auth.signUp({ email: 'a@b.co', password: 'pw', name: 'A' });
+      assert.equal(seen[0], 'tok123');
+      assert.ok(!seen[1]!.includes('tok123'));
+      assert.equal(seen[2], null);
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+});
