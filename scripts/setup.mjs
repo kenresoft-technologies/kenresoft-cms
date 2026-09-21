@@ -397,6 +397,8 @@ async function runFullFlow() {
   console.log('  — see docs/DEPLOYMENT.md\'s "Deploy, then run migrations" section for the full steps.');
   console.log(`  API:   ${finalUrl}`);
   console.log(`  Admin: ${adminUrl}`);
+  console.log('  Docs:  https://docs.kenresoft.com/cms/getting-started/first-login/');
+  console.log('  Trouble? https://docs.kenresoft.com/cms/troubleshooting/setup/');
 }
 
 // "Continue without changes" — redeploy current, unmodified configuration. No provisioning, no

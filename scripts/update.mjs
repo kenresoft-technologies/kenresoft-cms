@@ -224,6 +224,8 @@ async function main() {
   console.log(`\n✓ Admin redeployed: ${adminUrl}`);
 
   console.log('\n✓ Update complete — no secrets, resources, or CORS config were touched.');
+  console.log('  Update guide:    https://docs.kenresoft.com/cms/deployment/updates/');
+  console.log('  Troubleshooting: https://docs.kenresoft.com/cms/troubleshooting/updates/');
 }
 
 main().catch((error) => {

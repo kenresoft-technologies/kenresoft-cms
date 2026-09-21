@@ -669,7 +669,7 @@ formsRoute.post('/:id/submissions/:submissionId/replies', adminEmailRateLimit, a
 
   if (!isEmailProviderConfigured(c.env)) {
     return c.json(
-      { error: 'This deployment has no email provider configured — see docs/DEPLOYMENT.md\'s recovery section.' },
+      { error: 'This deployment has no email provider configured — see https://docs.kenresoft.com/cms/deployment/email/' },
       400,
     );
   }

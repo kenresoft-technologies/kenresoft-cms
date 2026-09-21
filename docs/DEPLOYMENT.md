@@ -1,5 +1,7 @@
 # Deploying your own instance
 
+> The published, maintained documentation is at https://docs.kenresoft.com. This file is the in-repo reference and may be more detailed or newer than the site: https://docs.kenresoft.com/cms/deployment/.
+
 Kenresoft CMS is a reusable, open-source codebase. Not a hosted service. Deploying it means
 provisioning your **own** Cloudflare account's resources and pointing your own fork at them
 (`docs/ARCHITECTURE.md` §11, "Single Site Per Instance"). Nothing in this repository, including
