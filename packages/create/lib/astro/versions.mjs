@@ -54,7 +54,7 @@ export function pickCompatibleVersion(meta, astroMajor) {
 
 export async function fetchClientMetadata() {
   try {
-    const res = await fetch(`https://registry.npmjs.org/${CLIENT_PACKAGE.replace('/', '%2F')}`);
+    const res = await fetch(`https://registry.npmjs.org/${CLIENT_PACKAGE.replace(/\//g, '%2F')}`);
     if (!res.ok) return null;
     return await res.json();
   } catch {
