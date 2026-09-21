@@ -5,8 +5,11 @@ import { createServerClient } from '../../lib/site-client';
 import { sanitizeRedirect } from '../../lib/redirect';
 
 const redirectTo = sanitizeRedirect(Astro.url.searchParams.get('redirect'));
+// Optional bot check. Set PUBLIC_TURNSTILE_SITE_KEY here and TURNSTILE_SECRET_KEY on the API
+// (docs/DEPLOYMENT.md); with no site key the widget simply isn't rendered.
+const turnstileSiteKey = import.meta.env.PUBLIC_TURNSTILE_SITE_KEY as string | undefined;
 const cms = createServerClient(Astro.request.headers.get('cookie'));
-const existingCustomer = await cms.commerce.customer.get().catch(() => null);
+const existingCustomer = await cms.auth.getSession().catch(() => null);
 if (existingCustomer) {
   return Astro.redirect(redirectTo);
 }
@@ -30,6 +33,9 @@ if (existingCustomer) {
         <input type="password" name="password" required minlength="8" autocomplete="new-password" />
         <span class="hint">At least 8 characters.</span>
       </label>
+
+      {turnstileSiteKey && <div class="cf-turnstile" data-sitekey={turnstileSiteKey}></div>}
+      {turnstileSiteKey && <script is:inline src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>}
 
       <Alert tone="error" id="register-error" hidden />
       <Alert tone="success" id="register-success" hidden />
@@ -61,11 +67,13 @@ if (existingCustomer) {
       // Accounts are Core's (one identity system, shared with CMS staff) and require a verified
       // email before the first sign-in, so registering doesn't sign anyone in: it emails a link
       // that verifies server-side and lands back on /account/verify-email.
-      await getBrowserClient().commerce.customerAuth.register({
+      await getBrowserClient().auth.signUp({
         name: String(data.get('name')),
         email: String(data.get('email')),
         password: String(data.get('password')),
         callbackUrl: `${window.location.origin}/account/verify-email`,
+        // The widget (when configured) adds this hidden field to the form; undefined otherwise.
+        turnstileToken: (data.get('cf-turnstile-response') as string | null) || undefined,
       });
       const successEl = document.getElementById('register-success') as HTMLElement;
       successEl.textContent = 'Almost there — we sent a verification link to your email. Verify it, then log in.';
@@ -77,6 +85,8 @@ if (existingCustomer) {
       // reveals whether an account exists), so the only errors here are validation/network ones.
       errorEl.textContent = err instanceof KenresoftApiError ? err.message : 'Could not create your account.';
       errorEl.hidden = false;
+      // A Turnstile token is single-use: get a fresh one for the next attempt.
+      (window as unknown as { turnstile?: { reset(): void } }).turnstile?.reset();
       submitButton.disabled = false;
       submitButton.textContent = 'Create account';
     }

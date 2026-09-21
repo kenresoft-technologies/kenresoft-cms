@@ -17,6 +17,27 @@ import type {
   SocialSettingsData,
 } from '@kenresoft-cms/contracts';
 
+import { createAuth, type KenresoftAuth } from './auth';
+import { KenresoftApiError, type FormSubmissionIssue } from './errors';
+
+export { KenresoftApiError, type FormSubmissionIssue };
+export type {
+  AuthMessage,
+  AuthSession,
+  AuthSessionData,
+  AuthUser,
+  ChangePasswordOptions,
+  KenresoftAuth,
+  RequestPasswordResetOptions,
+  ResendVerificationEmailOptions,
+  ResetPasswordOptions,
+  SignInOptions,
+  SignInResult,
+  SignUpOptions,
+  TwoFactorEnableResult,
+  VerifyEmailOptions,
+} from './auth';
+
 export type { BlockInstance, ChildBlockInstance, Page, ReusableBlock };
 
 // Type-only imports — erased at compile time, so this package never actually depends on zod
@@ -76,9 +97,19 @@ export interface KenresoftClientConfig {
    * See `getPreviewToken()` below and `integrations/astro/README.md`'s "Live Preview" section.
    */
   previewToken?: string | null;
+  /**
+   * The incoming request's `cookie` header, for server-side rendering: forwarded on every call
+   * so `auth.getSession()` / `commerce.customer.get()` can tell who the visitor is during SSR
+   * (e.g. `cookies: Astro.request.headers.get('cookie')`). Only useful when the site and API
+   * share a cookie domain — on separate sites the browser never sends the API's cookie to your
+   * site, so run the check in the browser instead. Ignored when a custom `fetch` is supplied
+   * (you're then handling headers yourself).
+   */
+  cookies?: string | null;
 }
 
 export { getPreviewToken } from './get-preview-token';
+export { createCmsProxy, isProxiedPathAllowed, type CmsProxyOptions } from './proxy';
 
 // Commerce (packages/plugin-ecommerce) types, hand-mirrored from that plugin's own Zod route
 // schemas rather than imported — unlike @kenresoft-cms/contracts, the plugin package isn't
@@ -333,30 +364,6 @@ export interface CommerceOrderDetail extends CommerceOrderSummary {
   items: CommerceOrderItem[];
 }
 
-export interface FormSubmissionIssue {
-  path: (string | number)[];
-  message: string;
-}
-
-// Thrown for any non-2xx, non-404 response from entries.list/entries.get (a 404 there is not
-// an error from this client's perspective — see request() below — since "no content type with
-// that slug" and "no published entry with that slug" are both normal, expected outcomes for
-// public content), and for ANY non-2xx response from forms.submit, where 400/404/429 are all
-// meaningfully different outcomes a caller needs to handle, not something to paper over as
-// null. `issues` is populated only for a 400 from forms.submit — the form-specific field
-// validation errors (apps/api/src/lib/form-submission-validation.ts).
-export class KenresoftApiError extends Error {
-  status: number;
-  issues: FormSubmissionIssue[] | undefined;
-
-  constructor(status: number, message: string, issues?: FormSubmissionIssue[]) {
-    super(message);
-    this.name = 'KenresoftApiError';
-    this.status = status;
-    this.issues = issues;
-  }
-}
-
 export interface ListEntriesOptions {
   /** The content type's slug (not its display name) — e.g. "blog-post". */
   contentType: string;
@@ -435,6 +442,14 @@ export interface SubmitFormOptions {
 }
 
 export interface KenresoftClient {
+  /**
+   * Generic frontend authentication against Core's own better-auth (`/api/v1/auth/*`) and
+   * password-reset routes — sign up/in/out, session, email verification, password reset/change,
+   * and two-factor. Independent of Commerce or any plugin; `commerce.customerAuth` below is a
+   * thin adapter over this same object. Browser-side use is the norm: the session cookie must
+   * land in the visitor's own cookie jar. See the package README's "Authentication" section.
+   */
+  auth: KenresoftAuth;
   entries: {
     /**
      * Every published entry for a content type, newest-published-first is NOT guaranteed —
@@ -562,10 +577,8 @@ export interface KenresoftClient {
    * checkout, and Paystack payment confirmation. Only present/meaningful on a deployment that
    * has the commerce plugin installed and enabled; calling these against one that doesn't will
    * 404 the same way any disabled-plugin route does (docs/PLUGINS.md's enablement section).
-   * Deliberately guest-only for now — customer account registration/login/order-history and
-   * saved addresses aren't wired into this client yet (a real, separate follow-up: guest
-   * checkout is already Commerce's own complete, independently-supported purchase path, per
-   * docs/PLUGINS.md's Phase 2b/2c design, not a stopgap).
+   * Guest checkout and signed-in customers are both supported: a guest cart travels as a cookie,
+   * a customer is a Core account (see `auth` above and `customerAuth` below).
    */
   commerce: {
     /**
@@ -594,6 +607,12 @@ export interface KenresoftClient {
       verifyEmail(options: VerifyCustomerEmailOptions): Promise<{ message: string }>;
       /** Always resolves with the same generic message regardless of whether the email matches an account or is already verified — never reveals either. */
       resendVerificationEmail(options: ResendCustomerVerificationEmailOptions): Promise<{ message: string }>;
+      /**
+       * Finishes a `login()` that rejected with `code: 'TWO_FACTOR_REQUIRED'`: verifies the
+       * authenticator (or single-use backup) code through `auth.twoFactor`, then resolves the
+       * signed-in customer's profile.
+       */
+      verifyTwoFactor(options: { code: string; method?: 'totp' | 'backup-code'; trustDevice?: boolean }): Promise<CommerceCustomer>;
     };
     /**
      * The signed-in customer's own profile/addresses/order-history — every method throws
@@ -681,7 +700,16 @@ export interface KenresoftClient {
 
 export function createKenresoftClient(config: KenresoftClientConfig): KenresoftClient {
   const baseUrl = config.url.replace(/\/$/, '');
-  const doFetch = config.fetch ?? fetch;
+  const cookieHeader = config.cookies;
+  const doFetch: typeof fetch =
+    config.fetch ??
+    (cookieHeader
+      ? (input, init) => {
+          const headers = new Headers(init?.headers);
+          headers.set('cookie', cookieHeader);
+          return fetch(input, { ...init, headers });
+        }
+      : fetch);
   const commerceBase = `${baseUrl}/api/plugins/commerce/public/v1`;
   const defaultPreviewToken = config.previewToken ?? null;
 
@@ -710,24 +738,9 @@ export function createKenresoftClient(config: KenresoftClientConfig): KenresoftC
     return (await response.json()) as T;
   }
 
-  // Core's shared auth surface (better-auth, mounted at /api/v1/auth) — the ONE identity system
-  // customers and CMS staff both use. better-auth's error bodies are `{ code, message }`.
-  async function coreRequest<T>(path: string, init?: RequestInit): Promise<T> {
-    const response = await doFetch(`${baseUrl}${path}`, {
-      credentials: 'include',
-      ...init,
-      headers: { 'Content-Type': 'application/json', ...init?.headers },
-    });
-    if (!response.ok) {
-      const body = (await response.json().catch(() => null)) as { message?: string; error?: string } | null;
-      throw new KenresoftApiError(
-        response.status,
-        body?.message ?? body?.error ?? `Kenresoft CMS API request failed: ${init?.method ?? 'GET'} ${path} -> ${response.status}`,
-      );
-    }
-    if (response.status === 204) return undefined as T;
-    return (await response.json().catch(() => undefined)) as T;
-  }
+  // ONE auth implementation: the generic `auth` API. Commerce's customerAuth/changePassword
+  // below delegate to it rather than carrying their own copy of these Core calls.
+  const auth = createAuth(baseUrl, doFetch);
 
   async function currentCustomer(): Promise<CommerceCustomer | null> {
     const response = await doFetch(`${commerceBase}/customer`, { credentials: 'include' });
@@ -769,6 +782,7 @@ export function createKenresoftClient(config: KenresoftClientConfig): KenresoftC
   }
 
   return {
+    auth,
     entries: {
       async list({ contentType }) {
         const entries = await request<Entry[]>(`/api/v1/public/${contentType}`);
@@ -877,42 +891,31 @@ export function createKenresoftClient(config: KenresoftClientConfig): KenresoftC
     },
     commerce: {
       customerAuth: {
-        async register({ callbackUrl, ...options }) {
-          await coreRequest('/api/v1/auth/sign-up/email', {
-            method: 'POST',
-            body: JSON.stringify({ ...options, ...(callbackUrl ? { callbackURL: callbackUrl } : {}) }),
-          });
-          return { requiresEmailVerification: true };
-        },
+        register: (options) => auth.signUp(options),
         async login(options) {
-          await coreRequest('/api/v1/auth/sign-in/email', { method: 'POST', body: JSON.stringify(options) });
+          const result = await auth.signIn(options);
+          if (result.twoFactorRequired) {
+            // This adapter resolves a customer profile, which doesn't exist until the second
+            // factor is verified. Use client.auth.signIn() + client.auth.twoFactor.* directly
+            // for accounts with two-factor enabled.
+            throw new KenresoftApiError(401, 'Two-factor authentication is required for this account.', undefined, 'TWO_FACTOR_REQUIRED');
+          }
           const customer = await currentCustomer();
           if (!customer) throw new KenresoftApiError(401, 'Signed in, but no session cookie reached the browser.');
           return customer;
         },
-        async logout() {
-          await coreRequest('/api/v1/auth/sign-out', { method: 'POST', body: '{}' });
+        async verifyTwoFactor({ method = 'totp', ...options }) {
+          if (method === 'backup-code') await auth.twoFactor.verifyBackupCode(options);
+          else await auth.twoFactor.verifyTotp(options);
+          const customer = await currentCustomer();
+          if (!customer) throw new KenresoftApiError(401, 'Signed in, but no session cookie reached the browser.');
+          return customer;
         },
-        requestPasswordReset(options) {
-          return coreRequest<{ message: string }>('/api/v1/public/password-reset/request', { method: 'POST', body: JSON.stringify(options) });
-        },
-        confirmPasswordReset(options) {
-          return coreRequest<{ message: string }>('/api/v1/public/password-reset/confirm', { method: 'POST', body: JSON.stringify(options) });
-        },
-        async verifyEmail({ token }) {
-          await coreRequest(`/api/v1/auth/verify-email?token=${encodeURIComponent(token)}`);
-          return { message: 'Email verified.' };
-        },
-        async resendVerificationEmail({ callbackUrl, ...options }) {
-          await coreRequest('/api/v1/auth/send-verification-email', {
-            method: 'POST',
-            body: JSON.stringify({ ...options, ...(callbackUrl ? { callbackURL: callbackUrl } : {}) }),
-          }).catch((err: unknown) => {
-            // Same generic outcome whether or not the address needs verifying (already verified, unknown).
-            if (!(err instanceof KenresoftApiError) || err.status >= 500) throw err;
-          });
-          return { message: 'If that email is registered and not yet verified, a new verification email has been sent.' };
-        },
+        logout: () => auth.signOut(),
+        requestPasswordReset: (options) => auth.requestPasswordReset(options),
+        confirmPasswordReset: (options) => auth.resetPassword(options),
+        verifyEmail: (options) => auth.verifyEmail(options),
+        resendVerificationEmail: (options) => auth.resendVerificationEmail(options),
       },
       customer: {
         get() {
@@ -921,13 +924,7 @@ export function createKenresoftClient(config: KenresoftClientConfig): KenresoftC
         update(options) {
           return commerceRequest<CommerceCustomer>('/customer', { method: 'PATCH', body: JSON.stringify(options) });
         },
-        async changePassword(options) {
-          await coreRequest('/api/v1/auth/change-password', {
-            method: 'POST',
-            body: JSON.stringify({ ...options, revokeOtherSessions: true }),
-          });
-          return { message: 'Password changed.' };
-        },
+        changePassword: (options) => auth.changePassword(options),
         addresses: {
           list() {
             return commerceRequest<CommerceCustomerAddress[]>('/customer/addresses');

@@ -60,7 +60,7 @@ const linkError = Astro.url.searchParams.get('error');
 
   if (token && loadingEl && errorEl && successEl) {
     getBrowserClient()
-      .commerce.customerAuth.verifyEmail({ token })
+      .auth.verifyEmail({ token })
       .then(() => {
         loadingEl.hidden = true;
         successEl.hidden = false;
@@ -83,7 +83,7 @@ const linkError = Astro.url.searchParams.get('error');
             resendButtonEl.disabled = true;
             resendStatusEl.textContent = 'Sending…';
             try {
-              await getBrowserClient().commerce.customerAuth.resendVerificationEmail({
+              await getBrowserClient().auth.resendVerificationEmail({
                 email: customer.email,
                 callbackUrl: `${window.location.origin}/account/verify-email`,
               });

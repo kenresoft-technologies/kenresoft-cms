@@ -89,7 +89,7 @@ try {
     button.addEventListener('click', async () => {
       button.disabled = true;
       try {
-        await getBrowserClient().commerce.customerAuth.logout();
+        await getBrowserClient().auth.signOut();
       } finally {
         window.location.href = '/';
       }

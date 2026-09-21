@@ -10,6 +10,11 @@ landed on `develop`.
 
 ## Unreleased
 
+### Added
+
+- Optional Cloudflare Turnstile check on public website sign-up. Set the `TURNSTILE_SECRET_KEY` Worker secret to require it; unset (the default) nothing changes. `auth.signUp({ turnstileToken })` sends the token (also forwarded by `createCmsProxy`). See `docs/DEPLOYMENT.md`, "Sessions and sign-in from your own frontend", which also documents the recommended proxy, secret, and Workers setup for frontends with accounts.
+- `@kenresoft-cms/astro`: a generic `client.auth` API (sign up/in/out, session, email verification, password reset/change, two-factor) over Core's existing better-auth and password-reset routes. `commerce.customerAuth` now delegates to it. `KenresoftApiError` gained an optional `code`; the client gained a `cookies` option for SSR and `commerce.customerAuth.verifyTwoFactor()`. New `createCmsProxy()` same-origin proxy (recommended: makes the session cookie first-party so SSR and third-party-cookie-blocking browsers work on any domain layout). The API gained an opt-in `TRUSTED_PROXY_SECRET` so per-IP rate limits still see real visitors behind a proxy; unset, behavior is identical. Package version 0.5.1 (0.5.0 shipped without `signIn`'s `callbackUrl`, which makes the automatic re-sent verification email land on your site). No database or database changes.
+
 ### Breaking
 
 - **One identity system for the CMS and its plugins.** Website/application users are now ordinary accounts with no CMS access (new role `none`), and new accounts default to it. **Before this, a public sign-up defaulted to Editor** — after updating, sign-ups get no CMS access; only an Owner/Admin can grant a role. Existing users keep their roles.

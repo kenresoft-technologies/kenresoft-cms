@@ -13,14 +13,7 @@ import { createKenresoftClient, type KenresoftClient } from '@kenresoft-cms/astr
 // script tags instead, so the browser's own cookie jar (and any Set-Cookie the API sends back)
 // is handled by the browser itself with no proxying needed.
 export function createServerClient(cookieHeader: string | null): KenresoftClient {
-  return createKenresoftClient({
-    url: import.meta.env.PUBLIC_KENRESOFT_CMS_URL,
-    fetch: (input, init) => {
-      const headers = new Headers(init?.headers);
-      if (cookieHeader) headers.set('cookie', cookieHeader);
-      return fetch(input, { ...init, headers });
-    },
-  });
+  return createKenresoftClient({ url: import.meta.env.PUBLIC_KENRESOFT_CMS_URL, cookies: cookieHeader });
 }
 
 export function getPublicApiUrl(): string {

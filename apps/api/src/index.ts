@@ -4,6 +4,7 @@ import { createDb } from '@kenresoft-cms/database';
 
 import { createAuth } from './lib/auth';
 import { authRateLimit } from './middleware/auth-rate-limit';
+import { signUpTurnstile } from './middleware/turnstile';
 import { blockViewerMutations } from './middleware/block-viewer-mutations';
 import { corsMiddleware } from './middleware/cors';
 import { publicContentRateLimit } from './middleware/public-content-rate-limit';
@@ -62,6 +63,7 @@ app.use('*', corsMiddleware);
 app.route('/api/v1/health', healthRoute);
 
 app.use('/api/v1/auth/*', authRateLimit);
+app.use('/api/v1/auth/*', signUpTurnstile);
 app.on(['GET', 'POST'], '/api/v1/auth/*', (c) => createAuth(c.env, c.executionCtx).handler(c.req.raw));
 
 // A loose baseline (300/60s) across every /api/v1/public/* route, layered under the tighter,
