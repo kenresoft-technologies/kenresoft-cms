@@ -1,6 +1,6 @@
 # @kenresoft-cms/api: API Worker
 
-> **Official documentation:** guides, tutorials and troubleshooting live at https://docs.kenresoft.com. Deployment and configuration: https://docs.kenresoft.com/cms/deployment/. Interactive API reference on a running deployment: `/api/v1/docs`.
+> **Official documentation:** guides, tutorials and troubleshooting live at https://docs.kenresoft.com/cms/. Deployment and configuration: https://docs.kenresoft.com/cms/deployment/. Interactive API reference on a running deployment: `/api/v1/docs`.
 
 The Kenresoft CMS API Worker: a Hono application on Cloudflare Workers backed by D1 (content,
 users, sessions) and R2 (media files), with authentication via better-auth. This is the only

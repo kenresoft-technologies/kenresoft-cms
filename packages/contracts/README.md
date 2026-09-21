@@ -1,6 +1,6 @@
 # @kenresoft-cms/contracts
 
-> **Official documentation:** guides, tutorials and troubleshooting live at https://docs.kenresoft.com. Public API guide: https://docs.kenresoft.com/cms/developer/public-api/.
+> **Official documentation:** guides, tutorials and troubleshooting live at https://docs.kenresoft.com/cms/. Public API guide: https://docs.kenresoft.com/cms/developer/public-api/.
 
 Zod schemas and shared TypeScript types for the [Kenresoft CMS](https://github.com/kenresoft-technologies/kenresoft-cms) API — the same contract used by the API Worker's request/response validation and the Admin Worker's UI. Published so the Admin Worker can be installed as a standalone Cloudflare Worker without checking out the full monorepo.
 

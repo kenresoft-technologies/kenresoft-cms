@@ -1,6 +1,6 @@
 # Plugin Platform
 
-> The published, maintained documentation is at https://docs.kenresoft.com. Plugin guide: https://docs.kenresoft.com/cms/guides/plugins/.
+> The published, maintained documentation is at https://docs.kenresoft.com/cms/. Plugin guide: https://docs.kenresoft.com/cms/guides/plugins/.
 
 **Status: Phase 1 (generic plugin platform + `plugin-hello` proof) complete, 2026-09-04.
 Plugin enablement moved from a static file to a DB-backed, live-toggleable model (also
