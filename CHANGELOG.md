@@ -10,6 +10,10 @@ landed on `develop`.
 
 ## Unreleased
 
+### Changed
+
+- The GitHub Actions workflows now suit private deployments as well as this repository. CodeQL and Dependency Review run only on public repositories (on a private one they need GitHub Advanced Security and used to fail), and the full test suite runs only on public repositories or when the repository variable `RUN_FULL_TESTS` is `true`. Typecheck, lint and build still run everywhere. Tests now run one workspace package at a time, which avoids timeouts on small runners. No action needed on existing deployments.
+
 ### Added
 
 - `npx @kenresoft-cms/create astro` connects an existing Astro project to a Kenresoft CMS (installs `@kenresoft-cms/astro`, adds the same-origin `/cms` proxy and client helpers, sets `PUBLIC_KENRESOFT_CMS_URL`), and `npx @kenresoft-cms/create astro --update` refreshes it. Only files marked `@kenresoft-managed` are written; edited ones are reported as conflicts, never overwritten. Requires publishing a new `@kenresoft-cms/create`. `pnpm run update` and `npm create @kenresoft-cms@latest` (including `--astro`) are unchanged.

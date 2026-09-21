@@ -12,6 +12,9 @@ permissions:
 
 jobs:
   dependency-review:
+    # Needs the dependency graph and GitHub Advanced Security on private repositories, so a
+    # private deployment that inherited this workflow skips it instead of failing.
+    if: github.event.repository.private == false
     runs-on: ubuntu-latest
     permissions:
       contents: read
