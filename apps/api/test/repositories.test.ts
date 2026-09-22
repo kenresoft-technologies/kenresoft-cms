@@ -4,7 +4,13 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { createContentType, getContentTypeBySlug } from '../src/repositories/content-types';
 import { createFieldDefinition, listFieldDefinitionsForContentType } from '../src/repositories/field-definitions';
-import { createEntry, getEntryBySlug, listEntryRevisions, updateEntry } from '../src/repositories/entries';
+import {
+  createEntry,
+  getEntryBySlug,
+  listEntriesWithContentType,
+  listEntryRevisions,
+  updateEntry,
+} from '../src/repositories/entries';
 
 const db = createDb(env.DB);
 
@@ -14,6 +20,7 @@ describe('domain model repositories (real D1)', () => {
     await env.DB.exec('DELETE FROM entries');
     await env.DB.exec('DELETE FROM field_definitions');
     await env.DB.exec('DELETE FROM content_types');
+    await env.DB.exec("DELETE FROM user WHERE email LIKE '%repositories-test%'");
   });
 
   it('walks the content type -> field -> entry graph', async () => {
@@ -71,5 +78,28 @@ describe('domain model repositories (real D1)', () => {
     await expect(
       createContentType(db, { name: 'Duplicate', slug: 'blog-post', description: null }),
     ).rejects.toThrow();
+  });
+
+  it('falls back to the deployment owner\'s name when an entry\'s author was deleted', async () => {
+    await env.DB.exec(
+      "INSERT INTO user (id, name, email, email_verified, role) VALUES ('owner-1', 'Ada Owner', 'ada+repositories-test@example.test', 1, 'owner')",
+    );
+    await env.DB.exec(
+      "INSERT INTO user (id, name, email, email_verified, role) VALUES ('editor-1', 'Doomed Editor', 'doomed+repositories-test@example.test', 1, 'editor')",
+    );
+
+    const contentType = await createContentType(db, { name: 'Blog Post', slug: 'blog-post', description: null });
+    await createEntry(db, contentType.id, { slug: 'a', status: 'draft', data: {} }, 'editor-1');
+    await createEntry(db, contentType.id, { slug: 'b', status: 'draft', data: {} }, null);
+
+    // Hard-deleting the user sets entries.createdBy to null via onDelete: 'set null',
+    // exactly like a real user deletion would.
+    await env.DB.exec("DELETE FROM user WHERE id = 'editor-1'");
+
+    const rows = await listEntriesWithContentType(db, contentType.id);
+    expect(rows).toHaveLength(2);
+    for (const row of rows) {
+      expect(row.authorName).toBe('Ada Owner');
+    }
   });
 });
