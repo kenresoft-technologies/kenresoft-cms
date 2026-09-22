@@ -9,14 +9,20 @@ export type FetchExternalImageResult =
 // Unsplash, ...) means threading a Worker secret through here the same way EMAIL_PROVIDER/
 // PAYSTACK_SECRET_KEY already do, deliberately left for whenever that's a real, driving need
 // rather than built speculatively ahead of one.
-function picsumUrl(input: Pick<ImportExternalMediaInput, 'width' | 'height' | 'seed' | 'pictureId'>): string {
-  if (input.pictureId) {
-    return `https://picsum.photos/id/${encodeURIComponent(input.pictureId)}/${input.width}/${input.height}`;
-  }
-  if (input.seed) {
-    return `https://picsum.photos/seed/${encodeURIComponent(input.seed)}/${input.width}/${input.height}`;
-  }
-  return `https://picsum.photos/${input.width}/${input.height}`;
+function picsumUrl(
+  input: Pick<ImportExternalMediaInput, 'width' | 'height' | 'seed' | 'pictureId' | 'grayscale' | 'blur'>,
+): string {
+  const base = input.pictureId
+    ? `https://picsum.photos/id/${encodeURIComponent(input.pictureId)}/${input.width}/${input.height}`
+    : input.seed
+      ? `https://picsum.photos/seed/${encodeURIComponent(input.seed)}/${input.width}/${input.height}`
+      : `https://picsum.photos/${input.width}/${input.height}`;
+
+  const params = new URLSearchParams();
+  if (input.grayscale) params.set('grayscale', '');
+  if (input.blur) params.set('blur', String(input.blur));
+  const query = params.toString();
+  return query ? `${base}?${query}` : base;
 }
 
 export async function fetchExternalImage(input: ImportExternalMediaInput): Promise<FetchExternalImageResult> {

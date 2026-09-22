@@ -689,7 +689,10 @@ export function UsersPage() {
         id: 'developerTools',
         header: 'Dev tools',
         enableSorting: false,
-        cell: ({ row }) => <DeveloperToolsCell user={row.original} canEdit={isAdmin} />,
+        // Status only here, never the toggle — an accidental click on a densely-packed table row
+        // is a worse place to grant a sensitive per-user capability than a dedicated confirmation
+        // point. The real control lives on that user's own detail page (open the row to reach it).
+        cell: ({ row }) => <DeveloperToolsCell user={row.original} canEdit={false} />,
       },
       {
         accessorKey: 'lastActiveAt',

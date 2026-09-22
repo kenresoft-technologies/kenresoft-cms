@@ -164,15 +164,31 @@ function MediaField({ field, value, onChange }: FieldInputProps) {
   const [open, setOpen] = useState(false);
   const { data: mediaItems } = useMediaList();
   const selectedId = typeof value === 'string' ? value : undefined;
-  const selected = mediaItems?.find((item) => item.id === selectedId);
+  const cached = mediaItems?.find((item) => item.id === selectedId);
+  // A freshly picked-or-imported item can briefly be missing from the `useMediaList()` cache —
+  // its list-invalidation refetch hasn't resolved yet by the time the picker dialog closes and
+  // this field re-renders — which made the preview silently disappear (fell back to "None") for
+  // exactly the case someone most wants to see it: right after choosing something. Tracking the
+  // picker's own onSelect payload locally means the preview never depends on that race at all;
+  // the cache lookup above only matters for the very first render of an already-saved entry.
+  const [justPicked, setJustPicked] = useState<{ filename: string; altText: string | null } | null>(null);
+  const filename = justPicked?.filename ?? cached?.filename;
+  const altText = justPicked?.altText ?? cached?.altText ?? null;
+  const [previewFailed, setPreviewFailed] = useState(false);
 
   return (
     <div className="flex flex-col gap-2">
       <Label>{field.label}</Label>
       <div className="flex items-center gap-3">
-        {selected ? (
-          selected.width && selected.height ? (
-            <img src={mediaFileUrl(selected.id)} alt={selected.altText ?? selected.filename} className="size-16 rounded-md object-cover" />
+        {selectedId ? (
+          !previewFailed ? (
+            <img
+              key={selectedId}
+              src={mediaFileUrl(selectedId)}
+              alt={altText ?? filename ?? ''}
+              onError={() => setPreviewFailed(true)}
+              className="size-16 rounded-md object-cover"
+            />
           ) : (
             <div className="flex size-16 items-center justify-center rounded-md bg-muted">
               <ImageOff className="size-5 text-muted-foreground" />
@@ -184,21 +200,33 @@ function MediaField({ field, value, onChange }: FieldInputProps) {
           </div>
         )}
         <div className="flex flex-col gap-2">
-          {selected ? <p className="text-sm text-muted-foreground">{selected.filename}</p> : null}
+          {selectedId && filename ? <p className="text-sm text-muted-foreground">{filename}</p> : null}
           <div className="flex gap-2">
             <MediaPickerDialog
               open={open}
               onOpenChange={setOpen}
               selectedId={selectedId}
-              onSelect={(id) => onChange(id)}
+              onSelect={(id, item) => {
+                setJustPicked(item);
+                setPreviewFailed(false);
+                onChange(id);
+              }}
               trigger={
                 <Button type="button" variant="outline" size="sm">
-                  {selected ? 'Change media' : 'Choose media'}
+                  {selectedId ? 'Change media' : 'Choose media'}
                 </Button>
               }
             />
-            {selected ? (
-              <Button type="button" variant="ghost" size="sm" onClick={() => onChange(null)}>
+            {selectedId ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setJustPicked(null);
+                  onChange(null);
+                }}
+              >
                 <X />
                 Remove
               </Button>

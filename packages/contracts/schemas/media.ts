@@ -115,6 +115,10 @@ export const importExternalMediaSchema = z.object({
   // Picsum's own /seed/{seed}/{w}/{h} URL convention), useful for "actually, that same one".
   // Superseded by pictureId when both are given.
   seed: z.string().min(1).max(200).optional(),
+  // Picsum's own real, documented query params — a genuine "more flexible" import rather than a
+  // fixed width/height/seed-only request.
+  grayscale: z.boolean().optional(),
+  blur: z.number().int().min(1).max(10).optional(),
   altText: z.string().max(500).optional(),
   folderId: z.string().min(1).optional(),
 });
