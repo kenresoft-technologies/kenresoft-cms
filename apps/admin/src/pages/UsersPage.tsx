@@ -8,6 +8,7 @@ import {
   Monitor,
   Plus,
   ShieldCheck,
+  ShoppingBag,
   Trash2,
   UserCheck,
   Users as UsersIcon,
@@ -28,7 +29,7 @@ import {
   useUserSessions,
   useUsers,
 } from '@/lib/queries/users';
-import { roleAtLeast, USER_ROLES, type AdminUser, type Session, type UserRole } from '@/lib/types';
+import { roleAtLeast, USER_ROLES, type AccountRole, type AdminUser, type Session, type UserRole } from '@/lib/types';
 import { DataTable } from '@/components/data-table';
 import { ElevateDialog } from '@/components/elevate-dialog';
 import { EmptyState } from '@/components/empty-state';
@@ -68,6 +69,25 @@ import { Table, TableHeader, TableHead, TableRow } from '@/components/ui/table';
 const ACTIVE_WITHIN_MS = 7 * 24 * 60 * 60 * 1000;
 
 type StatusFilter = 'all' | 'active' | 'never';
+type AccountType = 'cms_staff' | 'commerce_customer' | 'website_user';
+type AccountTypeFilter = 'all' | AccountType;
+
+// The Core Users directory's one classification: role != 'none' always means CMS staff, even for
+// someone who's also bought something as a customer earlier — role is the deployment-access
+// question, and staff-who-also-bought-something is still shown (as a secondary "Customer" tag on
+// that row, not a fourth type) rather than losing the distinction. A role-'none' account is then
+// either a Commerce customer (a plugin_commerce_customer_profiles row exists) or a plain website
+// user with none yet.
+function accountType(user: AdminUser): AccountType {
+  if (user.role !== 'none') return 'cms_staff';
+  return user.isCommerceCustomer ? 'commerce_customer' : 'website_user';
+}
+
+const ACCOUNT_TYPE_LABEL: Record<AccountType, string> = {
+  cms_staff: 'CMS Staff',
+  commerce_customer: 'Commerce Customer',
+  website_user: 'Website User',
+};
 
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -85,14 +105,16 @@ function activeThisWeek(user: AdminUser): boolean {
 // raw lowercase role string. Capitalizing the string itself keeps "Editor"/"Admin" as the real
 // accessible name, matching what was previously hardcoded per-option.
 function capitalizeRole(role: string): string {
+  if (role === 'none') return 'No CMS access';
   return role.charAt(0).toUpperCase() + role.slice(1);
 }
 
 function exportUsersToCsv(users: AdminUser[]) {
-  const header = ['Name', 'Email', 'Role', 'Last active', 'Joined'];
+  const header = ['Name', 'Email', 'Type', 'Role', 'Last active', 'Joined'];
   const rows = users.map((user) => [
     user.name,
     user.email,
+    ACCOUNT_TYPE_LABEL[accountType(user)],
     user.role,
     user.lastActiveAt ?? '',
     user.createdAt,
@@ -113,8 +135,10 @@ function exportUsersToCsv(users: AdminUser[]) {
 // the choices here — granting it goes through the dedicated Transfer ownership flow (Settings →
 // Users & Permissions), which requires re-authentication and can only be initiated by the
 // current owner. The API rejects a role: 'owner' PATCH here regardless, but not offering it as
-// an option avoids a confusing "why did that fail" for anyone who tries.
-const ASSIGNABLE_ROLES = USER_ROLES.filter((role) => role !== 'owner');
+// an option avoids a confusing "why did that fail" for anyone who tries. 'none' is included so
+// this same control both revokes CMS access from staff and grants it to a website user/Commerce
+// customer — Core Users is one directory with one role control, not two.
+const ASSIGNABLE_ROLES = ['none', ...USER_ROLES.filter((role) => role !== 'owner')] as const;
 
 // Distinct colors below Owner (which keeps its own primary tint above) — gives the Users page
 // the same at-a-glance role scan as Strapi's role badges. Viewer stays unaccented, matching its
@@ -146,8 +170,8 @@ function RoleCell({ user, canEdit }: { user: AdminUser; canEdit: boolean }) {
 
   if (!canEdit) {
     return (
-      <Badge variant="outline" className={cn('capitalize', ROLE_BADGE_TONE[user.role])}>
-        {user.role}
+      <Badge variant="outline" className={cn(user.role !== 'none' && 'capitalize', ROLE_BADGE_TONE[user.role])}>
+        {capitalizeRole(user.role)}
       </Badge>
     );
   }
@@ -158,7 +182,7 @@ function RoleCell({ user, canEdit }: { user: AdminUser; canEdit: boolean }) {
       disabled={updateRole.isPending}
       onValueChange={(value) => {
         updateRole.mutate(
-          { id: user.id, role: value as UserRole },
+          { id: user.id, role: value as AccountRole },
           {
             onError: (err) => {
               toast.error(err instanceof ApiError ? err.message : 'Failed to update role');
@@ -189,7 +213,7 @@ function DeveloperToolsCell({ user, canEdit }: { user: AdminUser; canEdit: boole
   const updateAccess = useUpdateUserDeveloperToolsAccess();
 
   if (user.role !== 'editor' && user.role !== 'author') {
-    return <span className="text-muted-foreground">{user.role === 'viewer' ? '—' : 'Always'}</span>;
+    return <span className="text-muted-foreground">{user.role === 'owner' || user.role === 'admin' ? 'Always' : '—'}</span>;
   }
 
   if (!canEdit) {
@@ -212,6 +236,32 @@ function DeveloperToolsCell({ user, canEdit }: { user: AdminUser; canEdit: boole
         );
       }}
     />
+  );
+}
+
+const ACCOUNT_TYPE_BADGE_TONE: Record<AccountType, string> = {
+  cms_staff: 'border-primary/30 bg-primary/10 text-primary',
+  commerce_customer: 'border-swatch-5/30 bg-swatch-5/14 text-swatch-5',
+  website_user: '',
+};
+
+// The primary type badge classifies role-vs-purchase-history as described by accountType()
+// above; a CMS staff member who's also bought something gets a small secondary "Customer" tag
+// next to it, so that fact isn't lost just because CMS Staff took priority as the primary type.
+function AccountTypeCell({ user }: { user: AdminUser }) {
+  const type = accountType(user);
+  return (
+    <div className="flex items-center gap-1.5">
+      <Badge variant="outline" className={ACCOUNT_TYPE_BADGE_TONE[type]}>
+        {ACCOUNT_TYPE_LABEL[type]}
+      </Badge>
+      {type === 'cms_staff' && user.isCommerceCustomer ? (
+        <Badge variant="outline" className="gap-1 text-muted-foreground" title="Has also made a purchase">
+          <ShoppingBag className="size-3" />
+          Customer
+        </Badge>
+      ) : null}
+    </div>
   );
 }
 
@@ -509,6 +559,7 @@ export function UsersPage() {
   const [created, setCreated] = useState<{ user: AdminUser; temporaryPassword: string } | null>(null);
   const [roleFilter, setRoleFilter] = useState<'all' | UserRole>('all');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [typeFilter, setTypeFilter] = useState<AccountTypeFilter>('all');
 
   const stats = useMemo(() => {
     const list = users ?? [];
@@ -527,9 +578,10 @@ export function UsersPage() {
       if (roleFilter !== 'all' && user.role !== roleFilter) return false;
       if (statusFilter === 'active' && user.lastActiveAt === null) return false;
       if (statusFilter === 'never' && user.lastActiveAt !== null) return false;
+      if (typeFilter !== 'all' && accountType(user) !== typeFilter) return false;
       return true;
     });
-  }, [users, roleFilter, statusFilter]);
+  }, [users, roleFilter, statusFilter, typeFilter]);
 
   async function handleConfirmDelete() {
     if (!pendingDelete) return;
@@ -558,6 +610,12 @@ export function UsersPage() {
         ),
       },
       { accessorKey: 'email', header: 'Email', cell: ({ row }) => <span className="text-muted-foreground">{row.original.email}</span> },
+      {
+        id: 'accountType',
+        header: 'Type',
+        enableSorting: false,
+        cell: ({ row }) => <AccountTypeCell user={row.original} />,
+      },
       {
         accessorKey: 'role',
         header: 'Role',
@@ -678,6 +736,7 @@ export function UsersPage() {
               <TableRow>
                 <TableHead>Name</TableHead>
                 <TableHead>Email</TableHead>
+                <TableHead>Type</TableHead>
                 <TableHead>Role</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Dev tools</TableHead>
@@ -686,7 +745,7 @@ export function UsersPage() {
                 {isAdmin ? <TableHead /> : null}
               </TableRow>
             </TableHeader>
-            <TableSkeleton columns={isAdmin ? 8 : 7} />
+            <TableSkeleton columns={isAdmin ? 9 : 8} />
           </Table>
         </div>
       ) : null}
@@ -703,6 +762,19 @@ export function UsersPage() {
           onRefresh={() => void refetch()}
           toolbar={
             <>
+              <Select value={typeFilter} onValueChange={(value) => setTypeFilter(value as AccountTypeFilter)}>
+                <SelectTrigger size="sm" className="w-44" aria-label="Filter by account type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All account types</SelectItem>
+                  {(Object.keys(ACCOUNT_TYPE_LABEL) as AccountType[]).map((type) => (
+                    <SelectItem key={type} value={type}>
+                      {ACCOUNT_TYPE_LABEL[type]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <Select value={roleFilter} onValueChange={(value) => setRoleFilter(value as 'all' | UserRole)}>
                 <SelectTrigger size="sm" className="w-32" aria-label="Filter by role">
                   <SelectValue />

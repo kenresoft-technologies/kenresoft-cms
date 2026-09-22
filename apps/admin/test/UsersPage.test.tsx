@@ -108,7 +108,7 @@ describe('UsersPage', () => {
     // own role/status filter selects, are comboboxes too, but none of them are a
     // role-editing control on a specific row.
     expect(within(screen.getByRole('table')).queryByRole('combobox')).not.toBeInTheDocument();
-    expect(screen.getByText('admin')).toBeInTheDocument();
+    expect(screen.getByText('Admin')).toBeInTheDocument();
   });
 
   it('lets an admin change another user\'s role via the inline select', async () => {
@@ -163,6 +163,71 @@ describe('UsersPage', () => {
 
     await waitFor(() => expect(screen.queryByText('Admin User')).not.toBeInTheDocument());
     expect(screen.getByText('Editor User')).toBeInTheDocument();
+  });
+
+  it('classifies and filters accounts by type: CMS staff, Commerce customer, and website user', async () => {
+    useSessionMock.mockReturnValue({ data: { user: { role: 'admin', email: 'admin@example.test' } } });
+    getMock.mockResolvedValue([
+      ...users,
+      {
+        id: 'u-3',
+        name: 'Plain Visitor',
+        email: 'visitor@example.test',
+        role: 'none' as const,
+        isCommerceCustomer: false,
+        createdAt: '2026-01-03T00:00:00.000Z',
+        lastActiveAt: null,
+      },
+      {
+        id: 'u-4',
+        name: 'Repeat Buyer',
+        email: 'buyer@example.test',
+        role: 'none' as const,
+        isCommerceCustomer: true,
+        createdAt: '2026-01-04T00:00:00.000Z',
+        lastActiveAt: null,
+      },
+    ]);
+
+    renderPage();
+    await waitFor(() => expect(screen.getByText('Repeat Buyer')).toBeInTheDocument());
+
+    expect(screen.getAllByText('CMS Staff')).toHaveLength(2);
+    expect(screen.getByText('Website User')).toBeInTheDocument();
+    expect(screen.getByText('Commerce Customer')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('combobox', { name: 'Filter by account type' }));
+    await userEvent.click(await screen.findByRole('option', { name: 'Commerce Customer' }));
+
+    await waitFor(() => expect(screen.queryByText('Plain Visitor')).not.toBeInTheDocument());
+    expect(screen.getByText('Repeat Buyer')).toBeInTheDocument();
+    expect(screen.queryByText('Admin User')).not.toBeInTheDocument();
+  });
+
+  it('lets an admin grant CMS access to a website user via the same role control', async () => {
+    useSessionMock.mockReturnValue({ data: { user: { role: 'admin', email: 'admin@example.test' } } });
+    const websiteUser = {
+      id: 'u-3',
+      name: 'Plain Visitor',
+      email: 'visitor@example.test',
+      role: 'none' as const,
+      isCommerceCustomer: false,
+      createdAt: '2026-01-03T00:00:00.000Z',
+      lastActiveAt: null,
+    };
+    getMock.mockResolvedValue([websiteUser]);
+    patchMock.mockResolvedValue({ ...websiteUser, role: 'editor' });
+
+    renderPage();
+    await waitFor(() => expect(screen.getByText('Plain Visitor')).toBeInTheDocument());
+
+    const row = screen.getByRole('row', { name: /Plain Visitor/ });
+    await userEvent.click(within(row).getByRole('combobox'));
+    await userEvent.click(await screen.findByRole('option', { name: 'Editor' }));
+
+    await waitFor(() =>
+      expect(patchMock).toHaveBeenCalledWith('/api/v1/admin/users/u-3/role', { role: 'editor' }),
+    );
   });
 
   it('shows an empty state when there are no users', async () => {
