@@ -3,7 +3,7 @@ import { Check, ChevronsUpDown, ImageOff, X } from 'lucide-react';
 
 import { useContentType } from '@/lib/queries/content-types';
 import { useEntries } from '@/lib/queries/entries';
-import { mediaFileUrl, useMediaList } from '@/lib/queries/media';
+import { mediaFileUrl, publicMediaFileUrl, useMediaList } from '@/lib/queries/media';
 import { cn } from '@/lib/utils';
 import type { FieldDefinition } from '@/lib/types';
 import { MediaPickerDialog } from '@/components/media-picker-dialog';
@@ -210,6 +210,55 @@ function MediaField({ field, value, onChange }: FieldInputProps) {
   );
 }
 
+// A url field is still a plain string underneath (never a media id) — public consumers of an
+// entry expect a directly usable URL with no second lookup, unlike the `media` field type above,
+// which stores an id precisely because it needs the entry's own contentType lookup semantics.
+// Picking a file here fills the text input with that file's *public* URL (publicMediaFileUrl,
+// not the admin-gated mediaFileUrl the thumbnail below uses) — this value is meant to be usable
+// by an unauthenticated visitor of the real site, exactly like @kenresoft-cms/astro's own
+// media.url().
+function UrlField({ field, value, onChange }: FieldInputProps) {
+  const id = `field-${field.name}`;
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const { data: mediaItems } = useMediaList();
+  const stringValue = typeof value === 'string' ? value : '';
+  const selectedMedia = mediaItems?.find((item) => publicMediaFileUrl(item.id) === stringValue);
+
+  return (
+    <div className="flex flex-col gap-2">
+      <Label htmlFor={id}>{field.label}</Label>
+      <div className="flex gap-2">
+        <Input
+          id={id}
+          type="url"
+          required={field.required}
+          value={stringValue}
+          onChange={(event) => onChange(event.target.value)}
+          className="flex-1"
+        />
+        <MediaPickerDialog
+          open={pickerOpen}
+          onOpenChange={setPickerOpen}
+          selectedId={selectedMedia?.id}
+          onSelect={(mediaId) => onChange(publicMediaFileUrl(mediaId))}
+          trigger={
+            <Button type="button" variant="outline" size="sm">
+              Choose from Media
+            </Button>
+          }
+        />
+      </div>
+      {selectedMedia?.width && selectedMedia.height ? (
+        <img
+          src={mediaFileUrl(selectedMedia.id)}
+          alt={selectedMedia.altText ?? selectedMedia.filename}
+          className="size-16 rounded-md object-cover"
+        />
+      ) : null}
+    </div>
+  );
+}
+
 function ReferenceField({ field, value, onChange }: FieldInputProps) {
   const [open, setOpen] = useState(false);
   const targetContentTypeId = targetContentTypeIdFromConfig(field.config);
@@ -283,6 +332,7 @@ const FIELD_INPUT_REGISTRY: Partial<Record<FieldInputProps['field']['fieldType']
   multi_select: MultiSelectField,
   media: MediaField,
   reference: ReferenceField,
+  url: UrlField,
 };
 
 export function FieldInput(props: FieldInputProps) {
