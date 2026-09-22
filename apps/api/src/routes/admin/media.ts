@@ -1,10 +1,19 @@
 import { createRoute, z } from '@hono/zod-openapi';
-import { altTextSchema, MEDIA_CONTENT_TYPES, MEDIA_VISIBILITIES, mediaSchema, moveMediaSchema, updateMediaSchema } from '@kenresoft-cms/contracts';
+import {
+  altTextSchema,
+  importExternalMediaSchema,
+  MEDIA_CONTENT_TYPES,
+  MEDIA_VISIBILITIES,
+  mediaSchema,
+  moveMediaSchema,
+  updateMediaSchema,
+} from '@kenresoft-cms/contracts';
 import type { Media, MediaVisibility } from '@kenresoft-cms/contracts';
 
 import { recordAudit } from '../../lib/audit';
 import { getDb } from '../../lib/db';
 import { createOpenApiApp } from '../../lib/openapi';
+import { fetchExternalImage } from '../../lib/external-media';
 import { deleteMediaFile, uploadMedia } from '../../lib/media-service';
 import { invalidatePublicMediaFolderCache } from '../../lib/public-cache';
 import { requireRole } from '../../middleware/require-role';
@@ -132,6 +141,72 @@ mediaRoute.post('/', requireRole('admin', 'editor'), async (c) => {
 
   return c.json(toMedia(row), 201);
 });
+
+// Downloads the image server-side and stores it exactly like a normal upload (uploadMedia) —
+// never hot-linked, so this deployment doesn't depend on the external source staying up, and the
+// file is sniffed/validated by the same real-bytes check as every other upload.
+mediaRoute.openapi(
+  createRoute({
+    method: 'post',
+    path: '/import-external',
+    tags: ['Media'],
+    summary: 'Import an image from an external source (e.g. Picsum) into the Media Library',
+    middleware: requireRole('admin', 'editor'),
+    request: { body: { content: { 'application/json': { schema: importExternalMediaSchema } } } },
+    responses: {
+      201: {
+        description: 'The imported media item.',
+        content: { 'application/json': { schema: mediaSchema } },
+      },
+      400: {
+        description: 'The external source failed, or returned something unrecognized as an image.',
+        content: { 'application/json': { schema: notFoundSchema } },
+      },
+    },
+  }),
+  async (c) => {
+    const input = c.req.valid('json');
+    const db = getDb(c);
+
+    let folderId: string | null = null;
+    if (input.folderId) {
+      const folder = await getMediaFolderById(db, input.folderId);
+      if (!folder) {
+        return c.json({ error: 'No media folder with that id' }, 400);
+      }
+      folderId = input.folderId;
+    }
+
+    const fetched = await fetchExternalImage(input);
+    if (!fetched.ok) {
+      return c.json({ error: fetched.error }, 400);
+    }
+
+    const result = await uploadMedia(db, c.env.MEDIA_BUCKET, {
+      bytes: fetched.bytes,
+      filename: fetched.filename,
+      altText: input.altText ?? null,
+      folderId,
+    });
+    if (!result.ok) {
+      return c.json({ error: result.error }, 400);
+    }
+    const row = result.media;
+    await recordAudit(db, {
+      actorUserId: c.get('user').id,
+      action: 'media.imported',
+      targetType: 'media',
+      targetId: row.id,
+      metadata: { source: input.source, filename: row.filename },
+    });
+    if (folderId) {
+      const folder = await getMediaFolderById(db, folderId);
+      if (folder) await invalidatePublicMediaFolderCache(folder.slug);
+    }
+
+    return c.json(toMedia(row), 201);
+  },
+);
 
 mediaRoute.openAPIRegistry.registerPath({
   method: 'post',

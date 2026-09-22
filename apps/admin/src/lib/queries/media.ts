@@ -59,6 +59,23 @@ export function useDeleteMediaFolder() {
   });
 }
 
+export function useImportExternalMedia() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: {
+      source: 'picsum';
+      width: number;
+      height: number;
+      seed?: string | undefined;
+      altText?: string | undefined;
+      folderId?: string | undefined;
+    }) => apiClient.post<Media>('/api/v1/admin/media/import-external', input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: mediaKey });
+    },
+  });
+}
+
 export function useMoveMedia() {
   const queryClient = useQueryClient();
   return useMutation({
