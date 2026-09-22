@@ -9,11 +9,14 @@ export type FetchExternalImageResult =
 // Unsplash, ...) means threading a Worker secret through here the same way EMAIL_PROVIDER/
 // PAYSTACK_SECRET_KEY already do, deliberately left for whenever that's a real, driving need
 // rather than built speculatively ahead of one.
-function picsumUrl(input: Pick<ImportExternalMediaInput, 'width' | 'height' | 'seed'>): string {
-  const base = input.seed
-    ? `https://picsum.photos/seed/${encodeURIComponent(input.seed)}/${input.width}/${input.height}`
-    : `https://picsum.photos/${input.width}/${input.height}`;
-  return base;
+function picsumUrl(input: Pick<ImportExternalMediaInput, 'width' | 'height' | 'seed' | 'pictureId'>): string {
+  if (input.pictureId) {
+    return `https://picsum.photos/id/${encodeURIComponent(input.pictureId)}/${input.width}/${input.height}`;
+  }
+  if (input.seed) {
+    return `https://picsum.photos/seed/${encodeURIComponent(input.seed)}/${input.width}/${input.height}`;
+  }
+  return `https://picsum.photos/${input.width}/${input.height}`;
 }
 
 export async function fetchExternalImage(input: ImportExternalMediaInput): Promise<FetchExternalImageResult> {
@@ -33,6 +36,7 @@ export async function fetchExternalImage(input: ImportExternalMediaInput): Promi
   }
 
   const bytes = new Uint8Array(await response.arrayBuffer());
-  const filename = `${input.source}-${input.seed ?? crypto.randomUUID()}-${input.width}x${input.height}.jpg`;
+  const identifier = input.pictureId ?? input.seed ?? crypto.randomUUID();
+  const filename = `${input.source}-${identifier}-${input.width}x${input.height}.jpg`;
   return { ok: true, bytes, filename };
 }

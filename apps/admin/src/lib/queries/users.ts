@@ -88,6 +88,18 @@ export function useUpdateUserDisabled() {
   });
 }
 
+export function useUpdateUserNotes() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, internalNotes }: { id: string; internalNotes: string | null }) =>
+      apiClient.patch<AdminUser>(`/api/v1/admin/users/${id}/notes`, { internalNotes }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: usersKey });
+    },
+  });
+}
+
 export function useUpdateUserDeveloperToolsAccess() {
   const queryClient = useQueryClient();
 

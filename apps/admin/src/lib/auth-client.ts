@@ -18,6 +18,8 @@ export const authClient = createAuthClient({
         role: { type: 'string', input: false },
         developerToolsAccess: { type: 'boolean', input: false },
         preferredMailClient: { type: 'string', required: false, input: true },
+        phone: { type: 'string', required: false, input: true },
+        internalNotes: { type: 'string', required: false, input: false },
       },
     }),
     // Detection of a sign-in that needs a 2FA step happens by reading `twoFactorRedirect`

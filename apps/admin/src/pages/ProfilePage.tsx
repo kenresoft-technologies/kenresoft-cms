@@ -56,9 +56,17 @@ const DEFAULT_MAIL_CLIENT_VALUE = 'default';
 function ProfileTab({
   user,
 }: {
-  user: { name: string; email: string; role: string; createdAt: Date; preferredMailClient: string | null };
+  user: {
+    name: string;
+    email: string;
+    role: string;
+    createdAt: Date;
+    preferredMailClient: string | null;
+    phone: string | null;
+  };
 }) {
   const [name, setName] = useState(user.name);
+  const [phone, setPhone] = useState(user.phone ?? '');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [preferredMailClient, setPreferredMailClient] = useState(user.preferredMailClient || DEFAULT_MAIL_CLIENT_VALUE);
 
@@ -67,6 +75,9 @@ function ProfileTab({
     setIsSubmitting(true);
     const { error } = await authClient.updateUser({
       name,
+      // Same '' vs null/undefined reasoning as preferredMailClient below — an explicit '' is
+      // what actually reaches the server and clears a previously-set number.
+      phone: phone.trim(),
       // '' rather than null/undefined for "Default" — better-auth's client typing requires
       // `string | undefined` for an optional field, and an explicit `undefined` never reaches
       // the server at all (JSON.stringify drops it), which would silently no-op instead of
@@ -91,6 +102,17 @@ function ProfileTab({
       <div className="flex flex-col gap-2">
         <Label htmlFor="profile-email">Email</Label>
         <Input id="profile-email" value={user.email} disabled />
+      </div>
+      <div className="flex flex-col gap-2">
+        <Label htmlFor="profile-phone">Phone</Label>
+        <Input
+          id="profile-phone"
+          type="tel"
+          placeholder="Optional"
+          value={phone}
+          onChange={(event) => setPhone(event.target.value)}
+        />
+        <p className="text-xs text-muted-foreground">A secondary contact number, visible to CMS staff for support.</p>
       </div>
       <div className="flex flex-col gap-2">
         <Label htmlFor="profile-mail-client">Preferred mail app</Label>
@@ -522,6 +544,7 @@ export function ProfilePage() {
               role: user.role,
               createdAt: new Date(user.createdAt),
               preferredMailClient: user.preferredMailClient ?? null,
+              phone: user.phone ?? null,
             }}
           />
         </TabsContent>

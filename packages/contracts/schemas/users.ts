@@ -25,6 +25,12 @@ export const adminUserSchema = z.object({
   // Core never depends on Commerce being installed to compute this; it's simply false when no
   // such profile exists (including on a deployment that's never had Commerce enabled at all).
   isCommerceCustomer: z.boolean(),
+  // Self-set by the account owner on their own Profile page — purely informational contact info,
+  // not used for 2FA/SMS or any security check.
+  phone: z.string().nullable(),
+  // Staff-only context about this account (never readable/writable by the account owner
+  // themselves) — set through PATCH .../users/:id/notes, shown on the User detail screen.
+  internalNotes: z.string().nullable(),
   createdAt: z.string(),
   lastActiveAt: z.string().nullable(),
 });
@@ -40,6 +46,12 @@ export const updateUserDisabledSchema = z.object({
 
 export const updateUserDeveloperToolsAccessSchema = z.object({
   developerToolsAccess: z.boolean(),
+});
+
+// Staff-only context about an account — a support ticket reference, why an account was
+// disabled, etc. Explicit null clears it; omitted is rejected by the route (nothing to update).
+export const updateUserInternalNotesSchema = z.object({
+  internalNotes: z.string().max(5000).nullable(),
 });
 
 export const elevateSchema = z.object({
@@ -81,6 +93,7 @@ export type AdminUser = z.infer<typeof adminUserSchema>;
 export type UpdateUserRoleInput = z.infer<typeof updateUserRoleSchema>;
 export type UpdateUserDisabledInput = z.infer<typeof updateUserDisabledSchema>;
 export type UpdateUserDeveloperToolsAccessInput = z.infer<typeof updateUserDeveloperToolsAccessSchema>;
+export type UpdateUserInternalNotesInput = z.infer<typeof updateUserInternalNotesSchema>;
 export type ElevateInput = z.infer<typeof elevateSchema>;
 export type TransferOwnershipInput = z.infer<typeof transferOwnershipSchema>;
 export type CreateUserInput = z.infer<typeof createUserSchema>;

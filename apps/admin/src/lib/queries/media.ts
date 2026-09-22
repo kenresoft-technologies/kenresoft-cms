@@ -66,6 +66,7 @@ export function useImportExternalMedia() {
       source: 'picsum';
       width: number;
       height: number;
+      pictureId?: string | undefined;
       seed?: string | undefined;
       altText?: string | undefined;
       folderId?: string | undefined;
@@ -74,6 +75,34 @@ export function useImportExternalMedia() {
       void queryClient.invalidateQueries({ queryKey: mediaKey });
     },
   });
+}
+
+export interface PicsumPhoto {
+  id: string;
+  author: string;
+  width: number;
+  height: number;
+}
+
+// Picsum's own public catalog (picsum.photos/v2/list) — fetched directly from the browser, not
+// through this deployment's API, since it's read-only third-party metadata (not user data) and
+// Picsum serves it with a permissive `Access-Control-Allow-Origin: *`. Only the actual chosen
+// photo is later downloaded server-side and stored in R2 (useImportExternalMedia), so nothing
+// about this deployment ever depends on Picsum staying up beyond browse time.
+export function usePicsumCatalog(page: number) {
+  return useQuery({
+    queryKey: ['picsum-catalog', page],
+    queryFn: async () => {
+      const res = await fetch(`https://picsum.photos/v2/list?page=${page}&limit=30`);
+      if (!res.ok) throw new Error('Failed to reach Picsum');
+      return (await res.json()) as PicsumPhoto[];
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function picsumThumbnailUrl(id: string, size = 300): string {
+  return `https://picsum.photos/id/${id}/${size}/${size}`;
 }
 
 export function useMoveMedia() {

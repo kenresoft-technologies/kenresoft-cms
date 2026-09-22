@@ -41,6 +41,16 @@ export const user = sqliteTable("user", {
   // (additionalFields' input: true in auth-options.ts) since it's a harmless personal UI
   // preference the account owner sets for themselves, not an admin-granted capability.
   preferredMailClient: text("preferred_mail_client"),
+  // A contact number the account owner sets for themselves (Profile page) — same client-settable
+  // shape as preferredMailClient above, not admin-granted. Purely informational (no verification,
+  // no SMS/2FA use), useful for CS/support to have a second contact channel beyond email.
+  phone: text("phone"),
+  // Free-text, staff-only context about this account (why it was disabled, a support ticket
+  // reference, ...) — set only through the admin API (apps/api/src/routes/admin/users.ts), never
+  // exposed to better-auth's own client-facing updateUser (deliberately not declared as a
+  // better-auth additionalField, unlike phone/preferredMailClient above) so it can never be read
+  // or written by the account owner themselves, only by CMS staff managing the account.
+  internalNotes: text("internal_notes"),
 });
 
 export const session = sqliteTable(

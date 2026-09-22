@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { ClipboardList, Eye, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { ColumnDef } from '@tanstack/react-table';
@@ -43,11 +43,75 @@ function actionCategory(action: string): string {
   return action.includes('.') ? action.split('.')[0]! : action;
 }
 
+// "targetContentTypeId" -> "Target content type id" -- splits camelCase/snake_case into words
+// and title-cases the first one only, matching how a normal sentence reads rather than shouting
+// every word (Title Case On Every Word reads like a label, not a sentence).
+function formatMetadataKey(key: string): string {
+  const words = key
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/_/g, ' ')
+    .toLowerCase()
+    .split(' ')
+    .filter(Boolean);
+  if (words.length === 0) return key;
+  return [words[0]!.charAt(0).toUpperCase() + words[0]!.slice(1), ...words.slice(1)].join(' ');
+}
+
+// A key ending in "At"/"at" holding an ISO-looking string is almost always a timestamp
+// (publishedAt, expiresAt, ...) — worth formatting as a real date/time instead of the raw string.
+function isIsoDateString(value: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(value) && !Number.isNaN(new Date(value).getTime());
+}
+
+function MetadataValue({ value }: { value: unknown }): ReactNode {
+  if (value === null || value === undefined) return <span className="text-muted-foreground italic">none</span>;
+  if (typeof value === 'boolean') return <span>{value ? 'Yes' : 'No'}</span>;
+  if (typeof value === 'string') {
+    if (isIsoDateString(value)) return <span>{new Date(value).toLocaleString()}</span>;
+    return <span className="break-all">{value || <span className="text-muted-foreground italic">(empty)</span>}</span>;
+  }
+  if (typeof value === 'number') return <span>{value}</span>;
+  if (Array.isArray(value)) {
+    if (value.length === 0) return <span className="text-muted-foreground italic">none</span>;
+    // A flat array of primitives reads better as a comma list than a nested sub-table.
+    if (value.every((item) => item === null || typeof item !== 'object')) {
+      return <span className="break-all">{value.map((item) => String(item)).join(', ')}</span>;
+    }
+    return (
+      <div className="flex flex-col gap-2">
+        {value.map((item, i) => (
+          <div key={i} className="rounded border bg-background p-2">
+            <MetadataValue value={item} />
+          </div>
+        ))}
+      </div>
+    );
+  }
+  // A nested object: render as its own key/value list, one level of indentation deep — the
+  // shapes audit metadata actually carries (a changed field's { from, to }, a target's identity)
+  // never nest more than this, so this doesn't need to recurse indefinitely.
+  const entries = Object.entries(value as Record<string, unknown>);
+  if (entries.length === 0) return <span className="text-muted-foreground italic">none</span>;
+  return (
+    <dl className="flex flex-col gap-1">
+      {entries.map(([k, v]) => (
+        <div key={k} className="flex items-baseline justify-between gap-3 text-xs">
+          <dt className="text-muted-foreground">{formatMetadataKey(k)}</dt>
+          <dd className="text-right">
+            <MetadataValue value={v} />
+          </dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
 function MetadataDialog({ entry }: { entry: AuditLogEntryWithActor }) {
   const [open, setOpen] = useState(false);
   const hasMetadata = entry.metadata !== null && Object.keys(entry.metadata).length > 0;
+  const hasTarget = entry.targetType || entry.targetId;
 
-  if (!hasMetadata) return <span className="text-muted-foreground">—</span>;
+  if (!hasMetadata && !hasTarget) return <span className="text-muted-foreground">—</span>;
 
   return (
     <>
@@ -59,9 +123,34 @@ function MetadataDialog({ entry }: { entry: AuditLogEntryWithActor }) {
           <DialogHeader>
             <DialogTitle>{formatAction(entry.action)}</DialogTitle>
           </DialogHeader>
-          <pre className="max-h-96 overflow-auto rounded-lg bg-muted/40 p-3 text-xs">
-            {JSON.stringify(entry.metadata, null, 2)}
-          </pre>
+          <div className="flex flex-col gap-4">
+            <div className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-lg border bg-muted/20 p-3 text-sm">
+              <span className="text-muted-foreground">When</span>
+              <span>{new Date(entry.createdAt).toLocaleString()}</span>
+              <span className="text-muted-foreground">Actor</span>
+              <span>{entry.actorName ?? entry.actorEmail ?? entry.actorLabel ?? 'System'}</span>
+              {entry.targetType ? (
+                <>
+                  <span className="text-muted-foreground">Target type</span>
+                  <span className="capitalize">{entry.targetType.replace(/_/g, ' ')}</span>
+                </>
+              ) : null}
+              {entry.targetId ? (
+                <>
+                  <span className="text-muted-foreground">Target id</span>
+                  <span className="break-all font-mono text-xs">{entry.targetId}</span>
+                </>
+              ) : null}
+            </div>
+            {hasMetadata ? (
+              <div className="flex flex-col gap-2">
+                <span className="text-xs font-medium text-muted-foreground">Details</span>
+                <div className="max-h-80 overflow-auto rounded-lg border p-3">
+                  <MetadataValue value={entry.metadata} />
+                </div>
+              </div>
+            ) : null}
+          </div>
         </DialogContent>
       </Dialog>
     </>

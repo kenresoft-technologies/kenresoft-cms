@@ -1,15 +1,24 @@
 import { useState, type ReactNode } from 'react';
-import { ImageOff, Search } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ImageOff, Search } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { ApiError } from '@/lib/api-client';
-import { mediaFileUrl, useImportExternalMedia, useMediaFolders, useMediaList } from '@/lib/queries/media';
+import {
+  mediaFileUrl,
+  picsumThumbnailUrl,
+  useImportExternalMedia,
+  useMediaFolders,
+  useMediaList,
+  usePicsumCatalog,
+  type PicsumPhoto,
+} from '@/lib/queries/media';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 interface MediaPickerDialogProps {
@@ -28,18 +37,35 @@ interface MediaPickerDialogProps {
 // packages/contracts/schemas/media.ts. The image is downloaded and stored in R2 like a normal
 // upload before onSelect ever fires, so the caller always receives a real, already-persisted
 // media id, identical to picking an existing library item.
+//
+// Two steps, not one blind fetch: browse real photos from Picsum's own catalog (thumbnails,
+// author credit, pagination) and preview the actual selection full-size before importing —
+// the original version imported an unseen, un-chosen random/seeded photo on a single click.
 function PicsumImportTab({
   onImported,
 }: {
   onImported: (mediaId: string, item: { filename: string; altText: string | null }) => void;
 }) {
+  const [page, setPage] = useState(1);
+  const [selected, setSelected] = useState<PicsumPhoto | null>(null);
   const [width, setWidth] = useState('800');
   const [height, setHeight] = useState('600');
-  const [seed, setSeed] = useState('');
   const [altText, setAltText] = useState('');
+  const { data: photos, isLoading, isError } = usePicsumCatalog(page);
   const importMedia = useImportExternalMedia();
 
+  function choose(photo: PicsumPhoto) {
+    setSelected(photo);
+    // Default the import size to the photo's own aspect ratio at a reasonable resolution,
+    // rather than always forcing whatever the previous selection's width/height happened to be.
+    const scale = 900 / photo.width;
+    setWidth(String(Math.round(photo.width * scale)));
+    setHeight(String(Math.round(photo.height * scale)));
+    setAltText(`Photo by ${photo.author} via Picsum`);
+  }
+
   function handleImport() {
+    if (!selected) return;
     const widthNum = Number(width);
     const heightNum = Number(height);
     if (!widthNum || !heightNum) return;
@@ -49,7 +75,7 @@ function PicsumImportTab({
         source: 'picsum',
         width: widthNum,
         height: heightNum,
-        seed: seed.trim() || undefined,
+        pictureId: selected.id,
         altText: altText.trim() || undefined,
       },
       {
@@ -62,41 +88,96 @@ function PicsumImportTab({
     );
   }
 
+  if (selected) {
+    return (
+      <div className="flex flex-col gap-4 py-2">
+        <button
+          type="button"
+          onClick={() => setSelected(null)}
+          className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+        >
+          <ChevronLeft className="size-4" /> Back to browsing
+        </button>
+        <div className="overflow-hidden rounded-md bg-muted">
+          <img
+            src={picsumThumbnailUrl(selected.id, 700)}
+            alt={`Preview by ${selected.author}`}
+            className="mx-auto max-h-72 w-full object-contain"
+          />
+        </div>
+        <p className="text-sm text-muted-foreground">
+          Photo by {selected.author} — original {selected.width}×{selected.height}px
+        </p>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="picsum-width">Import width</Label>
+            <Input id="picsum-width" type="number" min={1} max={5000} value={width} onChange={(e) => setWidth(e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="picsum-height">Import height</Label>
+            <Input id="picsum-height" type="number" min={1} max={5000} value={height} onChange={(e) => setHeight(e.target.value)} />
+          </div>
+        </div>
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="picsum-alt">Alt text</Label>
+          <Input id="picsum-alt" value={altText} onChange={(e) => setAltText(e.target.value)} />
+        </div>
+        <Button type="button" onClick={handleImport} disabled={importMedia.isPending} className="self-start">
+          {importMedia.isPending ? 'Importing…' : 'Import this photo'}
+        </Button>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex flex-col gap-4 py-2">
+    <div className="flex flex-col gap-3 py-2">
       <p className="text-sm text-muted-foreground">
-        Import a free placeholder photo from{' '}
+        Browse free stock photos from{' '}
         <a href="https://picsum.photos" target="_blank" rel="noreferrer" className="underline">
           Picsum
         </a>{' '}
-        — downloaded and stored in your own Media Library, not hot-linked.
+        — pick one to preview, then import it into your own Media Library (downloaded and stored, not hot-linked).
       </p>
-      <div className="grid grid-cols-2 gap-4">
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="picsum-width">Width</Label>
-          <Input id="picsum-width" type="number" min={1} max={5000} value={width} onChange={(e) => setWidth(e.target.value)} />
+      {isError ? (
+        <p className="text-sm text-destructive">Couldn't reach Picsum. Check your connection and try again.</p>
+      ) : isLoading ? (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+          {Array.from({ length: 12 }).map((_, i) => (
+            <Skeleton key={i} className="aspect-square w-full rounded-md" />
+          ))}
         </div>
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="picsum-height">Height</Label>
-          <Input id="picsum-height" type="number" min={1} max={5000} value={height} onChange={(e) => setHeight(e.target.value)} />
+      ) : (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+          {(photos ?? []).map((photo) => (
+            <button
+              key={photo.id}
+              type="button"
+              title={`Photo by ${photo.author}`}
+              onClick={() => choose(photo)}
+              className="group relative block aspect-square w-full overflow-hidden rounded-md bg-muted ring-2 ring-transparent outline-none focus-visible:ring-primary group-hover:ring-primary"
+            >
+              <img
+                src={picsumThumbnailUrl(photo.id, 300)}
+                alt={`Photo by ${photo.author}`}
+                loading="lazy"
+                className="absolute inset-0 h-full w-full object-cover transition-transform group-hover:scale-105"
+              />
+              <span className="absolute inset-x-0 bottom-0 truncate bg-black/60 px-1.5 py-0.5 text-[11px] text-white opacity-0 group-hover:opacity-100">
+                {photo.author}
+              </span>
+            </button>
+          ))}
         </div>
+      )}
+      <div className="flex items-center justify-between pt-1">
+        <Button type="button" variant="outline" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}>
+          <ChevronLeft className="size-4" /> Previous
+        </Button>
+        <span className="text-sm text-muted-foreground">Page {page}</span>
+        <Button type="button" variant="outline" size="sm" onClick={() => setPage((p) => p + 1)}>
+          Next <ChevronRight className="size-4" />
+        </Button>
       </div>
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="picsum-seed">Seed (optional)</Label>
-        <Input
-          id="picsum-seed"
-          placeholder="Leave blank for a random photo"
-          value={seed}
-          onChange={(e) => setSeed(e.target.value)}
-        />
-      </div>
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="picsum-alt">Alt text (optional)</Label>
-        <Input id="picsum-alt" value={altText} onChange={(e) => setAltText(e.target.value)} />
-      </div>
-      <Button type="button" onClick={handleImport} disabled={importMedia.isPending} className="self-start">
-        {importMedia.isPending ? 'Importing…' : 'Import from Picsum'}
-      </Button>
     </div>
   );
 }

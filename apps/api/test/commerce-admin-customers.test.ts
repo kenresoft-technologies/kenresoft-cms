@@ -51,16 +51,38 @@ describe('commerce plugin: admin customers (real D1)', () => {
     expect(response.status).toBe(403);
   });
 
-  it('lists only website users (never CMS staff), searches by email/name, and shows a detail view with addresses', async () => {
+  it('lists only website users who have actually engaged with Commerce (never CMS staff, never a never-purchased signup), searches by email/name, and shows a detail view with addresses', async () => {
     const adminCookie = await authedCookie('commerce-admin-customers-1@example.test');
     const adminId = await userId(adminCookie);
     const alice = await registerWebsiteUser('alice@example.test', { name: 'Alice Anderson' });
-    await registerWebsiteUser('bob@example.test', { name: 'Bob Brown' });
+    const bob = await registerWebsiteUser('bob@example.test', { name: 'Bob Brown' });
+    // Neither has bought anything or saved an address yet — a plain sign-up alone doesn't make
+    // someone a "customer" (the bug this test now guards against: the old listCustomers showed
+    // every role-'none' account, customer or not). Setting a profile field is the least-friction
+    // real Commerce engagement to grant it here.
+    await SELF.fetch(CUSTOMER_BASE, {
+      method: 'PATCH',
+      headers: { Cookie: alice.cookie, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: '+15551234567' }),
+    });
+    await SELF.fetch(CUSTOMER_BASE, {
+      method: 'PATCH',
+      headers: { Cookie: bob.cookie, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: '+15557654321' }),
+    });
+    const neverEngaged = await registerWebsiteUser('never-engaged@example.test', { name: 'Never Engaged' });
 
     const listRes = await SELF.fetch(ADMIN_BASE, { headers: { Cookie: adminCookie } });
     const list = await listRes.json<Array<{ email: string }>>();
     // The signed-in owner is a CMS staff account, not a customer, and is never listed as one.
+    // never-engaged@example.test is a real website user but has never touched Commerce, so it's
+    // correctly absent too — the list is "customers", not "everyone who technically could buy".
     expect(list.map((c) => c.email).sort()).toEqual(['alice@example.test', 'bob@example.test']);
+
+    // A never-engaged website user is still directly reachable by id, though — e.g. from Core
+    // Users' own account directory, which lists every account regardless of Commerce engagement.
+    const neverEngagedDetail = await SELF.fetch(`${ADMIN_BASE}/${neverEngaged.customer.id}`, { headers: { Cookie: adminCookie } });
+    expect(neverEngagedDetail.status).toBe(200);
 
     const searchRes = await SELF.fetch(`${ADMIN_BASE}?search=alice`, { headers: { Cookie: adminCookie } });
     const search = await searchRes.json<Array<{ email: string }>>();
