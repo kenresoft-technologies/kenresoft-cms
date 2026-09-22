@@ -1,8 +1,19 @@
-import { History } from 'lucide-react';
+import { History, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { ApiError } from '@/lib/api-client';
-import { useEntryRevisions, useRestoreEntryRevision } from '@/lib/queries/entries';
+import { useClearEntryRevisions, useEntryRevisions, useRestoreEntryRevision } from '@/lib/queries/entries';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -24,6 +35,7 @@ interface EntryRevisionHistoryProps {
 export function EntryRevisionHistory({ contentTypeId, entryId, className }: EntryRevisionHistoryProps) {
   const { data: revisions, isPending } = useEntryRevisions(entryId);
   const restoreRevision = useRestoreEntryRevision(contentTypeId, entryId);
+  const clearRevisions = useClearEntryRevisions(entryId);
 
   return (
     <Sheet>
@@ -52,6 +64,41 @@ export function EntryRevisionHistory({ contentTypeId, entryId, className }: Entr
 
           {revisions && revisions.length === 0 ? (
             <p className="text-sm text-muted-foreground">No revisions yet.</p>
+          ) : null}
+
+          {revisions && revisions.length > 0 ? (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="outline" size="sm" className="self-start text-destructive">
+                  <Trash2 />
+                  Clear history
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Clear revision history?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Permanently deletes every past revision of this entry. The entry itself is
+                    untouched, but you won't be able to restore to any of these snapshots
+                    afterward. This can't be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={() =>
+                      clearRevisions.mutate(undefined, {
+                        onSuccess: () => toast.success('Revision history cleared'),
+                        onError: (err) =>
+                          toast.error(err instanceof ApiError ? err.message : 'Failed to clear history'),
+                      })
+                    }
+                  >
+                    Clear history
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           ) : null}
 
           {revisions?.map((revision) => (

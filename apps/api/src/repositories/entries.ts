@@ -177,6 +177,11 @@ export function listEntryRevisions(db: Database, entryId: string): Promise<Entry
   });
 }
 
+// Deliberately unconditional and irreversible — the entry itself is untouched, only its history.
+export async function clearEntryRevisions(db: Database, entryId: string): Promise<void> {
+  await db.delete(entryRevisions).where(eq(entryRevisions.entryId, entryId));
+}
+
 // Reuses updateEntry so the restore itself snapshots the pre-restore state too — restoring
 // is never a dead end.
 export async function restoreEntryRevision(

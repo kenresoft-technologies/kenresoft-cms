@@ -259,4 +259,48 @@ describe('audit log (real D1)', () => {
     expect(afterReenabled).toHaveLength(1);
     expect(afterReenabled[0]!.targetType).toBe('content_type');
   });
+
+  it('lets the owner clear the audit log, leaving only the clear itself as a new entry', async () => {
+    const cookie = await freshCookie(); // first signup -> owner
+    const headers = { Cookie: cookie, 'Content-Type': 'application/json' };
+
+    await SELF.fetch('https://example.com/api/v1/admin/content-types', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ name: 'Blog Post', slug: 'blog-post' }),
+    });
+    expect((await fetchAuditLog(cookie)).length).toBeGreaterThan(0);
+
+    const deleteResponse = await SELF.fetch('https://example.com/api/v1/admin/audit-log', {
+      method: 'DELETE',
+      headers,
+    });
+    expect(deleteResponse.status).toBe(204);
+
+    const after = await fetchAuditLog(cookie);
+    expect(after).toHaveLength(1);
+    expect(after[0]!.action).toBe('audit_log.cleared');
+  });
+
+  it('rejects clearing the audit log from a non-owner role', async () => {
+    const ownerCookie = await freshCookie();
+    const ownerHeaders = { Cookie: ownerCookie, 'Content-Type': 'application/json' };
+    const adminCookie = await freshCookie(); // defaults to editor on signup -> promoted below
+
+    const users = await (
+      await SELF.fetch('https://example.com/api/v1/admin/users', { headers: ownerHeaders })
+    ).json<Array<{ id: string; role: string }>>();
+    const secondUser = users.find((u) => u.role !== 'owner');
+    await SELF.fetch(`https://example.com/api/v1/admin/users/${secondUser!.id}/role`, {
+      method: 'PATCH',
+      headers: ownerHeaders,
+      body: JSON.stringify({ role: 'admin' }),
+    });
+
+    const response = await SELF.fetch('https://example.com/api/v1/admin/audit-log', {
+      method: 'DELETE',
+      headers: { Cookie: adminCookie, 'Content-Type': 'application/json' },
+    });
+    expect(response.status).toBe(403);
+  });
 });
