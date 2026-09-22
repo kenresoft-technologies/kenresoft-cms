@@ -9,6 +9,7 @@ import {
   useMediaFolders,
   useUpdateMediaFolder,
 } from '@/lib/queries/media';
+import { slugify } from '@/lib/slugify';
 import type { MediaFolder } from '@/lib/types';
 import {
   AlertDialog,
@@ -25,14 +26,6 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-
-function slugify(value: string): string {
-  return value
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-}
 
 function FolderRow({ folder }: { folder: MediaFolder }) {
   const updateFolder = useUpdateMediaFolder();

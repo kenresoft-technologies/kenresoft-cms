@@ -108,6 +108,27 @@ describe('EntryEditorPage', () => {
     );
   });
 
+  it('auto-generates the slug from the title field until the slug is edited directly', async () => {
+    getMock.mockImplementation((path: string) => {
+      if (path.endsWith('/fields')) return Promise.resolve(fields);
+      if (path.endsWith('/revisions')) return Promise.resolve([]);
+      return Promise.resolve({ id: 'e-1', slug: '', status: 'draft', data: {}, publishAt: null });
+    });
+
+    renderEditor('/content-types/ct-1/entries/new');
+    await waitFor(() => expect(screen.getByLabelText('Title')).toBeInTheDocument());
+
+    await userEvent.type(screen.getByLabelText('Title'), 'My Great Post!');
+    expect(screen.getByLabelText('Slug')).toHaveValue('my-great-post');
+    expect(screen.getByText(/Auto-generated from Title/)).toBeInTheDocument();
+
+    // Editing the slug directly stops it from tracking the title any further.
+    await userEvent.type(screen.getByLabelText('Slug'), '-custom');
+    expect(screen.getByLabelText('Slug')).toHaveValue('my-great-post-custom');
+    await userEvent.type(screen.getByLabelText('Title'), ' Extra');
+    expect(screen.getByLabelText('Slug')).toHaveValue('my-great-post-custom');
+  });
+
   it('lands on the new entry\'s own editor after creating it, instead of the entries list', async () => {
     getMock.mockImplementation((path: string) => {
       if (path.endsWith('/fields')) return Promise.resolve(fields);

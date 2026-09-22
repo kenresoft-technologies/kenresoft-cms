@@ -17,6 +17,7 @@ import {
   useUploadMedia,
   mediaFileUrl,
 } from '@/lib/queries/media';
+import { slugify } from '@/lib/slugify';
 import { MediaDeveloperPanel } from '@/components/developer-panel/media-developer-panel';
 import { ManageMediaFoldersDialog } from '@/components/manage-media-folders-dialog';
 import {
@@ -613,14 +614,6 @@ function NewMediaFolderButton({ parentId }: { parentId: string | null }) {
       </DialogContent>
     </Dialog>
   );
-}
-
-function slugify(value: string): string {
-  return value
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
 }
 
 function FolderCard({ folder, onOpen }: { folder: MediaFolder; onOpen: (id: string) => void }) {
