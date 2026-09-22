@@ -127,6 +127,15 @@ describe('EntryEditorPage', () => {
     expect(screen.getByLabelText('Slug')).toHaveValue('my-great-post-custom');
     await userEvent.type(screen.getByLabelText('Title'), ' Extra');
     expect(screen.getByLabelText('Slug')).toHaveValue('my-great-post-custom');
+
+    // An accidental edit isn't a one-way door: the toggle right next to the field resyncs the
+    // slug from the title's current value immediately, not just from the next keystroke onward —
+    // and turning it back on resumes live tracking, not just a one-time resync.
+    expect(screen.getByText(/Auto-generation is off/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('switch', { name: /Auto-generate from Title/ }));
+    expect(screen.getByLabelText('Slug')).toHaveValue('my-great-post-extra');
+    await userEvent.type(screen.getByLabelText('Title'), ' More');
+    expect(screen.getByLabelText('Slug')).toHaveValue('my-great-post-extra-more');
   });
 
   it('lands on the new entry\'s own editor after creating it, instead of the entries list', async () => {

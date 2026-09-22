@@ -68,6 +68,8 @@ export function useImportExternalMedia() {
       height: number;
       pictureId?: string | undefined;
       seed?: string | undefined;
+      grayscale?: boolean | undefined;
+      blur?: number | undefined;
       altText?: string | undefined;
       folderId?: string | undefined;
     }) => apiClient.post<Media>('/api/v1/admin/media/import-external', input),
@@ -103,6 +105,13 @@ export function usePicsumCatalog(page: number) {
 
 export function picsumThumbnailUrl(id: string, size = 300): string {
   return `https://picsum.photos/id/${id}/${size}/${size}`;
+}
+
+// Picsum's seed URLs are deterministic and need no catalog lookup at all — typing a word and
+// requesting this URL directly is Picsum's own "search" of sorts (the same photo every time for
+// that exact word), which is why this needs no network round trip before previewing it.
+export function picsumSeedUrl(seed: string, width = 800, height = 600): string {
+  return `https://picsum.photos/seed/${encodeURIComponent(seed)}/${width}/${height}`;
 }
 
 export function useMoveMedia() {

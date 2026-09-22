@@ -1,5 +1,16 @@
 import { useMemo, useState, type ReactNode } from 'react';
-import { ClipboardList, Eye, Trash2 } from 'lucide-react';
+import {
+  ArrowRight,
+  Ban,
+  ClipboardList,
+  Copy,
+  Eye,
+  FilePlus,
+  KeyRound,
+  Pencil,
+  ShieldAlert,
+  Trash2,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import type { ColumnDef } from '@tanstack/react-table';
 
@@ -7,6 +18,7 @@ import { authClient } from '@/lib/auth-client';
 import { ApiError } from '@/lib/api-client';
 import { useAuditLog, useClearAuditLog } from '@/lib/queries/audit-log';
 import { useUsers } from '@/lib/queries/users';
+import { cn } from '@/lib/utils';
 import type { AuditLogEntryWithActor } from '@/lib/types';
 import {
   AlertDialog,
@@ -26,9 +38,9 @@ import { PageHeader } from '@/components/page-header';
 import { TableSkeleton } from '@/components/table-skeleton';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Table, TableHeader, TableHead, TableRow } from '@/components/ui/table';
 
 // "auth.sign_in_failed" -> "Sign in failed" — the category prefix (before the dot) becomes the
@@ -41,6 +53,54 @@ function formatAction(action: string): string {
 
 function actionCategory(action: string): string {
   return action.includes('.') ? action.split('.')[0]! : action;
+}
+
+// A visual icon/tone by verb, not by category — "user.role_changed" and "form.field_deleted"
+// have nothing in common by category but both read as an edit and a delete respectively, and
+// that's the distinction someone scanning the log actually wants at a glance.
+function actionTone(action: string): { icon: typeof Pencil; className: string } {
+  const verb = (action.includes('.') ? action.slice(action.indexOf('.') + 1) : action).toLowerCase();
+  if (/(sign_in_failed)/.test(verb)) return { icon: ShieldAlert, className: 'bg-destructive/10 text-destructive' };
+  if (/(delet|clear|revok|remov)/.test(verb)) return { icon: verb.includes('revok') ? Ban : Trash2, className: 'bg-destructive/10 text-destructive' };
+  if (/(disabl|block)/.test(verb)) return { icon: Ban, className: 'bg-swatch-4/14 text-swatch-4' };
+  if (/(creat|import|upload|sign_up|enabl|grant)/.test(verb)) return { icon: FilePlus, className: 'bg-swatch-1/14 text-swatch-1' };
+  if (/(sign_in|sign_out|elevat|transfer|owner)/.test(verb)) return { icon: KeyRound, className: 'bg-swatch-3/14 text-swatch-3' };
+  return { icon: Pencil, className: 'bg-muted text-muted-foreground' };
+}
+
+// Pairs up a common metadata shape (previousRole/newRole, oldStatus/newStatus, ...) into a
+// visual before → after diff instead of two unrelated-looking rows in a generic key/value list —
+// this is what most role/status/visibility-change entries in this log actually record.
+function extractDiffs(metadata: Record<string, unknown>): {
+  diffs: { label: string; from: unknown; to: unknown }[];
+  rest: Record<string, unknown>;
+} {
+  const keys = Object.keys(metadata);
+  const used = new Set<string>();
+  const diffs: { label: string; from: unknown; to: unknown }[] = [];
+
+  for (const key of keys) {
+    const match = /^(previous|old)([A-Z].*)$/.exec(key);
+    if (!match) continue;
+    const suffix = match[2]!;
+    const newKey = keys.find((k) => k === `new${suffix}` || k.toLowerCase() === `new${suffix}`.toLowerCase());
+    if (!newKey || used.has(newKey)) continue;
+    diffs.push({ label: formatMetadataKey(suffix), from: metadata[key], to: metadata[newKey] });
+    used.add(key);
+    used.add(newKey);
+  }
+
+  const rest: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(metadata)) {
+    if (!used.has(k)) rest[k] = v;
+  }
+  return { diffs, rest };
+}
+
+function DiffValue({ value }: { value: unknown }) {
+  if (value === null || value === undefined) return <span className="text-muted-foreground italic">none</span>;
+  if (typeof value === 'boolean') return <span>{value ? 'Yes' : 'No'}</span>;
+  return <span className="break-all">{String(value)}</span>;
 }
 
 // "targetContentTypeId" -> "Target content type id" -- splits camelCase/snake_case into words
@@ -113,46 +173,99 @@ function MetadataDialog({ entry }: { entry: AuditLogEntryWithActor }) {
 
   if (!hasMetadata && !hasTarget) return <span className="text-muted-foreground">—</span>;
 
+  const { diffs, rest } = hasMetadata ? extractDiffs(entry.metadata!) : { diffs: [], rest: {} };
+  const hasRest = Object.keys(rest).length > 0;
+  const { icon: ActionIcon, className: toneClassName } = actionTone(entry.action);
+
+  function copyRawJson() {
+    void navigator.clipboard.writeText(JSON.stringify(entry, null, 2)).then(
+      () => toast.success('Copied as JSON'),
+      () => toast.error('Failed to copy'),
+    );
+  }
+
   return (
     <>
       <Button variant="ghost" size="icon-sm" aria-label="View details" onClick={() => setOpen(true)}>
         <Eye />
       </Button>
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{formatAction(entry.action)}</DialogTitle>
-          </DialogHeader>
-          <div className="flex flex-col gap-4">
-            <div className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-lg border bg-muted/20 p-3 text-sm">
-              <span className="text-muted-foreground">When</span>
-              <span>{new Date(entry.createdAt).toLocaleString()}</span>
-              <span className="text-muted-foreground">Actor</span>
-              <span>{entry.actorName ?? entry.actorEmail ?? entry.actorLabel ?? 'System'}</span>
+      <Sheet open={open} onOpenChange={setOpen}>
+        <SheetContent size="md" className="flex flex-col gap-0 overflow-y-auto p-0">
+          <SheetHeader className="border-b">
+            <div className="flex items-start gap-3">
+              <span className={cn('flex size-9 shrink-0 items-center justify-center rounded-lg', toneClassName)}>
+                <ActionIcon className="size-4.5" />
+              </span>
+              <div className="flex flex-col gap-0.5">
+                <SheetTitle>{formatAction(entry.action)}</SheetTitle>
+                <span className="text-xs text-muted-foreground">{new Date(entry.createdAt).toLocaleString()}</span>
+              </div>
+            </div>
+          </SheetHeader>
+
+          <div className="flex flex-col gap-5 p-4">
+            <div className="flex flex-col gap-2 text-sm">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-muted-foreground">Actor</span>
+                <span className="font-medium">{entry.actorName ?? entry.actorEmail ?? entry.actorLabel ?? 'System'}</span>
+              </div>
               {entry.targetType ? (
-                <>
+                <div className="flex items-center justify-between gap-3">
                   <span className="text-muted-foreground">Target type</span>
-                  <span className="capitalize">{entry.targetType.replace(/_/g, ' ')}</span>
-                </>
+                  <Badge variant="secondary" className="capitalize">
+                    {entry.targetType.replace(/_/g, ' ')}
+                  </Badge>
+                </div>
               ) : null}
               {entry.targetId ? (
-                <>
+                <div className="flex items-center justify-between gap-3">
                   <span className="text-muted-foreground">Target id</span>
-                  <span className="break-all font-mono text-xs">{entry.targetId}</span>
-                </>
+                  <span className="max-w-[60%] truncate font-mono text-xs" title={entry.targetId}>
+                    {entry.targetId}
+                  </span>
+                </div>
               ) : null}
             </div>
-            {hasMetadata ? (
+
+            {diffs.length > 0 ? (
               <div className="flex flex-col gap-2">
-                <span className="text-xs font-medium text-muted-foreground">Details</span>
-                <div className="max-h-80 overflow-auto rounded-lg border p-3">
-                  <MetadataValue value={entry.metadata} />
+                <span className="text-xs font-medium text-muted-foreground">What changed</span>
+                <div className="flex flex-col gap-2">
+                  {diffs.map((diff) => (
+                    <div key={diff.label} className="flex items-center justify-between gap-2 rounded-lg border p-2.5 text-sm">
+                      <span className="text-muted-foreground">{diff.label}</span>
+                      <span className="flex items-center gap-2 font-medium">
+                        <Badge variant="outline" className="font-normal text-muted-foreground line-through decoration-1">
+                          <DiffValue value={diff.from} />
+                        </Badge>
+                        <ArrowRight className="size-3.5 shrink-0 text-muted-foreground" />
+                        <Badge variant="outline" className="border-primary/30 bg-primary/10 text-primary">
+                          <DiffValue value={diff.to} />
+                        </Badge>
+                      </span>
+                    </div>
+                  ))}
                 </div>
               </div>
             ) : null}
+
+            {hasRest ? (
+              <div className="flex flex-col gap-2">
+                <span className="text-xs font-medium text-muted-foreground">
+                  {diffs.length > 0 ? 'Other details' : 'Details'}
+                </span>
+                <div className="rounded-lg border p-3">
+                  <MetadataValue value={rest} />
+                </div>
+              </div>
+            ) : null}
+
+            <Button type="button" variant="ghost" size="sm" className="self-start text-muted-foreground" onClick={copyRawJson}>
+              <Copy /> Copy as JSON
+            </Button>
           </div>
-        </DialogContent>
-      </Dialog>
+        </SheetContent>
+      </Sheet>
     </>
   );
 }

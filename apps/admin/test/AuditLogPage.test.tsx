@@ -61,15 +61,51 @@ describe('AuditLogPage', () => {
     await waitFor(() => expect(screen.getByText('Role Changed')).toBeInTheDocument());
     await userEvent.click(screen.getByRole('button', { name: 'View details' }));
 
-    // Formatted key/value pairs, not a raw JSON blob.
-    expect(screen.getByText('Previous role')).toBeInTheDocument();
-    expect(screen.getByText('New role')).toBeInTheDocument();
+    // A previousRole/newRole pair renders as one visual before → after diff, not two unrelated
+    // key/value rows.
+    expect(screen.getByText('What changed')).toBeInTheDocument();
+    expect(screen.getByText('Role')).toBeInTheDocument();
     expect(screen.getByText('editor')).toBeInTheDocument();
     expect(screen.getByText('admin')).toBeInTheDocument();
     // Target identity is shown too, not just the metadata blob.
     expect(screen.getByText('Target id')).toBeInTheDocument();
     expect(screen.getByText('u-2')).toBeInTheDocument();
-    // No literal curly braces from a stringified object anywhere in the dialog.
+    // No literal curly braces from a stringified object anywhere in the sheet.
     expect(screen.queryByText(/[{}]/)).not.toBeInTheDocument();
+  });
+
+  it('shows unpaired metadata as plain key/value rows, and can copy the raw entry as JSON', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+
+    getMock.mockImplementation((path: string) => {
+      if (path.startsWith('/api/v1/admin/users')) return Promise.resolve([]);
+      return Promise.resolve([
+        {
+          id: 'a-2',
+          actorUserId: 'u-1',
+          actorName: 'Alice Admin',
+          actorEmail: 'alice@example.test',
+          actorLabel: null,
+          action: 'media.imported',
+          targetType: 'media',
+          targetId: 'm-1',
+          metadata: { source: 'picsum', filename: 'photo.jpg' },
+          createdAt: '2026-01-05T12:00:00.000Z',
+        },
+      ]);
+    });
+
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('Imported')).toBeInTheDocument());
+    await userEvent.click(screen.getByRole('button', { name: 'View details' }));
+
+    expect(screen.queryByText('What changed')).not.toBeInTheDocument();
+    expect(screen.getByText('Source')).toBeInTheDocument();
+    expect(screen.getByText('picsum')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Copy as JSON' }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(expect.stringContaining('"media.imported"')));
   });
 });

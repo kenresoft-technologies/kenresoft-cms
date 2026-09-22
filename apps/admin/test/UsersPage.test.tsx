@@ -111,6 +111,18 @@ describe('UsersPage', () => {
     expect(screen.getByText('Admin')).toBeInTheDocument();
   });
 
+  it("never shows an interactive developer-tools toggle in the table, even for an admin — only the row's own detail page has it", async () => {
+    useSessionMock.mockReturnValue({ data: { user: { role: 'admin', email: 'admin@example.test' } } });
+    getMock.mockResolvedValue(users);
+
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('Admin User')).toBeInTheDocument());
+    // A dense table row is a worse place for a sensitive per-user toggle than a dedicated page —
+    // the table shows status only (e.g. "Always"/"—"), never a switch.
+    expect(within(screen.getByRole('table')).queryByRole('switch')).not.toBeInTheDocument();
+  });
+
   it('lets an admin change another user\'s role via the inline select', async () => {
     useSessionMock.mockReturnValue({ data: { user: { role: 'admin', email: 'admin@example.test' } } });
     getMock.mockResolvedValue(users);

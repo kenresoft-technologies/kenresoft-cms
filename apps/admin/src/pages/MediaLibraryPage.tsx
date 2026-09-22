@@ -18,8 +18,10 @@ import {
   mediaFileUrl,
 } from '@/lib/queries/media';
 import { slugify } from '@/lib/slugify';
+import { usePagination } from '@/lib/use-pagination';
 import { MediaDeveloperPanel } from '@/components/developer-panel/media-developer-panel';
 import { ManageMediaFoldersDialog } from '@/components/manage-media-folders-dialog';
+import { PaginationControls } from '@/components/pagination-controls';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -715,8 +717,13 @@ export function MediaLibraryPage() {
   const developerMode = useDeveloperMode();
   const { data: folders } = useMediaFolders();
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
+  // Folder browsing (the default) scopes to exactly one folder at a time — there was previously
+  // no way to see every item across every folder in one place at all. "All media" drops the
+  // folder scope entirely (folderId: undefined = every item, matching useMediaList's own
+  // three-state convention) and hides the folder/subfolder chrome, since it doesn't apply here.
+  const [showAllMedia, setShowAllMedia] = useState(false);
   const { data: mediaItems, isPending, error, refetch } = useMediaList({
-    folderId: currentFolderId === null ? 'unfiled' : currentFolderId,
+    folderId: showAllMedia ? undefined : currentFolderId === null ? 'unfiled' : currentFolderId,
   });
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
@@ -767,6 +774,9 @@ export function MediaLibraryPage() {
     [typeFilteredItems, search],
   );
 
+  const gridPage = usePagination(gridItems, 24);
+  const listPage = usePagination(typeFilteredItems, 24);
+
   return (
     <div className="flex flex-col gap-6">
       <PageBreadcrumb items={[{ label: 'Media' }]} />
@@ -786,21 +796,41 @@ export function MediaLibraryPage() {
         }
       />
 
-      <div className="flex flex-wrap items-center gap-1 text-sm text-muted-foreground">
-        <button type="button" className="flex items-center gap-1 hover:underline" onClick={() => navigateToFolder(null)}>
-          <FolderOpen className="size-3.5" /> Media
-        </button>
-        {breadcrumbFolders.map((folder) => (
-          <span key={folder.id} className="flex items-center gap-1">
-            <span>/</span>
-            <button type="button" className="hover:underline" onClick={() => navigateToFolder(folder.id)}>
-              {folder.name}
-            </button>
-          </span>
-        ))}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-1 text-sm text-muted-foreground">
+          <button
+            type="button"
+            className="flex items-center gap-1 hover:underline"
+            onClick={() => {
+              setShowAllMedia(false);
+              navigateToFolder(null);
+            }}
+          >
+            <FolderOpen className="size-3.5" /> Media
+          </button>
+          {!showAllMedia
+            ? breadcrumbFolders.map((folder) => (
+                <span key={folder.id} className="flex items-center gap-1">
+                  <span>/</span>
+                  <button type="button" className="hover:underline" onClick={() => navigateToFolder(folder.id)}>
+                    {folder.name}
+                  </button>
+                </span>
+              ))
+            : null}
+        </div>
+        <Button
+          type="button"
+          variant={showAllMedia ? 'outline' : 'ghost'}
+          size="sm"
+          aria-pressed={showAllMedia}
+          onClick={() => setShowAllMedia((prev) => !prev)}
+        >
+          {showAllMedia ? 'Showing all media' : 'View all media'}
+        </Button>
       </div>
 
-      {subfolders.length > 0 ? (
+      {subfolders.length > 0 && !showAllMedia ? (
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
           {subfolders.map((folder) => (
             <FolderCard key={folder.id} folder={folder} onOpen={navigateToFolder} />
@@ -924,18 +954,36 @@ export function MediaLibraryPage() {
 
           {viewMode === 'grid' ? (
             gridItems.length > 0 ? (
-              <MediaGrid
-                items={gridItems}
-                developerMode={developerMode}
-                onPreview={setPreviewItem}
-                selectedIds={selectedIds}
-                onToggleSelect={toggleSelect}
-              />
+              <>
+                <MediaGrid
+                  items={gridPage.paged}
+                  developerMode={developerMode}
+                  onPreview={setPreviewItem}
+                  selectedIds={selectedIds}
+                  onToggleSelect={toggleSelect}
+                />
+                <PaginationControls
+                  page={gridPage.page}
+                  pageCount={gridPage.pageCount}
+                  total={gridPage.total}
+                  pageSize={24}
+                  onPageChange={gridPage.setPage}
+                />
+              </>
             ) : (
               <p className="py-8 text-center text-sm text-muted-foreground">No media matches your search.</p>
             )
           ) : (
-            <MediaList items={typeFilteredItems} developerMode={developerMode} onPreview={setPreviewItem} folders={folders ?? []} />
+            <>
+              <MediaList items={listPage.paged} developerMode={developerMode} onPreview={setPreviewItem} folders={folders ?? []} />
+              <PaginationControls
+                page={listPage.page}
+                pageCount={listPage.pageCount}
+                total={listPage.total}
+                pageSize={24}
+                onPageChange={listPage.setPage}
+              />
+            </>
           )}
         </div>
       ) : null}

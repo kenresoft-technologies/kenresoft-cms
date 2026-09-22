@@ -237,4 +237,51 @@ describe('MediaLibraryPage', () => {
     await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
     expect(deleteMock).not.toHaveBeenCalled();
   });
+
+  it('"View all media" shows every item regardless of folder, not just the current one', async () => {
+    getMock.mockImplementation((path: string) => {
+      if (path.includes('folderId=unfiled')) {
+        return Promise.resolve([
+          { id: 'm-unfiled', filename: 'unfiled.png', contentType: 'image/png', size: 1024, width: 10, height: 10, altText: null },
+        ]);
+      }
+      // No folderId param at all = every item, across every folder.
+      return Promise.resolve([
+        { id: 'm-unfiled', filename: 'unfiled.png', contentType: 'image/png', size: 1024, width: 10, height: 10, altText: null },
+        { id: 'm-foldered', filename: 'in-folder.png', contentType: 'image/png', size: 1024, width: 10, height: 10, altText: null },
+      ]);
+    });
+
+    renderPage();
+    await waitFor(() => expect(screen.getByText('unfiled.png')).toBeInTheDocument());
+    expect(screen.queryByText('in-folder.png')).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'View all media' }));
+    await waitFor(() => expect(screen.getByText('in-folder.png')).toBeInTheDocument());
+    expect(screen.getByText('unfiled.png')).toBeInTheDocument();
+  });
+
+  it('paginates a large media grid instead of rendering everything at once', async () => {
+    getMock.mockResolvedValue(
+      Array.from({ length: 30 }, (_, i) => ({
+        id: `m-${i}`,
+        filename: `photo-${String(i).padStart(2, '0')}.png`,
+        contentType: 'image/png',
+        size: 1024,
+        width: 10,
+        height: 10,
+        altText: null,
+      })),
+    );
+
+    renderPage();
+    await waitFor(() => expect(screen.getByText('photo-00.png')).toBeInTheDocument());
+
+    expect(screen.getByText('Showing 1–24 of 30')).toBeInTheDocument();
+    expect(screen.queryByText('photo-25.png')).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Next' }));
+    await waitFor(() => expect(screen.getByText('photo-25.png')).toBeInTheDocument());
+    expect(screen.queryByText('photo-00.png')).not.toBeInTheDocument();
+  });
 });
