@@ -2,12 +2,16 @@ import { z } from 'zod';
 
 import { ACCOUNT_ROLES } from './enums';
 
+// The Core Users directory's one row shape — every account with access to this deployment,
+// website users and CMS staff alike (docs/ARCHITECTURE.md §10). `role`/`isCommerceCustomer`
+// together classify an account: role 'none' + isCommerceCustomer false = a plain website user
+// with no purchases yet; role 'none' + isCommerceCustomer true = a Commerce customer; any real
+// CMS role = CMS staff (who can also, independently, have made purchases).
 export const adminUserSchema = z.object({
   id: z.string(),
   name: z.string(),
   email: z.string(),
-  // 'none' = a website user with no CMS access (only returned for a role change that just
-  // revoked access; the users list itself only ever contains CMS staff).
+  // 'none' = a website user with no CMS access.
   role: z.enum(ACCOUNT_ROLES),
   disabled: z.boolean(),
   // Whether this account has completed better-auth's email-verification flow
@@ -17,6 +21,10 @@ export const adminUserSchema = z.object({
   // Per-user Developer panel grant, independent of role for editor/author (owner/admin always
   // qualify regardless of this value — see apps/admin/src/lib/developer-mode.ts).
   developerToolsAccess: z.boolean(),
+  // Derived from plugin_commerce_customer_profiles, never a stored column on `user` itself —
+  // Core never depends on Commerce being installed to compute this; it's simply false when no
+  // such profile exists (including on a deployment that's never had Commerce enabled at all).
+  isCommerceCustomer: z.boolean(),
   createdAt: z.string(),
   lastActiveAt: z.string().nullable(),
 });

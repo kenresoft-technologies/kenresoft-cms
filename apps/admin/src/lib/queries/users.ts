@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { apiClient } from '@/lib/api-client';
 import { authClient } from '@/lib/auth-client';
-import type { AdminUser, Session, UserRole } from '@/lib/types';
+import type { AccountRole, AdminUser, Session } from '@/lib/types';
 
 const usersKey = ['users'] as const;
 const sessionsKey = (userId: string) => ['users', userId, 'sessions'] as const;
@@ -18,7 +18,7 @@ export function useUpdateUserRole() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ id, role }: { id: string; role: UserRole }) =>
+    mutationFn: ({ id, role }: { id: string; role: AccountRole }) =>
       apiClient.patch<AdminUser>(`/api/v1/admin/users/${id}/role`, { role }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: usersKey });

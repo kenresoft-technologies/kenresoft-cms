@@ -24,6 +24,7 @@ import {
   deleteUser,
   getUserByEmail,
   getUserVisibleTo,
+  isUserCommerceCustomer,
   listUsersWithLastActive,
   updateUserDeveloperToolsAccess,
   updateUserDisabled,
@@ -60,7 +61,7 @@ usersRoute.openapi(
     method: 'get',
     path: '/',
     tags: ['Users'],
-    summary: 'List every user with their role and last-active time',
+    summary: 'List every account (website users and CMS staff) with their role and last-active time',
     responses: {
       200: {
         description: 'Every user with access to this deployment.',
@@ -82,6 +83,7 @@ usersRoute.openapi(
       disabled: user.disabled,
       emailVerified: user.emailVerified,
       developerToolsAccess: user.developerToolsAccess,
+      isCommerceCustomer: user.isCommerceCustomer,
       createdAt: user.createdAt.toISOString(),
       lastActiveAt: user.lastActiveAt?.toISOString() ?? null,
     }));
@@ -175,6 +177,7 @@ usersRoute.openapi(
       disabled: false,
       emailVerified: false,
       developerToolsAccess: false,
+      isCommerceCustomer: false,
       createdAt: new Date(newUser.createdAt).toISOString(),
       lastActiveAt: null,
     };
@@ -282,6 +285,7 @@ usersRoute.openapi(
       disabled: updated.disabled,
       emailVerified: updated.emailVerified,
       developerToolsAccess: updated.developerToolsAccess,
+      isCommerceCustomer: await isUserCommerceCustomer(db, updated.id),
       createdAt: updated.createdAt.toISOString(),
       lastActiveAt: null,
     };
@@ -433,6 +437,7 @@ usersRoute.openapi(
       disabled: updated.disabled,
       emailVerified: updated.emailVerified,
       developerToolsAccess: updated.developerToolsAccess,
+      isCommerceCustomer: await isUserCommerceCustomer(db, updated.id),
       createdAt: updated.createdAt.toISOString(),
       lastActiveAt: null,
     };
@@ -493,6 +498,7 @@ usersRoute.openapi(
       disabled: updated.disabled,
       emailVerified: updated.emailVerified,
       developerToolsAccess: updated.developerToolsAccess,
+      isCommerceCustomer: await isUserCommerceCustomer(db, updated.id),
       createdAt: updated.createdAt.toISOString(),
       lastActiveAt: null,
     };
