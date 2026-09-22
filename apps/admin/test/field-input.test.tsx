@@ -115,6 +115,31 @@ describe('FieldInput', () => {
     );
   });
 
+  it('lets a url field pick a media file, filling the input with its public URL', async () => {
+    getMock.mockResolvedValue([
+      { id: 'm-1', filename: 'photo.png', contentType: 'image/png', size: 100, width: 10, height: 10, altText: null },
+    ]);
+    const field = baseField({ fieldType: 'url' });
+    const { onChange } = renderField(field, '');
+
+    expect(screen.getByLabelText('Field')).toHaveAttribute('type', 'url');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Choose from Media' }));
+    await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
+    await userEvent.click(screen.getByAltText('photo.png'));
+
+    expect(onChange).toHaveBeenCalledWith(expect.stringContaining('/api/v1/public/media/m-1/file'));
+  });
+
+  it('lets a url field still be typed into directly, without opening the picker', async () => {
+    const field = baseField({ fieldType: 'url' });
+    const { onChange } = renderField(field, '');
+
+    await userEvent.type(screen.getByLabelText('Field'), 'x');
+    expect(onChange).toHaveBeenCalledWith('x');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
   it('renders a searchable combobox for a reference field targeting another content type', async () => {
     getMock.mockImplementation((path: string) => {
       if (path.startsWith('/api/v1/admin/entries')) {

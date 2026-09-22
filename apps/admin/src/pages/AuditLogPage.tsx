@@ -1,10 +1,24 @@
 import { useMemo, useState } from 'react';
-import { ClipboardList, Eye } from 'lucide-react';
+import { ClipboardList, Eye, Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
 import type { ColumnDef } from '@tanstack/react-table';
 
-import { useAuditLog } from '@/lib/queries/audit-log';
+import { authClient } from '@/lib/auth-client';
+import { ApiError } from '@/lib/api-client';
+import { useAuditLog, useClearAuditLog } from '@/lib/queries/audit-log';
 import { useUsers } from '@/lib/queries/users';
 import type { AuditLogEntryWithActor } from '@/lib/types';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { DataTable } from '@/components/data-table';
 import { EmptyState } from '@/components/empty-state';
 import { PageBreadcrumb } from '@/components/page-breadcrumb';
@@ -59,6 +73,10 @@ export function AuditLogPage() {
   const [action, setAction] = useState('all');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
+
+  const { data: session } = authClient.useSession();
+  const isOwner = session?.user.role === 'owner';
+  const clearAuditLog = useClearAuditLog();
 
   const { data: users } = useUsers();
   // actor/action are filtered client-side below, not sent to the server — the server-side
@@ -149,7 +167,46 @@ export function AuditLogPage() {
     <div className="flex flex-col gap-6">
       <PageBreadcrumb items={[{ label: 'Audit log' }]} />
 
-      <PageHeader title="Audit log" description="Every logged content, structural, and auth event, newest first." />
+      <PageHeader
+        title="Audit log"
+        description="Every logged content, structural, and auth event, newest first."
+        actions={
+          isOwner ? (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="outline" className="text-destructive">
+                  <Trash2 />
+                  Clear audit log
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Clear the entire audit log?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Permanently deletes every logged event, including other admins' actions. This
+                    clearing action itself is recorded as the log's new first entry, so there's
+                    never zero evidence a wipe happened. This can't be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={() =>
+                      clearAuditLog.mutate(undefined, {
+                        onSuccess: () => toast.success('Audit log cleared'),
+                        onError: (err) =>
+                          toast.error(err instanceof ApiError ? err.message : 'Failed to clear audit log'),
+                      })
+                    }
+                  >
+                    Clear audit log
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          ) : undefined
+        }
+      />
 
       {error ? <p className="text-destructive">{error.message}</p> : null}
 

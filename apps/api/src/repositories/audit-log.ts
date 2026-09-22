@@ -61,3 +61,10 @@ export function listAuditLog(db: Database, filters: ListAuditLogFilters = {}): P
     .limit(filters.limit ?? 100)
     .offset(filters.offset ?? 0);
 }
+
+// Deliberately unconditional and irreversible — the caller (routes/admin/audit-log.ts) records
+// the clear itself as a new audit-log row immediately after, so the table is never left with no
+// trace that a wipe happened, by whom, and when.
+export async function clearAuditLog(db: Database): Promise<void> {
+  await db.delete(auditLog);
+}

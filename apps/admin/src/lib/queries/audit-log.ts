@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { apiClient } from '@/lib/api-client';
 import type { AuditLogEntryWithActor } from '@/lib/types';
@@ -24,5 +24,16 @@ export function useAuditLog(filters: AuditLogFilters) {
   return useQuery({
     queryKey: ['audit-log', filters],
     queryFn: () => apiClient.get<AuditLogEntryWithActor[]>(`/api/v1/admin/audit-log?${buildQuery(filters)}`),
+  });
+}
+
+export function useClearAuditLog() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => apiClient.delete<void>('/api/v1/admin/audit-log'),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['audit-log'] });
+    },
   });
 }
