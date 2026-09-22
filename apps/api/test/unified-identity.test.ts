@@ -142,13 +142,14 @@ describe('unified identity (real D1)', () => {
     expect((await SELF.fetch(CUSTOMER, { headers: { Cookie: cookie } })).status).toBe(200);
   });
 
-  it('website users never appear in the CMS users list', async () => {
+  it('website users appear in the Core Users list alongside CMS staff, classified as role none', async () => {
     const adminCookie = await signUpVerifiedAndGetCookie('list-admin@example.test', { role: 'admin' });
     await registerWebsiteUser('a-customer@example.test');
     const list = await (await SELF.fetch('https://example.com/api/v1/admin/users', { headers: { Cookie: adminCookie } })).json<
       { email: string; role: string }[]
     >();
-    expect(list.map((u) => u.email)).toEqual(['list-admin@example.test']);
+    expect(list.map((u) => u.email).sort()).toEqual(['a-customer@example.test', 'list-admin@example.test']);
+    expect(list.find((u) => u.email === 'a-customer@example.test')?.role).toBe('none');
   });
 
   it('login and logout go through core: sign-in yields a session Commerce accepts, sign-out ends it', async () => {
