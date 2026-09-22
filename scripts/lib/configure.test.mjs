@@ -77,11 +77,15 @@ test('configureDomain (CI): DISABLE_WORKERS_DEV=true explicitly disables it', as
   }
 });
 
-test('describeTurnstile reports configured/not-configured, never a secret value', () => {
-  assert.equal(describeTurnstile({ turnstile: { configured: false } }), 'not configured');
+test('describeTurnstile reports configured/not-configured, and the site key (not a secret value)', () => {
+  assert.equal(describeTurnstile({ turnstile: { configured: false, siteKey: null } }), 'not configured');
   assert.equal(
-    describeTurnstile({ turnstile: { configured: true } }),
-    'configured (public sign-up requires a human check)',
+    describeTurnstile({ turnstile: { configured: true, siteKey: null } }),
+    'configured (public sign-up requires a human check), site key: not set',
+  );
+  assert.equal(
+    describeTurnstile({ turnstile: { configured: true, siteKey: '0x4AAA...' } }),
+    'configured (public sign-up requires a human check), site key: 0x4AAA...',
   );
 });
 

@@ -148,6 +148,17 @@ BETTER_AUTH_URL = "https://REPLACE_AFTER_FIRST_DEPLOY.workers.dev"
 # Use a test-mode key (starts sk_test_) while developing/testing — Paystack itself decides
 # sandbox-vs-live purely from which key you use, nothing else here needs to change.
 
+# Optional bot protection on public sign-up (Cloudflare Turnstile). Create a widget for your
+# site's domain(s) at dash.cloudflare.com -> Turnstile, then set both values it gives you:
+#   wrangler secret put TURNSTILE_SECRET_KEY    # server-side, verifies the token — genuinely secret
+#   TURNSTILE_SITE_KEY = "0x4AAA..."             # public, safe here — embedded in a frontend's own HTML/JS
+# `pnpm run setup` / `pnpm run update -- --turnstile` set both for you, one prompt each. Only the
+# secret actually gates sign-up; the site key is stored here purely so GET /api/v1/system/status
+# can hand it to a frontend automatically instead of that frontend needing its own copy
+# (@kenresoft-cms/astro's system.status() — examples/astro-site's register page uses this by
+# default). Leaving both unset means sign-up stays open, no human check. See
+# docs/DEPLOYMENT.md's "Optional: bot protection on public sign-up" section.
+
 # GET /api/v1/openapi.json + /api/v1/docs (the Scalar reference UI) are enabled by default —
 # useful for anyone building against this deployment's API, and Settings → API links to them.
 # They describe every route's shape, including authenticated admin/plugin routes (never actual

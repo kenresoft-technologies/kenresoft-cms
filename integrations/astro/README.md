@@ -302,6 +302,8 @@ export { KenresoftApiError };
 
 Failures throw `KenresoftApiError` with `status`, `message`, and, for better-auth errors, a machine-readable `code`. Password-reset and verification responses are deliberately generic so they never reveal whether an account exists. Auth requests are also rate limited server-side (429).
 
+**Turnstile's site key doesn't need its own env var.** If the deployer set `TURNSTILE_SITE_KEY` on the API (alongside the secret, via `pnpm run update -- --turnstile`), call `client.system.status()` and read `.turnstileSiteKey` instead of duplicating the same public value in your own config — `examples/astro-site`'s register page does this by default (see [`new-site.md`](https://docs.kenresoft.com/cms/astro/new-site/) for the manual override if you'd rather set your own).
+
 ### Commerce
 
 `client.commerce.customerAuth.*` and `client.commerce.customer.changePassword()` call `client.auth` under the hood, so a session created either way is the same session the cart, checkout, and account routes read. `commerce.customerAuth.login()` returns the customer profile. For a two-factor account it rejects with `code: 'TWO_FACTOR_REQUIRED'`; catch that, ask for the code, and call `commerce.customerAuth.verifyTwoFactor({ code })` (or `{ code, method: 'backup-code' }`), which resolves the customer.
