@@ -5,10 +5,17 @@ import { createServerClient } from '../../lib/site-client';
 import { sanitizeRedirect } from '../../lib/redirect';
 
 const redirectTo = sanitizeRedirect(Astro.url.searchParams.get('redirect'));
-// Optional bot check. Set PUBLIC_TURNSTILE_SITE_KEY here and TURNSTILE_SECRET_KEY on the API
-// (docs/DEPLOYMENT.md); with no site key the widget simply isn't rendered.
-const turnstileSiteKey = import.meta.env.PUBLIC_TURNSTILE_SITE_KEY as string | undefined;
 const cms = createServerClient(Astro.request.headers.get('cookie'));
+
+// Optional bot check. PUBLIC_TURNSTILE_SITE_KEY here is a manual override; by default this
+// fetches the site key from the CMS itself (system.status().turnstileSiteKey) — a deployer sets
+// TURNSTILE_SITE_KEY once on the API (`pnpm run update -- --turnstile`) instead of separately
+// here too. Either way, with no site key the widget simply isn't rendered — see docs/DEPLOYMENT.md.
+const turnstileSiteKey: string | undefined =
+  (import.meta.env.PUBLIC_TURNSTILE_SITE_KEY as string | undefined) ||
+  (await cms.system.status().catch(() => null))?.turnstileSiteKey ||
+  undefined;
+
 const existingCustomer = await cms.auth.getSession().catch(() => null);
 if (existingCustomer) {
   return Astro.redirect(redirectTo);

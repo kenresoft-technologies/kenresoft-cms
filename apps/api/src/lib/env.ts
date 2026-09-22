@@ -53,4 +53,12 @@ export interface Bindings {
   // (`wrangler secret put TURNSTILE_SECRET_KEY`), the secret half of a Cloudflare Turnstile widget
   // whose site key lives in your frontend. Unset (the default), sign-up needs no human check.
   TURNSTILE_SECRET_KEY?: string;
+  // The other half of the same Turnstile widget — not secret (it's designed to be embedded in a
+  // frontend's own HTML/JS), so it's a plain `[vars]` entry, not a Worker secret. Exposed by
+  // GET /api/v1/system/status purely as a convenience: a frontend using @kenresoft-cms/astro can
+  // fetch it from there instead of needing its own copy of the same value in a second place
+  // (e.g. examples/astro-site's register page does this by default). Setting only
+  // TURNSTILE_SECRET_KEY without this still works — the bot check itself never reads this
+  // field — a frontend just has to supply its own site key some other way in that case.
+  TURNSTILE_SITE_KEY?: string;
 }

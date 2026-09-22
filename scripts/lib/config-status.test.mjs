@@ -113,3 +113,33 @@ test('summarizeInstallStatus reports Turnstile as optional, not required, and ne
   assert.match(configured, /Turnstile bot check configured/);
   assert.doesNotMatch(configured, /sk_|re_|[A-Za-z0-9]{32,}/);
 });
+
+test('parseLocalConfig reads TURNSTILE_SITE_KEY as a plain, unmasked var — it is not a secret', () => {
+  const toml = `${BASE_TOML}TURNSTILE_SITE_KEY = "0x4AAAAAAAtest"\n`;
+  assert.equal(parseLocalConfig(toml).turnstile.siteKey, '0x4AAAAAAAtest');
+  assert.equal(parseLocalConfig(BASE_TOML).turnstile.siteKey, null);
+});
+
+test('classifyInstallStatus: the site key and the secret are independent — either can be set without the other', () => {
+  const toml = `${BASE_TOML}TURNSTILE_SITE_KEY = "0x4AAAAAAAtest"\n`;
+  const local = parseLocalConfig(toml);
+
+  // Site key present, secret absent: not "configured" (the secret is what actually gates
+  // sign-up), but the site key still reads back correctly — a deployer may set it before the
+  // secret, or a frontend developer setting up rendering before the operator finishes setup.
+  const siteKeyOnly = classifyInstallStatus(local, new Set());
+  assert.equal(siteKeyOnly.turnstile.configured, false);
+  assert.equal(siteKeyOnly.turnstile.siteKey, '0x4AAAAAAAtest');
+
+  // Secret present, site key absent: still fully "configured" — the bot check itself never
+  // reads TURNSTILE_SITE_KEY.
+  const secretOnly = classifyInstallStatus(parseLocalConfig(BASE_TOML), new Set(['TURNSTILE_SECRET_KEY']));
+  assert.equal(secretOnly.turnstile.configured, true);
+  assert.equal(secretOnly.turnstile.siteKey, null);
+});
+
+test('summarizeInstallStatus warns when a site key is set but the secret is not — the bot check is not actually enforced', () => {
+  const toml = `${BASE_TOML}TURNSTILE_SITE_KEY = "0x4AAAAAAAtest"\n`;
+  const summary = summarizeInstallStatus(classifyInstallStatus(parseLocalConfig(toml), new Set()));
+  assert.match(summary, /site key set \(0x4AAAAAAAtest\) but no secret key/);
+});

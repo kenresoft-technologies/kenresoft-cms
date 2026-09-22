@@ -44,7 +44,9 @@ export function describeEmail(status) {
 }
 
 export function describeTurnstile(status) {
-  return status.turnstile.configured ? 'configured (public sign-up requires a human check)' : 'not configured';
+  if (!status.turnstile.configured) return 'not configured';
+  const siteKeyNote = status.turnstile.siteKey ? `, site key: ${status.turnstile.siteKey}` : ', site key: not set';
+  return `configured (public sign-up requires a human check)${siteKeyNote}`;
 }
 
 // ---- Better Auth URL ----
@@ -201,15 +203,18 @@ export async function configureEmail({ wranglerTomlPath, apiDir, status, ci = fa
 
 // ---- Turnstile (bot check on public sign-up) ----
 //
-// Deliberately secret-only — unlike email, there's no wrangler.toml [vars] field to write here.
-// TURNSTILE_SECRET_KEY (this function's concern) is the server-side half, verified against
-// Cloudflare's siteverify endpoint by apps/api/src/middleware/turnstile.ts; it's genuinely
-// secret and lives only as a Worker secret, per this project's own "secrets never go in a
-// database column or committed config" rule. The client-side half — a widget's public site
-// key — is not secret by design (it's embedded directly in a frontend's own HTML/JS) and has
-// no home in this API's own config at all: each frontend that renders the widget (e.g.
-// examples/astro-site's PUBLIC_TURNSTILE_SITE_KEY) sets it independently, since a Cloudflare
-// Turnstile widget is scoped to whichever domain(s) it was created for, not to this Worker.
+// Manages both halves of one Cloudflare Turnstile widget in a single guided flow, which is the
+// actual simplification over the original secret-only version: TURNSTILE_SECRET_KEY (server-side,
+// verified against Cloudflare's siteverify endpoint by apps/api/src/middleware/turnstile.ts) is
+// genuinely secret and lives only as a Worker secret, per this project's own "secrets never go in
+// a database column or committed config" rule. TURNSTILE_SITE_KEY is the opposite — designed to
+// be public, embedded directly in a frontend's own HTML/JS — so it's a plain wrangler.toml
+// [vars] entry, not a secret. Storing it here too (rather than only in each frontend's own env)
+// means GET /api/v1/system/status can hand it back to any frontend that asks
+// (@kenresoft-cms/astro's system.status(), used by examples/astro-site's register page by
+// default) — a deployer sets it in exactly one place instead of once per frontend. Setting only
+// the secret key (skip the site key prompt) still works: the bot check itself never reads
+// TURNSTILE_SITE_KEY, a frontend just has to supply its own site key some other way in that case.
 // Every deployer creates and owns their own widget (dash.cloudflare.com → Turnstile) — nothing
 // here is Kenresoft's own key, satisfying "the client deploying their own instance specifies
 // their own site key and secret key."
@@ -217,19 +222,26 @@ export async function configureTurnstile({ wranglerTomlPath, apiDir, status, ci 
   console.log(`\nCurrent Turnstile config: ${describeTurnstile(status)}`);
 
   if (ci) {
-    const keyInput = resolveInput(env.TURNSTILE_SECRET_KEY_NEW);
+    const secretInput = resolveInput(env.TURNSTILE_SECRET_KEY_NEW);
+    const siteKeyInput = resolveInput(env.TURNSTILE_SITE_KEY_NEW);
     const disable = String(env.TURNSTILE_DISABLE ?? '').toLowerCase() === 'true';
-    if (!keyInput.changed && !disable) {
-      console.log('TURNSTILE_SECRET_KEY_NEW not set — leaving Turnstile configuration unchanged.');
+    if (!secretInput.changed && !siteKeyInput.changed && !disable) {
+      console.log('Neither TURNSTILE_SECRET_KEY_NEW nor TURNSTILE_SITE_KEY_NEW is set — leaving Turnstile configuration unchanged.');
       return { changed: false };
     }
     if (disable) {
       runWrangler(['secret', 'delete', 'TURNSTILE_SECRET_KEY', '--config', wranglerTomlPath], { cwd: apiDir, input: 'y\n' });
-      console.log('✓ Turnstile bot check disabled (non-interactive) — secret removed.');
+      writeTomlFile(wranglerTomlPath, removeVarLine(readTomlFile(wranglerTomlPath), 'TURNSTILE_SITE_KEY'));
+      console.log('✓ Turnstile bot check disabled (non-interactive) — secret and site key both removed.');
       return { changed: true, redeployNeeded: false };
     }
-    runWrangler(['secret', 'put', 'TURNSTILE_SECRET_KEY', '--config', wranglerTomlPath], { cwd: apiDir, input: keyInput.value });
-    console.log('✓ Turnstile secret key set (non-interactive) — takes effect immediately, no redeploy needed.');
+    if (siteKeyInput.changed) {
+      writeTomlFile(wranglerTomlPath, setVarLine(readTomlFile(wranglerTomlPath), 'TURNSTILE_SITE_KEY', siteKeyInput.value));
+    }
+    if (secretInput.changed) {
+      runWrangler(['secret', 'put', 'TURNSTILE_SECRET_KEY', '--config', wranglerTomlPath], { cwd: apiDir, input: secretInput.value });
+    }
+    console.log('✓ Turnstile configuration updated (non-interactive) — takes effect immediately, no redeploy needed.');
     return { changed: true, redeployNeeded: false };
   }
 
@@ -237,12 +249,12 @@ export async function configureTurnstile({ wranglerTomlPath, apiDir, status, ci 
   const choice = alreadyConfigured
     ? await select('What do you want to do?', [
         { value: 'keep', label: 'Keep existing configuration' },
-        { value: 'change', label: 'Replace the secret key' },
-        { value: 'disable', label: 'Disable the bot check (remove the secret)' },
+        { value: 'change', label: 'Replace the secret key and/or site key' },
+        { value: 'disable', label: 'Disable the bot check (remove both keys)' },
         { value: 'cancel', label: 'Cancel' },
       ])
     : await select('Require a human check (Cloudflare Turnstile) on public sign-up?', [
-        { value: 'change', label: 'Configure now (paste a Turnstile widget secret key)' },
+        { value: 'change', label: 'Configure now (paste a Turnstile widget secret key and site key)' },
         { value: 'keep', label: 'Skip — sign-up stays open, no bot check' },
         { value: 'cancel', label: 'Cancel' },
       ]);
@@ -256,22 +268,45 @@ export async function configureTurnstile({ wranglerTomlPath, apiDir, status, ci 
       return { changed: false };
     }
     runWrangler(['secret', 'delete', 'TURNSTILE_SECRET_KEY', '--config', wranglerTomlPath], { cwd: apiDir, input: 'y\n' });
+    writeTomlFile(wranglerTomlPath, removeVarLine(readTomlFile(wranglerTomlPath), 'TURNSTILE_SITE_KEY'));
     console.log('✓ Turnstile bot check disabled — takes effect immediately, no redeploy needed.');
     return { changed: true, redeployNeeded: false };
   }
 
   console.log(
     "\nCreate a Turnstile widget for your site's domain(s) at dash.cloudflare.com → Turnstile if " +
-      "you haven't already — you'll need its secret key here, and its site key wherever your " +
-      'frontend renders the widget (that value is public, not entered here).',
+      "you haven't already — it gives you a secret key (below) and a site key. Setting the site " +
+      'key here too (it is public, safe to store as a plain var) lets any frontend built with ' +
+      '@kenresoft-cms/astro fetch it automatically instead of needing its own copy.',
   );
-  const { changed, value } = resolveInput(await ask('Turnstile secret key (leave blank to cancel)'));
-  if (!changed) {
-    console.log('No value entered — Turnstile configuration left unchanged.');
+  const secretResult = resolveInput(await ask('Turnstile secret key (leave blank to keep the existing one / skip)'));
+  if (secretResult.changed) {
+    runWrangler(['secret', 'put', 'TURNSTILE_SECRET_KEY', '--config', wranglerTomlPath], { cwd: apiDir, input: secretResult.value });
+    console.log('✓ Turnstile secret key set.');
+  } else if (alreadyConfigured) {
+    console.log('✓ Existing Turnstile secret key left unchanged.');
+  } else {
+    console.log('⚠ No secret key entered — the bot check stays off regardless of any site key set below.');
+  }
+
+  const siteKeyPrompt = status.turnstile.siteKey
+    ? `Turnstile site key (public, currently ${status.turnstile.siteKey} — leave blank to keep it)`
+    : 'Turnstile site key (public, leave blank to skip)';
+  const siteKeyResult = resolveInput(await ask(siteKeyPrompt));
+  if (siteKeyResult.changed) {
+    writeTomlFile(wranglerTomlPath, setVarLine(readTomlFile(wranglerTomlPath), 'TURNSTILE_SITE_KEY', siteKeyResult.value));
+    console.log('✓ Turnstile site key set — a frontend can now fetch it from GET /api/v1/system/status.');
+  } else if (status.turnstile.siteKey) {
+    console.log('✓ Existing Turnstile site key left unchanged.');
+  } else {
+    console.log('Skipping the site key — set PUBLIC_TURNSTILE_SITE_KEY (or your frontend\'s equivalent) yourself instead.');
+  }
+
+  if (!secretResult.changed && !siteKeyResult.changed) {
+    console.log('No values entered — Turnstile configuration left unchanged.');
     return { changed: false };
   }
-  runWrangler(['secret', 'put', 'TURNSTILE_SECRET_KEY', '--config', wranglerTomlPath], { cwd: apiDir, input: value });
-  console.log('✓ Turnstile secret key set — takes effect immediately, no redeploy needed.');
+  console.log('✓ Turnstile configuration updated — takes effect immediately, no redeploy needed.');
   return { changed: true, redeployNeeded: false };
 }
 

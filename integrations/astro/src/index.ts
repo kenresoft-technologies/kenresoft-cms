@@ -430,6 +430,20 @@ export interface GetReusableBlockOptions {
   id: string;
 }
 
+/** Matches GET /api/v1/system/status exactly — see `system.status()` below. */
+export interface SystemStatus {
+  emailConfigured: boolean;
+  authSecretConfigured: boolean;
+  /**
+   * A Turnstile widget's public site key, if the deployer set `TURNSTILE_SITE_KEY` on the API —
+   * `null` otherwise. Not secret by design (Turnstile site keys are meant to be embedded in a
+   * frontend's own HTML/JS), so it's safe to read from here rather than needing your own copy of
+   * the same value in an env var. `null` does not mean the bot check itself is off — that's
+   * governed independently by `TURNSTILE_SECRET_KEY`, which this endpoint never exposes.
+   */
+  turnstileSiteKey: string | null;
+}
+
 export interface SubmitFormOptions {
   /** The form's slug, not its display name — e.g. "contact". */
   formSlug: string;
@@ -571,6 +585,17 @@ export interface KenresoftClient {
     navigation(): Promise<NavigationSettingsData | Record<string, never>>;
     footer(): Promise<FooterSettingsData | Record<string, never>>;
     seo(): Promise<SeoSettingsData | Record<string, never>>;
+  };
+  /**
+   * Deployment-wide feature availability — matches `GET /api/v1/system/status` exactly.
+   * Unauthenticated, and deliberately not cached client-side (it's cheap and can change between
+   * calls, e.g. right after an operator runs `pnpm run update -- --turnstile`); call it once per
+   * page render rather than polling. See `SystemStatus.turnstileSiteKey` for the main reason a
+   * frontend calls this — one place to read a widget's site key instead of a separate copy in
+   * every frontend's own env.
+   */
+  system: {
+    status(): Promise<SystemStatus>;
   };
   /**
    * The Commerce plugin's storefront surface (packages/plugin-ecommerce) — catalog, cart,
@@ -837,6 +862,15 @@ export function createKenresoftClient(config: KenresoftClientConfig): KenresoftC
       async list() {
         const variables = await request<Record<string, string>>('/api/v1/public/global-variables');
         return variables ?? {};
+      },
+    },
+    system: {
+      async status() {
+        // Not a /api/v1/public/* route (it's deployment-wide, not per-content), but request()'s
+        // GET-and-parse shape still fits; this route never actually 404s, so the fallback below
+        // is purely defensive.
+        const status = await request<SystemStatus>('/api/v1/system/status');
+        return status ?? { emailConfigured: false, authSecretConfigured: false, turnstileSiteKey: null };
       },
     },
     routePatterns: {

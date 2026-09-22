@@ -49,6 +49,26 @@ describe('deployment status — auth secret field', () => {
   });
 });
 
+describe('deployment status — Turnstile site key field', () => {
+  it('reports turnstileSiteKey null when TURNSTILE_SITE_KEY is unset', async () => {
+    const response = await systemRoute.request(
+      '/status',
+      {},
+      { ...env, TURNSTILE_SITE_KEY: undefined } as unknown as Bindings,
+    );
+    expect((await response.json())).toMatchObject({ turnstileSiteKey: null });
+  });
+
+  it('echoes back a configured TURNSTILE_SITE_KEY verbatim — it is not secret', async () => {
+    const response = await systemRoute.request(
+      '/status',
+      {},
+      { ...env, TURNSTILE_SITE_KEY: '0x4AAAAAAAtest' } as unknown as Bindings,
+    );
+    expect((await response.json())).toMatchObject({ turnstileSiteKey: '0x4AAAAAAAtest' });
+  });
+});
+
 describe('break-glass owner recovery — not configured', () => {
   it('404s outright when OWNER_RECOVERY_SECRET is absent from Bindings entirely', async () => {
     const bareEnv = {} as Bindings;

@@ -54,6 +54,7 @@ export function parseLocalConfig(toml) {
     },
     betterAuthUrl: { value: authUrl, configured: isRealAuthUrl(authUrl) },
     email: { provider: readVar(toml, 'EMAIL_PROVIDER'), from: readVar(toml, 'EMAIL_FROM') },
+    turnstile: { siteKey: readVar(toml, 'TURNSTILE_SITE_KEY') },
     corsOrigins,
     domain: { customDomains: readCustomDomainRoutes(toml), workersDevEnabled: readWorkersDevEnabled(toml) },
   };
@@ -95,7 +96,7 @@ export function classifyInstallStatus(local, secretNames) {
     authSecret: { configured: secretNames.has('BETTER_AUTH_SECRET') },
     email: { ...local.email, resendKeyConfigured: secretNames.has('RESEND_API_KEY'), configured: emailConfigured },
     adminUrl: { configured: secretNames.has('ADMIN_URL') },
-    turnstile: { configured: secretNames.has('TURNSTILE_SECRET_KEY') },
+    turnstile: { ...local.turnstile, configured: secretNames.has('TURNSTILE_SECRET_KEY') },
   };
 }
 
@@ -123,8 +124,10 @@ export function summarizeInstallStatus(status) {
       ? `✓ Custom domain: ${status.domain.customDomains.join(', ')} (workers.dev ${status.domain.workersDevEnabled ? 'also still enabled' : 'disabled'})`
       : `✗ No custom domain connected (using the *.workers.dev URL${status.domain.workersDevEnabled ? '' : ' — and workers.dev is disabled, so this Worker is unreachable until one is connected'})`,
     status.turnstile.configured
-      ? '✓ Turnstile bot check configured on public sign-up'
-      : '✗ Turnstile not configured (public sign-up has no bot check — optional)',
+      ? `✓ Turnstile bot check configured on public sign-up (site key: ${status.turnstile.siteKey ?? 'not set — frontends need their own'})`
+      : status.turnstile.siteKey
+        ? `⚠ Turnstile site key set (${status.turnstile.siteKey}) but no secret key — the bot check is not actually enforced`
+        : '✗ Turnstile not configured (public sign-up has no bot check — optional)',
   ];
   return lines.join('\n');
 }

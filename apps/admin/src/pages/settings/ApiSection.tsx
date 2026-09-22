@@ -185,6 +185,53 @@ function AuthSecuritySection() {
   );
 }
 
+// Read-only status, same shape as EmailDeliverySection/AuthSecuritySection above.
+// TURNSTILE_SITE_KEY is a plain wrangler.toml var (not a secret — it's designed to be public,
+// embedded in a frontend's own HTML/JS), set the same way as TURNSTILE_SECRET_KEY
+// (`pnpm run setup` / `pnpm run update -- --turnstile`). Surfacing it here — rather than only in
+// a frontend's own env var — is what lets @kenresoft-cms/astro-based sites (examples/astro-site's
+// register page included) fetch it from the CMS instead of needing their own separate copy of
+// the same value.
+function TurnstileSection() {
+  const { data: status, isPending } = useSystemStatus();
+  const siteKeyConfigured = Boolean(status?.turnstileSiteKey);
+
+  return (
+    <SettingsSection
+      title="Turnstile bot check"
+      description="Optional human check on public sign-up. Create a widget at dash.cloudflare.com → Turnstile, then set both keys here."
+    >
+      <div className="flex items-center justify-between gap-4">
+        {isPending ? (
+          <>
+            <Skeleton className="h-4 w-72" />
+            <Skeleton className="h-5 w-24 shrink-0 rounded-full" />
+          </>
+        ) : (
+          <>
+            <p className="max-w-md text-sm text-muted-foreground">
+              {siteKeyConfigured
+                ? "A site key is set — a frontend using @kenresoft-cms/astro's system.status() can render the widget with no config of its own."
+                : "No site key set (TURNSTILE_SITE_KEY). Public sign-up still works either way — this only affects whether a frontend can fetch the site key from here instead of setting its own PUBLIC_TURNSTILE_SITE_KEY."}{' '}
+              Set both keys with <code className="rounded bg-muted px-1 py-0.5 text-xs">pnpm run update -- --turnstile</code>.
+            </p>
+            <Badge
+              variant="outline"
+              className={
+                siteKeyConfigured
+                  ? 'shrink-0 border-success/30 bg-success/10 text-success'
+                  : 'shrink-0 border-border bg-muted text-muted-foreground'
+              }
+            >
+              {siteKeyConfigured ? 'Configured' : 'Not set'}
+            </Badge>
+          </>
+        )}
+      </div>
+    </SettingsSection>
+  );
+}
+
 // Off by default. Raw HTML blocks let an admin paste HTML into a page; the server sanitizes it on
 // every save and every public read (apps/api/src/lib/raw-html-guard.ts), only admins/owners may add
 // or change one, and switching this off hides every existing raw block on the public site at once.
@@ -480,6 +527,8 @@ export function ApiSection({ settings, readOnly }: SectionProps) {
       <EmailDeliverySection />
 
       <AuthSecuritySection />
+
+      <TurnstileSection />
 
       <LivePreviewSection settings={settings} readOnly={readOnly} />
 
