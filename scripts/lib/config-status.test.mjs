@@ -97,3 +97,19 @@ test('summarizeInstallStatus flags the dangerous state: workers.dev disabled wit
   const summary = summarizeInstallStatus(classifyInstallStatus(parseLocalConfig(toml), new Set()));
   assert.match(summary, /workers\.dev is disabled, so this Worker is unreachable/);
 });
+
+test('classifyInstallStatus: turnstile is configured only once the secret exists — not derivable from the toml at all', () => {
+  const local = parseLocalConfig(BASE_TOML);
+  assert.equal(classifyInstallStatus(local, new Set()).turnstile.configured, false);
+  assert.equal(classifyInstallStatus(local, new Set(['TURNSTILE_SECRET_KEY'])).turnstile.configured, true);
+});
+
+test('summarizeInstallStatus reports Turnstile as optional, not required, and never leaks the secret', () => {
+  const local = parseLocalConfig(BASE_TOML);
+  const unconfigured = summarizeInstallStatus(classifyInstallStatus(local, new Set()));
+  assert.match(unconfigured, /Turnstile not configured .*optional/);
+
+  const configured = summarizeInstallStatus(classifyInstallStatus(local, new Set(['TURNSTILE_SECRET_KEY'])));
+  assert.match(configured, /Turnstile bot check configured/);
+  assert.doesNotMatch(configured, /sk_|re_|[A-Za-z0-9]{32,}/);
+});
