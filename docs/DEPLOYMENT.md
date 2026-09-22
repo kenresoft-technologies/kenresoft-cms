@@ -232,7 +232,7 @@ If your frontend has accounts (customers, members, anything signing in), set it 
 **Optional: bot protection on public sign-up (Cloudflare Turnstile).** A public site's register form gets probed quickly. Each deployer creates and owns their own widget — nothing here is a shared Kenresoft key. To require a human check:
 
 1. **Create a Turnstile widget** in the Cloudflare dashboard (dash.cloudflare.com → Turnstile) for your site's own domain(s). This gives you two values: a **site key** (public, safe to embed in frontend HTML/JS) and a **secret key** (never public).
-2. **Set both keys on the API in one guided step** — `pnpm run setup` prompts for each (or `pnpm run update -- --turnstile` afterward: prompts for both, blank keeps the existing one; `--turnstile --ci` with `TURNSTILE_SECRET_KEY_NEW`/`TURNSTILE_SITE_KEY_NEW` set; `TURNSTILE_DISABLE=true` removes both). The secret is stored as a Worker secret (`wrangler secret put TURNSTILE_SECRET_KEY` if setting it by hand); the site key is a plain `wrangler.toml` var (`TURNSTILE_SITE_KEY`) since it's not secret. Only the secret actually gates sign-up — setting just it, with no site key, still works. Takes effect immediately, no redeploy needed.
+2. **Set both keys on the API in one guided step** — `pnpm run setup` prompts for each (or `pnpm run update -- --turnstile` afterward: prompts for both, blank keeps the existing one; `--turnstile --ci` with `TURNSTILE_SECRET_KEY_NEW`/`TURNSTILE_SITE_KEY_NEW` set; `TURNSTILE_DISABLE=true` removes both). The secret is stored as a Worker secret (`wrangler secret put TURNSTILE_SECRET_KEY` if setting it by hand) and takes effect on the live Worker immediately, no redeploy needed. The site key is different: it's a plain `wrangler.toml` var (`TURNSTILE_SITE_KEY`, not secret), and — unlike a secret — a var change only reaches the running Worker on the *next deploy*, so the command redeploys automatically whenever the site key changes. Only the secret actually gates sign-up — setting just it, with no site key, still works and needs no redeploy.
 3. **Render the widget on your frontend**, passing the token it produces to `auth.signUp({ turnstileToken })`. You don't need to separately configure the site key on every frontend: `client.system.status().turnstileSiteKey` (`@kenresoft-cms/astro`) reads back whatever you set on the API in step 2 — `examples/astro-site`'s `/account/register` page does exactly this by default. Only set that frontend's own `PUBLIC_TURNSTILE_SITE_KEY` if you specifically want to override it (a different widget for that one site).
 
 With the secret unset, nothing changes — sign-up stays open. When set, `POST /api/v1/auth/sign-up/email` answers 400 `TURNSTILE_REQUIRED` without a token and 403 `TURNSTILE_FAILED` for a bad or reused token, and 503 if Cloudflare's verification can't be reached (it fails closed). A token is single-use, so reset the widget after a failed attempt. Staff accounts (Add User) and the sign-in routes are not affected.
@@ -604,8 +604,9 @@ without this command left every email pointing at its original `*.workers.dev` U
 `--turnstile` sets, replaces, or removes both `TURNSTILE_SECRET_KEY` (a Worker secret) and
 `TURNSTILE_SITE_KEY` (a plain, non-secret var) in one guided step — see "Optional: bot protection
 on public sign-up" above for the full setup, including why setting the site key here too means a
-frontend can fetch it instead of needing its own copy. Takes effect immediately, no redeploy
-needed.
+frontend can fetch it instead of needing its own copy. The secret takes effect immediately; the
+site key is a var, so this command redeploys automatically whenever it changes (a secret-only
+change still needs no redeploy).
 
 **Non-interactive / CI use**. Add `--ci` and set the corresponding `*_NEW` environment
 variable(s); an **omitted** variable always means "leave unchanged," never "clear" or reset to a

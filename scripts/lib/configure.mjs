@@ -232,8 +232,8 @@ export async function configureTurnstile({ wranglerTomlPath, apiDir, status, ci 
     if (disable) {
       runWrangler(['secret', 'delete', 'TURNSTILE_SECRET_KEY', '--config', wranglerTomlPath], { cwd: apiDir, input: 'y\n' });
       writeTomlFile(wranglerTomlPath, removeVarLine(readTomlFile(wranglerTomlPath), 'TURNSTILE_SITE_KEY'));
-      console.log('✓ Turnstile bot check disabled (non-interactive) — secret and site key both removed.');
-      return { changed: true, redeployNeeded: false };
+      console.log('✓ Turnstile bot check disabled (non-interactive) — secret removed immediately; redeploying to also clear the site key var...');
+      return { changed: true, redeployNeeded: true };
     }
     if (siteKeyInput.changed) {
       writeTomlFile(wranglerTomlPath, setVarLine(readTomlFile(wranglerTomlPath), 'TURNSTILE_SITE_KEY', siteKeyInput.value));
@@ -241,8 +241,18 @@ export async function configureTurnstile({ wranglerTomlPath, apiDir, status, ci 
     if (secretInput.changed) {
       runWrangler(['secret', 'put', 'TURNSTILE_SECRET_KEY', '--config', wranglerTomlPath], { cwd: apiDir, input: secretInput.value });
     }
-    console.log('✓ Turnstile configuration updated (non-interactive) — takes effect immediately, no redeploy needed.');
-    return { changed: true, redeployNeeded: false };
+    // Only the secret takes effect immediately (wrangler secret put applies to the live Worker
+    // right away); the site key is a plain wrangler.toml var, which — unlike a secret — does
+    // nothing to the already-deployed Worker until the next `wrangler deploy`. Claiming
+    // redeployNeeded: false whenever the site key changed was a real, reported bug: the CLI said
+    // "took effect immediately," but GET /api/v1/system/status kept returning the old (or no)
+    // site key because the live Worker was never redeployed.
+    console.log(
+      siteKeyInput.changed
+        ? '✓ Turnstile configuration updated (non-interactive) — redeploying so the new site key takes effect...'
+        : '✓ Turnstile secret key updated (non-interactive) — takes effect immediately, no redeploy needed.',
+    );
+    return { changed: true, redeployNeeded: siteKeyInput.changed };
   }
 
   const alreadyConfigured = status.turnstile.configured;
@@ -269,8 +279,8 @@ export async function configureTurnstile({ wranglerTomlPath, apiDir, status, ci 
     }
     runWrangler(['secret', 'delete', 'TURNSTILE_SECRET_KEY', '--config', wranglerTomlPath], { cwd: apiDir, input: 'y\n' });
     writeTomlFile(wranglerTomlPath, removeVarLine(readTomlFile(wranglerTomlPath), 'TURNSTILE_SITE_KEY'));
-    console.log('✓ Turnstile bot check disabled — takes effect immediately, no redeploy needed.');
-    return { changed: true, redeployNeeded: false };
+    console.log('✓ Turnstile bot check disabled — the secret is gone immediately; redeploying to also clear the site key...');
+    return { changed: true, redeployNeeded: true };
   }
 
   console.log(
@@ -295,7 +305,7 @@ export async function configureTurnstile({ wranglerTomlPath, apiDir, status, ci 
   const siteKeyResult = resolveInput(await ask(siteKeyPrompt));
   if (siteKeyResult.changed) {
     writeTomlFile(wranglerTomlPath, setVarLine(readTomlFile(wranglerTomlPath), 'TURNSTILE_SITE_KEY', siteKeyResult.value));
-    console.log('✓ Turnstile site key set — a frontend can now fetch it from GET /api/v1/system/status.');
+    console.log('✓ Turnstile site key set — will be readable from GET /api/v1/system/status once redeployed (below).');
   } else if (status.turnstile.siteKey) {
     console.log('✓ Existing Turnstile site key left unchanged.');
   } else {
@@ -306,8 +316,14 @@ export async function configureTurnstile({ wranglerTomlPath, apiDir, status, ci 
     console.log('No values entered — Turnstile configuration left unchanged.');
     return { changed: false };
   }
-  console.log('✓ Turnstile configuration updated — takes effect immediately, no redeploy needed.');
-  return { changed: true, redeployNeeded: false };
+  // See the CI branch's comment above: only a secret change is live immediately; a site-key
+  // (var) change needs an actual redeploy to reach the running Worker.
+  console.log(
+    siteKeyResult.changed
+      ? '✓ Turnstile configuration updated — redeploying so the new site key takes effect...'
+      : '✓ Turnstile secret key updated — takes effect immediately, no redeploy needed.',
+  );
+  return { changed: true, redeployNeeded: siteKeyResult.changed };
 }
 
 // ---- Custom domain / workers.dev ----
