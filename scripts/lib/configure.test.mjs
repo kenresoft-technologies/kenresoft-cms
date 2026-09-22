@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { configureDomain, describeDomain, resolveInput } from './configure.mjs';
+import { configureDomain, describeDomain, describeTurnstile, resolveInput } from './configure.mjs';
 import { readCustomDomainRoutes, readWorkersDevEnabled } from './wrangler-toml.mjs';
 
 // This is the single guard the reported bug ("skipping Resend can make it appear unconfigured")
@@ -75,6 +75,14 @@ test('configureDomain (CI): DISABLE_WORKERS_DEV=true explicitly disables it', as
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('describeTurnstile reports configured/not-configured, never a secret value', () => {
+  assert.equal(describeTurnstile({ turnstile: { configured: false } }), 'not configured');
+  assert.equal(
+    describeTurnstile({ turnstile: { configured: true } }),
+    'configured (public sign-up requires a human check)',
+  );
 });
 
 test('describeDomain reports both the connected domain(s) and workers.dev state', () => {

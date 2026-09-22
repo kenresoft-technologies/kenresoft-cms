@@ -45,6 +45,7 @@ import {
   configureDomain,
   configureEmail,
   configureStorage,
+  configureTurnstile,
 } from './lib/configure.mjs';
 
 const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -350,6 +351,7 @@ async function runFullFlow() {
 
   await ensureAuthSecret();
   await configureEmail({ wranglerTomlPath: WRANGLER_TOML_PATH, apiDir: API_DIR, status: readInstallStatus({ apiDir: API_DIR, wranglerTomlPath: WRANGLER_TOML_PATH }) });
+  await configureTurnstile({ wranglerTomlPath: WRANGLER_TOML_PATH, apiDir: API_DIR, status: readInstallStatus({ apiDir: API_DIR, wranglerTomlPath: WRANGLER_TOML_PATH }) });
   await ensureWorkerNamesAreOurs();
 
   const currentAuthUrl = readVarLine(readToml(), 'BETTER_AUTH_URL');
@@ -422,6 +424,7 @@ const CONFIGURE_CATEGORIES = {
   storage: configureStorage,
   database: configureDatabase,
   domain: configureDomain,
+  turnstile: configureTurnstile,
 };
 
 // "Update configuration" — loop letting the developer pick exactly which category(ies) to touch,
@@ -439,6 +442,7 @@ async function runUpdateConfigurationMenu() {
       { value: 'database', label: 'Database (D1)' },
       { value: 'domain', label: 'Custom domain / workers.dev (API Worker)' },
       { value: 'admin-domain', label: 'Custom domain / workers.dev (Admin Worker)' },
+      { value: 'turnstile', label: 'Turnstile bot check on public sign-up' },
       { value: 'done', label: 'Done' },
     ]);
     if (category === 'done') break;
