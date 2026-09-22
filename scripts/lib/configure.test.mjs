@@ -4,8 +4,8 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { configureDomain, describeDomain, describeTurnstile, resolveInput } from './configure.mjs';
-import { readCustomDomainRoutes, readWorkersDevEnabled } from './wrangler-toml.mjs';
+import { configureDomain, configureTurnstile, describeDomain, describeTurnstile, resolveInput } from './configure.mjs';
+import { readCustomDomainRoutes, readVarLine, readWorkersDevEnabled } from './wrangler-toml.mjs';
 
 // This is the single guard the reported bug ("skipping Resend can make it appear unconfigured")
 // depends on: a blank secret-prompt answer (pressing Enter to mean "leave it as it is") must
@@ -87,6 +87,51 @@ test('describeTurnstile reports configured/not-configured, and the site key (not
     describeTurnstile({ turnstile: { configured: true, siteKey: '0x4AAA...' } }),
     'configured (public sign-up requires a human check), site key: 0x4AAA...',
   );
+});
+
+// Direct regression test for a real, reported bug: a deployer ran `pnpm run update -- --turnstile`,
+// the CLI said "took effect immediately, no redeploy needed," but GET /api/v1/system/status kept
+// showing the site key as unset — because a wrangler.toml var (unlike a secret, which
+// `wrangler secret put` applies to the live Worker right away) does nothing to the deployed
+// Worker until the next `wrangler deploy`. Only exercises the site-key-only path (no
+// TURNSTILE_SECRET_KEY_NEW), since a secret change would need a real `wrangler secret put`
+// invocation this test suite has no way to stub — same accepted gap as configureEmail's
+// RESEND_API_KEY path.
+test('configureTurnstile (CI): a site-key-only change must redeploy — it is a var, not a secret', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kenresoft-configure-turnstile-'));
+  const path = join(dir, 'wrangler.toml');
+  writeFileSync(path, 'name = "test-worker"\ncompatibility_date = "2026-01-01"\n\n[vars]\nCORS_ORIGINS = "http://localhost:5173"\n');
+  try {
+    const result = await configureTurnstile({
+      wranglerTomlPath: path,
+      apiDir: dir,
+      status: { turnstile: { configured: true, siteKey: null } },
+      ci: true,
+      env: { TURNSTILE_SITE_KEY_NEW: '0x4AAAAAAAtest' },
+    });
+    assert.deepEqual(result, { changed: true, redeployNeeded: true }, 'a site-key-only change must report redeployNeeded: true');
+    assert.equal(readVarLine(readFileSync(path, 'utf8'), 'TURNSTILE_SITE_KEY'), '0x4AAAAAAAtest');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('configureTurnstile (CI): no TURNSTILE_*_NEW and no TURNSTILE_DISABLE leaves everything unchanged', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kenresoft-configure-turnstile-'));
+  const path = join(dir, 'wrangler.toml');
+  writeFileSync(path, 'name = "test-worker"\ncompatibility_date = "2026-01-01"\n\n[vars]\nCORS_ORIGINS = "http://localhost:5173"\n');
+  try {
+    const result = await configureTurnstile({
+      wranglerTomlPath: path,
+      apiDir: dir,
+      status: { turnstile: { configured: false, siteKey: null } },
+      ci: true,
+      env: {},
+    });
+    assert.deepEqual(result, { changed: false });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('describeDomain reports both the connected domain(s) and workers.dev state', () => {
