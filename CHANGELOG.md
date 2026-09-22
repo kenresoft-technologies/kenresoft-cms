@@ -17,6 +17,7 @@ landed on `develop`.
 
 ### Fixed
 
+- `pnpm run update -- --turnstile` (and the equivalent step in `pnpm run setup`) now redeploys the API whenever the Turnstile site key changes, and says so — it previously always claimed "took effect immediately, no redeploy needed," true for the secret (`wrangler secret put` applies to the live Worker right away) but not for `TURNSTILE_SITE_KEY`, a plain `wrangler.toml` var that only reaches the running Worker on the next deploy. Reported live: the CLI said the change applied, but `GET /api/v1/system/status` kept showing the site key as unset until a manual deploy. A secret-only change still needs no redeploy, as before. No action needed beyond re-running the command once on an already-updated deployment, to actually deploy the site key that was written but never pushed live.
 - `@kenresoft-cms/astro` 0.6.1: the same-origin `/cms` proxy now drops a trailing slash before forwarding to the API. A site with Astro's `trailingSlash: 'always'` redirects `/cms/api/v1/...` to the slash form (a 308, even for POST), and the API returns 404 for paths with a trailing slash, so every browser call through the proxy, including sign-in, failed. Sites using Astro's default `trailingSlash` are unaffected. Update with `npx @kenresoft-cms/create astro --update`. Requires publishing a new `@kenresoft-cms/astro`.
 
 ### Added
