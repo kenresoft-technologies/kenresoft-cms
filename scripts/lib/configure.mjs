@@ -43,6 +43,10 @@ export function describeEmail(status) {
   return `provider: ${status.email.provider}, from: ${status.email.from ?? '(not set)'}${keyNote}`;
 }
 
+export function describeTurnstile(status) {
+  return status.turnstile.configured ? 'configured (public sign-up requires a human check)' : 'not configured';
+}
+
 // ---- Better Auth URL ----
 
 export async function configureAuth({ wranglerTomlPath, apiDir, status, ci = false, env = process.env }) {
@@ -193,6 +197,82 @@ export async function configureEmail({ wranglerTomlPath, apiDir, status, ci = fa
 
   console.log('✓ Email configuration updated.');
   return { changed: true, redeployNeeded: true };
+}
+
+// ---- Turnstile (bot check on public sign-up) ----
+//
+// Deliberately secret-only — unlike email, there's no wrangler.toml [vars] field to write here.
+// TURNSTILE_SECRET_KEY (this function's concern) is the server-side half, verified against
+// Cloudflare's siteverify endpoint by apps/api/src/middleware/turnstile.ts; it's genuinely
+// secret and lives only as a Worker secret, per this project's own "secrets never go in a
+// database column or committed config" rule. The client-side half — a widget's public site
+// key — is not secret by design (it's embedded directly in a frontend's own HTML/JS) and has
+// no home in this API's own config at all: each frontend that renders the widget (e.g.
+// examples/astro-site's PUBLIC_TURNSTILE_SITE_KEY) sets it independently, since a Cloudflare
+// Turnstile widget is scoped to whichever domain(s) it was created for, not to this Worker.
+// Every deployer creates and owns their own widget (dash.cloudflare.com → Turnstile) — nothing
+// here is Kenresoft's own key, satisfying "the client deploying their own instance specifies
+// their own site key and secret key."
+export async function configureTurnstile({ wranglerTomlPath, apiDir, status, ci = false, env = process.env }) {
+  console.log(`\nCurrent Turnstile config: ${describeTurnstile(status)}`);
+
+  if (ci) {
+    const keyInput = resolveInput(env.TURNSTILE_SECRET_KEY_NEW);
+    const disable = String(env.TURNSTILE_DISABLE ?? '').toLowerCase() === 'true';
+    if (!keyInput.changed && !disable) {
+      console.log('TURNSTILE_SECRET_KEY_NEW not set — leaving Turnstile configuration unchanged.');
+      return { changed: false };
+    }
+    if (disable) {
+      runWrangler(['secret', 'delete', 'TURNSTILE_SECRET_KEY', '--config', wranglerTomlPath], { cwd: apiDir, input: 'y\n' });
+      console.log('✓ Turnstile bot check disabled (non-interactive) — secret removed.');
+      return { changed: true, redeployNeeded: false };
+    }
+    runWrangler(['secret', 'put', 'TURNSTILE_SECRET_KEY', '--config', wranglerTomlPath], { cwd: apiDir, input: keyInput.value });
+    console.log('✓ Turnstile secret key set (non-interactive) — takes effect immediately, no redeploy needed.');
+    return { changed: true, redeployNeeded: false };
+  }
+
+  const alreadyConfigured = status.turnstile.configured;
+  const choice = alreadyConfigured
+    ? await select('What do you want to do?', [
+        { value: 'keep', label: 'Keep existing configuration' },
+        { value: 'change', label: 'Replace the secret key' },
+        { value: 'disable', label: 'Disable the bot check (remove the secret)' },
+        { value: 'cancel', label: 'Cancel' },
+      ])
+    : await select('Require a human check (Cloudflare Turnstile) on public sign-up?', [
+        { value: 'change', label: 'Configure now (paste a Turnstile widget secret key)' },
+        { value: 'keep', label: 'Skip — sign-up stays open, no bot check' },
+        { value: 'cancel', label: 'Cancel' },
+      ]);
+  if (choice === 'keep' || choice === 'cancel') {
+    console.log(alreadyConfigured ? '✓ Turnstile configuration left unchanged.' : 'Skipping Turnstile setup (create a widget any time at dash.cloudflare.com → Turnstile, then run this again).');
+    return { changed: false };
+  }
+
+  if (choice === 'disable') {
+    if (!(await confirm('This removes the bot check — public sign-up will accept requests with no human verification. Continue?', false))) {
+      return { changed: false };
+    }
+    runWrangler(['secret', 'delete', 'TURNSTILE_SECRET_KEY', '--config', wranglerTomlPath], { cwd: apiDir, input: 'y\n' });
+    console.log('✓ Turnstile bot check disabled — takes effect immediately, no redeploy needed.');
+    return { changed: true, redeployNeeded: false };
+  }
+
+  console.log(
+    "\nCreate a Turnstile widget for your site's domain(s) at dash.cloudflare.com → Turnstile if " +
+      "you haven't already — you'll need its secret key here, and its site key wherever your " +
+      'frontend renders the widget (that value is public, not entered here).',
+  );
+  const { changed, value } = resolveInput(await ask('Turnstile secret key (leave blank to cancel)'));
+  if (!changed) {
+    console.log('No value entered — Turnstile configuration left unchanged.');
+    return { changed: false };
+  }
+  runWrangler(['secret', 'put', 'TURNSTILE_SECRET_KEY', '--config', wranglerTomlPath], { cwd: apiDir, input: value });
+  console.log('✓ Turnstile secret key set — takes effect immediately, no redeploy needed.');
+  return { changed: true, redeployNeeded: false };
 }
 
 // ---- Custom domain / workers.dev ----

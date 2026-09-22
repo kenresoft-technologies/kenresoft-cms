@@ -10,6 +10,7 @@ test('bare invocation: no category, no branch override, not ci', () => {
 test('a single category flag is picked up', () => {
   assert.deepEqual(parseUpdateArgs(['--auth'], {}), { ci: false, branch: null, category: 'auth' });
   assert.deepEqual(parseUpdateArgs(['--email', '--ci'], {}), { ci: true, branch: null, category: 'email' });
+  assert.deepEqual(parseUpdateArgs(['--turnstile'], {}), { ci: false, branch: null, category: 'turnstile' });
 });
 
 test('two category flags at once is rejected', () => {

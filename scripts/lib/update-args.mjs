@@ -1,7 +1,7 @@
 // Pure argv parsing for scripts/update.mjs, split out so it's testable without importing
 // configure.mjs (which pulls in wrangler-cli.mjs/deploy-helpers.mjs — real process-spawning
 // modules) or update.mjs itself (a script whose module body runs `main()` on import).
-export const CONFIGURE_CATEGORIES = ['auth', 'email', 'storage', 'database', 'domain', 'admin-domain'];
+export const CONFIGURE_CATEGORIES = ['auth', 'email', 'storage', 'database', 'domain', 'admin-domain', 'turnstile'];
 
 // Any single run only ever targets one configuration category — running two at once would make
 // the resulting "what changed" summary ambiguous, and each category already has its own
@@ -27,7 +27,7 @@ export function parseUpdateArgs(argv, env = process.env) {
     branch = env.UPDATE_BRANCH;
   }
   if (branch && category) {
-    throw new Error('--branch only applies to the plain code-pull update, not --auth/--email/--storage/--database.');
+    throw new Error('--branch only applies to the plain code-pull update, not --auth/--email/--storage/--database/--turnstile.');
   }
 
   return { ci, branch: branch ?? null, category };

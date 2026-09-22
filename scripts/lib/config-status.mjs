@@ -95,6 +95,7 @@ export function classifyInstallStatus(local, secretNames) {
     authSecret: { configured: secretNames.has('BETTER_AUTH_SECRET') },
     email: { ...local.email, resendKeyConfigured: secretNames.has('RESEND_API_KEY'), configured: emailConfigured },
     adminUrl: { configured: secretNames.has('ADMIN_URL') },
+    turnstile: { configured: secretNames.has('TURNSTILE_SECRET_KEY') },
   };
 }
 
@@ -121,6 +122,9 @@ export function summarizeInstallStatus(status) {
     status.domain.customDomains.length > 0
       ? `✓ Custom domain: ${status.domain.customDomains.join(', ')} (workers.dev ${status.domain.workersDevEnabled ? 'also still enabled' : 'disabled'})`
       : `✗ No custom domain connected (using the *.workers.dev URL${status.domain.workersDevEnabled ? '' : ' — and workers.dev is disabled, so this Worker is unreachable until one is connected'})`,
+    status.turnstile.configured
+      ? '✓ Turnstile bot check configured on public sign-up'
+      : '✗ Turnstile not configured (public sign-up has no bot check — optional)',
   ];
   return lines.join('\n');
 }

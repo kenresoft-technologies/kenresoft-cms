@@ -229,7 +229,13 @@ If your frontend has accounts (customers, members, anything signing in), set it 
 5. **Configure a real email provider before you launch** (`EMAIL_PROVIDER`, `EMAIL_FROM`, and `RESEND_API_KEY` or the Cloudflare `EMAIL` binding), and set `ADMIN_URL`. Every account must verify its email before signing in, so verification and password reset depend on working email. With no provider configured, the message links are written to the Worker's logs (`wrangler tail`) so the first owner can still get in, but that is a stopgap, not a launch setup.
 6. **Do a real pass on the deployed instance before launch:** register, verify, sign in, reset a password, enable two-factor on the owner account, and check `GET /api/v1/system/status` (`emailConfigured` and `authSecretConfigured` should both be true).
 
-**Optional: bot protection on public sign-up (Cloudflare Turnstile).** A public site's register form gets probed quickly. To require a human check: create a Turnstile widget in the Cloudflare dashboard, set its secret on the API (`wrangler secret put TURNSTILE_SECRET_KEY`), and render the widget in your register form, passing the token it produces to `auth.signUp({ turnstileToken })`. With the secret unset, nothing changes. When set, `POST /api/v1/auth/sign-up/email` answers 400 `TURNSTILE_REQUIRED` without a token and 403 `TURNSTILE_FAILED` for a bad or reused token, and 503 if Cloudflare's verification can't be reached (it fails closed). A token is single-use, so reset the widget after a failed attempt. Staff accounts (Add User) and the sign-in routes are not affected.
+**Optional: bot protection on public sign-up (Cloudflare Turnstile).** A public site's register form gets probed quickly. Each deployer creates and owns their own widget — nothing here is a shared Kenresoft key. To require a human check:
+
+1. **Create a Turnstile widget** in the Cloudflare dashboard (dash.cloudflare.com → Turnstile) for your site's own domain(s). This gives you two values: a **site key** (public, safe to embed in frontend HTML/JS) and a **secret key** (never public).
+2. **Set the secret key on the API** — either `pnpm run setup` prompts for it (or `pnpm run update -- --turnstile` / `--turnstile --ci` with `TURNSTILE_SECRET_KEY_NEW` set, to change it later without touching anything else; `TURNSTILE_DISABLE=true` removes it), or by hand: `wrangler secret put TURNSTILE_SECRET_KEY`. Takes effect immediately, no redeploy needed.
+3. **Set the site key on your frontend and render the widget**, passing the token it produces to `auth.signUp({ turnstileToken })`. `examples/astro-site`'s `/account/register` page already does this end to end (reads `PUBLIC_TURNSTILE_SITE_KEY`, renders the widget, resets it on a failed attempt) — copy that pattern, or set `PUBLIC_TURNSTILE_SITE_KEY` in that example's own `.env` if you're using it as-is.
+
+With the secret unset, nothing changes — sign-up stays open. When set, `POST /api/v1/auth/sign-up/email` answers 400 `TURNSTILE_REQUIRED` without a token and 403 `TURNSTILE_FAILED` for a bad or reused token, and 503 if Cloudflare's verification can't be reached (it fails closed). A token is single-use, so reset the widget after a failed attempt. Staff accounts (Add User) and the sign-in routes are not affected.
 
 **Known limits.** Server-side content fetches from a frontend all arrive from the frontend Worker's address, so a very busy site can hit the public API's per-IP limit (300 requests per minute); cache those fetches or use a service binding if that applies to you. Two Workers under the same account's `workers.dev` count as one site to browsers, so that layout will not reproduce cross-site cookie problems; a custom domain or a site on another domain will.
 
@@ -554,6 +560,7 @@ pnpm run update -- --storage    # R2 bucket — status only, see below
 pnpm run update -- --database   # D1 database — status only, see below
 pnpm run update -- --domain          # Custom domain / workers.dev (API Worker) — see below
 pnpm run update -- --admin-domain    # Custom domain / workers.dev (Admin Worker) — see below
+pnpm run update -- --turnstile       # Bot check (Cloudflare Turnstile) on public sign-up
 ```
 
 Each shows the current value first (secrets are always reported as "configured"/"not
@@ -594,6 +601,11 @@ build target doesn't change just because a route was added.
 that automatically. Confirmed as a real, live gap: connecting a custom domain to the admin app
 without this command left every email pointing at its original `*.workers.dev` URL indefinitely.
 
+`--turnstile` sets, replaces, or removes `TURNSTILE_SECRET_KEY` — see "Optional: bot protection
+on public sign-up" above for the full setup (you still create the widget and set its *site key*
+on your frontend yourself; only the secret half lives on the API). Takes effect immediately, no
+redeploy needed.
+
 **Non-interactive / CI use**. Add `--ci` and set the corresponding `*_NEW` environment
 variable(s); an **omitted** variable always means "leave unchanged," never "clear" or reset to a
 default, matching the interactive commands' own behavior:
@@ -604,6 +616,7 @@ EMAIL_PROVIDER_NEW=resend EMAIL_FROM_NEW=noreply@example.com RESEND_API_KEY_NEW=
   pnpm run update -- --email --ci
 CUSTOM_DOMAIN_NEW=api.example.com DISABLE_WORKERS_DEV=true pnpm run update -- --domain --ci
 ADMIN_CUSTOM_DOMAIN_NEW=cms.example.com pnpm run update -- --admin-domain --ci
+TURNSTILE_SECRET_KEY_NEW=0x4AAA... pnpm run update -- --turnstile --ci   # or TURNSTILE_DISABLE=true to remove it
 ```
 
 Only one category may be targeted per invocation. Run the command again for a second category

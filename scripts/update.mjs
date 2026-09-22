@@ -18,7 +18,8 @@
 // used to (and other steps still do) prompt/act as if this were a first-ever install.
 //
 // Targeted reconfiguration: `pnpm run update -- --auth` / `--email` / `--storage` / `--database` /
-// `--domain` modifies exactly that one configuration category (scripts/lib/configure.mjs) and
+// `--domain` / `--turnstile` modifies exactly that one configuration category (scripts/lib/
+// configure.mjs) and
 // does NOT pull code, install deps, or touch any other category — the two concerns (picking up
 // new CMS code vs. changing this deployment's own configuration) are deliberately kept separate,
 // per this project's non-negotiable rule that a value only ever changes when explicitly
@@ -49,6 +50,7 @@
 //   pnpm run update -- --database
 //   pnpm run update -- --domain [--ci]
 //   pnpm run update -- --admin-domain [--ci]
+//   pnpm run update -- --turnstile [--ci]
 //   pnpm run update -- --branch develop     # or: UPDATE_BRANCH=develop pnpm run update
 
 import { execFileSync } from 'node:child_process';
@@ -67,6 +69,7 @@ import {
   configureDomain,
   configureEmail,
   configureStorage,
+  configureTurnstile,
 } from './lib/configure.mjs';
 import { closePrompt } from './lib/prompt.mjs';
 import { parseUpdateArgs } from './lib/update-args.mjs';
@@ -83,6 +86,7 @@ const CONFIGURE_FNS = {
   storage: configureStorage,
   database: configureDatabase,
   domain: configureDomain,
+  turnstile: configureTurnstile,
 };
 
 async function runTargetedConfigure(configureFn, ci, category) {
