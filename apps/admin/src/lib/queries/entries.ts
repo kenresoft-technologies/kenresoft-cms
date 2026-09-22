@@ -150,3 +150,14 @@ export function useRestoreEntryRevision(contentTypeId: string, entryId: string) 
     },
   });
 }
+
+export function useClearEntryRevisions(entryId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => apiClient.delete<void>(`/api/v1/admin/entries/${entryId}/revisions`),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['entries', 'by-id', entryId, 'revisions'] });
+    },
+  });
+}

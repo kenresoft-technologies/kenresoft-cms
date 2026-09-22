@@ -27,6 +27,7 @@ import type { Bindings } from '../../lib/env';
 import type { AuthedVariables } from '../../middleware/require-session';
 import { getContentTypeById } from '../../repositories/content-types';
 import {
+  clearEntryRevisions,
   createEntry,
   deleteEntry,
   getEntryById,
@@ -531,6 +532,45 @@ entriesRoute.openapi(
     }
     const revisions = await listEntryRevisions(db, entry.id);
     return c.json(revisions.map(toEntryRevision), 200);
+  },
+);
+
+// Gated the same as deleting the entry itself (canWriteEntry) — whoever can delete an entry can
+// also clear its history. Irreversible: no way to recover a cleared revision, matching every
+// other purge-style route added alongside this one.
+entriesRoute.openapi(
+  createRoute({
+    method: 'delete',
+    path: '/{id}/revisions',
+    tags: ['Entries'],
+    summary: "Permanently clear an entry's revision history",
+    request: { params: idParamSchema },
+    responses: {
+      204: { description: 'The revision history was cleared; the entry itself is untouched.' },
+      403: {
+        description: "An author's entry belonging to a different user.",
+        content: { 'application/json': { schema: forbiddenSchema } },
+      },
+      404: {
+        description: 'No entry with that id.',
+        content: { 'application/json': { schema: notFoundSchema } },
+      },
+    },
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const db = getDb(c);
+    const user = c.get('user');
+    const entry = await getEntryById(db, id);
+    if (!entry) {
+      return c.json({ error: 'Entry not found' }, 404);
+    }
+    if (!canWriteEntry(user.role, entry, user.id)) {
+      return c.json({ error: 'You can only clear history for entries you created' }, 403);
+    }
+    await clearEntryRevisions(db, entry.id);
+    await auditEntryChange(db, user.id, 'entry.revisions_cleared', entry);
+    return c.body(null, 204);
   },
 );
 

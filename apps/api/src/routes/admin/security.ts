@@ -16,7 +16,7 @@ import { createOpenApiApp } from '../../lib/openapi';
 import { requireElevatedSession } from '../../middleware/require-elevated-session';
 import { requireRole } from '../../middleware/require-role';
 import { countUnusedRecoveryCodes, replaceRecoveryCodes } from '../../repositories/recovery-codes';
-import { getUserById, updateUserRoleQuery } from '../../repositories/users';
+import { getUserById, isUserCommerceCustomer, updateUserRoleQuery } from '../../repositories/users';
 import { setSessionElevatedUntil } from '../../repositories/sessions';
 import type { Bindings } from '../../lib/env';
 import type { AuthedVariables } from '../../middleware/require-session';
@@ -148,6 +148,7 @@ securityRoute.openapi(
       disabled: newOwner.disabled,
       emailVerified: newOwner.emailVerified,
       developerToolsAccess: newOwner.developerToolsAccess,
+      isCommerceCustomer: await isUserCommerceCustomer(db, newOwner.id),
       createdAt: newOwner.createdAt.toISOString(),
       lastActiveAt: null,
     };

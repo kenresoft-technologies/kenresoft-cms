@@ -322,6 +322,25 @@ describe('admin routes (real D1)', () => {
     ).json<{ data: { title: string } }[]>();
     expect(revisionsAfterRestore).toHaveLength(3);
     expect(revisionsAfterRestore[0]!.data.title).toBe('Edited title');
+
+    const clearRes = await SELF.fetch(`https://example.com/api/v1/admin/entries/${entry.id}/revisions`, {
+      method: 'DELETE',
+      headers: { Cookie: cookie },
+    });
+    expect(clearRes.status).toBe(204);
+
+    const revisionsAfterClear = await (
+      await SELF.fetch(`https://example.com/api/v1/admin/entries/${entry.id}/revisions`, {
+        headers: { Cookie: cookie },
+      })
+    ).json<unknown[]>();
+    expect(revisionsAfterClear).toEqual([]);
+
+    // The entry itself is untouched (it was restored to "Original title" above).
+    const entryAfterClear = await (
+      await SELF.fetch(`https://example.com/api/v1/admin/entries/${entry.id}`, { headers: { Cookie: cookie } })
+    ).json<{ data: { title: string } }>();
+    expect(entryAfterClear.data.title).toBe('Original title');
   });
 
   it('404s restoring a non-existent revision', async () => {

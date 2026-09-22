@@ -7,11 +7,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { FieldInput } from '@/components/field-input';
 import type { FieldDefinition } from '@/lib/types';
 
-const { getMock } = vi.hoisted(() => ({ getMock: vi.fn() }));
+const { getMock, postMock } = vi.hoisted(() => ({ getMock: vi.fn(), postMock: vi.fn() }));
 
 vi.mock('@/lib/api-client', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api-client')>('@/lib/api-client');
-  return { ...actual, apiClient: { ...actual.apiClient, get: getMock } };
+  return { ...actual, apiClient: { ...actual.apiClient, get: getMock, post: postMock } };
 });
 
 function baseField(overrides: Partial<FieldDefinition>): FieldDefinition {
@@ -46,6 +46,7 @@ function renderField(field: FieldDefinition, value: unknown, onChange = vi.fn())
 describe('FieldInput', () => {
   beforeEach(() => {
     getMock.mockReset();
+    postMock.mockReset();
   });
 
   it('renders a real dropdown for a select field with configured options', async () => {
@@ -88,6 +89,55 @@ describe('FieldInput', () => {
     await userEvent.click(screen.getByAltText('photo.png'));
 
     expect(onChange).toHaveBeenCalledWith('m-1');
+  });
+
+  it('imports an image from Picsum via the media picker\'s "From Picsum" tab', async () => {
+    getMock.mockResolvedValue([]);
+    postMock.mockResolvedValue({
+      id: 'm-picsum-1',
+      filename: 'picsum-x-800x600.jpg',
+      altText: 'A random photo',
+      width: 800,
+      height: 600,
+    });
+    const field = baseField({ fieldType: 'media' });
+    const { onChange } = renderField(field, null);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Choose media' }));
+    await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
+    await userEvent.click(screen.getByRole('tab', { name: 'From Picsum' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Import from Picsum' }));
+
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith('m-picsum-1'));
+    expect(postMock).toHaveBeenCalledWith(
+      '/api/v1/admin/media/import-external',
+      expect.objectContaining({ source: 'picsum', width: 800, height: 600 }),
+    );
+  });
+
+  it('lets a url field pick a media file, filling the input with its public URL', async () => {
+    getMock.mockResolvedValue([
+      { id: 'm-1', filename: 'photo.png', contentType: 'image/png', size: 100, width: 10, height: 10, altText: null },
+    ]);
+    const field = baseField({ fieldType: 'url' });
+    const { onChange } = renderField(field, '');
+
+    expect(screen.getByLabelText('Field')).toHaveAttribute('type', 'url');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Choose from Media' }));
+    await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
+    await userEvent.click(screen.getByAltText('photo.png'));
+
+    expect(onChange).toHaveBeenCalledWith(expect.stringContaining('/api/v1/public/media/m-1/file'));
+  });
+
+  it('lets a url field still be typed into directly, without opening the picker', async () => {
+    const field = baseField({ fieldType: 'url' });
+    const { onChange } = renderField(field, '');
+
+    await userEvent.type(screen.getByLabelText('Field'), 'x');
+    expect(onChange).toHaveBeenCalledWith('x');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   it('renders a searchable combobox for a reference field targeting another content type', async () => {

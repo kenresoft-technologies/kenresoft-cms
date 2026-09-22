@@ -59,19 +59,34 @@ export async function createEntry(
   return entry!;
 }
 
+// entries.createdBy is `onDelete: 'set null'` — once a user is hard-deleted, the FK is gone
+// for good, indistinguishable from an entry that never had an author (e.g. the scheduled-publish
+// Cron Trigger's own writes). Rather than show a bare "—" either way, a deleted-user entry falls
+// back to the deployment's current owner's name — the CMS always has exactly one, so it's a
+// stable, meaningful attribution rather than a dead end. A genuinely system-authored entry
+// (createdBy was already null) still shows the owner fallback too, by the same reasoning: there's
+// no way to tell the two cases apart once the FK is gone, and "owner" is a reasonable default for
+// both.
+async function resolveFallbackAuthorName(db: Database): Promise<string | null> {
+  const owner = await db.query.user.findFirst({
+    where: eq(user.role, 'owner'),
+    columns: { name: true },
+  });
+  return owner?.name ?? null;
+}
+
 // Backs both the per-content-type Entries page and the unified admin "all entries" listing —
-// the same joined shape (content type name/slug, author name/email — both nullable: a
-// system-triggered write, e.g. the scheduled-publish Cron Trigger, has no acting user)
-// either way, so both screens can show an Author column, not just the unified one. Pass
-// contentTypeId to scope to one content type; omit it for every entry across every type.
-// folderId follows the same three-state convention as Media's own listMedia: undefined = every
-// folder (no filter), null = unfiled/root only, a string = entries in that one folder.
-export function listEntriesWithContentType(
+// the same joined shape (content type name/slug, author name/email — both nullable) either way,
+// so both screens can show an Author column, not just the unified one. Pass contentTypeId to
+// scope to one content type; omit it for every entry across every type. folderId follows the
+// same three-state convention as Media's own listMedia: undefined = every folder (no filter),
+// null = unfiled/root only, a string = entries in that one folder.
+export async function listEntriesWithContentType(
   db: Database,
   contentTypeId?: string,
   folderId?: string | null,
 ): Promise<EntryWithContentType[]> {
-  return db
+  const rows = await db
     .select({
       id: entries.id,
       contentTypeId: entries.contentTypeId,
@@ -98,6 +113,12 @@ export function listEntriesWithContentType(
       ),
     )
     .orderBy(desc(entries.updatedAt));
+
+  if (rows.every((row) => row.authorName !== null)) return rows;
+
+  const fallbackName = await resolveFallbackAuthorName(db);
+  if (!fallbackName) return rows;
+  return rows.map((row) => (row.authorName === null ? { ...row, authorName: fallbackName } : row));
 }
 
 export function getEntryBySlug(
@@ -175,6 +196,11 @@ export function listEntryRevisions(db: Database, entryId: string): Promise<Entry
     where: eq(entryRevisions.entryId, entryId),
     orderBy: desc(entryRevisions.createdAt),
   });
+}
+
+// Deliberately unconditional and irreversible — the entry itself is untouched, only its history.
+export async function clearEntryRevisions(db: Database, entryId: string): Promise<void> {
+  await db.delete(entryRevisions).where(eq(entryRevisions.entryId, entryId));
 }
 
 // Reuses updateEntry so the restore itself snapshots the pre-restore state too — restoring

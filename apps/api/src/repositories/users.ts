@@ -1,4 +1,4 @@
-import { and, count, desc, eq, inArray, ne, session, user } from '@kenresoft-cms/database';
+import { and, count, desc, eq, inArray, ne, pluginCommerceCustomerProfiles, session, user } from '@kenresoft-cms/database';
 import { USER_ROLES } from '@kenresoft-cms/contracts';
 import type { Database } from '@kenresoft-cms/database';
 import type { AccountRole } from '@kenresoft-cms/contracts';
@@ -11,6 +11,12 @@ export interface UserWithLastActive {
   disabled: boolean;
   emailVerified: boolean;
   developerToolsAccess: boolean;
+  // Derived from a plugin_commerce_customer_profiles row existing for this user id — never a
+  // stored column, so this stays accurate even if Commerce is later disabled/uninstalled and
+  // says nothing about whether Commerce is currently enabled, only whether this identity has
+  // ever been used as a storefront customer (role 'none' or otherwise — nothing stops a
+  // promoted CMS staff member's account from having placed an order earlier).
+  isCommerceCustomer: boolean;
   createdAt: Date;
   lastActiveAt: Date | null;
 }
@@ -28,17 +34,25 @@ function canSeeOwner(viewer: UserViewer): boolean {
 }
 
 // D1's drizzle query builder makes a groupBy+max join awkward, and the user count here is
-// small (single-site admin roster) — cheaper to fetch both tables and reduce in JS than to
-// fight the SQL for it.
+// small (single-site deployment) — cheaper to fetch every table and reduce in JS than to fight
+// the SQL for it. No pagination: this stays the one deliberately unbounded admin list in the
+// codebase (like content types), consistent with this CMS's single-site-per-deployment scale —
+// revisit with real pagination only if a real deployment's account count makes that necessary,
+// not speculatively.
 //
-// Lists CMS staff only (real CMS roles) — normal website users (role 'none', e.g. Commerce
-// customers) can number in the thousands and are managed by whatever feature owns them, not this
-// staff roster.
+// Lists every account with access to this deployment — website users (role 'none') and CMS
+// staff alike, one unified directory per the Core Users design (docs/ARCHITECTURE.md §10) —
+// distinguished by `role` ('none' vs. a real CMS role) and `isCommerceCustomer` (derived below),
+// not by two separate lists. This used to filter down to CMS roles only; broadened so the Users
+// page can be the account directory for every identity this deployment's better-auth table
+// holds, matching plugin-ecommerce's own "a customer is a plain Core user row" design.
 export async function listUsersWithLastActive(db: Database, viewer: UserViewer): Promise<UserWithLastActive[]> {
-  const roles = canSeeOwner(viewer) ? [...USER_ROLES] : USER_ROLES.filter((role) => role !== 'owner');
-  const [users, sessions] = await Promise.all([
+  const visibleCmsRoles = canSeeOwner(viewer) ? USER_ROLES : USER_ROLES.filter((role) => role !== 'owner');
+  const roles = [...visibleCmsRoles, 'none'];
+  const [users, sessions, customerProfiles] = await Promise.all([
     db.query.user.findMany({ where: inArray(user.role, roles), orderBy: [desc(user.createdAt)] }),
     db.select({ userId: session.userId, updatedAt: session.updatedAt }).from(session),
+    db.select({ userId: pluginCommerceCustomerProfiles.userId }).from(pluginCommerceCustomerProfiles),
   ]);
 
   const lastActiveByUser = new Map<string, Date>();
@@ -48,6 +62,7 @@ export async function listUsersWithLastActive(db: Database, viewer: UserViewer):
       lastActiveByUser.set(row.userId, row.updatedAt);
     }
   }
+  const customerUserIds = new Set(customerProfiles.map((row) => row.userId));
 
   return users.map((row) => ({
     id: row.id,
@@ -57,9 +72,20 @@ export async function listUsersWithLastActive(db: Database, viewer: UserViewer):
     disabled: row.disabled,
     emailVerified: row.emailVerified,
     developerToolsAccess: row.developerToolsAccess,
+    isCommerceCustomer: customerUserIds.has(row.id),
     createdAt: row.createdAt,
     lastActiveAt: lastActiveByUser.get(row.id) ?? null,
   }));
+}
+
+// Used by the single-user write routes (role/disabled/developer-tools-access changes) so their
+// response's isCommerceCustomer stays truthful without re-running the full list query.
+export async function isUserCommerceCustomer(db: Database, userId: string): Promise<boolean> {
+  const row = await db.query.pluginCommerceCustomerProfiles.findFirst({
+    where: eq(pluginCommerceCustomerProfiles.userId, userId),
+    columns: { userId: true },
+  });
+  return row !== undefined;
 }
 
 export function getUserById(db: Database, id: string) {

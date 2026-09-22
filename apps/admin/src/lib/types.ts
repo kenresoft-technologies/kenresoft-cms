@@ -34,6 +34,7 @@ export {
 // Type-only — fully erased at build regardless of which contracts module defines them, so
 // these go through the normal barrel.
 export type {
+  AccountRole,
   AdminUser,
   AnyMediaContentType,
   AuditLogEntryWithActor,

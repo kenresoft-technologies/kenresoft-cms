@@ -34,6 +34,41 @@ describe('users routes (real D1)', () => {
     expect(users.map((u) => u.email).sort()).toEqual(['users-editor@example.test', 'users-owner@example.test']);
   });
 
+  it('lists website users and Commerce customers alongside CMS staff, classified correctly', async () => {
+    const ownerCookie = await authedCookie('users-directory-owner@example.test');
+
+    // A plain website user (role 'none', no Commerce profile) and a Commerce customer (role
+    // 'none' + a plugin_commerce_customer_profiles row) — inserted directly, since sign-up
+    // through the real flow always defaults to 'editor' after the first account.
+    await env.DB.exec(
+      "INSERT INTO user (id, name, email, email_verified, role) VALUES ('website-user-1', 'Website User', 'website-user@example.test', 1, 'none')",
+    );
+    await env.DB.exec(
+      "INSERT INTO user (id, name, email, email_verified, role) VALUES ('customer-1', 'A Customer', 'customer@example.test', 1, 'none')",
+    );
+    await env.DB.exec(
+      "INSERT INTO plugin_commerce_customer_profiles (user_id, phone) VALUES ('customer-1', NULL)",
+    );
+
+    const response = await SELF.fetch('https://example.com/api/v1/admin/users', {
+      headers: { Cookie: ownerCookie },
+    });
+    expect(response.status).toBe(200);
+    const users = await response.json<
+      { id: string; email: string; role: string; isCommerceCustomer: boolean }[]
+    >();
+    expect(users).toHaveLength(3); // owner + website user + customer
+
+    const websiteUser = users.find((u) => u.id === 'website-user-1')!;
+    expect(websiteUser).toMatchObject({ role: 'none', isCommerceCustomer: false });
+
+    const customer = users.find((u) => u.id === 'customer-1')!;
+    expect(customer).toMatchObject({ role: 'none', isCommerceCustomer: true });
+
+    const owner = users.find((u) => u.email === 'users-directory-owner@example.test')!;
+    expect(owner).toMatchObject({ role: 'owner', isCommerceCustomer: false });
+  });
+
   it('rejects role changes from an editor, allows them from an owner', async () => {
     const ownerCookie = await authedCookie('role-owner@example.test');
     const editorCookie = await authedCookie('role-editor@example.test');
