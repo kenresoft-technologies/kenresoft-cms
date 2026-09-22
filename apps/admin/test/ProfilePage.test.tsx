@@ -93,11 +93,11 @@ describe('ProfilePage', () => {
     expect(screen.getByText(new Date('2026-01-01T00:00:00.000Z').toLocaleDateString())).toBeInTheDocument();
   });
 
-  it('has no fabricated phone or bio inputs', () => {
+  it('has no fabricated bio input, but does have a real phone field', () => {
     renderPage();
 
-    expect(screen.queryByLabelText(/phone/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/bio/i)).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Phone')).toBeInTheDocument();
   });
 
   it('updates the name through the Profile tab', async () => {
@@ -109,12 +109,12 @@ describe('ProfilePage', () => {
     await userEvent.type(nameInput, 'New Name');
     await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
 
-    // preferredMailClient is always sent alongside name — '' (not omitted/undefined) for the
-    // default "Default (your device's mail app)" selection, since better-auth's updateUser
-    // never delivers an omitted/undefined key to the server at all (a real, previously-missed
-    // gap: it would have made "switch back to default" silently no-op).
+    // preferredMailClient/phone are always sent alongside name — '' (not omitted/undefined) for
+    // an unset value, since better-auth's updateUser never delivers an omitted/undefined key to
+    // the server at all (a real, previously-missed gap: it would have made "switch back to
+    // default"/"clear my phone number" silently no-op).
     await waitFor(() =>
-      expect(updateUserMock).toHaveBeenCalledWith({ name: 'New Name', preferredMailClient: '' }),
+      expect(updateUserMock).toHaveBeenCalledWith({ name: 'New Name', phone: '', preferredMailClient: '' }),
     );
   });
 
@@ -127,7 +127,23 @@ describe('ProfilePage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
 
     await waitFor(() =>
-      expect(updateUserMock).toHaveBeenCalledWith({ name: 'Acme Admin', preferredMailClient: 'gmail' }),
+      expect(updateUserMock).toHaveBeenCalledWith({ name: 'Acme Admin', phone: '', preferredMailClient: 'gmail' }),
+    );
+  });
+
+  it('saves a phone number through the Profile tab', async () => {
+    updateUserMock.mockResolvedValue({ error: null });
+
+    renderPage();
+    await userEvent.type(screen.getByLabelText('Phone'), '+15551234567');
+    await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    await waitFor(() =>
+      expect(updateUserMock).toHaveBeenCalledWith({
+        name: 'Acme Admin',
+        phone: '+15551234567',
+        preferredMailClient: '',
+      }),
     );
   });
 

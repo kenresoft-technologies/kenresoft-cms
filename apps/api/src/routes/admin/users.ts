@@ -7,6 +7,7 @@ import {
   sessionSchema,
   updateUserDeveloperToolsAccessSchema,
   updateUserDisabledSchema,
+  updateUserInternalNotesSchema,
   updateUserRoleSchema,
 } from '@kenresoft-cms/contracts';
 import type { AdminUser, Session, UserRole } from '@kenresoft-cms/contracts';
@@ -28,6 +29,7 @@ import {
   listUsersWithLastActive,
   updateUserDeveloperToolsAccess,
   updateUserDisabled,
+  updateUserInternalNotes,
   updateUserRole,
 } from '../../repositories/users';
 import {
@@ -84,6 +86,8 @@ usersRoute.openapi(
       emailVerified: user.emailVerified,
       developerToolsAccess: user.developerToolsAccess,
       isCommerceCustomer: user.isCommerceCustomer,
+      phone: user.phone,
+      internalNotes: user.internalNotes,
       createdAt: user.createdAt.toISOString(),
       lastActiveAt: user.lastActiveAt?.toISOString() ?? null,
     }));
@@ -178,6 +182,8 @@ usersRoute.openapi(
       emailVerified: false,
       developerToolsAccess: false,
       isCommerceCustomer: false,
+      phone: null,
+      internalNotes: null,
       createdAt: new Date(newUser.createdAt).toISOString(),
       lastActiveAt: null,
     };
@@ -286,6 +292,8 @@ usersRoute.openapi(
       emailVerified: updated.emailVerified,
       developerToolsAccess: updated.developerToolsAccess,
       isCommerceCustomer: await isUserCommerceCustomer(db, updated.id),
+      phone: updated.phone,
+      internalNotes: updated.internalNotes,
       createdAt: updated.createdAt.toISOString(),
       lastActiveAt: null,
     };
@@ -438,6 +446,8 @@ usersRoute.openapi(
       emailVerified: updated.emailVerified,
       developerToolsAccess: updated.developerToolsAccess,
       isCommerceCustomer: await isUserCommerceCustomer(db, updated.id),
+      phone: updated.phone,
+      internalNotes: updated.internalNotes,
       createdAt: updated.createdAt.toISOString(),
       lastActiveAt: null,
     };
@@ -499,6 +509,68 @@ usersRoute.openapi(
       emailVerified: updated.emailVerified,
       developerToolsAccess: updated.developerToolsAccess,
       isCommerceCustomer: await isUserCommerceCustomer(db, updated.id),
+      phone: updated.phone,
+      internalNotes: updated.internalNotes,
+      createdAt: updated.createdAt.toISOString(),
+      lastActiveAt: null,
+    };
+    return c.json(response, 200);
+  },
+);
+
+// Admin-only. Never elevation-gated and never routed through better-auth's own updateUser (the
+// internalNotes additionalField is declared input: false specifically so this is the only write
+// path) — staff-only support context (a ticket reference, why an account was disabled), never
+// visible to the account owner themselves.
+usersRoute.openapi(
+  createRoute({
+    method: 'patch',
+    path: '/{id}/notes',
+    tags: ['Users'],
+    summary: "Set or clear an admin-only note on a user's account (admin only)",
+    middleware: requireRole('admin'),
+    request: {
+      params: idParamSchema,
+      body: { content: { 'application/json': { schema: updateUserInternalNotesSchema } } },
+    },
+    responses: {
+      200: {
+        description: 'The updated user.',
+        content: { 'application/json': { schema: adminUserSchema } },
+      },
+      404: {
+        description: 'No user with that id.',
+        content: { 'application/json': { schema: notFoundSchema } },
+      },
+    },
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const db = getDb(c);
+    const target = await getUserVisibleTo(db, id, c.get('user'));
+    if (!target) {
+      return c.json({ error: 'User not found' }, 404);
+    }
+
+    const { internalNotes } = c.req.valid('json');
+    const updated = await updateUserInternalNotes(db, target.id, internalNotes);
+    await recordAudit(db, {
+      actorUserId: c.get('user').id,
+      action: 'user.notes_updated',
+      targetType: 'user',
+      targetId: target.id,
+    });
+    const response: AdminUser = {
+      id: updated.id,
+      name: updated.name,
+      email: updated.email,
+      role: updated.role as UserRole,
+      disabled: updated.disabled,
+      emailVerified: updated.emailVerified,
+      developerToolsAccess: updated.developerToolsAccess,
+      isCommerceCustomer: await isUserCommerceCustomer(db, updated.id),
+      phone: updated.phone,
+      internalNotes: updated.internalNotes,
       createdAt: updated.createdAt.toISOString(),
       lastActiveAt: null,
     };

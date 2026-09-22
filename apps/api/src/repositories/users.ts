@@ -1,4 +1,16 @@
-import { and, count, desc, eq, inArray, ne, pluginCommerceCustomerProfiles, session, user } from '@kenresoft-cms/database';
+import {
+  and,
+  count,
+  desc,
+  eq,
+  inArray,
+  ne,
+  pluginCommerceCustomerAddresses,
+  pluginCommerceCustomerProfiles,
+  pluginCommerceOrders,
+  session,
+  user,
+} from '@kenresoft-cms/database';
 import { USER_ROLES } from '@kenresoft-cms/contracts';
 import type { Database } from '@kenresoft-cms/database';
 import type { AccountRole } from '@kenresoft-cms/contracts';
@@ -11,12 +23,18 @@ export interface UserWithLastActive {
   disabled: boolean;
   emailVerified: boolean;
   developerToolsAccess: boolean;
-  // Derived from a plugin_commerce_customer_profiles row existing for this user id — never a
-  // stored column, so this stays accurate even if Commerce is later disabled/uninstalled and
-  // says nothing about whether Commerce is currently enabled, only whether this identity has
-  // ever been used as a storefront customer (role 'none' or otherwise — nothing stops a
-  // promoted CMS staff member's account from having placed an order earlier).
+  // Derived, never a stored column, from real Commerce engagement — a placed order, a saved
+  // address, or a saved profile (phone) for this user id — so this stays accurate even if
+  // Commerce is later disabled/uninstalled, and says nothing about whether Commerce is currently
+  // enabled, only whether this identity has ever actually acted as a storefront customer (role
+  // 'none' or otherwise — nothing stops a promoted CMS staff member's account from having placed
+  // an order earlier). Deliberately NOT just "a plugin_commerce_customer_profiles row exists":
+  // that table is only ever written when someone sets a profile field like phone number
+  // (updateOwnProfile), so a customer who registered through Commerce and placed real orders but
+  // never touched their profile was previously, wrongly, shown as a plain "Website User".
   isCommerceCustomer: boolean;
+  phone: string | null;
+  internalNotes: string | null;
   createdAt: Date;
   lastActiveAt: Date | null;
 }
@@ -49,10 +67,12 @@ function canSeeOwner(viewer: UserViewer): boolean {
 export async function listUsersWithLastActive(db: Database, viewer: UserViewer): Promise<UserWithLastActive[]> {
   const visibleCmsRoles = canSeeOwner(viewer) ? USER_ROLES : USER_ROLES.filter((role) => role !== 'owner');
   const roles = [...visibleCmsRoles, 'none'];
-  const [users, sessions, customerProfiles] = await Promise.all([
+  const [users, sessions, customerProfiles, customerAddresses, customerOrders] = await Promise.all([
     db.query.user.findMany({ where: inArray(user.role, roles), orderBy: [desc(user.createdAt)] }),
     db.select({ userId: session.userId, updatedAt: session.updatedAt }).from(session),
     db.select({ userId: pluginCommerceCustomerProfiles.userId }).from(pluginCommerceCustomerProfiles),
+    db.selectDistinct({ userId: pluginCommerceCustomerAddresses.customerId }).from(pluginCommerceCustomerAddresses),
+    db.selectDistinct({ userId: pluginCommerceOrders.customerId }).from(pluginCommerceOrders),
   ]);
 
   const lastActiveByUser = new Map<string, Date>();
@@ -62,7 +82,11 @@ export async function listUsersWithLastActive(db: Database, viewer: UserViewer):
       lastActiveByUser.set(row.userId, row.updatedAt);
     }
   }
-  const customerUserIds = new Set(customerProfiles.map((row) => row.userId));
+  const customerUserIds = new Set([
+    ...customerProfiles.map((row) => row.userId),
+    ...customerAddresses.map((row) => row.userId),
+    ...customerOrders.map((row) => row.userId).filter((id): id is string => id !== null),
+  ]);
 
   return users.map((row) => ({
     id: row.id,
@@ -73,19 +97,33 @@ export async function listUsersWithLastActive(db: Database, viewer: UserViewer):
     emailVerified: row.emailVerified,
     developerToolsAccess: row.developerToolsAccess,
     isCommerceCustomer: customerUserIds.has(row.id),
+    phone: row.phone,
+    internalNotes: row.internalNotes,
     createdAt: row.createdAt,
     lastActiveAt: lastActiveByUser.get(row.id) ?? null,
   }));
 }
 
 // Used by the single-user write routes (role/disabled/developer-tools-access changes) so their
-// response's isCommerceCustomer stays truthful without re-running the full list query.
+// response's isCommerceCustomer stays truthful without re-running the full list query. Same
+// three-signal definition as listUsersWithLastActive above — a profile row alone under-counts
+// real customers who never touched their profile.
 export async function isUserCommerceCustomer(db: Database, userId: string): Promise<boolean> {
-  const row = await db.query.pluginCommerceCustomerProfiles.findFirst({
-    where: eq(pluginCommerceCustomerProfiles.userId, userId),
-    columns: { userId: true },
-  });
-  return row !== undefined;
+  const [profile, address, order] = await Promise.all([
+    db.query.pluginCommerceCustomerProfiles.findFirst({
+      where: eq(pluginCommerceCustomerProfiles.userId, userId),
+      columns: { userId: true },
+    }),
+    db.query.pluginCommerceCustomerAddresses.findFirst({
+      where: eq(pluginCommerceCustomerAddresses.customerId, userId),
+      columns: { id: true },
+    }),
+    db.query.pluginCommerceOrders.findFirst({
+      where: eq(pluginCommerceOrders.customerId, userId),
+      columns: { id: true },
+    }),
+  ]);
+  return profile !== undefined || address !== undefined || order !== undefined;
 }
 
 export function getUserById(db: Database, id: string) {
@@ -138,6 +176,11 @@ export async function updateUserDisabled(db: Database, id: string, disabled: boo
 
 export async function updateUserDeveloperToolsAccess(db: Database, id: string, developerToolsAccess: boolean) {
   const [row] = await db.update(user).set({ developerToolsAccess }).where(eq(user.id, id)).returning();
+  return row!;
+}
+
+export async function updateUserInternalNotes(db: Database, id: string, internalNotes: string | null) {
+  const [row] = await db.update(user).set({ internalNotes }).where(eq(user.id, id)).returning();
   return row!;
 }
 

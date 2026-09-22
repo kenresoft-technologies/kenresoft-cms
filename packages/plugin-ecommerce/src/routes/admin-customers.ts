@@ -10,9 +10,17 @@ import { getCustomerById, listCustomers, setCustomerDisabled } from '../reposito
 // CMS-staff-facing, session-gated like every other admin route — but gated at 'admin' rather
 // than catalog's 'editor' floor: customer PII (email, address, phone) is closer to this
 // codebase's own webhooks/Users-management sensitivity than day-to-day catalog editing
-// (docs/PLUGINS.md's Commerce section). Customers are website users of the one shared identity
-// system (role 'none'); these routes only ever see and touch those, never CMS staff accounts. A
-// customer's password, sessions and email verification are Core's, not managed here.
+// (docs/PLUGINS.md's Commerce section). Every account these routes can touch (list, detail,
+// disable, resend-verification) is a website user of the one shared identity system (role
+// 'none'); these routes never see or touch CMS staff accounts. A customer's password, sessions
+// and email verification are Core's, not managed here.
+//
+// listCustomers (below) deliberately narrows further, to only website users with real Commerce
+// engagement (a placed order, a saved address, or a saved profile field) — matching Core Users'
+// own Website-User/Commerce-Customer classification (apps/api/src/repositories/users.ts). A
+// plain sign-up who's never touched Commerce is a website user, not a customer, and doesn't
+// belong on this list — see listCustomers/getCustomerById's own comments for the full reasoning,
+// including why the single-id lookup below is deliberately NOT narrowed the same way.
 export const adminCustomersRoutes = createPluginOpenApiApp<{ Bindings: PluginBindings; Variables: PluginVariables }>();
 
 const errorSchema = z.object({ error: z.string() });

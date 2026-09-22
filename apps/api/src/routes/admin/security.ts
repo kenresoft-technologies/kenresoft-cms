@@ -149,6 +149,8 @@ securityRoute.openapi(
       emailVerified: newOwner.emailVerified,
       developerToolsAccess: newOwner.developerToolsAccess,
       isCommerceCustomer: await isUserCommerceCustomer(db, newOwner.id),
+      phone: newOwner.phone,
+      internalNotes: newOwner.internalNotes,
       createdAt: newOwner.createdAt.toISOString(),
       lastActiveAt: null,
     };

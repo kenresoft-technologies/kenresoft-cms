@@ -91,13 +91,20 @@ describe('FieldInput', () => {
     expect(onChange).toHaveBeenCalledWith('m-1');
   });
 
-  it('imports an image from Picsum via the media picker\'s "From Picsum" tab', async () => {
+  it('browses, previews, and imports a specific photo from Picsum via the media picker\'s "From Picsum" tab', async () => {
     getMock.mockResolvedValue([]);
+    const fetchMock = vi.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => [
+        { id: '0', author: 'Alejandro Escamilla', width: 5000, height: 3333 },
+        { id: '1', author: 'Alejandro Escamilla', width: 5000, height: 3333 },
+      ],
+    } as Response);
     postMock.mockResolvedValue({
       id: 'm-picsum-1',
-      filename: 'picsum-x-800x600.jpg',
-      altText: 'A random photo',
-      width: 800,
+      filename: 'picsum-0-900x600.jpg',
+      altText: 'Photo by Alejandro Escamilla via Picsum',
+      width: 900,
       height: 600,
     });
     const field = baseField({ fieldType: 'media' });
@@ -106,13 +113,22 @@ describe('FieldInput', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Choose media' }));
     await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
     await userEvent.click(screen.getByRole('tab', { name: 'From Picsum' }));
-    await userEvent.click(screen.getByRole('button', { name: 'Import from Picsum' }));
+
+    // Real photos are browsed and picked, not a blind width/height/seed guess.
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('https://picsum.photos/v2/list'));
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /Photo by Alejandro Escamilla/ })).toHaveLength(2));
+    await userEvent.click(screen.getAllByRole('button', { name: /Photo by Alejandro Escamilla/ })[0]!);
+
+    // A full-size preview of the actual chosen photo, not an unseen import.
+    expect(screen.getByAltText('Preview by Alejandro Escamilla')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Import this photo' }));
 
     await waitFor(() => expect(onChange).toHaveBeenCalledWith('m-picsum-1'));
     expect(postMock).toHaveBeenCalledWith(
       '/api/v1/admin/media/import-external',
-      expect.objectContaining({ source: 'picsum', width: 800, height: 600 }),
+      expect.objectContaining({ source: 'picsum', pictureId: '0' }),
     );
+    fetchMock.mockRestore();
   });
 
   it('lets a url field pick a media file, filling the input with its public URL', async () => {
