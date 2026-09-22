@@ -96,7 +96,26 @@ export const publicMediaSchema = z.object({
 // GET .../media/:id route where the caller already has the id.
 export const publicMediaListItemSchema = publicMediaSchema.extend({ id: z.string() });
 
+// Importing from an external stock-photo source, starting with Picsum (picsum.photos — no API
+// key needed, unlike Pixabay/Unsplash-style providers). The image is downloaded server-side and
+// stored in R2 like any other upload (media-service.ts's uploadMedia), never hot-linked — this
+// deployment stays the only thing a visitor's request ever depends on, and the file survives
+// Picsum going away or changing its own images at that seed.
+export const IMPORT_MEDIA_SOURCES = ['picsum'] as const;
+
+export const importExternalMediaSchema = z.object({
+  source: z.enum(IMPORT_MEDIA_SOURCES),
+  width: z.number().int().min(1).max(5000),
+  height: z.number().int().min(1).max(5000),
+  // Omitted = a fresh random image each time; a fixed seed re-fetches the same image (matching
+  // Picsum's own /seed/{seed}/{w}/{h} URL convention), useful for "actually, that same one".
+  seed: z.string().min(1).max(200).optional(),
+  altText: z.string().max(500).optional(),
+  folderId: z.string().min(1).optional(),
+});
+
 export type Media = z.infer<typeof mediaSchema>;
+export type ImportExternalMediaInput = z.infer<typeof importExternalMediaSchema>;
 export type PublicMediaListItem = z.infer<typeof publicMediaListItemSchema>;
 export type PublicMedia = z.infer<typeof publicMediaSchema>;
 export type MediaFolder = z.infer<typeof mediaFolderSchema>;
