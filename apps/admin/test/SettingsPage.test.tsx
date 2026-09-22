@@ -131,6 +131,43 @@ describe('SettingsPage', () => {
     expect(screen.queryByRole('button', { name: 'Save changes' })).not.toBeInTheDocument();
   });
 
+  it('shows the Turnstile site key on the API section when configured, and a plain "Not set" badge otherwise', async () => {
+    useSessionMock.mockReturnValue({ data: { user: { role: 'admin', email: 'admin@example.test' } } });
+    getMock.mockImplementation((path: string) => {
+      if (path === '/api/v1/system/status') {
+        return Promise.resolve({ emailConfigured: true, authSecretConfigured: true, turnstileSiteKey: '0x4AAAAAAAtest' });
+      }
+      return Promise.resolve(null);
+    });
+
+    renderPage();
+    await waitFor(() => expect(screen.getByLabelText('Site name')).toBeInTheDocument());
+    await userEvent.click(screen.getByRole('button', { name: 'API' }));
+
+    await waitFor(() => expect(screen.getByText('Turnstile bot check')).toBeInTheDocument());
+    expect(screen.getByText(/@kenresoft-cms\/astro's system.status\(\)/)).toBeInTheDocument();
+    // "Configured" also appears for Email delivery/Auth secret above (both true in this mock too)
+    // — assert there are now three, not that this specific one is uniquely findable by text alone.
+    expect(screen.getAllByText('Configured')).toHaveLength(3);
+  });
+
+  it('flags Turnstile as "not set" when TURNSTILE_SITE_KEY is unset, without implying the bot check is off', async () => {
+    useSessionMock.mockReturnValue({ data: { user: { role: 'admin', email: 'admin@example.test' } } });
+    getMock.mockImplementation((path: string) => {
+      if (path === '/api/v1/system/status') {
+        return Promise.resolve({ emailConfigured: true, authSecretConfigured: true, turnstileSiteKey: null });
+      }
+      return Promise.resolve(null);
+    });
+
+    renderPage();
+    await waitFor(() => expect(screen.getByLabelText('Site name')).toBeInTheDocument());
+    await userEvent.click(screen.getByRole('button', { name: 'API' }));
+
+    await waitFor(() => expect(screen.getByText('No site key set (TURNSTILE_SITE_KEY).', { exact: false })).toBeInTheDocument());
+    expect(screen.getByText('Not set', { selector: 'span' })).toBeInTheDocument();
+  });
+
   it('groups sections under SITE/EXPERIENCE/SYSTEM/DEVELOPER headings and lists unavailable sections separately under Coming soon', async () => {
     useSessionMock.mockReturnValue({ data: { user: { role: 'admin', email: 'admin@example.test' } } });
     getMock.mockResolvedValue(null);

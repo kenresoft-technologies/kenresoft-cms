@@ -22,7 +22,11 @@ const requestSchema = z.object({
 });
 const errorSchema = z.object({ error: z.string() });
 const successSchema = z.object({ message: z.string() });
-const statusSchema = z.object({ emailConfigured: z.boolean(), authSecretConfigured: z.boolean() });
+const statusSchema = z.object({
+  emailConfigured: z.boolean(),
+  authSecretConfigured: z.boolean(),
+  turnstileSiteKey: z.string().nullable(),
+});
 
 // Unauthenticated by design — this is deployment-wide, not per-account, so it carries none of
 // the account-enumeration risk that keeps /public/password-reset/request's response generic
@@ -46,22 +50,32 @@ const statusSchema = z.object({ emailConfigured: z.boolean(), authSecretConfigur
 // this field will only ever read `false` for a request that never reaches an authed route in
 // the first place — still worth exposing here since this endpoint is unauthenticated and cheap
 // to check proactively, before anything else 500s.
+//
+// turnstileSiteKey is `null`, not omitted, whenever TURNSTILE_SITE_KEY isn't set — this is a
+// convenience lookup for a frontend rendering the widget (a Turnstile site key is designed to be
+// public, unlike every other field this route exposes as a boolean), not a security-relevant
+// value, so there's no reason to hide its absence the way authSecretConfigured/emailConfigured's
+// underlying values are hidden.
 systemRoute.openapi(
   createRoute({
     method: 'get',
     path: '/status',
     tags: ['System'],
-    summary: 'Deployment-wide feature availability (email delivery, auth secret)',
+    summary: 'Deployment-wide feature availability (email delivery, auth secret, Turnstile site key)',
     responses: {
       200: {
-        description: 'Whether this deployment has a real email provider and a real auth secret configured.',
+        description: 'Whether this deployment has a real email provider and auth secret configured, and its Turnstile site key if one is set.',
         content: { 'application/json': { schema: statusSchema } },
       },
     },
   }),
   (c) => {
     return c.json(
-      { emailConfigured: isEmailProviderConfigured(c.env), authSecretConfigured: isAuthSecretConfigured(c.env.BETTER_AUTH_SECRET) },
+      {
+        emailConfigured: isEmailProviderConfigured(c.env),
+        authSecretConfigured: isAuthSecretConfigured(c.env.BETTER_AUTH_SECRET),
+        turnstileSiteKey: c.env.TURNSTILE_SITE_KEY ?? null,
+      },
       200,
     );
   },
