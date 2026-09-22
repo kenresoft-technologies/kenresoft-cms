@@ -3,10 +3,11 @@ import { auditLogEntryWithActorSchema, listAuditLogQuerySchema } from '@kenresof
 import type { AuditLogEntryWithActor } from '@kenresoft-cms/contracts';
 import { z } from 'zod';
 
+import { recordAudit } from '../../lib/audit';
 import { getDb } from '../../lib/db';
 import { createOpenApiApp } from '../../lib/openapi';
 import { requireRole } from '../../middleware/require-role';
-import { listAuditLog } from '../../repositories/audit-log';
+import { clearAuditLog, listAuditLog } from '../../repositories/audit-log';
 import type { AuditLogEntryWithActor as DbAuditLogEntryWithActor } from '../../repositories/audit-log';
 import type { Bindings } from '../../lib/env';
 import type { AuthedVariables } from '../../middleware/require-session';
@@ -60,5 +61,31 @@ auditLogRoute.openapi(
       hideOwner: c.get('user').role !== 'owner',
     });
     return c.json(rows.map(toAuditLogEntry), 200);
+  },
+);
+
+// Owner-only, stricter than the GET's admin floor — clearing the accountability trail
+// (including of other admins' own actions) is sensitive enough to reserve for the one role
+// nothing else in the CMS can touch either. Irreversible: no undo, no export-first step here —
+// an owner who wants a copy first should read the GET route before clearing.
+auditLogRoute.openapi(
+  createRoute({
+    method: 'delete',
+    path: '/',
+    tags: ['Audit log'],
+    summary: 'Permanently clear every audit log entry (owner only)',
+    middleware: requireRole('owner'),
+    responses: {
+      204: { description: 'The audit log was cleared.' },
+    },
+  }),
+  async (c) => {
+    const db = getDb(c);
+    const user = c.get('user');
+    await clearAuditLog(db);
+    // Recorded after the clear, not before — this is the one row guaranteed to survive it,
+    // so the log is never left with zero evidence that a wipe happened, by whom, and when.
+    await recordAudit(db, { actorUserId: user.id, action: 'audit_log.cleared' });
+    return c.body(null, 204);
   },
 );
