@@ -11,8 +11,10 @@
 import { runWrangler } from './wrangler-cli.mjs';
 import { ask, confirm, select } from './prompt.mjs';
 import {
+  addCorsOrigin,
   addCustomDomainRoute,
   readTomlFile,
+  removeCustomDomainRoute,
   removeVarLine,
   replaceCorsOrigin,
   setVarLine,
@@ -459,8 +461,12 @@ export function normalizeAdminDomain(input) {
 // CORS_ORIGINS value and whether it actually changed — split out from the impure orchestration
 // below so the CORS-migration rules themselves (replace old admin origin, preserve every unrelated
 // origin, dedupe, handle "no existing config") are directly unit-testable.
+//
+// `oldAdminOrigin` is `null` when the caller could not confidently identify a single old origin to
+// retire (see configureAdminDomain's own ambiguity handling below) — in that case the only safe
+// action is to *add* the new origin and touch nothing else, never guess at what to replace/remove.
 export function planAdminDomainCorsUpdate(apiToml, oldAdminOrigin, newAdminOrigin) {
-  return replaceCorsOrigin(apiToml, oldAdminOrigin, newAdminOrigin);
+  return oldAdminOrigin ? replaceCorsOrigin(apiToml, oldAdminOrigin, newAdminOrigin) : addCorsOrigin(apiToml, newAdminOrigin);
 }
 
 export async function configureAdminDomain({
@@ -484,8 +490,28 @@ export async function configureAdminDomain({
   // real *.workers.dev URL without guessing at the account's subdomain is a no-config-change
   // deploy (harmless and idempotent — the same "deploy once just to read the real URL" pattern
   // configureAuth's own 'reset' choice already uses for the API Worker).
+  //
+  // Real, reported incident this guards against: an earlier version of this function always
+  // picked `existingDomains[0]` as "the" old origin. With more than one custom-domain route
+  // already on the Admin Worker (a prior manual wrangler.toml edit, an earlier partial migration
+  // attempt, ...), that guess can silently be wrong — and handing a wrong `oldAdminOrigin` to the
+  // CORS-migration step then replaces/removes a completely unrelated, still-in-use origin from a
+  // live deployment's CORS_ORIGINS with no warning. Never guess when there's more than one
+  // candidate: resolve it explicitly (an env var in CI, a prompt interactively), or fall back to
+  // add-only — touching no existing CORS entry at all — if it's left unresolved.
   const existingDomains = currentStatus.domain.customDomains;
-  const oldAdminOrigin = existingDomains.length > 0 ? `https://${existingDomains[0]}` : deployAdmin({ adminDir });
+  let oldAdminOrigin;
+  let oldDomain = null; // bare hostname; only set once there's a real `[[routes]]` entry to retire
+  let ambiguousOldDomain = false;
+  if (existingDomains.length === 0) {
+    oldAdminOrigin = deployAdmin({ adminDir });
+  } else if (existingDomains.length === 1) {
+    oldDomain = existingDomains[0];
+    oldAdminOrigin = `https://${oldDomain}`;
+  } else {
+    ambiguousOldDomain = true;
+    oldAdminOrigin = null;
+  }
 
   const applyNewDomain = (domainInput, disableWorkersDev) => {
     let toml = addCustomDomainRoute(readAdminToml(), domainInput);
@@ -537,6 +563,28 @@ export async function configureAdminDomain({
     const newAdminOrigin = `https://${newDomain}`;
     const disableWorkersDev = String(env.DISABLE_WORKERS_DEV ?? '').toLowerCase() === 'true';
 
+    if (ambiguousOldDomain) {
+      const oldDomainInput = resolveInput(env.ADMIN_OLD_DOMAIN_NEW);
+      if (oldDomainInput.changed) {
+        const candidate = normalizeAdminDomain(oldDomainInput.value);
+        if (!existingDomains.includes(candidate)) {
+          throw new Error(
+            `ADMIN_OLD_DOMAIN_NEW="${oldDomainInput.value}" does not match any of this Admin ` +
+              `Worker's existing custom domains (${existingDomains.join(', ')}) — refusing to guess.`,
+          );
+        }
+        oldDomain = candidate;
+        oldAdminOrigin = `https://${candidate}`;
+      } else {
+        console.log(
+          `⚠ The Admin Worker already has more than one custom domain connected (${existingDomains.join(', ')}) ` +
+            '— which one is being retired cannot be determined automatically. CORS_ORIGINS will ' +
+            'only get the new origin ADDED; no existing entry will be replaced or removed. Set ' +
+            'ADMIN_OLD_DOMAIN_NEW to be explicit, or clean up CORS_ORIGINS by hand afterward.',
+        );
+      }
+    }
+
     applyNewDomain(newDomain, disableWorkersDev);
     // Deliberately not caught: an Admin-deploy failure must throw and leave CORS_ORIGINS/ADMIN_URL
     // completely untouched, per the task's own failure-handling requirement — nothing below this
@@ -551,7 +599,19 @@ export async function configureAdminDomain({
     if (!apiConfigComplete) {
       throw new Error('Admin domain migration incomplete — see the error above.');
     }
-    return { changed: true, redeployNeeded: false, apiRedeployed };
+
+    // Only ever retires a route this run could confidently identify — never the ambiguous case
+    // left unresolved above, and never the auto-detected workers.dev origin (there's no
+    // `[[routes]]` entry for that to remove in the first place).
+    let oldRouteRemoved = false;
+    if (oldDomain && oldDomain !== newDomain && String(env.REMOVE_OLD_ADMIN_DOMAIN ?? '').toLowerCase() === 'true') {
+      writeTomlFile(adminWranglerTomlPath, removeCustomDomainRoute(readAdminToml(), oldDomain));
+      deployAdmin({ adminDir });
+      oldRouteRemoved = true;
+      console.log(`✓ Removed the old "${oldDomain}" route from the Admin Worker — it's free for another use now.`);
+    }
+
+    return { changed: true, redeployNeeded: false, apiRedeployed, oldRouteRemoved };
   }
 
   const domain = await ask(
@@ -564,6 +624,23 @@ export async function configureAdminDomain({
   }
   const newDomain = normalizeAdminDomain(domain);
   const newAdminOrigin = `https://${newDomain}`;
+
+  if (ambiguousOldDomain) {
+    console.log(
+      `\n⚠ The Admin Worker already has more than one custom domain connected: ${existingDomains.join(', ')}.\n` +
+        'To correctly migrate ADMIN_URL/CORS_ORIGINS, which one is the current one being retired?',
+    );
+    const choice = await select('Old admin domain being retired', [
+      ...existingDomains.map((d) => ({ value: d, label: d })),
+      { value: '__none__', label: "None of these — just add the new origin, don't touch CORS_ORIGINS" },
+    ]);
+    if (choice !== '__none__') {
+      oldDomain = choice;
+      oldAdminOrigin = `https://${choice}`;
+    } else {
+      console.log('Proceeding without an old origin to retire — CORS_ORIGINS will only get the new origin added.');
+    }
+  }
 
   console.log(
     '\nThis writes a [[routes]] entry (custom_domain = true) to the Admin Worker, deploys it, then ' +
@@ -589,6 +666,24 @@ export async function configureAdminDomain({
     throw new Error('Admin domain migration incomplete — see the error above.');
   }
 
+  let oldRouteRemoved = false;
+  if (oldDomain && oldDomain !== newDomain) {
+    if (
+      await confirm(
+        `\nRemove the old "${oldDomain}" route from the Admin Worker now, freeing it up for ` +
+          `another use? (Only do this once you've confirmed "${newDomain}" actually works.)`,
+        false,
+      )
+    ) {
+      writeTomlFile(adminWranglerTomlPath, removeCustomDomainRoute(readAdminToml(), oldDomain));
+      deployAdmin({ adminDir });
+      oldRouteRemoved = true;
+      console.log(`✓ Removed the old "${oldDomain}" route.`);
+    } else {
+      console.log(`✓ Left the old "${oldDomain}" route in place — run this command again later to remove it.`);
+    }
+  }
+
   if (
     await confirm(
       "\nDisable the *.workers.dev fallback URL now? (Only do this once you've confirmed the " +
@@ -603,7 +698,7 @@ export async function configureAdminDomain({
     console.log('✓ workers.dev left enabled — reachable at both URLs for now.');
   }
 
-  return { changed: true, redeployNeeded: false, apiRedeployed };
+  return { changed: true, redeployNeeded: false, apiRedeployed, oldRouteRemoved };
 }
 
 // ---- Storage / Database ----

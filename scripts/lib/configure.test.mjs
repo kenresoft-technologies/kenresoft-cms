@@ -380,6 +380,132 @@ function addCustomDomainRouteFixture(toml, pattern) {
   return toml.replace(/\n*$/, '') + `\n\n[[routes]]\npattern = "${pattern}"\ncustom_domain = true\n`;
 }
 
+// ---- Ambiguous old-domain regression tests ----
+//
+// Direct regression coverage for a real, reported production incident: an earlier version of
+// configureAdminDomain always picked `existingDomains[0]` as "the" old admin origin. With more
+// than one custom-domain route already on the Admin Worker, that guess could be wrong, silently
+// replacing/removing a completely unrelated, still-in-use CORS_ORIGINS entry. These tests exercise
+// exactly that starting shape (two existing admin routes) and confirm every unrelated origin
+// survives regardless of which path is taken.
+
+function addTwoCustomDomainRoutesFixture(toml, first, second) {
+  return addCustomDomainRouteFixture(addCustomDomainRouteFixture(toml, first), second);
+}
+
+test('configureAdminDomain (CI): more than one existing admin domain, no ADMIN_OLD_DOMAIN_NEW given — only adds the new origin, never guesses/removes', async () => {
+  const { dir, adminPath, apiPath } = writeAdminDomainFixtures({
+    adminToml: addTwoCustomDomainRoutesFixture(ADMIN_TOML, 'cms.example.com', 'old-admin.example.com'),
+    apiCors: 'https://cms.example.com,https://kenresoft-marketing.example.com,https://old-admin.example.com',
+  });
+  try {
+    const result = await configureAdminDomain({
+      adminWranglerTomlPath: adminPath,
+      adminDir: dir,
+      apiWranglerTomlPath: apiPath,
+      apiDir: dir,
+      ci: true,
+      env: { ADMIN_CUSTOM_DOMAIN_NEW: 'admin.example.com' },
+      deployAdmin: fakeDeployAdmin(),
+      deployApiFn: () => 'https://api.example.com',
+      putSecret: () => {},
+    });
+    assert.equal(result.changed, true);
+    assert.equal(result.oldRouteRemoved, false);
+    // Every previously-existing origin survives untouched — this is the direct fix for the
+    // reported incident (an unrelated origin silently disappearing).
+    assert.deepEqual(readCorsOrigins(readFileSync(apiPath, 'utf8')), [
+      'https://cms.example.com',
+      'https://kenresoft-marketing.example.com',
+      'https://old-admin.example.com',
+      'https://admin.example.com',
+    ]);
+    // Both old admin routes are left in place — no route was confidently identified to retire.
+    assert.deepEqual(readCustomDomainRoutes(readFileSync(adminPath, 'utf8')), ['cms.example.com', 'old-admin.example.com', 'admin.example.com']);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('configureAdminDomain (CI): ADMIN_OLD_DOMAIN_NEW disambiguates which of several existing domains to retire', async () => {
+  const { dir, adminPath, apiPath } = writeAdminDomainFixtures({
+    adminToml: addTwoCustomDomainRoutesFixture(ADMIN_TOML, 'cms.example.com', 'old-admin.example.com'),
+    apiCors: 'https://cms.example.com,https://kenresoft-marketing.example.com,https://old-admin.example.com',
+  });
+  try {
+    const result = await configureAdminDomain({
+      adminWranglerTomlPath: adminPath,
+      adminDir: dir,
+      apiWranglerTomlPath: apiPath,
+      apiDir: dir,
+      ci: true,
+      env: { ADMIN_CUSTOM_DOMAIN_NEW: 'admin.example.com', ADMIN_OLD_DOMAIN_NEW: 'old-admin.example.com', REMOVE_OLD_ADMIN_DOMAIN: 'true' },
+      deployAdmin: fakeDeployAdmin(),
+      deployApiFn: () => 'https://api.example.com',
+      putSecret: () => {},
+    });
+    assert.equal(result.oldRouteRemoved, true);
+    // The explicitly-named old origin is replaced; the other pre-existing origin (cms.example.com,
+    // which is NOT the one named as retiring) and the unrelated marketing origin both survive.
+    assert.deepEqual(readCorsOrigins(readFileSync(apiPath, 'utf8')), [
+      'https://cms.example.com',
+      'https://kenresoft-marketing.example.com',
+      'https://admin.example.com',
+    ]);
+    // The named old route is gone; the other pre-existing route (cms.example.com) is untouched.
+    assert.deepEqual(readCustomDomainRoutes(readFileSync(adminPath, 'utf8')), ['cms.example.com', 'admin.example.com']);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('configureAdminDomain (CI): ADMIN_OLD_DOMAIN_NEW naming a domain that is not actually connected throws rather than guessing', async () => {
+  const { dir, adminPath, apiPath } = writeAdminDomainFixtures({
+    adminToml: addTwoCustomDomainRoutesFixture(ADMIN_TOML, 'cms.example.com', 'old-admin.example.com'),
+  });
+  try {
+    await assert.rejects(
+      configureAdminDomain({
+        adminWranglerTomlPath: adminPath,
+        adminDir: dir,
+        apiWranglerTomlPath: apiPath,
+        apiDir: dir,
+        ci: true,
+        env: { ADMIN_CUSTOM_DOMAIN_NEW: 'admin.example.com', ADMIN_OLD_DOMAIN_NEW: 'not-connected.example.com' },
+        deployAdmin: fakeDeployAdmin(),
+        deployApiFn: () => 'https://api.example.com',
+        putSecret: () => {},
+      }),
+      /does not match any of this Admin Worker's existing custom domains/,
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('configureAdminDomain (CI): REMOVE_OLD_ADMIN_DOMAIN removes exactly the retired route in the ordinary single-old-domain case', async () => {
+  const { dir, adminPath, apiPath } = writeAdminDomainFixtures({
+    adminToml: addCustomDomainRouteFixture(ADMIN_TOML, 'cms.example.com'),
+  });
+  try {
+    const result = await configureAdminDomain({
+      adminWranglerTomlPath: adminPath,
+      adminDir: dir,
+      apiWranglerTomlPath: apiPath,
+      apiDir: dir,
+      ci: true,
+      env: { ADMIN_CUSTOM_DOMAIN_NEW: 'admin.example.com', REMOVE_OLD_ADMIN_DOMAIN: 'true' },
+      deployAdmin: fakeDeployAdmin(),
+      deployApiFn: () => 'https://api.example.com',
+      putSecret: () => {},
+    });
+    assert.equal(result.oldRouteRemoved, true);
+    assert.deepEqual(readCustomDomainRoutes(readFileSync(adminPath, 'utf8')), ['admin.example.com']);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('describeDomain reports both the connected domain(s) and workers.dev state', () => {
   assert.equal(
     describeDomain({ domain: { customDomains: [], workersDevEnabled: true } }),

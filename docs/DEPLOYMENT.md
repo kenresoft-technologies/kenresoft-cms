@@ -618,11 +618,20 @@ run it again once the underlying issue (e.g. a Cloudflare API hiccup) is resolve
 Real example: moving the admin app from `cms.example.com` to `admin.example.com` frees
 `cms.example.com` up for something else (e.g. your public marketing site) while
 `admin.example.com` becomes the CMS. This command handles the Admin Worker's route, `ADMIN_URL`,
-and `CORS_ORIGINS` side of that automatically; freeing the *old* hostname up for a different
-Cloudflare project (removing it from this Worker's own `wrangler.toml` and deploying) is still a
-separate, deliberate step — this command only ever adds the new route, it never removes an old one
-on your behalf, since a domain that still resolves to two places briefly during a migration is
-safer than one that silently stops resolving anywhere.
+and `CORS_ORIGINS` side of that automatically. It always adds the new route first, before ever
+removing the old one — so the domain briefly resolves to both during the migration rather than
+having a window where it resolves to neither. Once you've confirmed the new domain actually works,
+it offers to remove the old `[[routes]]` entry too (interactively; non-interactively, set
+`REMOVE_OLD_ADMIN_DOMAIN=true`) — off by default, since verifying the new domain first is safer
+than automatically retiring the old one the moment it's added.
+
+If the Admin Worker already has **more than one** custom domain connected (e.g. from an earlier
+manual edit, or a previous partial migration attempt), the command cannot safely guess which one is
+"the" old origin to retire — guessing wrong would mean replacing/removing a completely unrelated,
+still-in-use entry from `CORS_ORIGINS`, which is exactly the class of bug this command exists to
+prevent. In that case it asks you to pick (interactively), or reads `ADMIN_OLD_DOMAIN_NEW`
+non-interactively; if left unresolved, it falls back to only *adding* the new origin and leaves
+every existing `CORS_ORIGINS` entry and `[[routes]]` block untouched, rather than ever guessing.
 
 `--turnstile` sets, replaces, or removes both `TURNSTILE_SECRET_KEY` (a Worker secret) and
 `TURNSTILE_SITE_KEY` (a plain, non-secret var) in one guided step — see "Optional: bot protection
@@ -641,6 +650,9 @@ EMAIL_PROVIDER_NEW=resend EMAIL_FROM_NEW=noreply@example.com RESEND_API_KEY_NEW=
   pnpm run update -- --email --ci
 CUSTOM_DOMAIN_NEW=api.example.com DISABLE_WORKERS_DEV=true pnpm run update -- --domain --ci
 ADMIN_CUSTOM_DOMAIN_NEW=admin.example.com pnpm run update -- --admin-domain --ci   # also migrates CORS_ORIGINS/ADMIN_URL, never BETTER_AUTH_URL
+# If the Admin Worker already has more than one custom domain, also set which one is being retired:
+ADMIN_CUSTOM_DOMAIN_NEW=admin.example.com ADMIN_OLD_DOMAIN_NEW=cms.example.com REMOVE_OLD_ADMIN_DOMAIN=true \
+  pnpm run update -- --admin-domain --ci
 TURNSTILE_SECRET_KEY_NEW=0x4AAA... TURNSTILE_SITE_KEY_NEW=0x4AAB... pnpm run update -- --turnstile --ci   # or TURNSTILE_DISABLE=true to remove both
 ```
 
