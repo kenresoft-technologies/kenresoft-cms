@@ -250,6 +250,8 @@ function EntryForm({ contentTypeId, contentTypeSlug, entryId, fields, entry }: E
     fields.find((field) => field.fieldType === 'text');
   const [status, setStatus] = useState<EntryStatus>(initialStatus);
   const [publishAt, setPublishAt] = useState(initialPublishAt);
+  const [initialFeatured] = useState(entry?.featured ?? false);
+  const [featured, setFeatured] = useState(initialFeatured);
   const [data, setData] = useState<Record<string, unknown>>(initialData);
   const [error, setError] = useState<string | null>(null);
 
@@ -264,6 +266,7 @@ function EntryForm({ contentTypeId, contentTypeSlug, entryId, fields, entry }: E
     slug !== initialSlug ||
     status !== initialStatus ||
     publishAt !== initialPublishAt ||
+    featured !== initialFeatured ||
     JSON.stringify(data) !== JSON.stringify(initialData);
 
   // Navigating away programmatically right after a successful save would otherwise trip the
@@ -285,7 +288,7 @@ function EntryForm({ contentTypeId, contentTypeSlug, entryId, fields, entry }: E
   async function save(statusOverride?: EntryStatus) {
     setError(null);
     const publishAtIso = publishAt ? new Date(publishAt).toISOString() : null;
-    const payload = { slug, status: statusOverride ?? status, data, publishAt: publishAtIso };
+    const payload = { slug, status: statusOverride ?? status, data, publishAt: publishAtIso, featured };
 
     try {
       if (isNew) {
@@ -449,6 +452,16 @@ function EntryForm({ contentTypeId, contentTypeSlug, entryId, fields, entry }: E
                   ))}
                 </SelectContent>
               </Select>
+              <div className="flex items-center justify-between gap-2 border-t pt-3">
+                {/* "Featured entry", not "Featured" — a content type's own field can itself be
+                    named/labeled "Featured" (a boolean field is a common way to do this before
+                    this built-in flag existed), and this label must stay unambiguous for
+                    getByLabelText even when both are on the page at once. */}
+                <Label htmlFor="entry-featured" className="font-normal text-muted-foreground">
+                  Featured entry
+                </Label>
+                <Switch id="entry-featured" checked={featured} onCheckedChange={setFeatured} />
+              </div>
               <div className="flex flex-col gap-2">
                 <Button type="submit" disabled={isSaving}>
                   {isSaving ? 'Saving…' : 'Save entry'}

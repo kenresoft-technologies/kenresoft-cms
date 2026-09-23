@@ -217,6 +217,7 @@ entryFoldersRoute.openapi(
         status: row.status,
         data: row.data,
         publishAt: row.publishAt ? row.publishAt.toISOString() : null,
+        featured: row.featured,
         createdAt: row.createdAt.toISOString(),
         updatedAt: row.updatedAt.toISOString(),
         contentTypeName: row.contentTypeName,

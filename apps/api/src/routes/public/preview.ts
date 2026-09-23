@@ -30,6 +30,7 @@ function toEntry(row: DbEntry, richText: RichTextFieldMap): Entry {
     status: row.status as EntryStatus,
     data: sanitizeEntryData(richText, row.contentTypeId, row.data),
     publishAt: row.publishAt ? row.publishAt.toISOString() : null,
+    featured: row.featured,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };

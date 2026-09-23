@@ -367,6 +367,11 @@ export interface CommerceOrderDetail extends CommerceOrderSummary {
 export interface ListEntriesOptions {
   /** The content type's slug (not its display name) — e.g. "blog-post". */
   contentType: string;
+  /**
+   * When true, only entries marked "Featured" in the Entry Editor are returned — e.g. for a
+   * "featured post" homepage spot. Omitted (the default) returns every published entry.
+   */
+  featured?: boolean;
 }
 
 export interface GetEntryOptions extends ListEntriesOptions {
@@ -809,8 +814,9 @@ export function createKenresoftClient(config: KenresoftClientConfig): KenresoftC
   return {
     auth,
     entries: {
-      async list({ contentType }) {
-        const entries = await request<Entry[]>(`/api/v1/public/${contentType}`);
+      async list({ contentType, featured }) {
+        const query = featured ? '?featured=true' : '';
+        const entries = await request<Entry[]>(`/api/v1/public/${contentType}${query}`);
         return entries ?? [];
       },
       get({ contentType, slug, previewToken }) {

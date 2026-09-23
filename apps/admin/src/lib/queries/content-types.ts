@@ -54,3 +54,17 @@ export function useUpdateContentType(contentTypeId: string) {
     },
   });
 }
+
+// Cascades to this content type's own fields and entries at the database level; the API rejects
+// with a 409 (surfaced via ApiError's message) if another content type still has a reference
+// field targeting this one.
+export function useDeleteContentType() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (contentTypeId: string) => apiClient.delete(`/api/v1/admin/content-types/${contentTypeId}`),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: contentTypesKey });
+    },
+  });
+}

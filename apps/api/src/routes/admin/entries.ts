@@ -60,6 +60,9 @@ const listQuerySchema = z.object({
   // Mirrors Media's own list-query convention: omitted = every folder, 'unfiled' = root only,
   // any other string = entries in that one folder.
   folderId: z.string().min(1).optional(),
+  // Omitted = every entry regardless of its featured flag; 'true' = featured only. A query
+  // string is always a raw string, never a real boolean, hence the coercion.
+  featured: z.enum(['true', 'false']).optional(),
 });
 const createEntryQuerySchema = z.object({ contentTypeId: z.string().min(1) });
 const contentTypeScopedQuerySchema = z.object({ contentTypeId: z.string().min(1) });
@@ -76,6 +79,7 @@ function toEntry(row: DbEntry, richText?: RichTextFieldMap): Entry {
     status: row.status as EntryStatus,
     data: richText ? sanitizeEntryData(richText, row.contentTypeId, row.data) : row.data,
     publishAt: row.publishAt ? row.publishAt.toISOString() : null,
+    featured: row.featured,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -157,10 +161,10 @@ entriesRoute.openapi(
     },
   }),
   async (c) => {
-    const { contentTypeId, folderId } = c.req.valid('query');
+    const { contentTypeId, folderId, featured } = c.req.valid('query');
     const db = getDb(c);
     const scope = folderId === undefined ? undefined : folderId === 'unfiled' ? null : folderId;
-    const rows = await listEntriesWithContentType(db, contentTypeId, scope);
+    const rows = await listEntriesWithContentType(db, contentTypeId, scope, featured === undefined ? undefined : featured === 'true');
     const richText = await loadRichTextFields(db);
     return c.json(rows.map((row) => toEntryWithContentType(row, richText)), 200);
   },

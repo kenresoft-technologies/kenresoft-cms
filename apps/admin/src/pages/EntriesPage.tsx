@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { Download, FileText, Folder, FolderPlus, MoreHorizontal, Pencil, Plus, Trash2, Upload } from 'lucide-react';
+import { Download, FileText, Folder, FolderPlus, MoreHorizontal, Pencil, Plus, Star, Trash2, Upload } from 'lucide-react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { toast } from 'sonner';
 import type { ColumnDef } from '@tanstack/react-table';
@@ -341,8 +341,11 @@ export function EntriesPage() {
         cell: ({ row }) => (
           <Link
             to={`/content-types/${contentTypeId}/entries/${row.original.id}`}
-            className="font-medium hover:underline"
+            className="flex items-center gap-1.5 font-medium hover:underline"
           >
+            {row.original.featured ? (
+              <Star className="size-3.5 shrink-0 fill-amber-500 text-amber-500" aria-label="Featured" />
+            ) : null}
             {row.original.slug}
           </Link>
         ),

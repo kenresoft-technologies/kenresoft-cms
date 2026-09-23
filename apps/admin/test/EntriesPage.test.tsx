@@ -69,6 +69,25 @@ describe('EntriesPage', () => {
     expect(screen.getByText('Published')).toBeInTheDocument();
     expect(screen.getByText('Jane Doe')).toBeInTheDocument();
     expect(getMock).toHaveBeenCalledWith('/api/v1/admin/entries?contentTypeId=ct-1&folderId=unfiled');
+    expect(screen.queryByLabelText('Featured')).not.toBeInTheDocument();
+  });
+
+  it('shows a star next to a featured entry\'s slug', async () => {
+    mockEntries([
+      {
+        id: 'e-1',
+        slug: 'hello-world',
+        status: 'published',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+        authorName: 'Jane Doe',
+        featured: true,
+      },
+    ]);
+
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('hello-world')).toBeInTheDocument());
+    expect(screen.getByLabelText('Featured')).toBeInTheDocument();
   });
 
   it('shows subfolder chips and navigates into a folder via breadcrumbs', async () => {

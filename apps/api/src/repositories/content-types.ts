@@ -83,3 +83,51 @@ export async function updateContentType(
   const [contentType] = await db.update(contentTypes).set(patch).where(eq(contentTypes.id, id)).returning();
   return contentType;
 }
+
+export interface ReferencingField {
+  contentTypeId: string;
+  contentTypeName: string;
+  fieldId: string;
+  fieldLabel: string;
+}
+
+// A `reference` field's target content type lives in its own loose JSON `config`, never a real
+// FK (packages/contracts/schemas/field-definitions.ts's own comment on why — config is a
+// developer-defined blob, not schema-enforced) — so deleting a content type can't rely on the
+// database to protect fields elsewhere that point at it. Scanned in application code instead:
+// every field definition, not just this content type's own (which cascade-delete anyway), is
+// checked for fieldType 'reference' with a matching targetContentTypeId.
+export async function findFieldsReferencingContentType(
+  db: Database,
+  contentTypeId: string,
+): Promise<ReferencingField[]> {
+  const rows = await db
+    .select({
+      fieldId: fieldDefinitions.id,
+      fieldLabel: fieldDefinitions.label,
+      config: fieldDefinitions.config,
+      contentTypeId: contentTypes.id,
+      contentTypeName: contentTypes.name,
+    })
+    .from(fieldDefinitions)
+    .innerJoin(contentTypes, eq(fieldDefinitions.contentTypeId, contentTypes.id))
+    .where(eq(fieldDefinitions.fieldType, 'reference'));
+
+  return rows
+    .filter((row) => {
+      const config = row.config as Record<string, unknown> | null;
+      return config?.targetContentTypeId === contentTypeId;
+    })
+    .map((row) => ({
+      contentTypeId: row.contentTypeId,
+      contentTypeName: row.contentTypeName,
+      fieldId: row.fieldId,
+      fieldLabel: row.fieldLabel,
+    }));
+}
+
+export async function deleteContentType(db: Database, id: string): Promise<void> {
+  // fieldDefinitions/entries/webhooks all cascade on contentTypeId (packages/database/schema) —
+  // this single delete is enough; nothing else references a content type by a real FK.
+  await db.delete(contentTypes).where(eq(contentTypes.id, id));
+}
