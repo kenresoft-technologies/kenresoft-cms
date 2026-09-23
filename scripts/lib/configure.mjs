@@ -14,11 +14,12 @@ import {
   addCustomDomainRoute,
   readTomlFile,
   removeVarLine,
+  replaceCorsOrigin,
   setVarLine,
   setWorkersDevEnabled,
   writeTomlFile,
 } from './wrangler-toml.mjs';
-import { deployApi, deployAdminOnly, resolvePublicAdminUrl } from './deploy-helpers.mjs';
+import { deployApi, deployAdminOnly } from './deploy-helpers.mjs';
 import { parseLocalConfig } from './config-status.mjs';
 
 // ---- pure helpers (unit-tested without wrangler/network access) ----
@@ -417,23 +418,113 @@ export async function configureDomain({ wranglerTomlPath, apiDir, status, ci = f
 // ---- Admin custom domain / workers.dev ----
 //
 // Same idea as configureDomain above, but targeting the Admin Worker's own, completely separate
-// wrangler.toml (apps/admin/wrangler.toml) — plus one thing the API side doesn't need: refreshing
-// the ADMIN_URL secret (used to build every password-reset/verification email link) to match.
-// Confirmed as a real, live gap: connecting a custom domain to the admin Worker never touched
-// ADMIN_URL at all, so every email link kept pointing at whatever workers.dev URL the very first
-// `pnpm run setup` run happened to set it to, regardless of any domain connected since. This
-// function deploys the admin Worker itself as part of every step (never delegates to a caller's
-// own generic redeploy, unlike configureAuth/configureEmail/configureDomain above) since it also
-// needs to read back the real deployed URL to refresh ADMIN_URL correctly — callers should treat
-// its `redeployNeeded` as "the API needs no further action," not "nothing was deployed."
-export async function configureAdminDomain({ adminWranglerTomlPath, adminDir, apiWranglerTomlPath, apiDir, ci = false, env = process.env }) {
-  const currentStatus = { domain: parseLocalConfig(readTomlFile(adminWranglerTomlPath)).domain };
+// wrangler.toml (apps/admin/wrangler.toml) — plus two things the API-domain flow doesn't need:
+// refreshing the ADMIN_URL secret (used to build every password-reset/verification email link)
+// and migrating the API's own CORS_ORIGINS allow-list, since both depend on the Admin app's public
+// origin specifically, not the API's. Confirmed as a real, live gap before this: connecting a
+// custom domain to the admin Worker never touched either — email links and CORS both kept
+// pointing at whatever *.workers.dev URL the very first `pnpm run setup` run happened to set,
+// regardless of any domain connected since.
+//
+// Deliberately never touches BETTER_AUTH_URL — that belongs to the API/Auth Worker and is a
+// separate concept from the Admin app's own public URL (sessions/trusted-origins/OAuth callbacks
+// all key off it); changing it is `pnpm run update -- --auth`'s job alone, never a side effect of
+// this one.
+//
+// Sequenced so a failure never leaves a half-migrated, broken install: the Admin Worker's own
+// wrangler.toml edit + deploy happens first, and CORS_ORIGINS/ADMIN_URL are only ever touched once
+// that deploy has actually succeeded — a failed Admin deploy throws before any of that runs, and a
+// failed API-side step (ADMIN_URL secret, CORS write, or the API redeploy) is caught and reported
+// as "Admin deployed, API configuration still pending" rather than silently swallowed or
+// misreported as a complete success. Re-running the command after either failure is always safe:
+// every write here (the route, ADMIN_URL, CORS_ORIGINS) is itself idempotent, so a second run
+// converges to the same correct end state without duplicating anything.
+//
+// `deployAdmin`/`putSecret` are injectable (default to the real wrangler-shelling
+// implementations) purely so this can be unit-tested against a fake Cloudflare without a real
+// account — every other exported function in this file that shells out to wrangler is either pure
+// or, like configureDomain's interactive branch, untested for the same reason; this one has a
+// CI path that *always* shells out, unlike configureDomain's CI path, which doesn't, so it needs
+// the seam configureDomain never did.
+export function normalizeAdminDomain(input) {
+  return String(input ?? '')
+    .trim()
+    .replace(/^https?:\/\//i, '')
+    .replace(/\/+$/, '')
+    .toLowerCase();
+}
+
+// Pure: given the admin Worker's *current* known public origin (before any change), the requested
+// new domain, and the API's current CORS_ORIGINS toml text, computes the exact resulting
+// CORS_ORIGINS value and whether it actually changed — split out from the impure orchestration
+// below so the CORS-migration rules themselves (replace old admin origin, preserve every unrelated
+// origin, dedupe, handle "no existing config") are directly unit-testable.
+export function planAdminDomainCorsUpdate(apiToml, oldAdminOrigin, newAdminOrigin) {
+  return replaceCorsOrigin(apiToml, oldAdminOrigin, newAdminOrigin);
+}
+
+export async function configureAdminDomain({
+  adminWranglerTomlPath,
+  adminDir,
+  apiWranglerTomlPath,
+  apiDir,
+  ci = false,
+  env = process.env,
+  deployAdmin = deployAdminOnly,
+  deployApiFn = deployApi,
+  putSecret = (name, value, { config, cwd }) => runWrangler(['secret', 'put', name, '--config', config], { cwd, input: value }),
+}) {
+  const readAdminToml = () => readTomlFile(adminWranglerTomlPath);
+  const currentStatus = { domain: parseLocalConfig(readAdminToml()).domain };
   console.log(`\nCurrent admin domain config: ${describeDomain(currentStatus)}`);
 
-  const refreshAdminUrl = (deployedAdminUrl) => {
-    const publicAdminUrl = resolvePublicAdminUrl({ adminWranglerTomlPath, deployedAdminUrl });
-    runWrangler(['secret', 'put', 'ADMIN_URL', '--config', apiWranglerTomlPath], { cwd: apiDir, input: publicAdminUrl });
-    console.log(`✓ ADMIN_URL updated to ${publicAdminUrl} — new password-reset/verification emails will link there.`);
+  // Step 2 of the documented sequence: determine the admin app's current real public origin
+  // *before* touching anything, so it can be removed from CORS_ORIGINS once the new one is live.
+  // A connected custom domain is authoritative on its own; otherwise the only way to learn the
+  // real *.workers.dev URL without guessing at the account's subdomain is a no-config-change
+  // deploy (harmless and idempotent — the same "deploy once just to read the real URL" pattern
+  // configureAuth's own 'reset' choice already uses for the API Worker).
+  const existingDomains = currentStatus.domain.customDomains;
+  const oldAdminOrigin = existingDomains.length > 0 ? `https://${existingDomains[0]}` : deployAdmin({ adminDir });
+
+  const applyNewDomain = (domainInput, disableWorkersDev) => {
+    let toml = addCustomDomainRoute(readAdminToml(), domainInput);
+    // See configureDomain's own comment for why workers_dev must be written explicitly once any
+    // route exists — its implicit default flips from enabled to disabled the moment one does.
+    toml = setWorkersDevEnabled(toml, !disableWorkersDev);
+    writeTomlFile(adminWranglerTomlPath, toml);
+  };
+
+  // Everything from here on is the API-side half of the migration (ADMIN_URL + CORS_ORIGINS +
+  // API redeploy) — wrapped so a failure here is reported distinctly from an Admin-deploy
+  // failure (which throws before this point is ever reached at all) per the task's own required
+  // failure-reporting distinction.
+  const migrateApiConfig = (newAdminOrigin) => {
+    try {
+      putSecret('ADMIN_URL', newAdminOrigin, { config: apiWranglerTomlPath, cwd: apiDir });
+      console.log(`✓ ADMIN_URL updated to ${newAdminOrigin} — new password-reset/verification emails will link there.`);
+
+      const { toml: newApiToml, changed: corsChanged } = planAdminDomainCorsUpdate(readTomlFile(apiWranglerTomlPath), oldAdminOrigin, newAdminOrigin);
+      if (!corsChanged) {
+        console.log('✓ CORS_ORIGINS already correct — nothing to change.');
+        return { apiConfigComplete: true, apiRedeployed: false };
+      }
+      writeTomlFile(apiWranglerTomlPath, newApiToml);
+      console.log(`✓ CORS_ORIGINS updated (added ${newAdminOrigin}${oldAdminOrigin !== newAdminOrigin ? `, removed ${oldAdminOrigin}` : ''}) — redeploying the API Worker...`);
+      const apiUrl = deployApiFn({ apiDir, wranglerTomlPath: apiWranglerTomlPath });
+      console.log(`✓ API redeployed: ${apiUrl}`);
+      return { apiConfigComplete: true, apiRedeployed: true };
+    } catch (error) {
+      console.error(
+        `\n⚠ The Admin Worker deployed successfully with its new domain, but updating the API's ` +
+          `ADMIN_URL/CORS_ORIGINS (or redeploying the API) failed: ${error instanceof Error ? error.message : error}\n` +
+          'The migration is NOT complete — the admin app is live at its new domain, but ' +
+          'password-reset/verification email links and CORS may still reference the old one. ' +
+          'Re-run `pnpm run update -- --admin-domain` (interactive) or with --ci once the ' +
+          'underlying issue is fixed; it will safely pick up from here.',
+      );
+      return { apiConfigComplete: false, apiRedeployed: false, error };
+    }
   };
 
   if (ci) {
@@ -442,17 +533,25 @@ export async function configureAdminDomain({ adminWranglerTomlPath, adminDir, ap
       console.log('ADMIN_CUSTOM_DOMAIN_NEW not set — leaving admin domain configuration unchanged.');
       return { changed: false };
     }
-    let toml = addCustomDomainRoute(readTomlFile(adminWranglerTomlPath), domainInput.value);
+    const newDomain = normalizeAdminDomain(domainInput.value);
+    const newAdminOrigin = `https://${newDomain}`;
     const disableWorkersDev = String(env.DISABLE_WORKERS_DEV ?? '').toLowerCase() === 'true';
-    toml = setWorkersDevEnabled(toml, !disableWorkersDev);
-    writeTomlFile(adminWranglerTomlPath, toml);
-    const deployedUrl = deployAdminOnly({ adminDir });
-    refreshAdminUrl(deployedUrl);
+
+    applyNewDomain(newDomain, disableWorkersDev);
+    // Deliberately not caught: an Admin-deploy failure must throw and leave CORS_ORIGINS/ADMIN_URL
+    // completely untouched, per the task's own failure-handling requirement — nothing below this
+    // line has run yet, so there is nothing to roll back.
+    deployAdmin({ adminDir });
     console.log(
-      `✓ Added admin custom domain "${domainInput.value}" (non-interactive)` +
+      `✓ Added admin custom domain "${newDomain}" (non-interactive)` +
         (disableWorkersDev ? ', and disabled workers.dev.' : ', workers.dev left enabled.'),
     );
-    return { changed: true, redeployNeeded: false };
+
+    const { apiConfigComplete, apiRedeployed } = migrateApiConfig(newAdminOrigin);
+    if (!apiConfigComplete) {
+      throw new Error('Admin domain migration incomplete — see the error above.');
+    }
+    return { changed: true, redeployNeeded: false, apiRedeployed };
   }
 
   const domain = await ask(
@@ -463,24 +562,32 @@ export async function configureAdminDomain({ adminWranglerTomlPath, adminDir, ap
     console.log('No domain entered — admin domain configuration left unchanged.');
     return { changed: false };
   }
+  const newDomain = normalizeAdminDomain(domain);
+  const newAdminOrigin = `https://${newDomain}`;
+
   console.log(
-    '\nThis writes a [[routes]] entry (custom_domain = true) to the Admin Worker and redeploys — ' +
-      "Cloudflare creates the DNS record and route for you on that deploy, nothing to do in the " +
-      "dashboard first, as long as the domain's zone is already on this Cloudflare account.",
+    '\nThis writes a [[routes]] entry (custom_domain = true) to the Admin Worker, deploys it, then ' +
+      "updates the API's ADMIN_URL and CORS_ORIGINS to match (and redeploys the API if CORS " +
+      'actually changed) — never BETTER_AUTH_URL, which is a separate, API-side concept ' +
+      "(`pnpm run update -- --auth` changes that one). Cloudflare creates the DNS record and " +
+      "route for you on the Admin deploy, nothing to do in the dashboard first, as long as the " +
+      "domain's zone is already on this Cloudflare account.",
   );
-  if (!(await confirm(`Connect "${domain}" to the admin app now?`, true))) {
+  if (!(await confirm(`Connect "${newDomain}" to the admin app now?`, true))) {
     console.log('Cancelled — admin domain configuration left unchanged.');
     return { changed: false };
   }
 
-  // See configureDomain's own comment above for why workers_dev must be written explicitly here.
-  let toml = addCustomDomainRoute(readTomlFile(adminWranglerTomlPath), domain);
-  toml = setWorkersDevEnabled(toml, true);
-  writeTomlFile(adminWranglerTomlPath, toml);
-  console.log(`✓ Added "${domain}" — redeploying so Cloudflare provisions the DNS record and route...`);
-  const deployedUrl = deployAdminOnly({ adminDir });
-  refreshAdminUrl(deployedUrl);
-  console.log(`✓ "${domain}" connected — verify it actually serves the admin app before disabling workers.dev.`);
+  applyNewDomain(newDomain, false);
+  console.log(`✓ Added "${newDomain}" — redeploying so Cloudflare provisions the DNS record and route...`);
+  // Deliberately not caught — see the CI branch's own comment above.
+  deployAdmin({ adminDir });
+  console.log(`✓ "${newDomain}" connected — verify it actually serves the admin app before disabling workers.dev.`);
+
+  const { apiConfigComplete, apiRedeployed } = migrateApiConfig(newAdminOrigin);
+  if (!apiConfigComplete) {
+    throw new Error('Admin domain migration incomplete — see the error above.');
+  }
 
   if (
     await confirm(
@@ -489,14 +596,14 @@ export async function configureAdminDomain({ adminWranglerTomlPath, adminDir, ap
       false,
     )
   ) {
-    writeTomlFile(adminWranglerTomlPath, setWorkersDevEnabled(readTomlFile(adminWranglerTomlPath), false));
-    deployAdminOnly({ adminDir });
+    writeTomlFile(adminWranglerTomlPath, setWorkersDevEnabled(readAdminToml(), false));
+    deployAdmin({ adminDir });
     console.log('✓ workers.dev disabled.');
   } else {
     console.log('✓ workers.dev left enabled — reachable at both URLs for now.');
   }
 
-  return { changed: true, redeployNeeded: false };
+  return { changed: true, redeployNeeded: false, apiRedeployed };
 }
 
 // ---- Storage / Database ----

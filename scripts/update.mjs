@@ -30,8 +30,11 @@
 // if explicitly confirmed afterward, disables the *.workers.dev fallback URL — run `--auth` right
 // after to point BETTER_AUTH_URL at the new domain and rebuild the admin app against it.
 // `--admin-domain` does the same for the Admin Worker's own, separate wrangler.toml, and also
-// refreshes the ADMIN_URL secret (used to build password-reset/verification email links) to match
-// — nothing else does that automatically.
+// refreshes the ADMIN_URL secret (used to build password-reset/verification email links) and
+// migrates the API's CORS_ORIGINS allow-list (old admin origin replaced in place, every unrelated
+// origin preserved, redeploying the API only when CORS actually changed) — never BETTER_AUTH_URL,
+// which is a separate, API-side concept (`--auth` changes that one). See scripts/lib/configure.mjs's
+// configureAdminDomain for the full sequencing/failure-handling contract.
 //
 // Which branch to pull: bare `pnpm run update` follows upstream's actual default branch,
 // auto-detected every run (see lib/git-cli.mjs) — correct for a real install, which should

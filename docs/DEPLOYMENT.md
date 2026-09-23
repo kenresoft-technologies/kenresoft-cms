@@ -596,10 +596,33 @@ disables it without asking. After connecting a domain, run `pnpm run update -- -
 build target doesn't change just because a route was added.
 
 `--admin-domain` does the same thing for the Admin Worker's own, completely separate
-`wrangler.toml` (`apps/admin/wrangler.toml`). And additionally refreshes the `ADMIN_URL` secret
-(the address every password-reset/verification email links to) to match, since nothing else does
-that automatically. Confirmed as a real, live gap: connecting a custom domain to the admin app
-without this command left every email pointing at its original `*.workers.dev` URL indefinitely.
+`wrangler.toml` (`apps/admin/wrangler.toml`), and additionally synchronizes everything else that
+depends on the Admin app's public origin: it refreshes the `ADMIN_URL` secret (the address every
+password-reset/verification email links to) *and* migrates the API's `CORS_ORIGINS` allow-list —
+the old admin origin is replaced with the new one in place, every unrelated origin (your website's
+own domain, a staging origin, ...) is preserved untouched, and duplicates are never introduced.
+You never need to hand-edit `CORS_ORIGINS` for an admin-domain change any more. It redeploys the
+API Worker automatically, but only when `CORS_ORIGINS` actually changed. It deliberately never
+touches `BETTER_AUTH_URL` — that's the API/Auth Worker's own URL, a separate concept with its own
+command (`--auth`, above); changing the Admin app's domain never implies changing the API's.
+
+The command is safe to re-run: every write it makes (the `[[routes]]` entry, `ADMIN_URL`,
+`CORS_ORIGINS`) is itself idempotent, so a second run converges to the same correct state instead
+of duplicating anything. If the Admin Worker's own deploy fails, nothing else is touched —
+`ADMIN_URL`/`CORS_ORIGINS` are only ever updated after that deploy has actually succeeded. If the
+Admin Worker deploys fine but the follow-up API-side step (the `ADMIN_URL` secret, the
+`CORS_ORIGINS` write, or the API redeploy) fails, the command reports that plainly — "Admin
+deployed, API configuration still pending" — rather than claiming the migration is complete; just
+run it again once the underlying issue (e.g. a Cloudflare API hiccup) is resolved.
+
+Real example: moving the admin app from `cms.example.com` to `admin.example.com` frees
+`cms.example.com` up for something else (e.g. your public marketing site) while
+`admin.example.com` becomes the CMS. This command handles the Admin Worker's route, `ADMIN_URL`,
+and `CORS_ORIGINS` side of that automatically; freeing the *old* hostname up for a different
+Cloudflare project (removing it from this Worker's own `wrangler.toml` and deploying) is still a
+separate, deliberate step — this command only ever adds the new route, it never removes an old one
+on your behalf, since a domain that still resolves to two places briefly during a migration is
+safer than one that silently stops resolving anywhere.
 
 `--turnstile` sets, replaces, or removes both `TURNSTILE_SECRET_KEY` (a Worker secret) and
 `TURNSTILE_SITE_KEY` (a plain, non-secret var) in one guided step — see "Optional: bot protection
@@ -617,7 +640,7 @@ BETTER_AUTH_URL_NEW=https://cms.example.com pnpm run update -- --auth --ci
 EMAIL_PROVIDER_NEW=resend EMAIL_FROM_NEW=noreply@example.com RESEND_API_KEY_NEW=re_... \
   pnpm run update -- --email --ci
 CUSTOM_DOMAIN_NEW=api.example.com DISABLE_WORKERS_DEV=true pnpm run update -- --domain --ci
-ADMIN_CUSTOM_DOMAIN_NEW=cms.example.com pnpm run update -- --admin-domain --ci
+ADMIN_CUSTOM_DOMAIN_NEW=admin.example.com pnpm run update -- --admin-domain --ci   # also migrates CORS_ORIGINS/ADMIN_URL, never BETTER_AUTH_URL
 TURNSTILE_SECRET_KEY_NEW=0x4AAA... TURNSTILE_SITE_KEY_NEW=0x4AAB... pnpm run update -- --turnstile --ci   # or TURNSTILE_DISABLE=true to remove both
 ```
 

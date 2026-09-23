@@ -10,6 +10,10 @@ landed on `develop`.
 
 ## Unreleased
 
+### Fixed
+
+- `pnpm run update -- --admin-domain` now also migrates the API's `CORS_ORIGINS` allow-list, not just `ADMIN_URL` — connecting a custom domain to the Admin app previously left the *old* admin origin (and, until the very first run, no admin origin at all) in `CORS_ORIGINS` indefinitely, since nothing wired that up automatically. The old admin origin is now replaced in place with the new one; every unrelated origin (your public site, a staging origin, ...) is preserved untouched, and the API is redeployed only when `CORS_ORIGINS` actually changed. It still never touches `BETTER_AUTH_URL` (a separate, API-side concept — use `--auth` for that) and is safe to re-run: a second run with the same domain makes no further changes. If the Admin Worker's own deploy fails, nothing else is touched; if the follow-up API-side step fails, the command says so plainly ("Admin deployed, API configuration still pending") instead of claiming success. `pnpm run update -- --admin-domain --ci` (`ADMIN_CUSTOM_DOMAIN_NEW`) behaves identically. No action needed unless you're actively migrating the Admin app's domain, in which case just run the command as documented in `docs/DEPLOYMENT.md`.
+
 ### Changed
 
 - The CMS now points to the official documentation at https://docs.kenresoft.com/cms: a Documentation item in the admin user menu, links on Settings > API and the email status message, docs links at the end of `pnpm run setup`, `pnpm run update` and `npx @kenresoft-cms/create astro`, and a docs banner on the README. Published `@kenresoft-cms/create` 0.3.1, `@kenresoft-cms/astro` 0.6.2 and `@kenresoft-cms/contracts` 0.5.1 carry the new help text and READMEs. The admin change needs `pnpm run update` to appear on an existing deployment.
