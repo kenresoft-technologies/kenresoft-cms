@@ -189,9 +189,15 @@ export function addCustomDomainRoute(toml, pattern) {
 // onto admin.example.com frees cms.example.com up for something else, per the domain-migration
 // workflow in configure.mjs's configureAdminDomain). Leaves every other route block untouched.
 export function removeCustomDomainRoute(toml, pattern) {
+  // Plain string equality on the extracted `pattern` value rather than building a RegExp out of
+  // the caller-supplied `pattern` string — avoids constructing a dynamic regex from external
+  // input entirely (the previous version escaped metacharacters, which is correct but is exactly
+  // the shape CodeQL's incomplete-hostname-regexp query flags as high-risk regardless; a fixed
+  // regex plus a plain value comparison sidesteps the pattern altogether, not just the specific
+  // finding).
   const routeBlockRe = /\n*\[\[routes\]\][^[]*/g;
   return toml.replace(routeBlockRe, (block) => {
-    const isMatch = new RegExp(`pattern\\s*=\\s*"${pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`).test(block) && /custom_domain\s*=\s*true/.test(block);
+    const isMatch = extractTomlValue(block, 'pattern') === pattern && /custom_domain\s*=\s*true/.test(block);
     return isMatch ? '' : block;
   });
 }
