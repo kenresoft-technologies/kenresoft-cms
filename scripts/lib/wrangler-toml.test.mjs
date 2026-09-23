@@ -169,3 +169,13 @@ test('replaceCorsOrigin is a true no-op when old and new origin are identical (i
   assert.equal(changed, false);
   assert.deepEqual(readCorsOrigins(after), ['https://admin.example.com', 'https://example.com']);
 });
+
+// Direct regression test for a real, reported production incident: an unrelated CORS_ORIGINS
+// entry was silently dropped during an admin-domain migration (traced to the caller passing a
+// wrong `oldOrigin`, not this function's own dedup logic — but this is the last line of defense
+// underneath that). Every origin other than the one actually being replaced must survive, always.
+test('replaceCorsOrigin never silently drops an unrelated origin, across many origins and positions', () => {
+  const before = setVarLine(TOML, 'CORS_ORIGINS', 'https://a.example.com,https://cms.example.com,https://b.example.com,https://c.example.com');
+  const { toml: after } = replaceCorsOrigin(before, 'https://cms.example.com', 'https://admin.example.com');
+  assert.deepEqual(readCorsOrigins(after), ['https://a.example.com', 'https://admin.example.com', 'https://b.example.com', 'https://c.example.com']);
+});

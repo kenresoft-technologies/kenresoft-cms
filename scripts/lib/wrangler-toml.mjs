@@ -225,6 +225,18 @@ export function addCorsOrigin(toml, origin) {
 // "the old origin was never actually in the list" safely). Always deduplicates the result, so a
 // `newOrigin` that already happens to be present (or `oldOrigin === newOrigin`) is a true no-op
 // rather than producing a duplicate entry.
+//
+// Safety invariant, added after a real, reported incident (an admin-domain migration silently
+// dropped an unrelated origin from a live deployment's CORS_ORIGINS — the developer had to
+// manually re-add it): swapping one origin for another must never cause any *other* origin to
+// disappear. This function's own dedup logic can only legitimately drop an entry that equals
+// `oldOrigin` (or was already a duplicate before this call) — so if any origin besides
+// `oldOrigin` goes missing from the result, that's this function actively malfunctioning (or a
+// caller passing a wrong `oldOrigin` that happens to coincide with something already deduped
+// away), and it refuses to write a corrupted CORS_ORIGINS rather than silently doing so. The real
+// root cause of the incident above was the *caller* misidentifying `oldOrigin` in the first place
+// (see configureAdminDomain's own guard against that) — this check is the last line of defense
+// underneath it, not a substitute for getting `oldOrigin` right.
 export function replaceCorsOrigin(toml, oldOrigin, newOrigin) {
   const existing = readCorsOrigins(toml);
   const replaced =
@@ -232,6 +244,17 @@ export function replaceCorsOrigin(toml, oldOrigin, newOrigin) {
       ? existing.map((entry) => (entry === oldOrigin ? newOrigin : entry))
       : [...existing, newOrigin];
   const deduped = [...new Set(replaced)];
+
+  const unexpectedlyDropped = existing.filter((origin) => origin !== oldOrigin && !deduped.includes(origin));
+  if (unexpectedlyDropped.length > 0) {
+    throw new Error(
+      `refusing to update CORS_ORIGINS: replacing "${oldOrigin}" with "${newOrigin}" would also ` +
+        `drop unrelated origin(s) [${unexpectedlyDropped.join(', ')}], which should never happen — ` +
+        'this is a bug, not expected behavior. CORS_ORIGINS was left completely untouched; ' +
+        'please edit it by hand for now and report this.',
+    );
+  }
+
   const changed = deduped.join(',') !== existing.join(',');
   return { toml: setVarLine(toml, 'CORS_ORIGINS', deduped.join(',')), changed };
 }
