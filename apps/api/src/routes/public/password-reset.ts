@@ -6,7 +6,7 @@ import { z } from 'zod';
 
 import { recordAudit } from '../../lib/audit';
 import { getDb } from '../../lib/db';
-import { sendTemplatedEmail } from '../../lib/email-templates/send';
+import { prepareTemplatedEmail, sendPreparedEmail } from '../../lib/email-templates/send';
 import { createOpenApiApp } from '../../lib/openapi';
 import { recoveryRateLimit } from '../../middleware/recovery-rate-limit';
 import { getCredentialAccount, updateAccountPassword } from '../../repositories/accounts';
@@ -77,16 +77,19 @@ publicPasswordResetRoute.openapi(
           ? redirectUrl
           : `${c.env.ADMIN_URL ?? c.env.CORS_ORIGINS.split(',')[0]}/reset-password`;
       const resetUrl = `${resetBase}${resetBase.includes('?') ? '&' : '?'}token=${token}`;
-      const send = sendTemplatedEmail(db, c.env, 'password_reset', user.email, {
+      // The template lookup/render is awaited inline (fast, deterministic D1 reads — see
+      // prepareTemplatedEmail's own comment on why this half is never backgrounded); only the
+      // actual outbound call to the email provider is backgrounded below, so a slow or failing
+      // provider still can't change this route's response time or make the (deliberately
+      // generic) success response conditional on delivery succeeding, which would itself leak
+      // whether the email existed.
+      const rendered = await prepareTemplatedEmail(db, c.env, 'password_reset', {
         'user.name': user.name,
         'user.email': user.email,
         resetUrl,
         expiresIn: '1 hour',
       });
-      // Doesn't block the response on email delivery — a slow or failing provider shouldn't
-      // change this route's response time or make the (deliberately generic) success response
-      // conditional on send() succeeding, which would itself leak whether the email existed.
-      c.executionCtx.waitUntil(send);
+      c.executionCtx.waitUntil(sendPreparedEmail(c.env, user.email, rendered));
     }
 
     return c.json(GENERIC_REQUEST_MESSAGE, 200);

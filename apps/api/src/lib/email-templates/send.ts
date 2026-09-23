@@ -2,6 +2,7 @@ import type { EmailTemplateKey } from '@kenresoft-cms/contracts';
 import type { Database } from '@kenresoft-cms/database';
 
 import { getEmailSender } from '../email';
+import type { EmailMessage } from '../email';
 import type { Bindings } from '../env';
 import { buildCommonTemplateContext } from './context';
 import { getEmailTemplateDefault } from './defaults';
@@ -9,24 +10,40 @@ import { getEmailTemplateByKeyReadOnly } from '../../repositories/email-template
 import { renderEmailTemplate } from './render';
 import type { TemplateVariables } from './render';
 
-// The one path every real (non-preview, non-test) transactional send goes through — used by
-// apps/api/src/lib/auth.ts (both verification branches) and
-// apps/api/src/routes/public/password-reset.ts. Loads the admin-configured template, merges
-// the deployment's real site/design context with this specific send's own variables
-// (user.name, verificationUrl, ...), and sends through the already-configured email provider.
+export interface PreparedTemplatedEmail {
+  subject: string;
+  html: string;
+  text: string;
+}
+
+// The DB-lookup-and-render half of a templated send — deliberately awaited inline by every
+// caller (never itself backgrounded), so the only genuinely variable-latency step left to
+// background is the actual outbound call to the email provider. This split matters for
+// apps/api/src/routes/public/password-reset.ts specifically: its own comment documents that
+// backgrounding the send is a deliberate enumeration-safety measure (an external provider's
+// network latency must never leak whether an email address exists), a property that only needs
+// the provider call itself to be backgrounded — this deployment's own D1 reads are already the
+// same regardless of which branch the route took. Splitting it out this way also closes a real
+// bug this same codebase's test suite caught: a write nested three closures deep inside better-
+// auth's own backgroundTasks/waitUntil abstraction was found (docs/ARCHITECTURE.md's changelog)
+// to race @cloudflare/vitest-pool-workers' "flush every ctx.waitUntil() before SELF.fetch()
+// resolves" guarantee — reproduced again here for a *read-only* chain nested only one level via
+// a plain top-level `c.executionCtx.waitUntil(...)` call, meaning the guarantee's reliability
+// degrades with how much awaited work sits between registering the task and the response
+// finishing, not just with nesting depth or writes specifically. Awaiting this half inline
+// removes that dependency on timing entirely, in both the test pool and real Workers.
 //
 // Never lets a misconfigured template take down authentication: if the template is missing,
 // disabled, or fails to render for any reason, this falls back to the code default's own
 // content instead of throwing — a broken save in the admin editor must never mean nobody can
 // verify their email or reset their password. The failure is still logged (visible via
 // `wrangler tail`) so it's not silently invisible either.
-export async function sendTemplatedEmail(
+export async function prepareTemplatedEmail(
   db: Database,
   env: Bindings,
   key: EmailTemplateKey,
-  to: string,
   ownVariables: TemplateVariables,
-): Promise<void> {
+): Promise<PreparedTemplatedEmail> {
   const def = getEmailTemplateDefault(key);
   let subject = def.subject;
   let bodyHtml = def.bodyHtml;
@@ -34,7 +51,7 @@ export async function sendTemplatedEmail(
 
   try {
     // Read-only, deliberately never seeds/writes — see getEmailTemplateByKeyReadOnly's own
-    // comment for why this matters specifically on this path.
+    // comment for why that matters specifically on this path.
     const template = await getEmailTemplateByKeyReadOnly(db, key);
     if (template && template.enabled) {
       subject = template.subject;
@@ -52,18 +69,41 @@ export async function sendTemplatedEmail(
 
   try {
     const variables = { ...(await buildCommonTemplateContext(db, env)), ...ownVariables };
-    const rendered = renderEmailTemplate({ subject, bodyHtml, plainText }, variables);
-    await getEmailSender(env).send({ to, subject: rendered.subject, html: rendered.html, text: rendered.text });
+    return renderEmailTemplate({ subject, bodyHtml, plainText }, variables);
   } catch (error) {
     console.error(`Failed to render email template "${key}"; falling back to a minimal plain-text send.`, error);
-    // A last-resort, template-system-free send — no design tokens, no stored copy, just enough
-    // for the recipient to actually complete the flow they're waiting on. ownVariables always
-    // carries the one link (verificationUrl/resetUrl) this minimal message needs.
+    // A last-resort, template-system-free message — no design tokens, no stored copy, just
+    // enough for the recipient to actually complete the flow they're waiting on. ownVariables
+    // always carries the one link (verificationUrl/resetUrl) this minimal message needs.
     const link = ownVariables.verificationUrl ?? ownVariables.resetUrl ?? '';
-    await getEmailSender(env).send({
-      to,
+    return {
       subject: def.subject,
+      html: '',
       text: `${def.name}\n\n${link}\n\nThis link will expire soon. If you didn't expect this, you can ignore this email.`,
-    });
+    };
   }
+}
+
+// Prepares (awaited) and sends (not awaited by the caller unless it chooses to) a templated
+// email in one call — the convenience wrapper for auth.ts's two verification branches, which
+// already run inside better-auth's own backgroundTasks abstraction and have no separate "await
+// this part, background that part" boundary to split across. Routes with their own explicit
+// `c.executionCtx.waitUntil(...)` call (password-reset.ts) use `prepareTemplatedEmail` directly
+// instead, so only the actual `sender.send()` call ends up inside that `waitUntil`.
+export async function sendTemplatedEmail(
+  db: Database,
+  env: Bindings,
+  key: EmailTemplateKey,
+  to: string,
+  ownVariables: TemplateVariables,
+): Promise<void> {
+  const rendered = await prepareTemplatedEmail(db, env, key, ownVariables);
+  await sendPreparedEmail(env, to, rendered);
+}
+
+export function sendPreparedEmail(env: Bindings, to: string, rendered: PreparedTemplatedEmail): Promise<void> {
+  const message: EmailMessage = rendered.html
+    ? { to, subject: rendered.subject, html: rendered.html, text: rendered.text }
+    : { to, subject: rendered.subject, text: rendered.text };
+  return getEmailSender(env).send(message);
 }
