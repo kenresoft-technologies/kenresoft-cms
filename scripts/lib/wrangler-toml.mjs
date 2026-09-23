@@ -182,3 +182,50 @@ export function addCustomDomainRoute(toml, pattern) {
   if (readCustomDomainRoutes(toml).includes(pattern)) return toml;
   return toml.replace(/\n*$/, '') + `\n\n[[routes]]\npattern = "${pattern}"\ncustom_domain = true\n`;
 }
+
+// Removes a previously-added custom-domain `[[routes]]` block matching `pattern` exactly — the
+// counterpart to addCustomDomainRoute above, used when a domain migration retires the old route
+// rather than merely adding a new one alongside it (e.g. moving the Admin Worker off cms.example.com
+// onto admin.example.com frees cms.example.com up for something else, per the domain-migration
+// workflow in configure.mjs's configureAdminDomain). Leaves every other route block untouched.
+export function removeCustomDomainRoute(toml, pattern) {
+  const routeBlockRe = /\n*\[\[routes\]\][^[]*/g;
+  return toml.replace(routeBlockRe, (block) => {
+    const isMatch = new RegExp(`pattern\\s*=\\s*"${pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`).test(block) && /custom_domain\s*=\s*true/.test(block);
+    return isMatch ? '' : block;
+  });
+}
+
+// ---- CORS_ORIGINS ----
+//
+// Shared by setup.mjs (first-time append when the admin origin is wired in), rename-worker.mjs
+// (retiring an old origin for a new one), and configure.mjs's admin-domain migration (same
+// replace-in-place need) — previously each had its own near-identical parse/split/join copy,
+// which is exactly the kind of drift this project's own standing rule ("reuse existing helpers,
+// don't duplicate parsing logic") exists to prevent.
+export function readCorsOrigins(toml) {
+  return (readVarLine(toml, 'CORS_ORIGINS') ?? '').split(',').map((entry) => entry.trim()).filter(Boolean);
+}
+
+// Idempotent: appends `origin` only if it isn't already present in the list.
+export function addCorsOrigin(toml, origin) {
+  const existing = readCorsOrigins(toml);
+  if (existing.includes(origin)) return { toml, changed: false };
+  return { toml: setVarLine(toml, 'CORS_ORIGINS', [...existing, origin].join(',')), changed: true };
+}
+
+// Replaces `oldOrigin` with `newOrigin` in place if present, preserving every unrelated origin and
+// their original order; otherwise appends `newOrigin` (covers "no existing CORS configuration" and
+// "the old origin was never actually in the list" safely). Always deduplicates the result, so a
+// `newOrigin` that already happens to be present (or `oldOrigin === newOrigin`) is a true no-op
+// rather than producing a duplicate entry.
+export function replaceCorsOrigin(toml, oldOrigin, newOrigin) {
+  const existing = readCorsOrigins(toml);
+  const replaced =
+    oldOrigin && existing.includes(oldOrigin)
+      ? existing.map((entry) => (entry === oldOrigin ? newOrigin : entry))
+      : [...existing, newOrigin];
+  const deduped = [...new Set(replaced)];
+  const changed = deduped.join(',') !== existing.join(',');
+  return { toml: setVarLine(toml, 'CORS_ORIGINS', deduped.join(',')), changed };
+}
