@@ -6,7 +6,7 @@ import { z } from 'zod';
 
 import { recordAudit } from '../../lib/audit';
 import { getDb } from '../../lib/db';
-import { getEmailSender } from '../../lib/email';
+import { sendTemplatedEmail } from '../../lib/email-templates/send';
 import { createOpenApiApp } from '../../lib/openapi';
 import { recoveryRateLimit } from '../../middleware/recovery-rate-limit';
 import { getCredentialAccount, updateAccountPassword } from '../../repositories/accounts';
@@ -77,12 +77,11 @@ publicPasswordResetRoute.openapi(
           ? redirectUrl
           : `${c.env.ADMIN_URL ?? c.env.CORS_ORIGINS.split(',')[0]}/reset-password`;
       const resetUrl = `${resetBase}${resetBase.includes('?') ? '&' : '?'}token=${token}`;
-      const sender = getEmailSender(c.env);
-      const send = sender.send({
-        to: user.email,
-        subject: 'Reset your Kenresoft CMS password',
-        text: `Someone requested a password reset for your account. If this was you, reset your password here: ${resetUrl}\n\nThis link expires in 1 hour. If you didn't request this, you can ignore this email.`,
-        html: `<p>Someone requested a password reset for your account.</p><p>If this was you, <a href="${resetUrl}">reset your password here</a>. This link expires in 1 hour.</p><p>If you didn't request this, you can ignore this email.</p>`,
+      const send = sendTemplatedEmail(db, c.env, 'password_reset', user.email, {
+        'user.name': user.name,
+        'user.email': user.email,
+        resetUrl,
+        expiresIn: '1 hour',
       });
       // Doesn't block the response on email delivery — a slow or failing provider shouldn't
       // change this route's response time or make the (deliberately generic) success response

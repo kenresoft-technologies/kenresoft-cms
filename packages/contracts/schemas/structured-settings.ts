@@ -76,6 +76,33 @@ export const seoSettingsDataSchema = z.object({
   googleSiteVerification: z.string().max(300).nullable(),
 });
 
+// --- emailBranding: design tokens shared by every transactional email template
+// (apps/api/src/lib/email-templates/render.ts merges these into every render as `design.*`
+// variables) — one place to change the look of every email at once, rather than editing each
+// template's own HTML. A color is a hex string (`#rrggbb`); every field is optional/nullable so
+// an unconfigured deployment renders with the built-in Kenresoft-style defaults
+// (apps/api/src/lib/email-templates/defaults.ts) rather than needing setup before any
+// transactional email can send. logoMediaId references an existing Media row, same convention
+// as `general.logoMediaId` — deliberately a separate field, since a square admin-sidebar logo
+// and a wide email-header logo are often not the same asset.
+const hexColorSchema = z
+  .string()
+  .regex(/^#[0-9a-fA-F]{6}$/, 'Must be a hex color like #4f46e5')
+  .nullable();
+
+export const emailBrandingSettingsDataSchema = z.object({
+  brandColor: hexColorSchema,
+  pageBackground: hexColorSchema,
+  contentBackground: hexColorSchema,
+  textColor: hexColorSchema,
+  mutedTextColor: hexColorSchema,
+  buttonTextColor: hexColorSchema,
+  logoMediaId: z.string().nullable(),
+  footerText: z.string().max(500).nullable(),
+});
+
+export type EmailBrandingSettingsData = z.infer<typeof emailBrandingSettingsDataSchema>;
+
 export const structuredSettingsDataSchemaByModule = {
   general: generalSettingsDataSchema,
   contact: contactSettingsDataSchema,
@@ -83,6 +110,7 @@ export const structuredSettingsDataSchemaByModule = {
   navigation: navigationSettingsDataSchema,
   footer: footerSettingsDataSchema,
   seo: seoSettingsDataSchema,
+  emailBranding: emailBrandingSettingsDataSchema,
 } as const;
 
 export type GeneralSettingsData = z.infer<typeof generalSettingsDataSchema>;
@@ -102,6 +130,7 @@ export type StructuredSettingsDataByModule = {
   navigation: NavigationSettingsData;
   footer: FooterSettingsData;
   seo: SeoSettingsData;
+  emailBranding: EmailBrandingSettingsData;
 };
 
 // The stored/returned row shape for one module — `data` is validated against the module's own

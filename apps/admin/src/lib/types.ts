@@ -64,6 +64,8 @@ export type {
   GeneralSettingsData,
   GlobalVariable,
   ContactSettingsData,
+  EmailBrandingSettingsData,
+  EmailTemplate,
   FooterLink,
   FooterSettingsData,
   ImportEntriesResult,

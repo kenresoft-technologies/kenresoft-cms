@@ -1,0 +1,39 @@
+import { sql } from 'drizzle-orm';
+import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
+import type { EmailTemplateKey } from '@kenresoft-cms/contracts';
+
+export type { EmailTemplateKey };
+
+// One row per known transactional email (`key` is a closed set — EMAIL_TEMPLATE_KEYS in
+// packages/contracts/schemas/enums.ts — never a free-form admin-created template; see that
+// file's own comment for why arbitrary custom templates are out of scope). Every key is
+// seeded once by migration 0054 with Kenresoft's own default copy/design, so a fresh
+// deployment always has a real, ready-to-send template for verification/password-reset from
+// day one — never a missing row a first send would have to handle as a special case.
+// `plainText` is nullable: null means "derive it from bodyHtml on every send"
+// (apps/api/src/lib/html-to-text.ts), the default for every seeded template; an admin who
+// wants a hand-written plain-text version can set one explicitly. Whether a row still matches
+// its shipped default (for a "Customized" badge) is computed by comparing against
+// apps/api/src/lib/email-templates/defaults.ts at read time, not stored — a stored flag could
+// drift from the truth if the code default itself is later changed by an update.
+export const emailTemplates = sqliteTable('email_templates', {
+  id: text('id')
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  key: text('key').notNull().unique().$type<EmailTemplateKey>(),
+  name: text('name').notNull(),
+  description: text('description').notNull(),
+  subject: text('subject').notNull(),
+  bodyHtml: text('body_html').notNull(),
+  plainText: text('plain_text'),
+  enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+  createdAt: integer('created_at', { mode: 'timestamp' })
+    .notNull()
+    .default(sql`(unixepoch())`),
+  updatedAt: integer('updated_at', { mode: 'timestamp' })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
+export type EmailTemplate = typeof emailTemplates.$inferSelect;
+export type NewEmailTemplate = typeof emailTemplates.$inferInsert;
