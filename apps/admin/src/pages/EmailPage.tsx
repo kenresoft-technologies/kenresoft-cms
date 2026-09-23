@@ -100,6 +100,13 @@ export function EmailPage() {
       <PageHeader
         title="Email"
         description="Send email to anyone directly from the CMS. Replies arrive in your own mailbox."
+        actions={
+          isAdmin ? (
+            <Button variant="outline" asChild>
+              <Link to="/email-templates">Email Templates</Link>
+            </Button>
+          ) : null
+        }
       />
 
       {limits?.configured === false ? (

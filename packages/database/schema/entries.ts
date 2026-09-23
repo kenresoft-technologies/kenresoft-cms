@@ -37,6 +37,12 @@ export const entries = sqliteTable(
     data: text('data', { mode: 'json' })
       .notNull()
       .$type<Record<string, unknown>>(),
+    // A first-class "feature this on the homepage/section" flag, independent of any
+    // content-type-specific field — every content type gets it for free rather than each
+    // deployer having to add their own boolean field and remember its exact name. Multiple
+    // entries (even across content types) can be featured at once; a frontend decides how many
+    // to actually show (`cms.entries.list({ contentTypeId, featured: true })`).
+    featured: integer('featured', { mode: 'boolean' }).notNull().default(false),
     // Millisecond precision (matching entry_revisions.createdAt) — plain unixepoch() only
     // resolves to the second, which made "recent activity" ordering (dashboard, §20 Phase
     // beyond) non-deterministic for entries created or updated within the same second.
@@ -53,6 +59,7 @@ export const entries = sqliteTable(
     // publishAt <= now().
     index('entries_status_publish_at_idx').on(table.status, table.publishAt),
     index('entries_folder_id_idx').on(table.folderId),
+    index('entries_content_type_featured_idx').on(table.contentTypeId, table.featured),
   ],
 );
 

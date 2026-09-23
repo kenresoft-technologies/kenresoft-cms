@@ -104,6 +104,7 @@ describe('EntryEditorPage', () => {
         status: 'draft',
         data: { title: 'Hello World', featured: true },
         publishAt: null,
+        featured: false,
       }),
     );
   });
@@ -127,6 +128,15 @@ describe('EntryEditorPage', () => {
     expect(screen.getByLabelText('Slug')).toHaveValue('my-great-post-custom');
     await userEvent.type(screen.getByLabelText('Title'), ' Extra');
     expect(screen.getByLabelText('Slug')).toHaveValue('my-great-post-custom');
+
+    // An accidental edit isn't a one-way door: the toggle right next to the field resyncs the
+    // slug from the title's current value immediately, not just from the next keystroke onward —
+    // and turning it back on resumes live tracking, not just a one-time resync.
+    expect(screen.getByText(/Auto-generation is off/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('switch', { name: /Auto-generate from Title/ }));
+    expect(screen.getByLabelText('Slug')).toHaveValue('my-great-post-extra');
+    await userEvent.type(screen.getByLabelText('Title'), ' More');
+    expect(screen.getByLabelText('Slug')).toHaveValue('my-great-post-extra-more');
   });
 
   it('lands on the new entry\'s own editor after creating it, instead of the entries list', async () => {
@@ -183,6 +193,44 @@ describe('EntryEditorPage', () => {
         status: 'published',
         data: { title: 'Hello World', featured: true },
         publishAt: null,
+        featured: false,
+      }),
+    );
+  });
+
+  it('toggles the entry-level "Featured entry" switch independently of a content type\'s own field that happens to be named/labeled Featured', async () => {
+    getMock.mockImplementation((path: string) => {
+      if (path.endsWith('/fields')) return Promise.resolve(fields);
+      if (path.endsWith('/revisions')) return Promise.resolve([]);
+      return Promise.resolve({
+        id: 'e-1',
+        slug: 'hello-world',
+        status: 'draft',
+        data: { title: 'Hello World', featured: false },
+        publishAt: null,
+        featured: false,
+      });
+    });
+    patchMock.mockResolvedValue({ id: 'e-1' });
+
+    renderEditor('/content-types/ct-1/entries/e-1');
+
+    await waitFor(() => expect(screen.getByLabelText('Slug')).toHaveValue('hello-world'));
+    // Two distinct controls, both legitimately labeled "Featured" — the content type's own
+    // custom field checkbox, and this entry's own sidebar switch — must not collide.
+    expect(screen.getByLabelText('Featured')).not.toBeChecked();
+    expect(screen.getByLabelText('Featured entry')).not.toBeChecked();
+
+    await userEvent.click(screen.getByLabelText('Featured entry'));
+    await userEvent.click(screen.getByRole('button', { name: 'Save entry' }));
+
+    await waitFor(() =>
+      expect(patchMock).toHaveBeenCalledWith('/api/v1/admin/entries/e-1', {
+        slug: 'hello-world',
+        status: 'draft',
+        data: { title: 'Hello World', featured: false },
+        publishAt: null,
+        featured: true,
       }),
     );
   });

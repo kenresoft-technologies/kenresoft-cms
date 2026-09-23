@@ -18,6 +18,9 @@ export const publicContentRoute = createOpenApiApp<{ Bindings: Bindings }>();
 const notFoundSchema = z.object({ error: z.string() });
 const contentTypeParamSchema = z.object({ contentType: z.string().min(1) });
 const entryParamSchema = z.object({ contentType: z.string().min(1), slug: z.string().min(1) });
+// Omitted = every published entry; 'true' = featured only — backs
+// `cms.entries.list({ contentTypeId, featured: true })` for a "featured post" homepage spot.
+const listQuerySchema = z.object({ featured: z.enum(['true']).optional() });
 
 function toEntry(row: DbEntry, richText: RichTextFieldMap): Entry {
   return {
@@ -27,6 +30,7 @@ function toEntry(row: DbEntry, richText: RichTextFieldMap): Entry {
     status: row.status as EntryStatus,
     data: sanitizeEntryData(richText, row.contentTypeId, row.data),
     publishAt: row.publishAt ? row.publishAt.toISOString() : null,
+    featured: row.featured,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -37,7 +41,12 @@ function toEntry(row: DbEntry, richText: RichTextFieldMap): Entry {
 // stores a copy in the Cache API, it never changes what gets returned on a miss.
 publicContentRoute.get('*', async (c, next) => {
   const cache = caches.default;
-  const cacheKey = publicCacheKey(new URL(c.req.url).pathname);
+  const url = new URL(c.req.url);
+  // Includes the query string (matching routes/public/pages.ts's own precedent) — the list
+  // route's new ?featured=true filter would otherwise share a cache entry with the unfiltered
+  // list, since the entry point (§12) is a raw R2/D1-free Cache API lookup keyed only on what's
+  // passed in here, before the route's own query validation ever runs.
+  const cacheKey = publicCacheKey(url.pathname + url.search);
 
   const cached = await cache.match(cacheKey);
   if (cached) return cached;
@@ -56,10 +65,10 @@ publicContentRoute.openapi(
     path: '/{contentType}',
     tags: ['Public content'],
     summary: 'List published entries for a content type',
-    request: { params: contentTypeParamSchema },
+    request: { params: contentTypeParamSchema, query: listQuerySchema },
     responses: {
       200: {
-        description: 'Every published entry for this content type.',
+        description: 'Every published entry for this content type, or only the featured ones with ?featured=true.',
         content: { 'application/json': { schema: z.array(entrySchema) } },
       },
       404: {
@@ -70,13 +79,14 @@ publicContentRoute.openapi(
   }),
   async (c) => {
     const { contentType: contentTypeSlug } = c.req.valid('param');
+    const { featured } = c.req.valid('query');
     const db = getDb(c);
     const contentType = await getContentTypeBySlug(db, contentTypeSlug);
     if (!contentType) {
       return c.json({ error: 'Content type not found' }, 404);
     }
 
-    const entries = await listPublishedEntriesForContentType(db, contentType.id);
+    const entries = await listPublishedEntriesForContentType(db, contentType.id, featured === 'true');
     const richText = await loadRichTextFields(db);
     return c.json(entries.map((row) => toEntry(row, richText)), 200);
   },

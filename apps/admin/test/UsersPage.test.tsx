@@ -111,6 +111,18 @@ describe('UsersPage', () => {
     expect(screen.getByText('Admin')).toBeInTheDocument();
   });
 
+  it("never shows an interactive developer-tools toggle in the table, even for an admin — only the row's own detail page has it", async () => {
+    useSessionMock.mockReturnValue({ data: { user: { role: 'admin', email: 'admin@example.test' } } });
+    getMock.mockResolvedValue(users);
+
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('Admin User')).toBeInTheDocument());
+    // A dense table row is a worse place for a sensitive per-user toggle than a dedicated page —
+    // the table shows status only (e.g. "Always"/"—"), never a switch.
+    expect(within(screen.getByRole('table')).queryByRole('switch')).not.toBeInTheDocument();
+  });
+
   it('lets an admin change another user\'s role via the inline select', async () => {
     useSessionMock.mockReturnValue({ data: { user: { role: 'admin', email: 'admin@example.test' } } });
     getMock.mockResolvedValue(users);
@@ -225,9 +237,41 @@ describe('UsersPage', () => {
     await userEvent.click(within(row).getByRole('combobox'));
     await userEvent.click(await screen.findByRole('option', { name: 'Editor' }));
 
+    // Granting CMS access to a currently-'none' account requires an explicit confirmation first —
+    // the risky-escalation guard this test also covers.
+    expect(patchMock).not.toHaveBeenCalled();
+    await userEvent.click(await screen.findByRole('button', { name: 'Grant access' }));
+
     await waitFor(() =>
       expect(patchMock).toHaveBeenCalledWith('/api/v1/admin/users/u-3/role', { role: 'editor' }),
     );
+  });
+
+  it('requires confirmation before granting CMS access to a website user, and Cancel leaves the role unchanged', async () => {
+    useSessionMock.mockReturnValue({ data: { user: { role: 'admin', email: 'admin@example.test' } } });
+    const websiteUser = {
+      id: 'u-4',
+      name: 'Cautious Visitor',
+      email: 'cautious@example.test',
+      role: 'none' as const,
+      isCommerceCustomer: false,
+      createdAt: '2026-01-03T00:00:00.000Z',
+      lastActiveAt: null,
+    };
+    getMock.mockResolvedValue([websiteUser]);
+
+    renderPage();
+    await waitFor(() => expect(screen.getByText('Cautious Visitor')).toBeInTheDocument());
+
+    const row = screen.getByRole('row', { name: /Cautious Visitor/ });
+    await userEvent.click(within(row).getByRole('combobox'));
+    await userEvent.click(await screen.findByRole('option', { name: 'Editor' }));
+
+    expect(await screen.findByText(/Grant CMS access to Cautious Visitor\?/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    await waitFor(() => expect(screen.queryByText(/Grant CMS access to Cautious Visitor\?/)).not.toBeInTheDocument());
+    expect(patchMock).not.toHaveBeenCalled();
   });
 
   it('shows an empty state when there are no users', async () => {

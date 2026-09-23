@@ -107,9 +107,18 @@ export const importExternalMediaSchema = z.object({
   source: z.enum(IMPORT_MEDIA_SOURCES),
   width: z.number().int().min(1).max(5000),
   height: z.number().int().min(1).max(5000),
+  // A specific photo id from Picsum's own /v2/list catalog (what the admin UI's browse grid
+  // lets someone actually pick and preview) — takes priority over `seed` when both are present,
+  // since picking a real photo by id is strictly more specific than a seed string.
+  pictureId: z.string().min(1).max(50).optional(),
   // Omitted = a fresh random image each time; a fixed seed re-fetches the same image (matching
   // Picsum's own /seed/{seed}/{w}/{h} URL convention), useful for "actually, that same one".
+  // Superseded by pictureId when both are given.
   seed: z.string().min(1).max(200).optional(),
+  // Picsum's own real, documented query params — a genuine "more flexible" import rather than a
+  // fixed width/height/seed-only request.
+  grayscale: z.boolean().optional(),
+  blur: z.number().int().min(1).max(10).optional(),
   altText: z.string().max(500).optional(),
   folderId: z.string().min(1).optional(),
 });

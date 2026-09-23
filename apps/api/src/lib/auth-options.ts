@@ -96,6 +96,22 @@ export const authOptions = {
         required: false,
         input: true,
       },
+      // Also client-settable, same reasoning as preferredMailClient — a personal contact number
+      // the account owner sets for themselves on Profile, purely informational, not used for
+      // 2FA/SMS or any security check, so no server-side format validation is enforced here.
+      phone: {
+        type: 'string',
+        required: false,
+        input: true,
+      },
+      // Deliberately input: false — staff-only context set through the admin API
+      // (routes/admin/users.ts's PATCH .../notes), never through this client-facing endpoint, so
+      // the account owner themselves can never read or write it via updateUser.
+      internalNotes: {
+        type: 'string',
+        required: false,
+        input: false,
+      },
     },
   },
   session: {

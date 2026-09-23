@@ -1,4 +1,15 @@
-import { and, desc, eq, like, or, pluginCommerceCustomerProfiles, session, user } from '@kenresoft-cms/database';
+import {
+  and,
+  desc,
+  eq,
+  like,
+  or,
+  pluginCommerceCustomerAddresses,
+  pluginCommerceCustomerProfiles,
+  pluginCommerceOrders,
+  session,
+  user,
+} from '@kenresoft-cms/database';
 import type { Database } from '@kenresoft-cms/database';
 import { NO_CMS_ACCESS } from '@kenresoft-cms/contracts/schemas/enums';
 
@@ -31,6 +42,31 @@ const customerColumns = {
 // endpoint can't be used to disable, list or probe staff.
 const isWebsiteUser = eq(user.role, NO_CMS_ACCESS);
 
+// This used to be "every website user" (role 'none'), full stop — which meant a plain visitor
+// who'd never touched Commerce at all (no order, no address, no saved profile) still showed up
+// on Commerce's own Customers page, while Core Users' Website-User/Commerce-Customer badge used
+// a *different*, narrower definition — the exact "mismatch and confusion between commerce
+// customers and website users" this was built to close. Both surfaces now agree: a "customer"
+// is a website user with real Commerce engagement (a placed order, a saved address, or a saved
+// profile field), matching apps/api's own isUserCommerceCustomer/listUsersWithLastActive.
+async function engagedCustomerUserIds(db: Database): Promise<Set<string>> {
+  const [profiles, addresses, orders] = await Promise.all([
+    db.select({ userId: pluginCommerceCustomerProfiles.userId }).from(pluginCommerceCustomerProfiles),
+    db.selectDistinct({ userId: pluginCommerceCustomerAddresses.customerId }).from(pluginCommerceCustomerAddresses),
+    db.selectDistinct({ userId: pluginCommerceOrders.customerId }).from(pluginCommerceOrders),
+  ]);
+  return new Set([
+    ...profiles.map((row) => row.userId),
+    ...addresses.map((row) => row.userId),
+    ...orders.map((row) => row.userId).filter((id): id is string => id !== null),
+  ]);
+}
+
+// Deliberately NOT filtered by engagement, unlike listCustomers below — a direct id lookup is
+// how staff reach a specific website user (e.g. from Core Users' own directory, which lists
+// every account regardless of Commerce engagement) to view or disable them, including someone
+// who hasn't ordered anything yet. Narrowing this too would make a legitimate, pre-emptive
+// "disable this suspicious signup" action 404 for no good reason.
 export async function getCustomerById(db: Database, id: string): Promise<CustomerRecord | undefined> {
   const [row] = await db
     .select(customerColumns)
@@ -40,13 +76,17 @@ export async function getCustomerById(db: Database, id: string): Promise<Custome
   return row;
 }
 
-export function listCustomers(db: Database, search?: string): Promise<CustomerRecord[]> {
-  return db
-    .select(customerColumns)
-    .from(user)
-    .leftJoin(pluginCommerceCustomerProfiles, eq(pluginCommerceCustomerProfiles.userId, user.id))
-    .where(search ? and(isWebsiteUser, or(like(user.email, `%${search}%`), like(user.name, `%${search}%`))) : isWebsiteUser)
-    .orderBy(desc(user.createdAt));
+export async function listCustomers(db: Database, search?: string): Promise<CustomerRecord[]> {
+  const [rows, engaged] = await Promise.all([
+    db
+      .select(customerColumns)
+      .from(user)
+      .leftJoin(pluginCommerceCustomerProfiles, eq(pluginCommerceCustomerProfiles.userId, user.id))
+      .where(search ? and(isWebsiteUser, or(like(user.email, `%${search}%`), like(user.name, `%${search}%`))) : isWebsiteUser)
+      .orderBy(desc(user.createdAt)),
+    engagedCustomerUserIds(db),
+  ]);
+  return rows.filter((row) => engaged.has(row.id));
 }
 
 export async function getProfilePhone(db: Database, userId: string): Promise<string | null> {

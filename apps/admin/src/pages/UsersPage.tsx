@@ -1,4 +1,5 @@
 import { useMemo, useState, type FormEvent } from 'react';
+import { useNavigate } from 'react-router';
 import {
   Ban,
   Check,
@@ -69,7 +70,7 @@ import { Table, TableHeader, TableHead, TableRow } from '@/components/ui/table';
 const ACTIVE_WITHIN_MS = 7 * 24 * 60 * 60 * 1000;
 
 type StatusFilter = 'all' | 'active' | 'never';
-type AccountType = 'cms_staff' | 'commerce_customer' | 'website_user';
+export type AccountType = 'cms_staff' | 'commerce_customer' | 'website_user';
 type AccountTypeFilter = 'all' | AccountType;
 
 // The Core Users directory's one classification: role != 'none' always means CMS staff, even for
@@ -78,18 +79,18 @@ type AccountTypeFilter = 'all' | AccountType;
 // that row, not a fourth type) rather than losing the distinction. A role-'none' account is then
 // either a Commerce customer (a plugin_commerce_customer_profiles row exists) or a plain website
 // user with none yet.
-function accountType(user: AdminUser): AccountType {
+export function accountType(user: AdminUser): AccountType {
   if (user.role !== 'none') return 'cms_staff';
   return user.isCommerceCustomer ? 'commerce_customer' : 'website_user';
 }
 
-const ACCOUNT_TYPE_LABEL: Record<AccountType, string> = {
+export const ACCOUNT_TYPE_LABEL: Record<AccountType, string> = {
   cms_staff: 'CMS Staff',
   commerce_customer: 'Commerce Customer',
   website_user: 'Website User',
 };
 
-function initials(name: string): string {
+export function initials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   const first = parts[0]?.[0] ?? '';
   const last = parts.length > 1 ? (parts[parts.length - 1]?.[0] ?? '') : '';
@@ -104,7 +105,7 @@ function activeThisWeek(user: AdminUser): boolean {
 // readers and accessible-name-based queries (including this page's own tests) still see the
 // raw lowercase role string. Capitalizing the string itself keeps "Editor"/"Admin" as the real
 // accessible name, matching what was previously hardcoded per-option.
-function capitalizeRole(role: string): string {
+export function capitalizeRole(role: string): string {
   if (role === 'none') return 'No CMS access';
   return role.charAt(0).toUpperCase() + role.slice(1);
 }
@@ -138,7 +139,7 @@ function exportUsersToCsv(users: AdminUser[]) {
 // an option avoids a confusing "why did that fail" for anyone who tries. 'none' is included so
 // this same control both revokes CMS access from staff and grants it to a website user/Commerce
 // customer — Core Users is one directory with one role control, not two.
-const ASSIGNABLE_ROLES = ['none', ...USER_ROLES.filter((role) => role !== 'owner')] as const;
+export const ASSIGNABLE_ROLES = ['none', ...USER_ROLES.filter((role) => role !== 'owner')] as const;
 
 // Distinct colors below Owner (which keeps its own primary tint above) — gives the Users page
 // the same at-a-glance role scan as Strapi's role badges. Viewer stays unaccented, matching its
@@ -155,8 +156,15 @@ const ROLE_SELECT_TONE: Partial<Record<AdminUser['role'], string>> = {
   author: 'text-swatch-4',
 };
 
-function RoleCell({ user, canEdit }: { user: AdminUser; canEdit: boolean }) {
+export function RoleCell({ user, canEdit }: { user: AdminUser; canEdit: boolean }) {
   const updateRole = useUpdateUserRole();
+  // Granting a CMS role to an account that currently has none — a website visitor or Commerce
+  // customer — is a materially bigger action than changing an already-CMS-staff member's role
+  // (e.g. editor → author): it hands out CMS access to someone who signed up on the public site,
+  // never asked for staff access, and may not even know it happened. Confirmed explicitly rather
+  // than applied on a single dropdown click, the same way disabling an admin or transferring
+  // ownership already require an explicit confirmation elsewhere on this page.
+  const [pendingGrant, setPendingGrant] = useState<AccountRole | null>(null);
 
   // The owner's role is never editable through this control, by anyone — matches the API's own
   // immunity guard (apps/api/src/lib/user-guards.ts).
@@ -176,32 +184,67 @@ function RoleCell({ user, canEdit }: { user: AdminUser; canEdit: boolean }) {
     );
   }
 
+  function commitRoleChange(role: AccountRole) {
+    updateRole.mutate(
+      { id: user.id, role },
+      {
+        onError: (err) => {
+          toast.error(err instanceof ApiError ? err.message : 'Failed to update role');
+        },
+      },
+    );
+  }
+
   return (
-    <Select
-      value={user.role}
-      disabled={updateRole.isPending}
-      onValueChange={(value) => {
-        updateRole.mutate(
-          { id: user.id, role: value as AccountRole },
-          {
-            onError: (err) => {
-              toast.error(err instanceof ApiError ? err.message : 'Failed to update role');
-            },
-          },
-        );
-      }}
-    >
-      <SelectTrigger size="sm" className={cn('w-28 capitalize', ROLE_SELECT_TONE[user.role])}>
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        {ASSIGNABLE_ROLES.map((role) => (
-          <SelectItem key={role} value={role}>
-            {capitalizeRole(role)}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+    <>
+      <Select
+        value={user.role}
+        disabled={updateRole.isPending}
+        onValueChange={(value) => {
+          const role = value as AccountRole;
+          if (user.role === 'none' && role !== 'none') {
+            setPendingGrant(role);
+            return;
+          }
+          commitRoleChange(role);
+        }}
+      >
+        <SelectTrigger size="sm" className={cn('w-28 capitalize', ROLE_SELECT_TONE[user.role])}>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {ASSIGNABLE_ROLES.map((role) => (
+            <SelectItem key={role} value={role}>
+              {capitalizeRole(role)}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <AlertDialog open={pendingGrant !== null} onOpenChange={(open) => !open && setPendingGrant(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Grant CMS access to {user.name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {user.name} is currently a website user with no CMS access
+              {user.isCommerceCustomer ? ' (and a Commerce customer)' : ''}. Changing their role to{' '}
+              <span className="font-medium capitalize">{pendingGrant ? capitalizeRole(pendingGrant) : ''}</span>{' '}
+              gives them sign-in access to this admin dashboard, not just the public site.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (pendingGrant) commitRoleChange(pendingGrant);
+                setPendingGrant(null);
+              }}
+            >
+              Grant access
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
 
@@ -209,7 +252,7 @@ function RoleCell({ user, canEdit }: { user: AdminUser; canEdit: boolean }) {
 // (apps/admin/src/lib/developer-mode.ts) — this control only matters for editor/author, who
 // need it granted per person rather than automatically. Viewer never qualifies regardless, so
 // it isn't shown there either.
-function DeveloperToolsCell({ user, canEdit }: { user: AdminUser; canEdit: boolean }) {
+export function DeveloperToolsCell({ user, canEdit }: { user: AdminUser; canEdit: boolean }) {
   const updateAccess = useUpdateUserDeveloperToolsAccess();
 
   if (user.role !== 'editor' && user.role !== 'author') {
@@ -239,7 +282,7 @@ function DeveloperToolsCell({ user, canEdit }: { user: AdminUser; canEdit: boole
   );
 }
 
-const ACCOUNT_TYPE_BADGE_TONE: Record<AccountType, string> = {
+export const ACCOUNT_TYPE_BADGE_TONE: Record<AccountType, string> = {
   cms_staff: 'border-primary/30 bg-primary/10 text-primary',
   commerce_customer: 'border-swatch-5/30 bg-swatch-5/14 text-swatch-5',
   website_user: '',
@@ -388,7 +431,7 @@ function AddUserDialog({ onCreated }: { onCreated: (result: { user: AdminUser; t
   );
 }
 
-function SessionsDialog({ user }: { user: AdminUser }) {
+export function SessionsDialog({ user }: { user: AdminUser }) {
   const [open, setOpen] = useState(false);
   const [pendingRevoke, setPendingRevoke] = useState<Session | null>(null);
   const { data: sessions, isPending } = useUserSessions(user.id, open);
@@ -486,7 +529,7 @@ function SessionsDialog({ user }: { user: AdminUser }) {
 // mirrors that server-side rule in the UI rather than letting the request round-trip fail with
 // a generic 403. Re-enabling is restorative, not destructive, so it skips both the confirm step
 // and elevation.
-function DisableUserControl({ user }: { user: AdminUser }) {
+export function DisableUserControl({ user }: { user: AdminUser }) {
   const updateDisabled = useUpdateUserDisabled();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [elevateOpen, setElevateOpen] = useState(false);
@@ -551,6 +594,7 @@ function DisableUserControl({ user }: { user: AdminUser }) {
 }
 
 export function UsersPage() {
+  const navigate = useNavigate();
   const { data: session } = authClient.useSession();
   const isAdmin = roleAtLeast((session?.user.role ?? 'viewer') as UserRole, 'admin');
   const { data: users, isPending, error, refetch } = useUsers();
@@ -645,7 +689,10 @@ export function UsersPage() {
         id: 'developerTools',
         header: 'Dev tools',
         enableSorting: false,
-        cell: ({ row }) => <DeveloperToolsCell user={row.original} canEdit={isAdmin} />,
+        // Status only here, never the toggle — an accidental click on a densely-packed table row
+        // is a worse place to grant a sensitive per-user capability than a dedicated confirmation
+        // point. The real control lives on that user's own detail page (open the row to reach it).
+        cell: ({ row }) => <DeveloperToolsCell user={row.original} canEdit={false} />,
       },
       {
         accessorKey: 'lastActiveAt',
@@ -760,6 +807,7 @@ export function UsersPage() {
           data={filteredUsers}
           searchPlaceholder="Search users…"
           onRefresh={() => void refetch()}
+          onRowClick={(row) => navigate(`/users/${row.id}`)}
           toolbar={
             <>
               <Select value={typeFilter} onValueChange={(value) => setTypeFilter(value as AccountTypeFilter)}>
