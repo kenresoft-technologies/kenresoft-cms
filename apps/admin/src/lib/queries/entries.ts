@@ -16,6 +16,7 @@ type EntryWriteInput = {
   status: EntryStatus;
   data: Record<string, unknown>;
   publishAt?: string | null;
+  featured?: boolean;
 };
 
 // The API returns the same joined shape (content type + author) whether or not

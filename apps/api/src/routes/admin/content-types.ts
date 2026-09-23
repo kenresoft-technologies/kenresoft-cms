@@ -20,6 +20,8 @@ import { invalidatePublicRoutePatternsCache } from '../../lib/public-cache';
 import { requireRole } from '../../middleware/require-role';
 import {
   createContentType,
+  deleteContentType,
+  findFieldsReferencingContentType,
   getContentTypeById,
   getContentTypeByRoutePattern,
   listContentTypes,
@@ -269,6 +271,78 @@ contentTypesRoute.openapi(
       await invalidatePublicRoutePatternsCache();
     }
     return c.json(toContentType(updated!), 200);
+  },
+);
+
+// Admin-only, matching creation/renaming — a content type's own fields and entries cascade at
+// the database level (packages/database/schema), but a `reference` field on a *different*
+// content type pointing at this one is only a JSON config value, never a real FK, so the DB
+// can't protect it. Blocked with a 409 rather than silently deleting out from under a still-live
+// reference field, listing exactly which content type(s)/field(s) need to be repointed first.
+contentTypesRoute.openapi(
+  createRoute({
+    method: 'delete',
+    path: '/{id}',
+    tags: ['Content types'],
+    summary: 'Delete a content type, its fields and its entries (admin only)',
+    middleware: requireRole('admin'),
+    request: { params: idParamSchema },
+    responses: {
+      204: { description: 'The content type, its fields and its entries were deleted.' },
+      404: {
+        description: 'No content type with that id.',
+        content: { 'application/json': { schema: notFoundSchema } },
+      },
+      409: {
+        description: 'Another content type has a reference field targeting this one.',
+        content: {
+          'application/json': {
+            schema: z.object({
+              error: z.string(),
+              referencedBy: z.array(
+                z.object({ contentTypeId: z.string(), contentTypeName: z.string(), fieldLabel: z.string() }),
+              ),
+            }),
+          },
+        },
+      },
+    },
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const db = getDb(c);
+    const contentType = await getContentTypeById(db, id);
+    if (!contentType) {
+      return c.json({ error: 'Content type not found' }, 404);
+    }
+
+    const referencingFields = await findFieldsReferencingContentType(db, id);
+    if (referencingFields.length > 0) {
+      return c.json(
+        {
+          error: 'Another content type has a reference field targeting this one. Repoint or remove it first.',
+          referencedBy: referencingFields.map((f) => ({
+            contentTypeId: f.contentTypeId,
+            contentTypeName: f.contentTypeName,
+            fieldLabel: f.fieldLabel,
+          })),
+        },
+        409,
+      );
+    }
+
+    await deleteContentType(db, id);
+    await recordAudit(db, {
+      actorUserId: c.get('user').id,
+      action: 'content_type.deleted',
+      targetType: 'content_type',
+      targetId: id,
+      metadata: { name: contentType.name, slug: contentType.slug },
+    });
+    if (contentType.routePattern) {
+      await invalidatePublicRoutePatternsCache();
+    }
+    return c.body(null, 204);
   },
 );
 

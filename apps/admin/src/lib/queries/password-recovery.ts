@@ -15,7 +15,12 @@ export function useSystemStatus() {
       apiClient.get<{ emailConfigured: boolean; authSecretConfigured: boolean; turnstileSiteKey: string | null }>(
         '/api/v1/system/status',
       ),
-    staleTime: Infinity,
+    // Was Infinity — an admin tab left open across a `pnpm run setup`/`update -- --turnstile`
+    // reconfiguration kept showing the old cached value (e.g. Turnstile "Not set") until a hard
+    // reload created a fresh QueryClient, even though the server was already correctly
+    // reporting the new value. 30s keeps this cheap (a plain, uncached Worker read, no D1 hit)
+    // while making Settings > API self-correct on its own without a manual reload.
+    staleTime: 30_000,
   });
 }
 

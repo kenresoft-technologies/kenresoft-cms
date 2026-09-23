@@ -17,6 +17,7 @@ type EntryWriteInput = {
   data?: NewEntry['data'] | undefined;
   publishAt?: NewEntry['publishAt'] | undefined;
   folderId?: NewEntry['folderId'] | undefined;
+  featured?: NewEntry['featured'] | undefined;
 };
 
 async function snapshotRevision(
@@ -36,7 +37,7 @@ async function snapshotRevision(
 export async function createEntry(
   db: Database,
   contentTypeId: string,
-  input: Pick<NewEntry, 'slug' | 'status' | 'data'> & Pick<EntryWriteInput, 'publishAt' | 'folderId'>,
+  input: Pick<NewEntry, 'slug' | 'status' | 'data'> & Pick<EntryWriteInput, 'publishAt' | 'folderId' | 'featured'>,
   createdBy: string | null,
 ): Promise<Entry> {
   const contentType = await db.query.contentTypes.findFirst({
@@ -85,6 +86,7 @@ export async function listEntriesWithContentType(
   db: Database,
   contentTypeId?: string,
   folderId?: string | null,
+  featured?: boolean,
 ): Promise<EntryWithContentType[]> {
   const rows = await db
     .select({
@@ -94,6 +96,7 @@ export async function listEntriesWithContentType(
       status: entries.status,
       data: entries.data,
       publishAt: entries.publishAt,
+      featured: entries.featured,
       createdAt: entries.createdAt,
       updatedAt: entries.updatedAt,
       createdBy: entries.createdBy,
@@ -110,6 +113,7 @@ export async function listEntriesWithContentType(
       and(
         contentTypeId ? eq(entries.contentTypeId, contentTypeId) : undefined,
         folderId === undefined ? undefined : folderId === null ? isNull(entries.folderId) : eq(entries.folderId, folderId),
+        featured === undefined ? undefined : eq(entries.featured, featured),
       ),
     )
     .orderBy(desc(entries.updatedAt));
@@ -137,9 +141,14 @@ export function getEntryBySlug(
 export function listPublishedEntriesForContentType(
   db: Database,
   contentTypeId: string,
+  featuredOnly?: boolean,
 ): Promise<Entry[]> {
   return db.query.entries.findMany({
-    where: and(eq(entries.contentTypeId, contentTypeId), eq(entries.status, 'published')),
+    where: and(
+      eq(entries.contentTypeId, contentTypeId),
+      eq(entries.status, 'published'),
+      featuredOnly ? eq(entries.featured, true) : undefined,
+    ),
   });
 }
 

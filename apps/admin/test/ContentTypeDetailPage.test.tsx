@@ -2,22 +2,26 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router';
+import { toast } from 'sonner';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiError } from '@/lib/api-client';
 import { ContentTypeDetailPage } from '@/pages/ContentTypeDetailPage';
 
-const { getMock, postMock, patchMock } = vi.hoisted(() => ({
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+
+const { getMock, postMock, patchMock, deleteMock } = vi.hoisted(() => ({
   getMock: vi.fn(),
   postMock: vi.fn(),
   patchMock: vi.fn(),
+  deleteMock: vi.fn(),
 }));
 
 vi.mock('@/lib/api-client', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api-client')>('@/lib/api-client');
   return {
     ...actual,
-    apiClient: { ...actual.apiClient, get: getMock, post: postMock, patch: patchMock },
+    apiClient: { ...actual.apiClient, get: getMock, post: postMock, patch: patchMock, delete: deleteMock },
   };
 });
 
@@ -34,6 +38,7 @@ function renderPage() {
       <MemoryRouter initialEntries={['/content-types/ct-1/schema']}>
         <Routes>
           <Route path="/content-types/:contentTypeId/schema" element={<ContentTypeDetailPage />} />
+          <Route path="/content-types" element={<div>Content types list</div>} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -45,6 +50,7 @@ describe('ContentTypeDetailPage', () => {
     getMock.mockReset();
     postMock.mockReset();
     patchMock.mockReset();
+    deleteMock.mockReset();
   });
 
   it('fetches the content type and its fields scoped by contentTypeId', async () => {
@@ -205,5 +211,53 @@ describe('ContentTypeDetailPage', () => {
     await waitFor(() =>
       expect(screen.getByText('That route pattern is already used by another content type.')).toBeInTheDocument(),
     );
+  });
+
+  it('deletes the content type after confirming, and navigates back to the list', async () => {
+    getMock.mockImplementation((path: string) => {
+      if (path.endsWith('/fields')) return Promise.resolve([]);
+      return Promise.resolve({ id: 'ct-1', name: 'Blog Post', slug: 'blog-post', routePattern: null });
+    });
+    deleteMock.mockResolvedValue(undefined);
+
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Delete content type' })).toBeInTheDocument(),
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'Delete content type' }));
+    const alert = await screen.findByRole('alertdialog');
+    expect(within(alert).getByText('Delete "Blog Post"?')).toBeInTheDocument();
+    await userEvent.click(within(alert).getByRole('button', { name: 'Delete' }));
+
+    await waitFor(() => expect(deleteMock).toHaveBeenCalledWith('/api/v1/admin/content-types/ct-1'));
+    await waitFor(() => expect(screen.getByText('Content types list')).toBeInTheDocument());
+  });
+
+  it('surfaces the 409 reference-conflict error instead of deleting', async () => {
+    getMock.mockImplementation((path: string) => {
+      if (path.endsWith('/fields')) return Promise.resolve([]);
+      return Promise.resolve({ id: 'ct-1', name: 'Author', slug: 'author', routePattern: null });
+    });
+    deleteMock.mockRejectedValue(
+      new ApiError(409, 'Another content type has a reference field targeting this one. Repoint or remove it first.'),
+    );
+
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Delete content type' })).toBeInTheDocument(),
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'Delete content type' }));
+    const alert = await screen.findByRole('alertdialog');
+    await userEvent.click(within(alert).getByRole('button', { name: 'Delete' }));
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        'Another content type has a reference field targeting this one. Repoint or remove it first.',
+      ),
+    );
+    // The page itself is unaffected — no navigation away, still showing the content type's schema.
+    expect(screen.getByRole('heading', { name: 'Schema' })).toBeInTheDocument();
   });
 });

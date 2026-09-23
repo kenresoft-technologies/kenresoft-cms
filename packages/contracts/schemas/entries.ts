@@ -10,6 +10,9 @@ export const entrySchema = z.object({
   status: z.enum(ENTRY_STATUSES),
   data: z.record(z.string(), z.unknown()),
   publishAt: z.string().nullable(),
+  // A first-class "feature this" flag, independent of any content-type-specific field — see
+  // packages/database/schema/entries.ts's own comment for why this isn't just another field.
+  featured: z.boolean(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -27,14 +30,21 @@ export const createEntrySchema = z.object({
   // Admin-only organization, never a validated part of the entry's own content — an omitted
   // value means unfiled/root, matching folderId's own nullable-by-default convention elsewhere.
   folderId: z.string().min(1).nullable().optional(),
+  featured: z.boolean().optional().default(false),
 });
 
+// Hand-written, not createEntrySchema.partial() — both status and featured above have their
+// own `.default(...)`, and `.partial()` doesn't strip an already-present default (Site Builder
+// Phase 10's hardening pass — see that changelog entry for the data-loss bug this exact trap
+// caused elsewhere). An omitted field here must parse to real `undefined`, not silently
+// reapply the create-schema default on every edit that doesn't resend it.
 export const updateEntrySchema = z.object({
   slug: slugSchema.optional(),
   status: z.enum(ENTRY_STATUSES).optional(),
   data: z.record(z.string(), z.unknown()).optional(),
   publishAt: publishAtInputSchema.optional(),
   folderId: z.string().min(1).nullable().optional(),
+  featured: z.boolean().optional(),
 });
 
 export type Entry = z.infer<typeof entrySchema>;

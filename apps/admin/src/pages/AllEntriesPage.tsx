@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ChevronDown, FileText, Plus, Trash2 } from 'lucide-react';
+import { ChevronDown, FileText, Plus, Star, Trash2 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import type { ColumnDef } from '@tanstack/react-table';
@@ -120,8 +120,11 @@ export function AllEntriesPage() {
         cell: ({ row }) => (
           <Link
             to={`/content-types/${row.original.contentTypeId}/entries/${row.original.id}`}
-            className="font-medium hover:underline"
+            className="flex items-center gap-1.5 font-medium hover:underline"
           >
+            {row.original.featured ? (
+              <Star className="size-3.5 shrink-0 fill-amber-500 text-amber-500" aria-label="Featured" />
+            ) : null}
             {row.original.slug}
           </Link>
         ),

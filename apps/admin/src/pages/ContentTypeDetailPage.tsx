@@ -10,12 +10,12 @@ import {
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { GripVertical, ListPlus, Pencil, Plus, Trash2 } from 'lucide-react';
-import { useParams } from 'react-router';
+import { useNavigate, useParams } from 'react-router';
 import { toast } from 'sonner';
 
 import { ApiError } from '@/lib/api-client';
 import { authClient } from '@/lib/auth-client';
-import { useContentType, useContentTypes, useUpdateContentType } from '@/lib/queries/content-types';
+import { useContentType, useContentTypes, useDeleteContentType, useUpdateContentType } from '@/lib/queries/content-types';
 import {
   useCreateFieldDefinition,
   useDeleteFieldDefinition,
@@ -464,16 +464,22 @@ function SortableFieldRow({
 
 export function ContentTypeDetailPage() {
   const { contentTypeId } = useParams<{ contentTypeId: string }>();
+  const navigate = useNavigate();
   const { data: session } = authClient.useSession();
   // Matches the API's own gate (apps/api/src/routes/admin/content-types.ts) — author and
   // viewer can't rename the content type or manage its fields, only admin/editor.
   const canManageFields = roleAtLeast((session?.user.role ?? 'viewer') as UserRole, 'editor');
+  // Deleting the content type itself is admin-only, matching creation — a structural action,
+  // not an editorial one (§11), unlike field add/edit/reorder above.
+  const isAdmin = roleAtLeast((session?.user.role ?? 'viewer') as UserRole, 'admin');
   const developerMode = useDeveloperMode();
   const { data: contentType } = useContentType(contentTypeId ?? '');
   const { data: fields, isPending, error } = useFieldDefinitions(contentTypeId ?? '');
   const reorderFields = useReorderFieldDefinitions(contentTypeId ?? '');
   const deleteField = useDeleteFieldDefinition(contentTypeId ?? '');
+  const deleteContentType = useDeleteContentType();
   const [pendingDelete, setPendingDelete] = useState<FieldDefinition | null>(null);
+  const [confirmDeleteContentType, setConfirmDeleteContentType] = useState(false);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
   function handleDragEnd(event: DragEndEvent) {
@@ -500,6 +506,19 @@ export function ContentTypeDetailPage() {
       toast.error(err instanceof ApiError ? err.message : 'Failed to delete field');
     } finally {
       setPendingDelete(null);
+    }
+  }
+
+  async function handleConfirmDeleteContentType() {
+    if (!contentTypeId) return;
+    try {
+      await deleteContentType.mutateAsync(contentTypeId);
+      toast.success('Content type deleted');
+      navigate('/content-types');
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Failed to delete content type');
+    } finally {
+      setConfirmDeleteContentType(false);
     }
   }
 
@@ -544,9 +563,33 @@ export function ContentTypeDetailPage() {
                 }
               />
             ) : null}
+            {isAdmin && contentTypeId ? (
+              <Button variant="destructive" onClick={() => setConfirmDeleteContentType(true)}>
+                <Trash2 />
+                Delete content type
+              </Button>
+            ) : null}
           </>
         }
       />
+
+      <AlertDialog open={confirmDeleteContentType} onOpenChange={setConfirmDeleteContentType}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete "{contentType?.name}"?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently deletes the content type, every one of its fields, and every entry created under it.
+              This can't be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" onClick={() => void handleConfirmDeleteContentType()}>
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {contentTypeId ? <ContentTypeTabs contentTypeId={contentTypeId} active="schema" /> : null}
 
