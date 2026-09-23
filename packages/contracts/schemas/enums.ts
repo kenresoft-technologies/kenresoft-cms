@@ -158,7 +158,7 @@ export function roleAtLeast(role: UserRole, minimum: UserRole): boolean {
 // as a real TS union here so route/repository code can't typo a module name past the compiler.
 // Deliberately not a plugin-extensible registry yet (no concrete second consumer exists) —
 // adding one later only means widening this union/union-keyed record, not a schema rewrite.
-export const STRUCTURED_SETTINGS_MODULES = ['general', 'contact', 'social', 'navigation', 'footer', 'seo'] as const;
+export const STRUCTURED_SETTINGS_MODULES = ['general', 'contact', 'social', 'navigation', 'footer', 'seo', 'emailBranding'] as const;
 
 export type StructuredSettingsModule = (typeof STRUCTURED_SETTINGS_MODULES)[number];
 
@@ -181,6 +181,19 @@ export const KNOWN_SOCIAL_PLATFORMS = [
 export const SOCIAL_PLATFORMS = [...KNOWN_SOCIAL_PLATFORMS, 'custom'] as const;
 
 export type SocialPlatform = (typeof SOCIAL_PLATFORMS)[number];
+
+// Every transactional email this CMS itself sends, each with a real send call site
+// (apps/api/src/lib/auth.ts's two branches, apps/api/src/routes/public/password-reset.ts) —
+// a closed set, not a free-form admin-created registry. Deliberately not extensible from the
+// admin UI: a template with no send call site behind it would just be dead configuration, and
+// this codebase's own standing rule is not to build speculative extensibility ahead of a
+// concrete second consumer (docs/ARCHITECTURE.md's Workers-KV precedent). Adding a new
+// transactional email later (e.g. a real "welcome" send once one is deliberately added) means
+// widening this union plus one entry in apps/api/src/lib/email-templates/defaults.ts, not a
+// schema rewrite.
+export const EMAIL_TEMPLATE_KEYS = ['email_verification', 'email_verification_staff', 'password_reset'] as const;
+
+export type EmailTemplateKey = (typeof EMAIL_TEMPLATE_KEYS)[number];
 
 // Fired from apps/api/src/routes/admin/entries.ts at the route layer (not the repository),
 // since only the route handler has both the pre-update and post-update entry to compare

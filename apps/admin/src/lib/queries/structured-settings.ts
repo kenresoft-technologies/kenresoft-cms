@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
 import type {
   ContactSettingsData,
+  EmailBrandingSettingsData,
   FooterSettingsData,
   GeneralSettingsData,
   LegacyMigrationReport,
@@ -26,6 +27,7 @@ type DataByModule = {
   navigation: NavigationSettingsData;
   footer: FooterSettingsData;
   seo: SeoSettingsData;
+  emailBranding: EmailBrandingSettingsData;
 };
 
 export function useStructuredSettings<M extends StructuredSettingsModule>(module: M) {

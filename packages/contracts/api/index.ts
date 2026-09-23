@@ -29,3 +29,4 @@ export * from '../schemas/structured-settings';
 export * from '../schemas/templates';
 export * from '../schemas/users';
 export * from '../schemas/webhooks';
+export * from '../schemas/email-templates';

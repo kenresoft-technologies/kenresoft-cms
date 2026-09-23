@@ -7,6 +7,7 @@ import {
   Inbox,
   BookOpen,
   Mail,
+  MailPlus,
   Layers,
   LayoutDashboard,
   LayoutList,
@@ -89,6 +90,10 @@ const adminItems = [
 // would just be a dead end for editor/author/viewer.
 const auditLogItem = { to: '/audit-log', label: 'Audit log', end: false, icon: ScrollText };
 
+// Same reasoning as auditLogItem — every route in routes/admin/email-templates.ts is
+// requireRole('admin'), so there's no read-only view a lower role could reach.
+const emailTemplatesItem = { to: '/email-templates', label: 'Email Templates', end: false, icon: MailPlus };
+
 // Same reasoning as auditLogItem — only admin can toggle a plugin (routes/admin/plugins.ts),
 // so there's nothing a lower role could do with this page. Labeled "Installed Plugins" rather
 // than bare "Plugins" so it doesn't collide with the "Plugins" SidebarGroupLabel below (the
@@ -155,7 +160,7 @@ export function AppLayout() {
     : engagementItems;
 
   const visibleAdminItems = roleAtLeast(session.user.role as UserRole, 'admin')
-    ? [...adminItems, auditLogItem, pluginsItem]
+    ? [...adminItems, emailTemplatesItem, auditLogItem, pluginsItem]
     : adminItems;
 
   // Defaults to visible while the list is still loading (isPending), then corrects itself once

@@ -379,6 +379,13 @@
       "when": 1790163961499,
       "tag": "0053_minor_red_wolf",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "6",
+      "when": 1790165244304,
+      "tag": "0054_square_nebula",
+      "breakpoints": true
     }
   ]
 }

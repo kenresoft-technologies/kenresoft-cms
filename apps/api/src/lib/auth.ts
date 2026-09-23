@@ -6,7 +6,7 @@ import { createDb } from '@kenresoft-cms/database';
 
 import { recordAudit } from './audit';
 import { authOptions } from './auth-options';
-import { getEmailSender } from './email';
+import { sendTemplatedEmail } from './email-templates/send';
 import type { Bindings } from './env';
 import { getClientIp } from './client-ip';
 
@@ -85,31 +85,26 @@ export function createAuth(
     // already uses for its own link — no new env var.
     emailVerification: {
       sendVerificationEmail: async ({ user, token, url }) => {
-        const sender = getEmailSender(env);
         const role = (user as { role?: string }).role;
         if (!options.staffOnboarding && !hasCmsAccess(role)) {
           // A website user (e.g. a Commerce customer): better-auth's own verification URL, which
           // verifies the token and redirects to the `callbackURL` the site passed at sign-up
           // (validated against trustedOrigins above) — never the admin app, which a customer has
           // no business landing in.
-          await sender.send({
-            to: user.email,
-            subject: 'Verify your email',
-            text: `Verify your email address to finish setting up your account.
-
-Verify here: ${url}
-
-This link expires in 1 hour. If you didn't expect this, you can ignore this email.`,
-            html: `<p>Verify your email address to finish setting up your account.</p><p><a href="${url}">Verify your email</a></p><p>This link expires in 1 hour. If you didn't expect this, you can ignore this email.</p>`,
+          await sendTemplatedEmail(db, env, 'email_verification', user.email, {
+            'user.name': user.name,
+            'user.email': user.email,
+            verificationUrl: url,
+            expiresIn: '1 hour',
           });
           return;
         }
         const verifyUrl = `${env.ADMIN_URL ?? env.CORS_ORIGINS.split(',')[0]}/verify-email?token=${token}`;
-        await sender.send({
-          to: user.email,
-          subject: 'Verify your email — Kenresoft CMS',
-          text: `Verify your email address to finish setting up your Kenresoft CMS account.\n\nVerify here: ${verifyUrl}\n\nThis link expires in 1 hour. You won't be able to sign in until you verify. If you didn't expect this, you can ignore this email.`,
-          html: `<p>Verify your email address to finish setting up your Kenresoft CMS account.</p><p><a href="${verifyUrl}">Verify your email</a></p><p>This link expires in 1 hour. You won't be able to sign in until you verify.</p><p>If you didn't expect this, you can ignore this email.</p>`,
+        await sendTemplatedEmail(db, env, 'email_verification_staff', user.email, {
+          'user.name': user.name,
+          'user.email': user.email,
+          verificationUrl: verifyUrl,
+          expiresIn: '1 hour',
         });
       },
       sendOnSignUp: true,
