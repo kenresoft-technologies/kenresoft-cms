@@ -60,7 +60,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
-import { pullLatestCode } from './lib/git-cli.mjs';
+import { assertNotSourceRepo, pullLatestCode } from './lib/git-cli.mjs';
 import { runWranglerInherit } from './lib/wrangler-cli.mjs';
 import { buildAndDeployAdmin, checkWorkerOwnership, deployApi, resolveAdminApiUrl } from './lib/deploy-helpers.mjs';
 import { readDatabaseId, readWorkerName } from './lib/wrangler-toml.mjs';
@@ -149,6 +149,7 @@ async function runAdminDomainConfigure(ci) {
 }
 
 async function main() {
+  assertNotSourceRepo(REPO_ROOT);
   const { ci, branch, category } = parseUpdateArgs(process.argv.slice(2));
   if (category === 'admin-domain') {
     await runAdminDomainConfigure(ci);
