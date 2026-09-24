@@ -46,7 +46,7 @@
 // if both are given.
 //
 // Usage:
-//   pnpm run update
+//   pnpm run update [--ci]
 //   pnpm run update -- --auth [--ci]
 //   pnpm run update -- --email [--ci]
 //   pnpm run update -- --storage
@@ -55,6 +55,11 @@
 //   pnpm run update -- --admin-domain [--ci]
 //   pnpm run update -- --turnstile [--ci]
 //   pnpm run update -- --branch develop     # or: UPDATE_BRANCH=develop pnpm run update
+//
+// --ci on the bare (no-category) form specifically answers the one-time "unrelated histories"
+// reconciliation prompt lib/git-cli.mjs's pullLatestCode can hit — required for any unattended
+// run (a deployer's own CI/CD pipeline), which has no TTY to answer a y/N prompt with. Every
+// other step of the bare update already runs with no prompts regardless of --ci.
 
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -163,7 +168,7 @@ async function main() {
   console.log('This never touches your secrets, D1/R2 resources, CORS config, or other application configuration.\n');
   if (branch) console.log(`Pulling explicitly requested branch: ${branch}\n`);
 
-  await pullLatestCode(REPO_ROOT, { branch });
+  await pullLatestCode(REPO_ROOT, { branch, ci });
 
   console.log('\nInstalling dependencies...');
   execFileSync('pnpm', ['install'], { cwd: REPO_ROOT, stdio: 'inherit', shell: true });

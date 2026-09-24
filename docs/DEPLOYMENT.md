@@ -660,6 +660,16 @@ Only one category may be targeted per invocation. Run the command again for a se
 rather than combining flags, so each change's own confirmation/warning is easy to reason about in
 isolation (and, in CI, easy to audit from the job log).
 
+**Running `pnpm run update` itself (no category — pulling new CMS code) in CI/CD.** Add `--ci`
+here too: it resolves the one-time "unrelated histories" reconciliation ("Updating an existing
+install" below) automatically instead of prompting, since a CI/CD pipeline has no TTY to answer a
+y/N question with — without it, that prompt reads immediate EOF as "no" and cancels the update on
+every single run.
+
+```bash
+pnpm run update -- --ci
+```
+
 ## Renaming a Worker (changing its `*.workers.dev` URL)
 
 Cloudflare has no in-place Worker rename. Changing `wrangler.toml`'s `name` and redeploying

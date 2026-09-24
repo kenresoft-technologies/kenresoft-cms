@@ -1,11 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { restoreOwnWranglerToml } from './git-cli.mjs';
+import { pullLatestCode, restoreOwnWranglerToml } from './git-cli.mjs';
 
 function git(args, cwd) {
   return execFileSync('git', args, { cwd, encoding: 'utf8' });
@@ -24,6 +24,48 @@ function commitWranglerToml(dir, content, message) {
   git(['add', 'wrangler.toml'], dir);
   git(['commit', '--quiet', '-m', message], dir);
 }
+
+// Direct regression test for a real report: `pnpm run update` run unattended (a deployer's own
+// CI/CD pipeline, no TTY) hit the unrelated-histories reconciliation prompt and was cancelled on
+// every single run, with no way to answer a y/N question non-interactively. `ci: true` must
+// resolve it automatically and never touch stdin at all — this test provides no stdin/TTY of its
+// own, so it would hang or throw if `confirm()` were reached despite `ci: true`.
+test('pullLatestCode with ci:true resolves the unrelated-histories reconciliation without prompting', async () => {
+  const upstream = makeRepo();
+  const clone = makeRepo();
+  try {
+    // A real, explicitly-named default branch on the "upstream" side, so `remote set-head
+    // --auto` has something unambiguous to discover regardless of this machine's own
+    // init.defaultBranch config.
+    git(['checkout', '-b', 'main'], upstream.dir);
+    commitWranglerToml(upstream.dir, 'name = "kenresoft-cms-api"\ndatabase_id = "REPLACE_ME"\n', 'upstream initial');
+    writeFileSync(join(upstream.dir, 'README.md'), '# upstream\n');
+    git(['add', 'README.md'], upstream.dir);
+    git(['commit', '--quiet', '-m', 'add readme'], upstream.dir);
+
+    // The clone: a fresh, unrelated init — exactly what packages/create used to produce before
+    // it switched to a real `git clone`, sharing no ancestry with upstream at all.
+    git(['checkout', '-b', 'main'], clone.dir);
+    commitWranglerToml(
+      clone.dir,
+      'name = "my-real-deployment"\ndatabase_id = "97a150b1-e60e-4652-9e5a-a561ffb8459e"\n',
+      'scaffold init',
+    );
+    git(['remote', 'add', 'upstream', upstream.dir], clone.dir);
+
+    await pullLatestCode(clone.dir, { ci: true });
+
+    // The merge actually ran (upstream's own file landed), it wasn't just skipped.
+    assert.ok(existsSync(join(clone.dir, 'README.md')));
+    // And this install's own committed wrangler.toml values survived it intact.
+    const content = readFileSync(join(clone.dir, 'wrangler.toml'), 'utf8');
+    assert.match(content, /my-real-deployment/);
+    assert.match(content, /97a150b1-e60e-4652-9e5a-a561ffb8459e/);
+  } finally {
+    upstream.cleanup();
+    clone.cleanup();
+  }
+});
 
 // Direct regression test for the real production incident described in the field report: a
 // -X theirs merge resolving wrangler.toml as a whole-file add/add conflict silently replaces a
