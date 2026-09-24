@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -24,7 +24,7 @@ const templates = [
   {
     id: 't-1',
     key: 'email_verification',
-    name: 'Email verification (website account)',
+    name: 'Email verification',
     description: 'Sent when someone signs up on your public site.',
     subject: 'Verify your email address',
     mode: 'standard',
@@ -67,7 +67,7 @@ const templates = [
 
 const designs = [
   { id: 'modern-minimal', name: 'Modern Minimal', description: 'A clean, spacious layout.' },
-  { id: 'cloudflare-inspired', name: 'Cloudflare-Inspired', description: 'A bold header band.' },
+  { id: 'cloudflare-inspired', name: 'Dark Technical', description: 'A dark, high-contrast layout.' },
   { id: 'corporate', name: 'Corporate', description: 'A traditional layout.' },
   { id: 'elegant', name: 'Elegant', description: 'Refined and airy.' },
   { id: 'simple', name: 'Simple', description: 'Very lightweight.' },
@@ -113,36 +113,15 @@ describe('EmailTemplatesPage', () => {
     mockGet();
   });
 
-  it('lists the built-in designs, marking the active one, with a real rendered preview per card', async () => {
+  it('lists every email type as a tab, flagging a disabled one', async () => {
     renderPage();
-    // The "Preview email as" select's own current-value text also reads "Email verification
-    // (website account)" (the default previewed type), so this waits on a design name instead —
-    // unambiguous, since no email type happens to share a name with a design.
-    await waitFor(() => expect(screen.getAllByText('Modern Minimal').length).toBeGreaterThan(0));
-    expect(screen.getByText('Cloudflare-Inspired')).toBeInTheDocument();
-    expect(screen.getByText('Corporate')).toBeInTheDocument();
-    expect(screen.getByText('Elegant')).toBeInTheDocument();
-    expect(screen.getByText('Simple')).toBeInTheDocument();
-    expect(screen.getAllByText('Active')).toHaveLength(1);
-    // Every design card rendered a real preview iframe (fetched via apiClient.post), not a
-    // static swatch.
-    await waitFor(() => expect(screen.getAllByTitle('Email preview').length).toBeGreaterThanOrEqual(5));
-  });
-
-  it('lists every template with its customized/default and enabled/disabled state', async () => {
-    renderPage();
-
-    // "Email verification (website account)" also appears as the "Preview email as" select's
-    // current value (it's the default previewed type) — assert on the count instead.
-    await waitFor(() => expect(screen.getAllByText('Email verification (website account)').length).toBeGreaterThan(0));
-    expect(screen.getByText('Password reset')).toBeInTheDocument();
-    expect(screen.getAllByText('Default')).toHaveLength(1);
-    expect(screen.getAllByText('Customized')).toHaveLength(1);
+    await waitFor(() => expect(screen.getByRole('button', { name: /Email verification/ })).toBeInTheDocument());
+    const passwordResetTab = screen.getByRole('button', { name: /Password reset/ });
+    expect(passwordResetTab).toBeInTheDocument();
     expect(screen.getByText('Disabled')).toBeInTheDocument();
-    expect(screen.getByText('Developer HTML')).toBeInTheDocument();
   });
 
-  it('opens the first (Standard-mode) template in the editor by default, showing plain content fields and no raw HTML/variables', async () => {
+  it('opens the first (Standard-mode) email by default, showing plain content fields, a design gallery, and exactly one live preview', async () => {
     renderPage();
 
     await waitFor(() => expect(screen.getByLabelText('Subject')).toHaveValue('Verify your email address'));
@@ -151,20 +130,31 @@ describe('EmailTemplatesPage', () => {
     expect(screen.getByLabelText('Button label')).toHaveValue('Verify email');
     expect(screen.queryByLabelText('Body HTML')).not.toBeInTheDocument();
     expect(screen.queryByText('{{verificationUrl}}')).not.toBeInTheDocument();
+
+    // The design gallery shows real rendered thumbnails, and there is exactly one primary
+    // "Email preview" — no second, competing preview anywhere on the page.
+    expect(screen.getByText('Modern Minimal')).toBeInTheDocument();
+    expect(screen.getByText('Dark Technical')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getAllByTitle(/thumbnail/).length).toBeGreaterThanOrEqual(5));
+    expect(screen.getAllByTitle('Email preview')).toHaveLength(1);
   });
 
-  it("a template already in Developer mode still shows its raw HTML editor even when Developer Customization is off deployment-wide", async () => {
+  it('switches to a different email via its tab, showing that email\'s own content and, for a Developer-mode email, its raw HTML with no design gallery', async () => {
     renderPage();
     await waitFor(() => expect(screen.getByLabelText('Subject')).toHaveValue('Verify your email address'));
 
-    await userEvent.click(screen.getByText('Password reset'));
+    await userEvent.click(screen.getByRole('button', { name: /Password reset/ }));
 
     await waitFor(() => expect(screen.getByLabelText('Subject')).toHaveValue('Reset your password'));
     expect(screen.getByLabelText('Body HTML')).toHaveValue('<p>Reset {{resetUrl}}</p>');
     expect(screen.getByText('{{resetUrl}}')).toBeInTheDocument();
+    // This email uses custom HTML, so no design is applicable to it specifically.
+    expect(screen.queryByText('Modern Minimal')).not.toBeInTheDocument();
+    // The preview iframe only mounts once the debounced Developer-mode preview call resolves.
+    await waitFor(() => expect(screen.getAllByTitle('Email preview')).toHaveLength(1));
   });
 
-  it('saves structured content changes for a Standard-mode template', async () => {
+  it('saves structured content changes for a Standard-mode email', async () => {
     patchMock.mockResolvedValue({ ...templates[0], subject: 'New subject' });
     renderPage();
     await waitFor(() => expect(screen.getByLabelText('Subject')).toHaveValue('Verify your email address'));
@@ -183,32 +173,25 @@ describe('EmailTemplatesPage', () => {
     );
   });
 
-  it('toggles a template enabled/disabled directly from its summary card', async () => {
+  it('toggles an email enabled/disabled immediately, without a separate save step', async () => {
     patchMock.mockResolvedValue({ ...templates[0], enabled: false });
     renderPage();
-    await waitFor(() => expect(screen.getAllByText('Email verification (website account)').length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getByLabelText('Enabled')).toBeInTheDocument());
 
-    // The same text also appears as the "Preview email as" select's current value — its
-    // ancestor is a Select trigger, not a `[role="button"]` Card, so filtering for a match whose
-    // closest `[role="button"]` exists reliably picks the summary card, not the select.
-    const card = screen
-      .getAllByText('Email verification (website account)')
-      .map((el) => el.closest<HTMLElement>('[role="button"]'))
-      .find((el): el is HTMLElement => el !== null)!;
-    await userEvent.click(within(card).getByRole('switch'));
+    await userEvent.click(screen.getByLabelText('Enabled'));
 
     await waitFor(() =>
       expect(patchMock).toHaveBeenCalledWith('/api/v1/admin/email-templates/email_verification', { enabled: false }),
     );
   });
 
-  it('restores the default template after confirming, but Save is disabled once nothing is customized', async () => {
+  it('restores the default email after confirming, but Save is disabled once nothing is customized', async () => {
     renderPage();
     await waitFor(() => expect(screen.getByLabelText('Subject')).toHaveValue('Verify your email address'));
-    // The first (non-customized) template's Restore default is disabled — nothing to restore.
+    // The first (non-customized) email's Restore default is disabled — nothing to restore.
     expect(screen.getByRole('button', { name: 'Restore default' })).toBeDisabled();
 
-    await userEvent.click(screen.getByText('Password reset'));
+    await userEvent.click(screen.getByRole('button', { name: /Password reset/ }));
     await waitFor(() => expect(screen.getByLabelText('Subject')).toHaveValue('Reset your password'));
     expect(screen.getByRole('button', { name: 'Restore default' })).toBeEnabled();
 
@@ -221,12 +204,12 @@ describe('EmailTemplatesPage', () => {
     );
   });
 
-  it('sends a test email to the given address for the selected template', async () => {
+  it('sends a test email to the given address for the selected email', async () => {
     postMock.mockResolvedValue({ sent: true });
     renderPage();
     await waitFor(() => expect(screen.getByLabelText('Subject')).toHaveValue('Verify your email address'));
 
-    await userEvent.type(screen.getByLabelText('Send test email'), 'me@example.test');
+    await userEvent.type(screen.getByLabelText('Send a test email'), 'me@example.test');
     await userEvent.click(screen.getByRole('button', { name: 'Send test' }));
 
     await waitFor(() =>
@@ -236,24 +219,35 @@ describe('EmailTemplatesPage', () => {
     );
   });
 
-  it('a Standard-mode template offers no Developer-mode switch unless Developer Customization is on deployment-wide', async () => {
+  it('offers no way to switch a Standard-mode email to custom HTML unless Developer options is on deployment-wide', async () => {
     renderPage();
     await waitFor(() => expect(screen.getByLabelText('Subject')).toHaveValue('Verify your email address'));
-    expect(screen.queryByLabelText('Developer mode (raw HTML)')).not.toBeInTheDocument();
+    expect(screen.queryByText('Use custom HTML for this email instead of the fields below')).not.toBeInTheDocument();
   });
 
-  it('a Standard-mode template gets the Developer-mode switch once Developer Customization is on', async () => {
+  it('a Standard-mode email gets the custom-HTML switch once Developer options is on', async () => {
     mockGet(true);
     renderPage();
     await waitFor(() => expect(screen.getByLabelText('Subject')).toHaveValue('Verify your email address'));
-    expect(screen.getByLabelText('Developer mode (raw HTML)')).toBeInTheDocument();
+    const toggle = screen.getByLabelText('Use custom HTML for this email instead of the fields below');
+    expect(toggle).toBeInTheDocument();
 
-    await userEvent.click(screen.getByLabelText('Developer mode (raw HTML)'));
+    await userEvent.click(toggle);
     expect(screen.getByLabelText('Body HTML')).toBeInTheDocument();
     expect(screen.queryByLabelText('Heading')).not.toBeInTheDocument();
   });
 
-  it('browsing a different design shows a "Use this design" action, which applies it deployment-wide', async () => {
+  it('a Developer-mode email\'s own custom-HTML switch stays visible even when Developer options is off deployment-wide', async () => {
+    renderPage();
+    await waitFor(() => expect(screen.getByLabelText('Subject')).toHaveValue('Verify your email address'));
+
+    await userEvent.click(screen.getByRole('button', { name: /Password reset/ }));
+    await waitFor(() => expect(screen.getByLabelText('Subject')).toHaveValue('Reset your password'));
+
+    expect(screen.getByLabelText('Use custom HTML for this email instead of the fields below')).toBeChecked();
+  });
+
+  it('selecting a different design in the gallery shows a "Use this design" action, which applies it to every system email', async () => {
     putMock.mockResolvedValue({
       id: 'b-1',
       module: 'emailBranding',
@@ -264,7 +258,7 @@ describe('EmailTemplatesPage', () => {
     renderPage();
     await waitFor(() => expect(screen.getByText('Elegant')).toBeInTheDocument());
 
-    // Not shown yet — the active design ("Modern Minimal") has nothing to switch to.
+    // Not shown yet — the in-use design ("Modern Minimal") has nothing to switch to.
     expect(screen.queryByRole('button', { name: 'Use this design' })).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByText('Elegant'));
@@ -280,17 +274,16 @@ describe('EmailTemplatesPage', () => {
     );
   });
 
-  it('switching "Preview email as" changes which content the preview renders, independent of the browsed design', async () => {
+  it('switching the email tab changes what the one live preview renders', async () => {
     renderPage();
-    await waitFor(() => expect(screen.getByLabelText('Preview email as')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByLabelText('Subject')).toHaveValue('Verify your email address'));
 
-    await userEvent.click(screen.getByLabelText('Preview email as'));
-    await userEvent.click(await screen.findByRole('option', { name: 'Password reset' }));
+    await userEvent.click(screen.getByRole('button', { name: /Password reset/ }));
 
     await waitFor(() =>
       expect(postMock).toHaveBeenCalledWith(
-        expect.stringContaining('/api/v1/admin/email-templates/password_reset/preview'),
-        expect.objectContaining({ mode: 'standard', designId: 'modern-minimal' }),
+        '/api/v1/admin/email-templates/password_reset/preview',
+        expect.objectContaining({ mode: 'developer', bodyHtml: '<p>Reset {{resetUrl}}</p>' }),
       ),
     );
   });

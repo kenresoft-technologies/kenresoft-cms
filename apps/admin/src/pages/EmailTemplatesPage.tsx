@@ -31,7 +31,6 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 
@@ -49,40 +48,22 @@ function emptyContent(): EmailTemplateContent {
   return { heading: '', bodyText: '', ctaLabel: '', fineprint: '' };
 }
 
-// ---------------------------------------------------------------------------------------------
-// Design — the reusable, deployment-wide visual system every system email renders through.
-// Deliberately separate from System Email Settings below: the design a card renders ("how does
-// an email look") never depends on, or duplicates, which system email type it's a preview of
-// ("what is this email"). Choosing "Modern Minimal" here means every current and future system
-// email uses it — never three copies of the same design, one per email type.
-// ---------------------------------------------------------------------------------------------
-
-// Fetches every design's own rendering of the currently-selected email type's real content, in
-// parallel — one real preview call per design, never a static swatch. A card's thumbnail and the
-// large "Selected design" preview below both read from this same result set, so what a card
-// shows in miniature is pixel-identical to what the big preview shows at full size, just scaled.
-function useDesignPreviews(designs: EmailDesign[], previewKey: string, subject: string, content: EmailTemplateContent) {
-  return useQueries({
-    queries: designs.map((design) => ({
-      queryKey: ['email-templates', 'design-preview', design.id, previewKey, subject, content] as const,
-      queryFn: () =>
-        apiClient.post<{ subject: string; html: string; text: string }>(`/api/v1/admin/email-templates/${previewKey}/preview`, {
-          mode: 'standard',
-          subject,
-          content,
-          designId: design.id,
-        }),
-      staleTime: 60_000,
-    })),
-  });
-}
-
-function ScaledEmailPreview({ html, scale, minHeight }: { html: string | undefined; scale: number; minHeight: number }) {
+function ScaledEmailPreview({
+  html,
+  scale,
+  minHeight,
+  title,
+}: {
+  html: string | undefined;
+  scale: number;
+  minHeight: number;
+  title: string;
+}) {
   return (
     <div className="relative w-full overflow-hidden rounded-md border bg-white" style={{ height: minHeight }}>
       {html ? (
         <iframe
-          title="Email preview"
+          title={title}
           sandbox=""
           referrerPolicy="no-referrer"
           srcDoc={buildPreviewDocument(html)}
@@ -101,282 +82,43 @@ function ScaledEmailPreview({ html, scale, minHeight }: { html: string | undefin
   );
 }
 
+// Fetches every design's own rendering of the CURRENT (possibly unsaved) subject/content, in
+// parallel — real previews, never static swatches. Feeds both the design gallery's own
+// thumbnails and the one primary Live Preview below (same result set, so a thumbnail and the
+// full-size preview are pixel-identical, just scaled), which is what makes "click a design,
+// the one preview updates" true rather than two separate rendering paths that could drift.
+// Skipped entirely (`enabled: false` per query) once the email has custom HTML — no design
+// applies to it, so there is nothing to render five times over.
+function useDesignPreviews(designs: EmailDesign[], key: string, subject: string, content: EmailTemplateContent, enabled: boolean) {
+  return useQueries({
+    queries: designs.map((design) => ({
+      queryKey: ['email-templates', 'design-preview', design.id, key, subject, content] as const,
+      queryFn: () =>
+        apiClient.post<{ subject: string; html: string; text: string }>(`/api/v1/admin/email-templates/${key}/preview`, {
+          mode: 'standard',
+          subject,
+          content,
+          designId: design.id,
+        }),
+      enabled,
+      staleTime: 10_000,
+    })),
+  });
+}
+
 function DesignCard({
   design,
   html,
   active,
-  browsing,
-  onBrowse,
+  selected,
+  onSelect,
 }: {
   design: EmailDesign;
   html: string | undefined;
   active: boolean;
-  browsing: boolean;
-  onBrowse: () => void;
-}) {
-  return (
-    <Card
-      role="button"
-      tabIndex={0}
-      onClick={onBrowse}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter' || event.key === ' ') onBrowse();
-      }}
-      className={`cursor-pointer transition-colors ${browsing ? 'border-primary' : 'hover:border-primary/50'}`}
-    >
-      <CardContent className="flex flex-col gap-3 py-4">
-        <ScaledEmailPreview html={html} scale={0.32} minHeight={150} />
-        <div>
-          <div className="flex items-center gap-2">
-            <p className="font-medium">{design.name}</p>
-            {active ? <Badge className="font-normal">Active</Badge> : null}
-          </div>
-          <p className="mt-1 text-sm text-muted-foreground">{design.description}</p>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-// Outer data-loading gate — the inner EmailDesignFields is keyed by the loaded row's own
-// identity (or the fixed sentinel 'none' before anything has ever been saved), so it remounts
-// and its useState calls re-initialize from fresh data on load, rather than an effect calling
-// setState after the fact (the same split EntryEditorPage's own EntryForm already established,
-// for the same React Compiler purity reason).
-function EmailDesignSection({ templates }: { templates: EmailTemplate[] }) {
-  const { data: designs } = useEmailDesigns();
-  const { data: brandingRow } = useStructuredSettings('emailBranding');
-  return (
-    <EmailDesignFields
-      key={brandingRow?.updatedAt ?? 'none'}
-      designs={designs ?? []}
-      brandingRow={brandingRow ?? null}
-      templates={templates}
-    />
-  );
-}
-
-function EmailDesignFields({
-  designs,
-  brandingRow,
-  templates,
-}: {
-  designs: EmailDesign[];
-  brandingRow: { data: unknown; updatedAt: string } | null;
-  templates: EmailTemplate[];
-}) {
-  const branding = (brandingRow?.data as Partial<EmailBrandingSettingsData> | undefined) ?? {};
-  const updateBranding = useUpdateStructuredSettings('emailBranding');
-
-  const [footerText, setFooterText] = useState(branding.footerText ?? '');
-  const [brandColor, setBrandColor] = useState(branding.brandColor ?? '#6366f1');
-
-  const activeDesignId = branding.designId ?? 'modern-minimal';
-  const developerModeEnabled = branding.developerModeEnabled ?? false;
-
-  // Which design the gallery/big preview are currently showing — defaults to whatever's active,
-  // but clicking a different card "browses" it without changing anything until "Use this
-  // design" is clicked. Which email TYPE the preview renders as is a fully independent choice
-  // (previewKey below) — switching one never resets the other.
-  const [browsingDesignId, setBrowsingDesignId] = useState(activeDesignId);
-  const [previewKey, setPreviewKey] = useState<string>(templates[0]?.key ?? 'email_verification');
-
-  const previewTemplate = templates.find((t) => t.key === previewKey) ?? templates[0] ?? null;
-  const previewContent = previewTemplate?.content ?? emptyContent();
-  const previewSubject = previewTemplate?.subject ?? '';
-
-  const previewResults = useDesignPreviews(designs, previewKey, previewSubject, previewContent);
-  const htmlByDesignId = Object.fromEntries(designs.map((design, index) => [design.id, previewResults[index]?.data?.html]));
-
-  const browsingDesign = designs.find((d) => d.id === browsingDesignId);
-
-  function save(patch: Partial<EmailBrandingSettingsData>) {
-    updateBranding.mutate(
-      {
-        brandColor: branding.brandColor ?? null,
-        pageBackground: branding.pageBackground ?? null,
-        contentBackground: branding.contentBackground ?? null,
-        textColor: branding.textColor ?? null,
-        mutedTextColor: branding.mutedTextColor ?? null,
-        buttonTextColor: branding.buttonTextColor ?? null,
-        logoMediaId: branding.logoMediaId ?? null,
-        footerText: branding.footerText ?? null,
-        designId: branding.designId ?? null,
-        developerModeEnabled: branding.developerModeEnabled ?? null,
-        ...patch,
-      },
-      {
-        onError: (err) => toast.error(err instanceof ApiError ? err.message : 'Failed to save'),
-      },
-    );
-  }
-
-  return (
-    <div className="flex flex-col gap-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>Design</CardTitle>
-          <CardDescription>
-            The reusable visual system every system email renders through — chosen once, used by email verification, staff
-            verification, password reset, and any future system email alike.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-6">
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {designs.map((design) => (
-              <DesignCard
-                key={design.id}
-                design={design}
-                html={htmlByDesignId[design.id]}
-                active={design.id === activeDesignId}
-                browsing={design.id === browsingDesignId}
-                onBrowse={() => setBrowsingDesignId(design.id)}
-              />
-            ))}
-          </div>
-
-          <div className="border-t pt-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="font-medium">{browsingDesign?.name ?? 'Selected design'}</p>
-                <p className="text-sm text-muted-foreground">
-                  {browsingDesignId === activeDesignId ? 'Currently active.' : 'Not yet in use — click "Use this design" below to switch.'}
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <Label htmlFor="preview-as-select" className="text-xs font-normal text-muted-foreground">
-                  Preview email as
-                </Label>
-                <Select value={previewKey} onValueChange={setPreviewKey}>
-                  <SelectTrigger id="preview-as-select" className="w-56">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {templates.map((t) => (
-                      <SelectItem key={t.key} value={t.key}>
-                        {t.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="mt-4">
-              <ScaledEmailPreview html={htmlByDesignId[browsingDesignId]} scale={1} minHeight={480} />
-            </div>
-
-            {browsingDesignId !== activeDesignId ? (
-              <Button
-                type="button"
-                className="mt-4"
-                disabled={updateBranding.isPending}
-                onClick={() => save({ designId: browsingDesignId as EmailBrandingSettingsData['designId'] })}
-              >
-                Use this design
-              </Button>
-            ) : null}
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Branding</CardTitle>
-          <CardDescription>Used automatically by every design above. Leave a field unset to use your site's own branding.</CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-4 sm:grid-cols-2">
-          <MediaReferenceField
-            label="Logo"
-            mediaId={branding.logoMediaId ?? null}
-            readOnly={false}
-            onChange={(mediaId) => save({ logoMediaId: mediaId })}
-          />
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="email-brand-color">Primary &amp; button color</Label>
-            <div className="flex items-center gap-2">
-              <Input
-                id="email-brand-color"
-                type="color"
-                value={brandColor}
-                onChange={(event) => setBrandColor(event.target.value)}
-                className="h-9 w-14 p-1"
-              />
-              <Input
-                value={brandColor}
-                onChange={(event) => setBrandColor(event.target.value)}
-                onBlur={() => save({ brandColor })}
-                className="font-mono text-sm"
-              />
-            </div>
-          </div>
-          <div className="flex flex-col gap-2 sm:col-span-2">
-            <Label htmlFor="email-footer-text">Footer text</Label>
-            <Input
-              id="email-footer-text"
-              placeholder="Sent by your site. If you weren't expecting this, ignore it."
-              value={footerText}
-              onChange={(event) => setFooterText(event.target.value)}
-              onBlur={() => save({ footerText: footerText || null })}
-            />
-            <p className="text-xs text-muted-foreground">Leave blank to use the default.</p>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Advanced</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <Label htmlFor="developer-mode-toggle" className="font-medium">
-                Developer Customization
-              </Label>
-              <p className="mt-1 max-w-md text-xs text-muted-foreground">
-                Let advanced users edit the raw HTML and template variables of an individual system email directly, instead
-                of the plain fields below. Not the normal workflow — most changes belong above.
-              </p>
-            </div>
-            <Switch
-              id="developer-mode-toggle"
-              checked={developerModeEnabled}
-              onCheckedChange={(checked) => save({ developerModeEnabled: checked })}
-            />
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------------------------
-// Per-template editor — Standard mode (plain fields, the default) and Developer mode (raw HTML,
-// only reachable when Email Design's "Developer Customization" is on, or the template is
-// already in Developer mode from before it was turned off).
-// ---------------------------------------------------------------------------------------------
-
-function TemplateSummaryCard({
-  template,
-  selected,
-  onSelect,
-}: {
-  template: EmailTemplate;
   selected: boolean;
   onSelect: () => void;
 }) {
-  const updateTemplate = useUpdateEmailTemplate(template.key);
-
-  async function handleToggleEnabled(enabled: boolean) {
-    try {
-      await updateTemplate.mutateAsync({ enabled });
-      toast.success(enabled ? 'Template enabled' : 'Template disabled');
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : 'Failed to update template');
-    }
-  }
-
   return (
     <Card
       role="button"
@@ -387,138 +129,160 @@ function TemplateSummaryCard({
       }}
       className={`cursor-pointer transition-colors ${selected ? 'border-primary' : 'hover:border-primary/50'}`}
     >
-      <CardContent className="flex items-start justify-between gap-4 py-4">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="font-medium">{template.name}</p>
-            {template.isCustomized ? (
-              <Badge variant="outline" className="font-normal">
-                Customized
-              </Badge>
-            ) : (
-              <Badge variant="secondary" className="font-normal">
-                Default
-              </Badge>
-            )}
-            {template.mode === 'developer' ? (
-              <Badge variant="outline" className="border-sky-500/30 bg-sky-500/10 font-normal text-sky-700 dark:text-sky-400">
-                Developer HTML
-              </Badge>
-            ) : null}
-            {!template.enabled ? (
-              <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 font-normal text-amber-700 dark:text-amber-400">
-                Disabled
-              </Badge>
-            ) : null}
+      <CardContent className="flex flex-col gap-3 py-4">
+        <ScaledEmailPreview html={html} scale={0.32} minHeight={150} title={`${design.name} thumbnail`} />
+        <div>
+          <div className="flex items-center gap-2">
+            <p className="font-medium">{design.name}</p>
+            {active ? <Badge className="font-normal">In use</Badge> : null}
           </div>
-          <p className="mt-1 text-sm text-muted-foreground">{template.description}</p>
-        </div>
-        <div className="flex shrink-0 items-center gap-2" onClick={(event) => event.stopPropagation()}>
-          <Label htmlFor={`enabled-${template.key}`} className="text-xs font-normal text-muted-foreground">
-            Enabled
-          </Label>
-          <Switch
-            id={`enabled-${template.key}`}
-            checked={template.enabled}
-            onCheckedChange={(enabled) => void handleToggleEnabled(enabled)}
-          />
+          <p className="mt-1 text-sm text-muted-foreground">{design.description}</p>
         </div>
       </CardContent>
     </Card>
   );
 }
 
-function StandardContentFields({ content, onChange }: { content: EmailTemplateContent; onChange: (content: EmailTemplateContent) => void }) {
+// A small, secondary strip of email-specific fields — enabled toggle and, only once "Developer
+// options" (bottom of page) has been turned on for the deployment or this specific email already
+// has custom HTML, the switch into/out of custom HTML for this one email. Deliberately not a
+// prominent control: most administrators should never need it.
+function DeveloperModeRow({
+  visible,
+  usingCustomHtml,
+  onToggle,
+}: {
+  visible: boolean;
+  usingCustomHtml: boolean;
+  onToggle: (usingCustomHtml: boolean) => void;
+}) {
+  if (!visible) return null;
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="content-heading">Heading</Label>
-        <Input id="content-heading" value={content.heading} onChange={(event) => onChange({ ...content, heading: event.target.value })} />
-      </div>
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="content-body">Message</Label>
-        <Textarea
-          id="content-body"
-          value={content.bodyText}
-          onChange={(event) => onChange({ ...content, bodyText: event.target.value })}
-          className="min-h-28"
-          placeholder="What this email is telling the recipient. The greeting and button link are added automatically."
-        />
-      </div>
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="content-cta">Button label</Label>
-        <Input id="content-cta" value={content.ctaLabel} onChange={(event) => onChange({ ...content, ctaLabel: event.target.value })} />
-      </div>
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="content-fineprint">Fine print</Label>
-        <Textarea
-          id="content-fineprint"
-          value={content.fineprint}
-          onChange={(event) => onChange({ ...content, fineprint: event.target.value })}
-          className="min-h-16"
-        />
-      </div>
+    <div className="flex items-center gap-2 rounded-md border border-dashed px-3 py-2">
+      <Switch id="template-mode-toggle" checked={usingCustomHtml} onCheckedChange={onToggle} />
+      <Label htmlFor="template-mode-toggle" className="text-xs font-normal text-muted-foreground">
+        Use custom HTML for this email instead of the fields below
+      </Label>
     </div>
   );
 }
 
-function TemplateEditor({ template, developerModeAllowed }: { template: EmailTemplate; developerModeAllowed: boolean }) {
+// The one editor for a single system email — Design, Content, and one primary Live Preview, all
+// driven by the same in-progress edit so every one of them always agrees with the others: change
+// the design, the preview updates; change the content, the preview updates; nothing here is a
+// second, competing preview of anything. Remounted (via the parent's `key`) whenever a different
+// email is selected or this one is saved/restored, so every useState below simply initializes
+// fresh from the current `template`/`designs`/`brandingRow` props — no effect needed to keep
+// local state in sync with a prop that changed out from under it.
+function EmailEditor({
+  template,
+  designs,
+  brandingRow,
+  developerOptionsOn,
+}: {
+  template: EmailTemplate;
+  designs: EmailDesign[];
+  brandingRow: { data: unknown } | null;
+  developerOptionsOn: boolean;
+}) {
+  const branding = (brandingRow?.data as Partial<EmailBrandingSettingsData> | undefined) ?? {};
+  const activeDesignId = branding.designId ?? 'modern-minimal';
+
   const [mode, setMode] = useState<EmailTemplateMode>(template.mode);
   const [subject, setSubject] = useState(template.subject);
   const [content, setContent] = useState<EmailTemplateContent>(template.content ?? emptyContent());
   const [bodyHtml, setBodyHtml] = useState(template.bodyHtml);
   const [plainText, setPlainText] = useState(template.plainText ?? '');
   const [usePlainTextOverride, setUsePlainTextOverride] = useState(template.plainText !== null);
-  const [preview, setPreview] = useState<{ subject: string; html: string; text: string } | null>(null);
+  const [selectedDesignId, setSelectedDesignId] = useState(activeDesignId);
+  const [enabled, setEnabled] = useState(template.enabled);
+  const [developerPreview, setDeveloperPreview] = useState<{ subject: string; html: string; text: string } | null>(null);
   const [testTo, setTestTo] = useState('');
   const [confirmRestore, setConfirmRestore] = useState(false);
 
   const updateTemplate = useUpdateEmailTemplate(template.key);
+  const updateBranding = useUpdateStructuredSettings('emailBranding');
   const restoreDefault = useRestoreEmailTemplateDefault(template.key);
-  const previewTemplate = usePreviewEmailTemplate(template.key);
+  const developerPreviewMutation = usePreviewEmailTemplate(template.key);
   const sendTest = useSendTestEmailTemplate(template.key);
 
-  // No effect needed to re-sync local state when a different (or freshly saved/restored)
-  // template loads — the parent remounts this component via `key={template.key}-
-  // ${template.updatedAt}`, so each of the useState calls above already re-initializes from
-  // the new `template` prop on mount, the same pattern EntryEditorPage's own EntryForm uses.
+  const designPreviews = useDesignPreviews(designs, template.key, subject, content, mode === 'standard');
+  const htmlByDesignId = Object.fromEntries(designs.map((design, index) => [design.id, designPreviews[index]?.data?.html]));
+
+  // Debounced developer-mode preview only — the standard-mode preview above is already live via
+  // useQueries (each keystroke changes the query key, react-query handles the rest), so this
+  // effect only needs to exist for the one case a plain query key can't drive automatically.
   useEffect(() => {
+    if (mode !== 'developer') return;
     const handle = setTimeout(() => {
-      const plainTextValue = usePlainTextOverride ? plainText : null;
-      const input =
-        mode === 'standard'
-          ? ({ mode: 'standard', subject, content, plainText: plainTextValue } as const)
-          : ({ mode: 'developer', subject, bodyHtml, plainText: plainTextValue } as const);
-      previewTemplate.mutate(input, { onSuccess: setPreview });
+      developerPreviewMutation.mutate(
+        { mode: 'developer', subject, bodyHtml, plainText: usePlainTextOverride ? plainText : null },
+        { onSuccess: setDeveloperPreview },
+      );
     }, 500);
     return () => clearTimeout(handle);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- previewTemplate is a fresh mutation object every render; including it would re-trigger the debounce on every keystroke's own render, not just on content changes.
-  }, [mode, subject, content, bodyHtml, plainText, usePlainTextOverride]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- developerPreviewMutation is a fresh mutation object every render; including it would re-trigger the debounce on every keystroke's own render, not just on content changes.
+  }, [mode, subject, bodyHtml, plainText, usePlainTextOverride]);
 
-  const isDirty =
+  const mainPreviewHtml = mode === 'standard' ? htmlByDesignId[selectedDesignId] : developerPreview?.html;
+
+  const isContentDirty =
     mode !== template.mode ||
     subject !== template.subject ||
     JSON.stringify(content) !== JSON.stringify(template.content) ||
     (mode === 'developer' && bodyHtml !== template.bodyHtml) ||
     (usePlainTextOverride ? plainText : null) !== template.plainText;
+  const isDesignDirty = mode === 'standard' && selectedDesignId !== activeDesignId;
 
-  async function handleSave() {
+  async function handleSaveContent() {
     try {
       await updateTemplate.mutateAsync(
         mode === 'standard'
           ? { mode, subject, content, plainText: usePlainTextOverride ? plainText : null }
           : { mode, subject, bodyHtml, plainText: usePlainTextOverride ? plainText : null },
       );
-      toast.success('Template saved');
+      toast.success('Saved');
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : 'Failed to save template');
+      toast.error(err instanceof ApiError ? err.message : 'Failed to save');
     }
+  }
+
+  async function handleSaveEnabled(nextEnabled: boolean) {
+    setEnabled(nextEnabled);
+    try {
+      await updateTemplate.mutateAsync({ enabled: nextEnabled });
+      toast.success(nextEnabled ? 'Enabled' : 'Disabled');
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Failed to update');
+      setEnabled(!nextEnabled);
+    }
+  }
+
+  function handleUseDesign() {
+    updateBranding.mutate(
+      {
+        brandColor: branding.brandColor ?? null,
+        pageBackground: branding.pageBackground ?? null,
+        contentBackground: branding.contentBackground ?? null,
+        textColor: branding.textColor ?? null,
+        mutedTextColor: branding.mutedTextColor ?? null,
+        buttonTextColor: branding.buttonTextColor ?? null,
+        logoMediaId: branding.logoMediaId ?? null,
+        footerText: branding.footerText ?? null,
+        designId: selectedDesignId as EmailBrandingSettingsData['designId'],
+        developerModeEnabled: branding.developerModeEnabled ?? null,
+      },
+      {
+        onSuccess: () => toast.success('Design applied to every system email'),
+        onError: (err) => toast.error(err instanceof ApiError ? err.message : 'Failed to apply design'),
+      },
+    );
   }
 
   async function handleRestore() {
     try {
       await restoreDefault.mutateAsync();
-      toast.success('Restored to the default template');
+      toast.success('Restored to the default');
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : 'Failed to restore default');
     } finally {
@@ -536,25 +300,62 @@ function TemplateEditor({ template, developerModeAllowed }: { template: EmailTem
     }
   }
 
-  const canShowModeToggle = developerModeAllowed || template.mode === 'developer';
+  const showDeveloperRow = developerOptionsOn || template.mode === 'developer';
 
   return (
-    <div className="grid gap-4 lg:grid-cols-2">
+    <div className="flex flex-col gap-6">
+      {mode === 'standard' ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Design</CardTitle>
+            <CardDescription>How this email looks. This design applies to all system emails, not just this one.</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {designs.map((design) => (
+                <DesignCard
+                  key={design.id}
+                  design={design}
+                  html={htmlByDesignId[design.id]}
+                  active={design.id === activeDesignId}
+                  selected={design.id === selectedDesignId}
+                  onSelect={() => setSelectedDesignId(design.id)}
+                />
+              ))}
+            </div>
+            {isDesignDirty ? (
+              <Button type="button" className="self-start" disabled={updateBranding.isPending} onClick={handleUseDesign}>
+                Use this design
+              </Button>
+            ) : null}
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle>Design</CardTitle>
+            <CardDescription>
+              This email uses custom HTML, so it doesn't use one of the built-in designs. Turn off "Use custom HTML" below to
+              go back to choosing a design.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      )}
+
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm">Edit — {template.name}</CardTitle>
-          {canShowModeToggle ? (
-            <div className="flex items-center gap-2 pt-2">
-              <Label htmlFor="template-mode-toggle" className="text-xs font-normal text-muted-foreground">
-                Developer mode (raw HTML)
-              </Label>
-              <Switch
-                id="template-mode-toggle"
-                checked={mode === 'developer'}
-                onCheckedChange={(checked) => setMode(checked ? 'developer' : 'standard')}
-              />
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <CardTitle>Content</CardTitle>
+              <CardDescription>What this email says.</CardDescription>
             </div>
-          ) : null}
+            <div className="flex items-center gap-2">
+              <Label htmlFor="template-enabled" className="text-xs font-normal text-muted-foreground">
+                Enabled
+              </Label>
+              <Switch id="template-enabled" checked={enabled} onCheckedChange={(next) => void handleSaveEnabled(next)} />
+            </div>
+          </div>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
@@ -563,7 +364,43 @@ function TemplateEditor({ template, developerModeAllowed }: { template: EmailTem
           </div>
 
           {mode === 'standard' ? (
-            <StandardContentFields content={content} onChange={setContent} />
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="content-heading">Heading</Label>
+                <Input
+                  id="content-heading"
+                  value={content.heading}
+                  onChange={(event) => setContent({ ...content, heading: event.target.value })}
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="content-body">Message</Label>
+                <Textarea
+                  id="content-body"
+                  value={content.bodyText}
+                  onChange={(event) => setContent({ ...content, bodyText: event.target.value })}
+                  className="min-h-28"
+                  placeholder="What this email is telling the recipient. The greeting and button link are added automatically."
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="content-cta">Button label</Label>
+                <Input
+                  id="content-cta"
+                  value={content.ctaLabel}
+                  onChange={(event) => setContent({ ...content, ctaLabel: event.target.value })}
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="content-fineprint">Fine print</Label>
+                <Textarea
+                  id="content-fineprint"
+                  value={content.fineprint}
+                  onChange={(event) => setContent({ ...content, fineprint: event.target.value })}
+                  className="min-h-16"
+                />
+              </div>
+            </div>
           ) : (
             <div className="flex flex-col gap-2">
               <Label htmlFor="template-body">Body HTML</Label>
@@ -596,11 +433,7 @@ function TemplateEditor({ template, developerModeAllowed }: { template: EmailTem
               <Label htmlFor="template-plaintext" className="font-normal">
                 Custom plain-text version
               </Label>
-              <Switch
-                id="use-plaintext-override"
-                checked={usePlainTextOverride}
-                onCheckedChange={setUsePlainTextOverride}
-              />
+              <Switch id="use-plaintext-override" checked={usePlainTextOverride} onCheckedChange={setUsePlainTextOverride} />
             </div>
             {usePlainTextOverride ? (
               <Textarea
@@ -610,30 +443,38 @@ function TemplateEditor({ template, developerModeAllowed }: { template: EmailTem
                 className="min-h-24"
               />
             ) : (
-              <p className="text-xs text-muted-foreground">
-                Derived automatically on every send. Turn this on to write your own.
-              </p>
+              <p className="text-xs text-muted-foreground">Derived automatically on every send. Turn this on to write your own.</p>
             )}
           </div>
 
+          <DeveloperModeRow
+            visible={showDeveloperRow}
+            usingCustomHtml={mode === 'developer'}
+            onToggle={(usingCustomHtml) => setMode(usingCustomHtml ? 'developer' : 'standard')}
+          />
+
           <div className="flex flex-wrap gap-2 border-t pt-4">
-            <Button onClick={() => void handleSave()} disabled={!isDirty || updateTemplate.isPending}>
+            <Button onClick={() => void handleSaveContent()} disabled={!isContentDirty || updateTemplate.isPending}>
               {updateTemplate.isPending ? 'Saving…' : 'Save'}
             </Button>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={!template.isCustomized}
-              onClick={() => setConfirmRestore(true)}
-            >
+            <Button type="button" variant="outline" disabled={!template.isCustomized} onClick={() => setConfirmRestore(true)}>
               Restore default
             </Button>
           </div>
+        </CardContent>
+      </Card>
 
+      <Card>
+        <CardHeader>
+          <CardTitle>Live Preview</CardTitle>
+          <CardDescription>Exactly how this email will look to recipients, with sample data.</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <ScaledEmailPreview html={mainPreviewHtml} scale={1} minHeight={520} title="Email preview" />
           <div className="flex flex-wrap items-end gap-2 border-t pt-4">
             <div className="flex flex-1 flex-col gap-2">
               <Label htmlFor="test-email-to" className="font-normal text-muted-foreground">
-                Send test email
+                Send a test email
               </Label>
               <Input
                 id="test-email-to"
@@ -650,37 +491,13 @@ function TemplateEditor({ template, developerModeAllowed }: { template: EmailTem
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm">Preview</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3">
-          {preview ? (
-            <p className="text-sm">
-              <span className="text-muted-foreground">Subject: </span>
-              {preview.subject}
-            </p>
-          ) : null}
-          <iframe
-            title={`${template.name} preview`}
-            sandbox=""
-            referrerPolicy="no-referrer"
-            srcDoc={buildPreviewDocument(preview?.html ?? '')}
-            className="h-[480px] w-full rounded-md border bg-white"
-          />
-          <p className="text-xs text-muted-foreground">
-            Rendered against sample data — real sends substitute the actual recipient, link and site branding.
-          </p>
-        </CardContent>
-      </Card>
-
       <AlertDialog open={confirmRestore} onOpenChange={setConfirmRestore}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Restore the default "{template.name}" template?</AlertDialogTitle>
+            <AlertDialogTitle>Restore the default "{template.name}" email?</AlertDialogTitle>
             <AlertDialogDescription>
-              Switches this email back to Standard mode with the shipped design and copy, discarding any custom HTML.
-              This can't be undone. The enabled/disabled state is left as-is.
+              Replaces the subject and content with what ships with the CMS and switches this email back to the built-in
+              design, discarding any custom HTML. This can't be undone. Enabled/disabled is left as-is.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -693,17 +510,49 @@ function TemplateEditor({ template, developerModeAllowed }: { template: EmailTem
   );
 }
 
-// System (transactional) email templates — verification, password reset. Deliberately separated
-// into two concerns a non-technical admin should never have to conflate: Design ("how do our
-// system emails look" — one reusable choice, above) and System Email Settings ("what does this
-// particular email say" — per email type, below). "Developer Customization" (the Design
-// section's own Advanced card) is the opt-in escape hatch for raw HTML per template. This is
-// deliberately not the general-purpose content/email-template feature — see
-// docs/ARCHITECTURE.md §6.2 for that boundary.
+function EmailTypeTabs({
+  templates,
+  selectedKey,
+  onSelect,
+}: {
+  templates: EmailTemplate[];
+  selectedKey: string;
+  onSelect: (key: string) => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {templates.map((template) => (
+        <button
+          key={template.key}
+          type="button"
+          onClick={() => onSelect(template.key)}
+          className={`flex items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors ${
+            template.key === selectedKey ? 'border-primary bg-primary/5 font-medium' : 'hover:border-primary/50'
+          }`}
+        >
+          {template.name}
+          {!template.enabled ? (
+            <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 font-normal text-amber-700 dark:text-amber-400">
+              Disabled
+            </Badge>
+          ) : null}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// System (transactional) emails — email verification, staff verification, password reset. One
+// primary Live Preview drives the whole page: choosing an email, choosing a design, and editing
+// content all update that same preview, rather than being separate rendering experiences an
+// administrator has to reconcile in their head. Standard mode's plain fields (heading/message/
+// button label/fine print) are the only thing an ordinary admin ever sees; raw HTML stays behind
+// an explicit, secondary "Developer options" affordance. Deliberately not the general-purpose
+// content/email-template feature — see docs/ARCHITECTURE.md §6.2 for that boundary.
 export function EmailTemplatesPage() {
   const { data: templates, isPending, error } = useEmailTemplates();
+  const { data: designs } = useEmailDesigns();
   const { data: brandingRow } = useStructuredSettings('emailBranding');
-  const developerModeAllowed = ((brandingRow?.data as Partial<EmailBrandingSettingsData> | undefined)?.developerModeEnabled) ?? false;
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
 
   const selected = templates?.find((t) => t.key === selectedKey) ?? templates?.[0] ?? null;
@@ -711,40 +560,158 @@ export function EmailTemplatesPage() {
   return (
     <div className="flex flex-col gap-6">
       <PageBreadcrumb items={[{ label: 'Email Templates' }]} />
-      <PageHeader
-        title="Email Templates"
-        description="Create professional system emails for your CMS without editing HTML."
-      />
-
-      {templates ? <EmailDesignSection templates={templates} /> : null}
-
-      <div>
-        <h2 className="text-lg font-semibold">System Email Settings</h2>
-        <p className="text-sm text-muted-foreground">
-          What each system email says. The design above controls how it looks; this is what it says.
-        </p>
-      </div>
+      <PageHeader title="Email Templates" description="Configure the emails the CMS sends automatically." />
 
       {error ? <p className="text-destructive">{error.message}</p> : null}
 
-      {isPending ? (
+      {isPending || !templates ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
       ) : (
-        <div className="flex flex-col gap-3">
-          {templates?.map((template) => (
-            <TemplateSummaryCard
-              key={template.key}
-              template={template}
-              selected={selected?.key === template.key}
-              onSelect={() => setSelectedKey(template.key)}
+        <>
+          <div>
+            <h2 className="text-sm font-medium text-muted-foreground">Choose an email</h2>
+            <div className="mt-2">
+              <EmailTypeTabs templates={templates} selectedKey={selected?.key ?? templates[0]!.key} onSelect={setSelectedKey} />
+            </div>
+          </div>
+
+          {selected ? (
+            <EmailEditor
+              key={`${selected.key}-${selected.updatedAt}`}
+              template={selected}
+              designs={designs ?? []}
+              brandingRow={brandingRow ?? null}
+              developerOptionsOn={((brandingRow?.data as Partial<EmailBrandingSettingsData> | undefined)?.developerModeEnabled) ?? false}
             />
-          ))}
-        </div>
+          ) : null}
+        </>
       )}
 
-      {selected ? (
-        <TemplateEditor key={`${selected.key}-${selected.updatedAt}`} template={selected} developerModeAllowed={developerModeAllowed} />
-      ) : null}
+      <BrandingSection brandingRow={brandingRow ?? null} />
+      <DeveloperOptionsSection brandingRow={brandingRow ?? null} />
+    </div>
+  );
+}
+
+function BrandingSection({ brandingRow }: { brandingRow: { data: unknown; updatedAt?: string } | null }) {
+  return <BrandingFields key={brandingRow?.updatedAt ?? 'none'} brandingRow={brandingRow} />;
+}
+
+function BrandingFields({ brandingRow }: { brandingRow: { data: unknown } | null }) {
+  const branding = (brandingRow?.data as Partial<EmailBrandingSettingsData> | undefined) ?? {};
+  const updateBranding = useUpdateStructuredSettings('emailBranding');
+
+  const [footerText, setFooterText] = useState(branding.footerText ?? '');
+  const [brandColor, setBrandColor] = useState(branding.brandColor ?? '#6366f1');
+
+  function save(patch: Partial<EmailBrandingSettingsData>) {
+    updateBranding.mutate(
+      {
+        brandColor: branding.brandColor ?? null,
+        pageBackground: branding.pageBackground ?? null,
+        contentBackground: branding.contentBackground ?? null,
+        textColor: branding.textColor ?? null,
+        mutedTextColor: branding.mutedTextColor ?? null,
+        buttonTextColor: branding.buttonTextColor ?? null,
+        logoMediaId: branding.logoMediaId ?? null,
+        footerText: branding.footerText ?? null,
+        designId: branding.designId ?? null,
+        developerModeEnabled: branding.developerModeEnabled ?? null,
+        ...patch,
+      },
+      { onError: (err) => toast.error(err instanceof ApiError ? err.message : 'Failed to save') },
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Branding</CardTitle>
+        <CardDescription>
+          Uses your site's branding automatically. Override the logo, color or footer here only for system emails
+          specifically.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-4 sm:grid-cols-2">
+        <MediaReferenceField
+          label="Logo override"
+          mediaId={branding.logoMediaId ?? null}
+          readOnly={false}
+          onChange={(mediaId) => save({ logoMediaId: mediaId })}
+        />
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="email-brand-color">Primary &amp; button color</Label>
+          <div className="flex items-center gap-2">
+            <Input
+              id="email-brand-color"
+              type="color"
+              value={brandColor}
+              onChange={(event) => setBrandColor(event.target.value)}
+              className="h-9 w-14 p-1"
+            />
+            <Input
+              value={brandColor}
+              onChange={(event) => setBrandColor(event.target.value)}
+              onBlur={() => save({ brandColor })}
+              className="font-mono text-sm"
+            />
+          </div>
+        </div>
+        <div className="flex flex-col gap-2 sm:col-span-2">
+          <Label htmlFor="email-footer-text">Footer text override</Label>
+          <Input
+            id="email-footer-text"
+            placeholder="Sent by your site. If you weren't expecting this, ignore it."
+            value={footerText}
+            onChange={(event) => setFooterText(event.target.value)}
+            onBlur={() => save({ footerText: footerText || null })}
+          />
+          <p className="text-xs text-muted-foreground">Leave blank to use your site's own footer text.</p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// Kept minimal and out of the way on purpose — a single deployment-wide switch, not a card full
+// of controls, since most administrators never need to open this at all.
+function DeveloperOptionsSection({ brandingRow }: { brandingRow: { data: unknown } | null }) {
+  const branding = (brandingRow?.data as Partial<EmailBrandingSettingsData> | undefined) ?? {};
+  const updateBranding = useUpdateStructuredSettings('emailBranding');
+  const developerModeEnabled = branding.developerModeEnabled ?? false;
+
+  return (
+    <div className="flex items-start justify-between gap-4 rounded-md border border-dashed px-4 py-3">
+      <div>
+        <Label htmlFor="developer-mode-toggle" className="font-medium">
+          Developer options
+        </Label>
+        <p className="mt-1 max-w-md text-xs text-muted-foreground">
+          Use custom HTML when you need full control over an email's markup, instead of the plain fields above. Most
+          administrators never need this.
+        </p>
+      </div>
+      <Switch
+        id="developer-mode-toggle"
+        checked={developerModeEnabled}
+        onCheckedChange={(checked) =>
+          updateBranding.mutate(
+            {
+              brandColor: branding.brandColor ?? null,
+              pageBackground: branding.pageBackground ?? null,
+              contentBackground: branding.contentBackground ?? null,
+              textColor: branding.textColor ?? null,
+              mutedTextColor: branding.mutedTextColor ?? null,
+              buttonTextColor: branding.buttonTextColor ?? null,
+              logoMediaId: branding.logoMediaId ?? null,
+              footerText: branding.footerText ?? null,
+              designId: branding.designId ?? null,
+              developerModeEnabled: checked,
+            },
+            { onError: (err) => toast.error(err instanceof ApiError ? err.message : 'Failed to save') },
+          )
+        }
+      />
     </div>
   );
 }

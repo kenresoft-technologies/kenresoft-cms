@@ -85,25 +85,29 @@ const modernMinimal: EmailDesignDefinition = {
   },
 };
 
-// 2. Cloudflare-Inspired — an original Kenresoft layout: a solid brand-color header band holding
-// the logo/wordmark, a bold heading directly below it, a rounded pill CTA button, generous
-// spacing, a plain single-line footer. Reproduces the *principles* of a strong-hierarchy,
-// compact, technical-infrastructure transactional email (bold header band, big clear heading,
-// one obvious CTA, minimal footer) — no Cloudflare HTML, copy, assets or branding are reused.
+// 2. Dark Technical — an original Kenresoft layout, unconditionally dark (its own literal
+// background/border colors, not deployment brand tokens — the one design that always looks
+// this way regardless of a deployment's own light/dark preference elsewhere): a solid
+// brand-color header band holding the logo/wordmark, a monospace eyebrow label, a bold heading,
+// a rounded pill CTA, and a hairline-bordered footer. High contrast, compact spacing — a
+// developer/infrastructure-product feel. Internal id kept as "cloudflare-inspired" (this design
+// used to be named/described after Cloudflare's own transactional emails as a stylistic
+// reference point) to avoid a data migration for any deployment that already selected it —
+// nothing about the id is shown to an admin, only this display name/description are.
 const cloudflareInspired: EmailDesignDefinition = {
   id: 'cloudflare-inspired',
-  name: 'Cloudflare-Inspired',
-  description: 'A bold color header band, strong heading hierarchy and a rounded pill button — a compact, technical, infrastructure-style look.',
+  name: 'Dark Technical',
+  description: 'A dark, high-contrast layout with a bold color header band and a rounded pill button — a compact, infrastructure-product feel.',
   render(input) {
     const { preheader, logoUrl, heading, bodyParagraphsHtml, ctaLabel, ctaUrl, fineprint } = input;
     return `<!doctype html>
 <html>
-<body style="margin:0; padding:0; background:#f4f4f5; font-family:{{design.fontStack}};">
+<body style="margin:0; padding:0; background:#08090d; font-family:{{design.fontStack}};">
   <span style="display:none; max-height:0; overflow:hidden;">${preheader}</span>
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#08090d;">
     <tr>
       <td align="center" style="padding:32px 16px;">
-        <table role="presentation" width="100%" style="max-width:{{design.contentWidth}}; background:{{design.contentBackground}}; border-radius:10px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.08);" cellpadding="0" cellspacing="0">
+        <table role="presentation" width="100%" style="max-width:{{design.contentWidth}}; background:#12141b; border:1px solid #23262f; border-radius:10px; overflow:hidden;" cellpadding="0" cellspacing="0">
           <tr>
             <td style="padding:28px 36px; background:{{design.brandColor}};">
               ${logoOrWordmark(logoUrl, { maxHeight: '26px', color: '{{design.buttonTextColor}}', size: '17px', weight: '700' })}
@@ -111,7 +115,8 @@ const cloudflareInspired: EmailDesignDefinition = {
           </tr>
           <tr>
             <td style="padding:36px;">
-              <h1 style="margin:0 0 18px 0; font-size:24px; line-height:1.3; font-weight:700; color:{{design.textColor}}; letter-spacing:-0.02em;">${heading}</h1>
+              <p style="margin:0 0 12px 0; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:11px; letter-spacing:0.08em; text-transform:uppercase; color:{{design.brandColor}};">System notice</p>
+              <h1 style="margin:0 0 18px 0; font-size:24px; line-height:1.3; font-weight:700; color:#f4f5f7; letter-spacing:-0.02em;">${heading}</h1>
               ${bodyParagraphsHtml}
               <table role="presentation" cellpadding="0" cellspacing="0" style="margin:26px 0 10px 0;">
                 <tr>
@@ -120,12 +125,12 @@ const cloudflareInspired: EmailDesignDefinition = {
                   </td>
                 </tr>
               </table>
-              <p style="margin:14px 0 0 0; font-size:12px; color:{{design.mutedTextColor}}; word-break:break-all;">${ctaUrl}</p>
-              <p style="margin:22px 0 0 0; padding-top:18px; border-top:1px solid {{design.borderColor}}; font-size:12px; color:{{design.mutedTextColor}};">${fineprint}</p>
+              <p style="margin:14px 0 0 0; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:11.5px; color:#7d8290; word-break:break-all;">${ctaUrl}</p>
+              <p style="margin:22px 0 0 0; padding-top:18px; border-top:1px solid #23262f; font-size:12px; color:#7d8290;">${fineprint}</p>
             </td>
           </tr>
           <tr>
-            <td style="padding:16px 36px; font-size:11px; color:{{design.mutedTextColor}};">
+            <td style="padding:16px 36px; border-top:1px solid #23262f; font-size:11px; color:#7d8290;">
               {{design.footerText}}
             </td>
           </tr>
