@@ -24,7 +24,6 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 import { runWrangler, runWranglerInherit } from './lib/wrangler-cli.mjs';
-import { assertNotSourceRepo } from './lib/git-cli.mjs';
 import { buildAndDeployAdmin, checkWorkerOwnership, deployApi, resolveAdminApiUrl } from './lib/deploy-helpers.mjs';
 import { ask, closePrompt, confirm, select } from './lib/prompt.mjs';
 import {
@@ -477,7 +476,6 @@ async function runUpdateConfigurationMenu() {
 }
 
 async function main() {
-  assertNotSourceRepo(REPO_ROOT);
   console.log('Kenresoft CMS — guided setup\n');
 
   console.log('Checking Cloudflare authentication...');

@@ -5,7 +5,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { assertNotSourceRepo, restoreOwnWranglerToml } from './git-cli.mjs';
+import { restoreOwnWranglerToml } from './git-cli.mjs';
 
 function git(args, cwd) {
   return execFileSync('git', args, { cwd, encoding: 'utf8' });
@@ -24,48 +24,6 @@ function commitWranglerToml(dir, content, message) {
   git(['add', 'wrangler.toml'], dir);
   git(['commit', '--quiet', '-m', message], dir);
 }
-
-// Direct regression test for a real incident reported by the user: `pnpm run update` was run
-// by mistake inside the CMS's own source checkout instead of a real deployment.
-test('assertNotSourceRepo throws when "origin" points at the real source repo', () => {
-  const repo = makeRepo();
-  try {
-    git(['remote', 'add', 'origin', 'https://github.com/kenresoft-technologies/kenresoft-cms.git'], repo.dir);
-    assert.throws(() => assertNotSourceRepo(repo.dir), /source repository/);
-  } finally {
-    repo.cleanup();
-  }
-});
-
-test('assertNotSourceRepo throws when "upstream" (not "origin") points at the source repo', () => {
-  const repo = makeRepo();
-  try {
-    git(['remote', 'add', 'origin', 'https://github.com/someone-else/their-fork.git'], repo.dir);
-    git(['remote', 'add', 'upstream', 'git@github.com:kenresoft-technologies/kenresoft-cms.git'], repo.dir);
-    assert.throws(() => assertNotSourceRepo(repo.dir), /source repository/);
-  } finally {
-    repo.cleanup();
-  }
-});
-
-test('assertNotSourceRepo does not throw for a real deployment (origin/upstream point elsewhere)', () => {
-  const repo = makeRepo();
-  try {
-    git(['remote', 'add', 'origin', 'https://github.com/someone-else/their-fork.git'], repo.dir);
-    assert.doesNotThrow(() => assertNotSourceRepo(repo.dir));
-  } finally {
-    repo.cleanup();
-  }
-});
-
-test('assertNotSourceRepo does not throw when there is no remote at all', () => {
-  const repo = makeRepo();
-  try {
-    assert.doesNotThrow(() => assertNotSourceRepo(repo.dir));
-  } finally {
-    repo.cleanup();
-  }
-});
 
 // Direct regression test for the real production incident described in the field report: a
 // -X theirs merge resolving wrangler.toml as a whole-file add/add conflict silently replaces a

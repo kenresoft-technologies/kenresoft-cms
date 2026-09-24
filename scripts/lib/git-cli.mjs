@@ -29,35 +29,6 @@ function tryRunGit(args, cwd) {
   }
 }
 
-// The CMS's own source repo (kenresoft-technologies/kenresoft-cms) has no "upstream" remote at
-// all — it *is* upstream. Every real deployment clone does have one: a plain `git clone` names
-// its one remote "origin" pointing at this same source repo, and `npm create @kenresoft-cms@latest`
-// names it "upstream" explicitly (packages/create/bin/create-kenresoft-cms.mjs). So the one
-// reliable signal that setup.mjs/update.mjs are being run against the source checkout itself,
-// not a deployment, is any remote — "origin" or "upstream" — resolving to this exact repository.
-// Reported directly: a `pnpm run update -- --branch develop` run by mistake inside the source
-// checkout got as far as pulling/installing before update.mjs's own later "no database_id"
-// check happened to stop it — safe this time only because that checkout had never been through
-// `pnpm run setup` for real. Checked here, first, before either script does anything at all,
-// rather than relying on a downstream check that isn't guaranteed to fire early enough for every
-// code path (setup.mjs's provisioning steps run well before any such check would).
-const SOURCE_REPO_PATTERN = /kenresoft-technologies\/kenresoft-cms(\.git)?$/i;
-
-export function assertNotSourceRepo(repoRoot) {
-  for (const remote of ['origin', 'upstream']) {
-    const result = tryRunGit(['remote', 'get-url', remote], repoRoot);
-    if (result.ok && SOURCE_REPO_PATTERN.test(result.output.trim())) {
-      throw new Error(
-        `This looks like the Kenresoft CMS source repository itself (its "${remote}" remote points at ` +
-          'kenresoft-technologies/kenresoft-cms), not a deployment created from it. Running `pnpm run ' +
-          'setup`/`pnpm run update` here could create real Cloudflare resources or attempt to redeploy ' +
-          'using whatever credentials happen to be configured — refusing. If you actually want to deploy ' +
-          'this codebase, scaffold a real install first: `npm create @kenresoft-cms@latest my-cms`.',
-      );
-    }
-  }
-}
-
 // Exported for direct unit testing (real temp git repos, no interactive merge needed) — the
 // actual regression test for the production incident described where this is called from below.
 // Restores wrangler.toml to exactly what `atRef` had it as, folding that restoration into
