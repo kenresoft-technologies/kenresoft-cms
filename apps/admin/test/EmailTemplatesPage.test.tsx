@@ -113,20 +113,28 @@ describe('EmailTemplatesPage', () => {
     mockGet();
   });
 
-  it('lists the built-in designs, marking the active one', async () => {
+  it('lists the built-in designs, marking the active one, with a real rendered preview per card', async () => {
     renderPage();
-    await waitFor(() => expect(screen.getByText('Modern Minimal')).toBeInTheDocument());
+    // The "Preview email as" select's own current-value text also reads "Email verification
+    // (website account)" (the default previewed type), so this waits on a design name instead —
+    // unambiguous, since no email type happens to share a name with a design.
+    await waitFor(() => expect(screen.getAllByText('Modern Minimal').length).toBeGreaterThan(0));
     expect(screen.getByText('Cloudflare-Inspired')).toBeInTheDocument();
     expect(screen.getByText('Corporate')).toBeInTheDocument();
     expect(screen.getByText('Elegant')).toBeInTheDocument();
     expect(screen.getByText('Simple')).toBeInTheDocument();
     expect(screen.getAllByText('Active')).toHaveLength(1);
+    // Every design card rendered a real preview iframe (fetched via apiClient.post), not a
+    // static swatch.
+    await waitFor(() => expect(screen.getAllByTitle('Email preview').length).toBeGreaterThanOrEqual(5));
   });
 
   it('lists every template with its customized/default and enabled/disabled state', async () => {
     renderPage();
 
-    await waitFor(() => expect(screen.getByText('Email verification (website account)')).toBeInTheDocument());
+    // "Email verification (website account)" also appears as the "Preview email as" select's
+    // current value (it's the default previewed type) — assert on the count instead.
+    await waitFor(() => expect(screen.getAllByText('Email verification (website account)').length).toBeGreaterThan(0));
     expect(screen.getByText('Password reset')).toBeInTheDocument();
     expect(screen.getAllByText('Default')).toHaveLength(1);
     expect(screen.getAllByText('Customized')).toHaveLength(1);
@@ -178,9 +186,15 @@ describe('EmailTemplatesPage', () => {
   it('toggles a template enabled/disabled directly from its summary card', async () => {
     patchMock.mockResolvedValue({ ...templates[0], enabled: false });
     renderPage();
-    await waitFor(() => expect(screen.getByText('Email verification (website account)')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getAllByText('Email verification (website account)').length).toBeGreaterThan(0));
 
-    const card = screen.getByText('Email verification (website account)').closest<HTMLElement>('[role="button"]')!;
+    // The same text also appears as the "Preview email as" select's current value — its
+    // ancestor is a Select trigger, not a `[role="button"]` Card, so filtering for a match whose
+    // closest `[role="button"]` exists reliably picks the summary card, not the select.
+    const card = screen
+      .getAllByText('Email verification (website account)')
+      .map((el) => el.closest<HTMLElement>('[role="button"]'))
+      .find((el): el is HTMLElement => el !== null)!;
     await userEvent.click(within(card).getByRole('switch'));
 
     await waitFor(() =>
@@ -237,5 +251,47 @@ describe('EmailTemplatesPage', () => {
     await userEvent.click(screen.getByLabelText('Developer mode (raw HTML)'));
     expect(screen.getByLabelText('Body HTML')).toBeInTheDocument();
     expect(screen.queryByLabelText('Heading')).not.toBeInTheDocument();
+  });
+
+  it('browsing a different design shows a "Use this design" action, which applies it deployment-wide', async () => {
+    putMock.mockResolvedValue({
+      id: 'b-1',
+      module: 'emailBranding',
+      data: { designId: 'elegant', developerModeEnabled: false },
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    });
+    renderPage();
+    await waitFor(() => expect(screen.getByText('Elegant')).toBeInTheDocument());
+
+    // Not shown yet — the active design ("Modern Minimal") has nothing to switch to.
+    expect(screen.queryByRole('button', { name: 'Use this design' })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByText('Elegant'));
+
+    const useButton = await screen.findByRole('button', { name: 'Use this design' });
+    await userEvent.click(useButton);
+
+    await waitFor(() =>
+      expect(putMock).toHaveBeenCalledWith(
+        '/api/v1/admin/structured-settings/emailBranding',
+        expect.objectContaining({ designId: 'elegant' }),
+      ),
+    );
+  });
+
+  it('switching "Preview email as" changes which content the preview renders, independent of the browsed design', async () => {
+    renderPage();
+    await waitFor(() => expect(screen.getByLabelText('Preview email as')).toBeInTheDocument());
+
+    await userEvent.click(screen.getByLabelText('Preview email as'));
+    await userEvent.click(await screen.findByRole('option', { name: 'Password reset' }));
+
+    await waitFor(() =>
+      expect(postMock).toHaveBeenCalledWith(
+        expect.stringContaining('/api/v1/admin/email-templates/password_reset/preview'),
+        expect.objectContaining({ mode: 'standard', designId: 'modern-minimal' }),
+      ),
+    );
   });
 });

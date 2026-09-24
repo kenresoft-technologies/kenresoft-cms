@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
+import { useQueries } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
-import { ApiError } from '@/lib/api-client';
+import { apiClient, ApiError } from '@/lib/api-client';
 import { useStructuredSettings, useUpdateStructuredSettings } from '@/lib/queries/structured-settings';
 import {
   useEmailDesigns,
@@ -30,6 +31,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 
@@ -48,69 +50,82 @@ function emptyContent(): EmailTemplateContent {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Email Design — a single deployment-wide gallery. Choosing a design and turning on Developer
-// Customization both live here, above the per-template list, since neither is really a property
-// of one template (docs' own "Separate Email Design From Email Content" principle).
+// Design — the reusable, deployment-wide visual system every system email renders through.
+// Deliberately separate from System Email Settings below: the design a card renders ("how does
+// an email look") never depends on, or duplicates, which system email type it's a preview of
+// ("what is this email"). Choosing "Modern Minimal" here means every current and future system
+// email uses it — never three copies of the same design, one per email type.
 // ---------------------------------------------------------------------------------------------
+
+// Fetches every design's own rendering of the currently-selected email type's real content, in
+// parallel — one real preview call per design, never a static swatch. A card's thumbnail and the
+// large "Selected design" preview below both read from this same result set, so what a card
+// shows in miniature is pixel-identical to what the big preview shows at full size, just scaled.
+function useDesignPreviews(designs: EmailDesign[], previewKey: string, subject: string, content: EmailTemplateContent) {
+  return useQueries({
+    queries: designs.map((design) => ({
+      queryKey: ['email-templates', 'design-preview', design.id, previewKey, subject, content] as const,
+      queryFn: () =>
+        apiClient.post<{ subject: string; html: string; text: string }>(`/api/v1/admin/email-templates/${previewKey}/preview`, {
+          mode: 'standard',
+          subject,
+          content,
+          designId: design.id,
+        }),
+      staleTime: 60_000,
+    })),
+  });
+}
+
+function ScaledEmailPreview({ html, scale, minHeight }: { html: string | undefined; scale: number; minHeight: number }) {
+  return (
+    <div className="relative w-full overflow-hidden rounded-md border bg-white" style={{ height: minHeight }}>
+      {html ? (
+        <iframe
+          title="Email preview"
+          sandbox=""
+          referrerPolicy="no-referrer"
+          srcDoc={buildPreviewDocument(html)}
+          style={{
+            width: `${100 / scale}%`,
+            height: `${100 / scale}%`,
+            transform: `scale(${scale})`,
+            transformOrigin: 'top left',
+            border: 0,
+          }}
+        />
+      ) : (
+        <div className="flex h-full items-center justify-center text-xs text-muted-foreground">Loading preview…</div>
+      )}
+    </div>
+  );
+}
 
 function DesignCard({
   design,
+  html,
   active,
-  onUse,
-  onPreview,
-  isPending,
+  browsing,
+  onBrowse,
 }: {
   design: EmailDesign;
+  html: string | undefined;
   active: boolean;
-  onUse: () => void;
-  onPreview: () => void;
-  isPending: boolean;
+  browsing: boolean;
+  onBrowse: () => void;
 }) {
-  // A small, non-live swatch that hints at each design's character (color band vs. plain,
-  // rounded vs. square, bold vs. airy) without the cost of rendering a real iframe per card —
-  // the real preview (see PreviewDialog below) is one click away via "Preview".
-  const swatch: Record<string, React.ReactNode> = {
-    'modern-minimal': (
-      <div className="flex h-20 flex-col justify-end gap-1.5 rounded-lg bg-[#171a23] p-3">
-        <div className="h-1.5 w-10 rounded-full bg-[#6366f1]" />
-        <div className="h-1.5 w-16 rounded bg-white/20" />
-      </div>
-    ),
-    'cloudflare-inspired': (
-      <div className="flex h-20 flex-col justify-end gap-1.5 rounded-lg bg-white p-0 shadow-inner">
-        <div className="h-8 w-full rounded-t-lg bg-[#f97316]" />
-        <div className="flex flex-col gap-1.5 p-3 pt-0">
-          <div className="h-1.5 w-16 rounded bg-neutral-300" />
-          <div className="h-2 w-10 rounded-full bg-[#f97316]" />
-        </div>
-      </div>
-    ),
-    corporate: (
-      <div className="flex h-20 flex-col gap-1.5 rounded-lg border-t-4 border-[#3b4b6b] bg-white p-3">
-        <div className="h-1.5 w-14 rounded bg-neutral-400" />
-        <div className="mt-1 h-px w-full bg-neutral-200" />
-        <div className="mt-1 h-2 w-9 rounded-none bg-[#3b4b6b]" />
-      </div>
-    ),
-    elegant: (
-      <div className="flex h-20 flex-col items-center justify-center gap-1.5 rounded-lg bg-[#faf9f7] p-3">
-        <div className="h-1 w-8 rounded-full bg-neutral-400" />
-        <div className="h-1.5 w-16 rounded bg-neutral-300" />
-        <div className="mt-1 h-2 w-9 rounded-sm border border-neutral-400" />
-      </div>
-    ),
-    simple: (
-      <div className="flex h-20 flex-col justify-center gap-1.5 rounded-lg border bg-white p-3">
-        <div className="h-1.5 w-14 rounded bg-neutral-300" />
-        <div className="h-2 w-10 rounded-none bg-transparent underline decoration-neutral-400" />
-      </div>
-    ),
-  };
-
   return (
-    <Card className={active ? 'border-primary' : undefined}>
+    <Card
+      role="button"
+      tabIndex={0}
+      onClick={onBrowse}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') onBrowse();
+      }}
+      className={`cursor-pointer transition-colors ${browsing ? 'border-primary' : 'hover:border-primary/50'}`}
+    >
       <CardContent className="flex flex-col gap-3 py-4">
-        {swatch[design.id]}
+        <ScaledEmailPreview html={html} scale={0.32} minHeight={150} />
         <div>
           <div className="flex items-center gap-2">
             <p className="font-medium">{design.name}</p>
@@ -118,40 +133,8 @@ function DesignCard({
           </div>
           <p className="mt-1 text-sm text-muted-foreground">{design.description}</p>
         </div>
-        <div className="flex gap-2">
-          <Button type="button" variant="outline" size="sm" onClick={onPreview}>
-            Preview
-          </Button>
-          <Button type="button" size="sm" disabled={active || isPending} onClick={onUse}>
-            {active ? 'In use' : 'Use this design'}
-          </Button>
-        </div>
       </CardContent>
     </Card>
-  );
-}
-
-function PreviewDialog({ html, onClose }: { html: string | null; onClose: () => void }) {
-  if (html === null) return null;
-  return (
-    <AlertDialog open onOpenChange={(open) => !open && onClose()}>
-      <AlertDialogContent className="max-w-2xl">
-        <AlertDialogHeader>
-          <AlertDialogTitle>Preview</AlertDialogTitle>
-          <AlertDialogDescription>Rendered against sample data.</AlertDialogDescription>
-        </AlertDialogHeader>
-        <iframe
-          title="Design preview"
-          sandbox=""
-          referrerPolicy="no-referrer"
-          srcDoc={buildPreviewDocument(html)}
-          className="h-[480px] w-full rounded-md border bg-white"
-        />
-        <AlertDialogFooter>
-          <AlertDialogAction onClick={onClose}>Close</AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
   );
 }
 
@@ -160,29 +143,52 @@ function PreviewDialog({ html, onClose }: { html: string | null; onClose: () => 
 // and its useState calls re-initialize from fresh data on load, rather than an effect calling
 // setState after the fact (the same split EntryEditorPage's own EntryForm already established,
 // for the same React Compiler purity reason).
-function EmailDesignSection() {
+function EmailDesignSection({ templates }: { templates: EmailTemplate[] }) {
   const { data: designs } = useEmailDesigns();
   const { data: brandingRow } = useStructuredSettings('emailBranding');
-  return <EmailDesignFields key={brandingRow?.updatedAt ?? 'none'} designs={designs ?? []} brandingRow={brandingRow ?? null} />;
+  return (
+    <EmailDesignFields
+      key={brandingRow?.updatedAt ?? 'none'}
+      designs={designs ?? []}
+      brandingRow={brandingRow ?? null}
+      templates={templates}
+    />
+  );
 }
 
 function EmailDesignFields({
   designs,
   brandingRow,
+  templates,
 }: {
   designs: EmailDesign[];
   brandingRow: { data: unknown; updatedAt: string } | null;
+  templates: EmailTemplate[];
 }) {
   const branding = (brandingRow?.data as Partial<EmailBrandingSettingsData> | undefined) ?? {};
   const updateBranding = useUpdateStructuredSettings('emailBranding');
-  const previewTemplate = usePreviewEmailTemplate('email_verification');
 
-  const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   const [footerText, setFooterText] = useState(branding.footerText ?? '');
   const [brandColor, setBrandColor] = useState(branding.brandColor ?? '#6366f1');
 
   const activeDesignId = branding.designId ?? 'modern-minimal';
   const developerModeEnabled = branding.developerModeEnabled ?? false;
+
+  // Which design the gallery/big preview are currently showing — defaults to whatever's active,
+  // but clicking a different card "browses" it without changing anything until "Use this
+  // design" is clicked. Which email TYPE the preview renders as is a fully independent choice
+  // (previewKey below) — switching one never resets the other.
+  const [browsingDesignId, setBrowsingDesignId] = useState(activeDesignId);
+  const [previewKey, setPreviewKey] = useState<string>(templates[0]?.key ?? 'email_verification');
+
+  const previewTemplate = templates.find((t) => t.key === previewKey) ?? templates[0] ?? null;
+  const previewContent = previewTemplate?.content ?? emptyContent();
+  const previewSubject = previewTemplate?.subject ?? '';
+
+  const previewResults = useDesignPreviews(designs, previewKey, previewSubject, previewContent);
+  const htmlByDesignId = Object.fromEntries(designs.map((design, index) => [design.id, previewResults[index]?.data?.html]));
+
+  const browsingDesign = designs.find((d) => d.id === browsingDesignId);
 
   function save(patch: Partial<EmailBrandingSettingsData>) {
     updateBranding.mutate(
@@ -205,46 +211,81 @@ function EmailDesignFields({
     );
   }
 
-  function handlePreview(designId: string) {
-    previewTemplate.mutate(
-      {
-        mode: 'standard',
-        subject: 'Verify your email address',
-        content: {
-          heading: 'Verify your email address',
-          bodyText: "You're almost there. Verify your email address to finish setting up your account.",
-          ctaLabel: 'Verify email',
-          fineprint: 'This link expires in 1 hour.',
-        },
-        designId,
-      },
-      { onSuccess: (result) => setPreviewHtml(result.html), onError: () => toast.error('Failed to render preview') },
-    );
-  }
-
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Email Design</CardTitle>
-        <CardDescription>
-          Choose how system emails (email verification, password reset) look. Applies to every system email at once.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-6">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {designs.map((design) => (
-            <DesignCard
-              key={design.id}
-              design={design}
-              active={design.id === activeDesignId}
-              isPending={updateBranding.isPending}
-              onUse={() => save({ designId: design.id as EmailBrandingSettingsData['designId'] })}
-              onPreview={() => handlePreview(design.id)}
-            />
-          ))}
-        </div>
+    <div className="flex flex-col gap-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>Design</CardTitle>
+          <CardDescription>
+            The reusable visual system every system email renders through — chosen once, used by email verification, staff
+            verification, password reset, and any future system email alike.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-6">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {designs.map((design) => (
+              <DesignCard
+                key={design.id}
+                design={design}
+                html={htmlByDesignId[design.id]}
+                active={design.id === activeDesignId}
+                browsing={design.id === browsingDesignId}
+                onBrowse={() => setBrowsingDesignId(design.id)}
+              />
+            ))}
+          </div>
 
-        <div className="grid gap-4 border-t pt-4 sm:grid-cols-2">
+          <div className="border-t pt-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="font-medium">{browsingDesign?.name ?? 'Selected design'}</p>
+                <p className="text-sm text-muted-foreground">
+                  {browsingDesignId === activeDesignId ? 'Currently active.' : 'Not yet in use — click "Use this design" below to switch.'}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Label htmlFor="preview-as-select" className="text-xs font-normal text-muted-foreground">
+                  Preview email as
+                </Label>
+                <Select value={previewKey} onValueChange={setPreviewKey}>
+                  <SelectTrigger id="preview-as-select" className="w-56">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {templates.map((t) => (
+                      <SelectItem key={t.key} value={t.key}>
+                        {t.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="mt-4">
+              <ScaledEmailPreview html={htmlByDesignId[browsingDesignId]} scale={1} minHeight={480} />
+            </div>
+
+            {browsingDesignId !== activeDesignId ? (
+              <Button
+                type="button"
+                className="mt-4"
+                disabled={updateBranding.isPending}
+                onClick={() => save({ designId: browsingDesignId as EmailBrandingSettingsData['designId'] })}
+              >
+                Use this design
+              </Button>
+            ) : null}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Branding</CardTitle>
+          <CardDescription>Used automatically by every design above. Leave a field unset to use your site's own branding.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4 sm:grid-cols-2">
           <MediaReferenceField
             label="Logo"
             mediaId={branding.logoMediaId ?? null}
@@ -280,28 +321,33 @@ function EmailDesignFields({
             />
             <p className="text-xs text-muted-foreground">Leave blank to use the default.</p>
           </div>
-        </div>
+        </CardContent>
+      </Card>
 
-        <div className="flex items-start justify-between gap-4 border-t pt-4">
-          <div>
-            <Label htmlFor="developer-mode-toggle" className="font-medium">
-              Developer Customization
-            </Label>
-            <p className="mt-1 max-w-md text-xs text-muted-foreground">
-              Let advanced users edit the raw HTML and template variables of an individual system email directly,
-              instead of the standard visual fields above.
-            </p>
+      <Card>
+        <CardHeader>
+          <CardTitle>Advanced</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <Label htmlFor="developer-mode-toggle" className="font-medium">
+                Developer Customization
+              </Label>
+              <p className="mt-1 max-w-md text-xs text-muted-foreground">
+                Let advanced users edit the raw HTML and template variables of an individual system email directly, instead
+                of the plain fields below. Not the normal workflow — most changes belong above.
+              </p>
+            </div>
+            <Switch
+              id="developer-mode-toggle"
+              checked={developerModeEnabled}
+              onCheckedChange={(checked) => save({ developerModeEnabled: checked })}
+            />
           </div>
-          <Switch
-            id="developer-mode-toggle"
-            checked={developerModeEnabled}
-            onCheckedChange={(checked) => save({ developerModeEnabled: checked })}
-          />
-        </div>
-      </CardContent>
-
-      <PreviewDialog html={previewHtml} onClose={() => setPreviewHtml(null)} />
-    </Card>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
@@ -647,11 +693,13 @@ function TemplateEditor({ template, developerModeAllowed }: { template: EmailTem
   );
 }
 
-// System (transactional) email templates — verification, password reset. Non-technical admins
-// choose one of the built-in designs and edit plain content fields (heading/message/button
-// label/fine print); "Developer Customization" (Email Design section, above the list) is the
-// opt-in escape hatch for raw HTML per template. This is deliberately not the general-purpose
-// content/email-template feature — see docs/ARCHITECTURE.md §6.2 for that boundary.
+// System (transactional) email templates — verification, password reset. Deliberately separated
+// into two concerns a non-technical admin should never have to conflate: Design ("how do our
+// system emails look" — one reusable choice, above) and System Email Settings ("what does this
+// particular email say" — per email type, below). "Developer Customization" (the Design
+// section's own Advanced card) is the opt-in escape hatch for raw HTML per template. This is
+// deliberately not the general-purpose content/email-template feature — see
+// docs/ARCHITECTURE.md §6.2 for that boundary.
 export function EmailTemplatesPage() {
   const { data: templates, isPending, error } = useEmailTemplates();
   const { data: brandingRow } = useStructuredSettings('emailBranding');
@@ -665,10 +713,17 @@ export function EmailTemplatesPage() {
       <PageBreadcrumb items={[{ label: 'Email Templates' }]} />
       <PageHeader
         title="Email Templates"
-        description="Choose a design and edit the content of verification and password-reset emails — no HTML required."
+        description="Create professional system emails for your CMS without editing HTML."
       />
 
-      <EmailDesignSection />
+      {templates ? <EmailDesignSection templates={templates} /> : null}
+
+      <div>
+        <h2 className="text-lg font-semibold">System Email Settings</h2>
+        <p className="text-sm text-muted-foreground">
+          What each system email says. The design above controls how it looks; this is what it says.
+        </p>
+      </div>
 
       {error ? <p className="text-destructive">{error.message}</p> : null}
 
