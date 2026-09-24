@@ -17,7 +17,11 @@ const TOKEN_PATTERN = /\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}/g;
 // includes/partials — a `{{path}}` token is a dictionary lookup and nothing else, which is what
 // makes "never supports arbitrary code" a property of the implementation, not just a rule
 // someone has to remember to follow.
-function escapeHtml(value: string): string {
+// Exported for standard-render.ts, which escapes admin-supplied structured content (heading,
+// body text, CTA label, fine print) before splicing it directly into a design's generated
+// bodyHtml — the same discipline this file already applies to every `{{token}}` substitution,
+// just needed one step earlier since structured content isn't itself a token.
+export function escapeHtml(value: string): string {
   return value
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')

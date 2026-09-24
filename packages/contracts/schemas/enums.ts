@@ -195,6 +195,27 @@ export const EMAIL_TEMPLATE_KEYS = ['email_verification', 'email_verification_st
 
 export type EmailTemplateKey = (typeof EMAIL_TEMPLATE_KEYS)[number];
 
+// 'standard': the admin edits heading/body text/CTA label/fine print through plain fields, never
+// HTML — the shipped design registry (below) renders it. 'developer': the admin edits raw
+// bodyHtml directly (the original, pre-refactor behavior). Per-template-row, not global, so an
+// existing deployment's one customized template (say, password_reset) can stay in developer mode
+// while the other two remain standard — see packages/database/schema/email-templates.ts's own
+// comment for how a legacy row (mode column still null) is classified into one of these on first
+// read.
+export const EMAIL_TEMPLATE_MODES = ['standard', 'developer'] as const;
+
+export type EmailTemplateMode = (typeof EMAIL_TEMPLATE_MODES)[number];
+
+// The built-in, non-editable (from a standard-mode admin's perspective) email designs — one
+// active design applies to every system email at once (the emailBranding Structured Settings
+// module's own `designId`), not chosen per template key, so verification/password-reset/etc.
+// always look like they came from the same system. Registry metadata (name/description) lives
+// in apps/api/src/lib/email-templates/designs.ts; adding a 6th design later means one more entry
+// there plus in this array, nothing else.
+export const EMAIL_DESIGN_IDS = ['modern-minimal', 'cloudflare-inspired', 'corporate', 'elegant', 'simple'] as const;
+
+export type EmailDesignId = (typeof EMAIL_DESIGN_IDS)[number];
+
 // Fired from apps/api/src/routes/admin/entries.ts at the route layer (not the repository),
 // since only the route handler has both the pre-update and post-update entry to compare
 // statuses against — "updated" always fires alongside "published"/"unpublished" on a status-
