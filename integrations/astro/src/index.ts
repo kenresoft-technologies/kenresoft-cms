@@ -761,6 +761,11 @@ export interface KenresoftClient {
 }
 
 export function createKenresoftClient(config: KenresoftClientConfig): KenresoftClient {
+  if (typeof config.url !== 'string' || !config.url) {
+    throw new Error(
+      'createKenresoftClient: url is missing. Set PUBLIC_KENRESOFT_CMS_URL to your CMS API origin (in .env for local builds, and as a build or runtime variable where you deploy).',
+    );
+  }
   const baseUrl = config.url.replace(/\/$/, '');
   const cookieHeader = config.cookies;
   const doFetch: typeof fetch =

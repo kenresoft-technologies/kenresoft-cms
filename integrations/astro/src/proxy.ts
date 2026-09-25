@@ -46,6 +46,16 @@ export function isProxiedPathAllowed(path: string): boolean {
 }
 
 export function createCmsProxy(options: CmsProxyOptions): (request: Request) => Promise<Response> {
+  // A missing URL is a deployment setting, not a visitor error: say so in the logs and answer 503,
+  // rather than crashing on undefined (which frameworks can turn into a bare 404).
+  if (typeof options.url !== 'string' || !options.url) {
+    return async () => {
+      console.error(
+        '[kenresoft] The /cms proxy has no CMS URL. Set PUBLIC_KENRESOFT_CMS_URL for the build and/or as a runtime variable.',
+      );
+      return Response.json({ error: 'The CMS connection is not configured' }, { status: 503 });
+    };
+  }
   const upstreamBase = options.url.replace(/\/$/, '');
   const basePath = (options.basePath ?? '/cms').replace(/\/$/, '');
   const doFetch = options.fetch ?? fetch;
