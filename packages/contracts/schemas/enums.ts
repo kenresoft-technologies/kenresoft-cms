@@ -191,7 +191,7 @@ export type SocialPlatform = (typeof SOCIAL_PLATFORMS)[number];
 // transactional email later (e.g. a real "welcome" send once one is deliberately added) means
 // widening this union plus one entry in apps/api/src/lib/email-templates/defaults.ts, not a
 // schema rewrite.
-export const EMAIL_TEMPLATE_KEYS = ['email_verification', 'email_verification_staff', 'password_reset'] as const;
+export const EMAIL_TEMPLATE_KEYS = ['email_verification', 'email_verification_staff', 'password_reset', 'form_submission_update'] as const;
 
 export type EmailTemplateKey = (typeof EMAIL_TEMPLATE_KEYS)[number];
 

@@ -40,6 +40,75 @@ describe('createCmsProxy', () => {
     assert.equal(seen[0]!.init.redirect, 'manual');
   });
 
+  it('forwards a multipart upload intact: method, boundary, fields, file bytes, accept and user-agent', async () => {
+    const fileBytes = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x00, 0xff, 0x10, 0x0d, 0x0a]);
+    const form = new FormData();
+    form.set('name', 'Ada Student');
+    form.set('document', new File([fileBytes], 'cv.pdf', { type: 'application/pdf' }));
+    const incoming = new Request(`${site}/cms/api/v1/public/forms/student-support/submissions`, {
+      method: 'POST',
+      headers: { cookie: 'session=abc', origin: site, accept: 'application/json', 'user-agent': 'TestBrowser/1.0' },
+      body: form,
+    });
+    const contentType = incoming.headers.get('content-type')!;
+    assert.match(contentType, /^multipart\/form-data; boundary=/);
+
+    const { proxy, seen } = setup(() => Response.json({ id: 's-1' }, { status: 201 }));
+    const res = await proxy(incoming);
+    assert.equal(res.status, 201);
+
+    const sent = seen[0]!;
+    assert.equal(sent.url, 'https://api.example.com/api/v1/public/forms/student-support/submissions');
+    assert.equal(sent.init.method, 'POST');
+    const headers = new Headers(sent.init.headers);
+    assert.equal(headers.get('content-type'), contentType);
+    assert.equal(headers.get('cookie'), 'session=abc');
+    assert.equal(headers.get('origin'), site);
+    assert.equal(headers.get('accept'), 'application/json');
+    assert.equal(headers.get('user-agent'), 'TestBrowser/1.0');
+    // The upstream can parse the forwarded body with the forwarded boundary, byte for byte.
+    const received = await new Request('https://api.example.com/', {
+      method: 'POST',
+      headers: { 'content-type': contentType },
+      body: sent.init.body as BodyInit,
+    }).formData();
+    assert.equal(received.get('name'), 'Ada Student');
+    const file = received.get('document') as File;
+    assert.equal(file.name, 'cv.pdf');
+    assert.deepEqual(new Uint8Array(await file.arrayBuffer()), fileBytes);
+  });
+
+  it('answers 503 with a clear log, not a crash, when the CMS URL is not configured', async () => {
+    const errors: unknown[] = [];
+    const original = console.error;
+    console.error = (...args: unknown[]) => errors.push(args[0]);
+    try {
+      const proxy = createCmsProxy({ url: undefined as unknown as string });
+      const res = await proxy(new Request(`${site}/cms/api/v1/auth/get-session`));
+      assert.equal(res.status, 503);
+      assert.match(String(errors[0]), /PUBLIC_KENRESOFT_CMS_URL/);
+    } finally {
+      console.error = original;
+    }
+  });
+
+  it('forwards a multipart account message to /api/v1/account/', async () => {
+    const form = new FormData();
+    form.set('body', 'Here is the file you asked for.');
+    form.append('files', new File([new Uint8Array([1, 2, 3])], 'extra.pdf'));
+    const { proxy, seen } = setup(() => Response.json({ id: 'm-1' }, { status: 201 }));
+    const res = await proxy(
+      new Request(`${site}/cms/api/v1/account/forms/submissions/s-1/messages`, {
+        method: 'POST',
+        headers: { cookie: 'session=abc', origin: site },
+        body: form,
+      }),
+    );
+    assert.equal(res.status, 201);
+    assert.equal(seen[0]!.url, 'https://api.example.com/api/v1/account/forms/submissions/s-1/messages');
+    assert.ok((seen[0]!.init.body as ArrayBuffer).byteLength > 0);
+  });
+
   it('drops a trailing slash before forwarding, for sites with trailingSlash: "always"', async () => {
     const { proxy, seen } = setup(() => Response.json({ ok: true }));
     const res = await proxy(new Request(`${site}/cms/api/v1/public/pages/?x=1`));
@@ -60,14 +129,26 @@ describe('createCmsProxy', () => {
     assert.deepEqual(res.headers.getSetCookie(), ['session=abc; Path=/; Secure; SameSite=None', 'other=1; Path=/']);
   });
 
-  it('only forwards the public/auth surface — never the admin API or unknown paths', async () => {
+  it('only forwards the public/auth/account surface — never the admin API or unknown paths', async () => {
     const { proxy, seen } = setup(() => Response.json({}));
-    for (const path of ['/cms/api/v1/admin/users', '/cms/api/v1/system/status', '/cms/api/v1/auth/../admin/users', '/cms/other', '/cms/']) {
+    for (const path of [
+      '/cms/api/v1/admin/users',
+      '/cms/api/v1/system/status',
+      '/cms/api/v1/auth/../admin/users',
+      '/cms/api/v1/account/../admin/forms',
+      '/cms/other',
+      '/cms/',
+    ]) {
       assert.equal((await proxy(new Request(`${site}${path}`))).status, 404, path);
     }
     assert.equal((await proxy(new Request(`${site}/other`))).status, 404);
     assert.equal(seen.length, 0);
-    for (const path of ['/cms/api/v1/public/pages', '/cms/api/plugins/commerce/public/v1/cart', '/cms/api/v1/auth/get-session']) {
+    for (const path of [
+      '/cms/api/v1/public/pages',
+      '/cms/api/plugins/commerce/public/v1/cart',
+      '/cms/api/v1/auth/get-session',
+      '/cms/api/v1/account/forms/submissions',
+    ]) {
       assert.equal((await proxy(new Request(`${site}${path}`))).status, 200, path);
     }
   });

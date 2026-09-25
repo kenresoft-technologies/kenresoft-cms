@@ -1,3 +1,4 @@
+export * from '../schemas/account-form-submissions';
 export * from '../schemas/audit-log';
 export * from '../schemas/blocks';
 export * from '../schemas/cache';

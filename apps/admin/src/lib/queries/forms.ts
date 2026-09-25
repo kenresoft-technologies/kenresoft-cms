@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { apiClient } from '@/lib/api-client';
-import type { Form } from '@/lib/types';
+import type { Form, UpdateFormInput } from '@/lib/types';
 
 const formsKey = ['forms'] as const;
 
@@ -35,7 +35,7 @@ export function useUpdateForm(formId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (input: { name?: string; slug?: string; notificationEmails?: string[] | null }) =>
+    mutationFn: (input: UpdateFormInput) =>
       apiClient.patch<Form>(`/api/v1/admin/forms/${formId}`, input),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: formsKey });

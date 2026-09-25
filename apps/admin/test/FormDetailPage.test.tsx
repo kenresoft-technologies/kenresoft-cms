@@ -25,6 +25,16 @@ vi.mock('@/lib/auth-client', () => ({
   authClient: { useSession: () => ({ data: { user: { role: 'admin' } } }) },
 }));
 
+const baseForm = {
+  id: 'f-1',
+  name: 'Contact',
+  slug: 'contact',
+  notificationEmails: null,
+  requiresAccount: false,
+  stages: null,
+  accountSubmissionUrl: null,
+};
+
 function renderPage() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -136,17 +146,44 @@ describe('FormDetailPage', () => {
     );
   });
 
+  it('limits a file field to the accepted file kinds that are ticked', async () => {
+    getMock.mockImplementation((path: string) => {
+      if (path.endsWith('/fields')) return Promise.resolve([]);
+      return Promise.resolve({ id: 'f-1', name: 'Contact', slug: 'contact' });
+    });
+    postMock.mockResolvedValue({ id: 'ff-1', name: 'document', label: 'Document', fieldType: 'file', required: true });
+
+    renderPage();
+    await waitFor(() => expect(screen.getByText('No fields yet')).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole('button', { name: 'Add field' }));
+    const dialog = screen.getByRole('dialog');
+    await userEvent.type(within(dialog).getByLabelText('Name'), 'document');
+    await userEvent.type(within(dialog).getByLabelText('Label'), 'Document');
+    await userEvent.click(within(dialog).getByLabelText('Type'));
+    await userEvent.click(screen.getByRole('option', { name: 'file' }));
+    await userEvent.click(within(dialog).getByLabelText('PDF'));
+    await userEvent.click(within(dialog).getByLabelText('Word (.docx)'));
+    await userEvent.click(within(dialog).getByLabelText('Required'));
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Add field' }));
+
+    await waitFor(() =>
+      expect(postMock).toHaveBeenCalledWith('/api/v1/admin/forms/f-1/fields', {
+        name: 'document',
+        label: 'Document',
+        fieldType: 'file',
+        required: true,
+        config: { accept: ['pdf', 'docx'] },
+      }),
+    );
+  });
+
   it('shows a "No notifications configured" badge, and sets notification emails through Edit form', async () => {
     getMock.mockImplementation((path: string) => {
       if (path.endsWith('/fields')) return Promise.resolve([]);
-      return Promise.resolve({ id: 'f-1', name: 'Contact', slug: 'contact', notificationEmails: null });
+      return Promise.resolve({ ...baseForm });
     });
-    patchMock.mockResolvedValue({
-      id: 'f-1',
-      name: 'Contact',
-      slug: 'contact',
-      notificationEmails: ['hr@example.com', 'ops@example.com'],
-    });
+    patchMock.mockResolvedValue({ ...baseForm, notificationEmails: ['hr@example.com', 'ops@example.com'] });
 
     renderPage();
     await waitFor(() => expect(screen.getByText('No notifications configured')).toBeInTheDocument());
@@ -164,6 +201,37 @@ describe('FormDetailPage', () => {
         name: 'Contact',
         slug: 'contact',
         notificationEmails: ['hr@example.com', 'ops@example.com'],
+        requiresAccount: false,
+        stages: null,
+        accountSubmissionUrl: null,
+      }),
+    );
+  });
+
+  it('turns on accounts and progress stages through Edit form, and badges the form', async () => {
+    getMock.mockImplementation((path: string) => {
+      if (path.endsWith('/fields')) return Promise.resolve([]);
+      return Promise.resolve({ ...baseForm });
+    });
+    patchMock.mockResolvedValue({ ...baseForm });
+
+    renderPage();
+    await waitFor(() => expect(screen.getByText('No notifications configured')).toBeInTheDocument());
+    await userEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    const dialog = screen.getByRole('dialog');
+    await userEvent.type(within(dialog).getByLabelText('Progress stages'), 'Submitted{Enter}In Progress{Enter}{Enter}Completed');
+    await userEvent.click(within(dialog).getByLabelText('Require a website account'));
+    await userEvent.type(within(dialog).getByLabelText('Account page URL'), 'https://example.com/requests/{{id}');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save changes' }));
+
+    await waitFor(() =>
+      expect(patchMock).toHaveBeenCalledWith('/api/v1/admin/forms/f-1', {
+        name: 'Contact',
+        slug: 'contact',
+        notificationEmails: null,
+        requiresAccount: true,
+        stages: ['Submitted', 'In Progress', 'Completed'],
+        accountSubmissionUrl: 'https://example.com/requests/{id}',
       }),
     );
   });

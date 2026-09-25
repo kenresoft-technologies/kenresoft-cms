@@ -1,7 +1,8 @@
 import { z } from 'zod';
 
-// Metadata only — the binary is never stored. `mediaId` is set when the attachment came from the
-// Media Library (the file itself stays there under its own access rules).
+// `mediaId` points at the stored file: uploads are kept as private Media, and Media Library
+// attachments reference their existing Media. Replies recorded before uploads were stored have
+// no mediaId for an upload (the file was only ever emailed).
 export const emailAttachmentMetaSchema = z.object({
   filename: z.string(),
   contentType: z.string(),
@@ -10,13 +11,16 @@ export const emailAttachmentMetaSchema = z.object({
   mediaId: z.string().optional(),
 });
 
+// One message on a submission's thread. 'outbound' is a staff reply sent by email to `to`;
+// 'inbound' is a message the owning account posted from the site (no `to`/`subject`).
 export const formSubmissionReplySchema = z.object({
   id: z.string(),
   submissionId: z.string(),
+  direction: z.enum(['outbound', 'inbound']),
   authorUserId: z.string().nullable(),
   authorName: z.string().nullable(),
-  to: z.string(),
-  subject: z.string(),
+  to: z.string().nullable(),
+  subject: z.string().nullable(),
   bodyHtml: z.string(),
   attachments: z.array(emailAttachmentMetaSchema),
   createdAt: z.string(),
@@ -24,15 +28,12 @@ export const formSubmissionReplySchema = z.object({
 
 export const createFormSubmissionReplySchema = z.object({
   to: z.string().email(),
-  // No line breaks: a subject is a mail header (header-injection guard).
   subject: z
     .string()
     .min(1)
     .max(300)
     .refine((value) => !/[\r\n]/.test(value), 'Subject cannot contain line breaks'),
   bodyHtml: z.string().min(1).max(20000),
-  // Defaults to the configured Email sender address (Profile → Email sender), then the staff
-  // member's own email.
   replyTo: z.string().email().optional(),
 });
 

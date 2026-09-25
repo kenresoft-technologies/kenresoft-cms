@@ -19,14 +19,19 @@ export const formSubmissionReplies = sqliteTable(
       .notNull()
       .references(() => formSubmissions.id, { onDelete: 'cascade' }),
     authorUserId: text('author_user_id').references(() => user.id, { onDelete: 'set null' }),
-    to: text('to').notNull(),
-    subject: text('subject').notNull(),
+    // 'outbound' is a staff reply (emailed to `to`); 'inbound' is a message the owning account
+    // posted through /api/v1/account/forms, which has no recipient or subject of its own.
+    direction: text('direction').notNull().$type<'outbound' | 'inbound'>().default('outbound'),
+    to: text('to'),
+    subject: text('subject'),
     // The rich-text compose box's HTML output — the plain-text part sent alongside it
     // (form-notifications.ts-style multipart email) is derived from this at send time, not
     // stored separately, since it's always mechanically re-derivable from the HTML.
     bodyHtml: text('body_html').notNull(),
-    // Metadata only (filename/type/size/source) for attachments sent with this reply — never the
-    // binary. Media Library attachments also carry their mediaId.
+    // Metadata for this message's attachments. Every attachment carries a mediaId: uploaded
+    // files are kept as private Media (media_attachments owner 'form_submission_reply'), so the
+    // owning account and staff can download them later. Rows from before that change have
+    // metadata only for uploads (no mediaId), since the file itself was only emailed.
     attachments: text('attachments', { mode: 'json' }).$type<
       { filename: string; contentType: string; size: number; source: 'upload' | 'media'; mediaId?: string }[]
     >(),

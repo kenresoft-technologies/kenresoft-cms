@@ -1,6 +1,6 @@
 {
   "name": "@kenresoft-cms/astro",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "type": "module",
   "description": "Typed client for a Kenresoft CMS deployment's public API. The first-class Astro integration referenced in docs/ASTRO.md — not Astro-specific at the code level (it's a thin fetch wrapper over the public REST API), but built and documented as Astro's officially supported way in.",
   "license": "MIT",
@@ -36,7 +36,7 @@
     "lint": "eslint ."
   },
   "dependencies": {
-    "@kenresoft-cms/contracts": "^0.5.0"
+    "@kenresoft-cms/contracts": "^0.6.0"
   },
   "devDependencies": {
     "@kenresoft-cms/config": "workspace:*",

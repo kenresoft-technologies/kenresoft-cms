@@ -10,6 +10,8 @@ import {
   formSubmissionWithFormSchema,
   updateFormFieldSchema,
   updateFormSchema,
+  formSubmissionStageChangeSchema,
+  updateFormSubmissionStageSchema,
   updateFormSubmissionStatusSchema,
 } from '@kenresoft-cms/contracts';
 import type {
@@ -30,7 +32,17 @@ import { getAdminFrom, getDefaultReplyTo } from '../../lib/email/admin-sender';
 import { sendFormSubmissionNotification } from '../../lib/form-notifications';
 import { collectAttachments, describeAttachments } from '../../lib/email/attachments';
 import { buildBodies, parseComposeRequest } from '../../lib/email/compose';
+import { escapeHtml } from '../../lib/email-templates/render';
 import { deleteMediaIfUnreferenced } from '../../lib/media-service';
+import {
+  REPLY_ATTACHMENT_OWNER,
+  accountSubmissionUrl,
+  findSubmissionFile,
+  linkMessageFiles,
+  mediaDownloadResponse,
+  notifyAccountOfStageChange,
+  uploadMessageFiles,
+} from '../../lib/submission-thread';
 import { createOpenApiApp } from '../../lib/openapi';
 import { parseSubmissionRequestBody, submitForm } from '../../lib/submit-form';
 import { requireFormsAccess } from '../../middleware/require-forms-access';
@@ -50,7 +62,9 @@ import {
 import {
   deleteFormSubmission,
   getFormSubmissionById,
+  listStageChanges,
   listSubmissionsWithForm,
+  updateFormSubmissionStage,
   updateFormSubmissionStatus,
 } from '../../repositories/form-submissions';
 import { createForm, getFormById, listForms, updateForm } from '../../repositories/forms';
@@ -106,6 +120,9 @@ function toForm(row: DbForm): Form {
     name: row.name,
     slug: row.slug,
     notificationEmails: row.notificationEmails ?? null,
+    requiresAccount: row.requiresAccount,
+    stages: row.stages ?? null,
+    accountSubmissionUrl: row.accountSubmissionUrl ?? null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -130,6 +147,7 @@ function toFormSubmissionReply(row: DbFormSubmissionReply & { authorName: string
   return {
     id: row.id,
     submissionId: row.submissionId,
+    direction: row.direction,
     authorUserId: row.authorUserId,
     authorName: row.authorName,
     to: row.to,
@@ -147,6 +165,8 @@ function toFormSubmission(row: DbFormSubmission): FormSubmission {
     data: row.data,
     status: row.status as FormSubmissionStatus,
     isTest: row.isTest,
+    accountUserId: row.accountUserId,
+    stage: row.stage,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -160,9 +180,15 @@ export function toFormSubmissionWithForm(
     data: row.data,
     status: row.status as FormSubmissionStatus,
     isTest: row.isTest,
+    accountUserId: row.accountUserId,
+    stage: row.stage,
     createdAt: row.createdAt.toISOString(),
     formName: row.formName,
     formSlug: row.formSlug,
+    account:
+      row.accountUserId && row.accountEmail
+        ? { id: row.accountUserId, name: row.accountName ?? '', email: row.accountEmail }
+        : null,
   };
 }
 
@@ -504,9 +530,9 @@ formsRoute.post('/:id/test-submissions', async (c) => {
   }
 
   const fields = await listFormFields(db, form.id);
-  const result = await submitForm(db, c.env.MEDIA_BUCKET, form.id, fields, parsedBody.parsed, { isTest: true });
+  const result = await submitForm(db, c.env.MEDIA_BUCKET, form, fields, parsedBody.parsed, { isTest: true });
   if (!result.ok) {
-    return c.json({ error: result.error, issues: result.issues }, 400);
+    return c.json({ error: result.error, issues: result.issues }, result.status);
   }
 
   sendFormSubmissionNotification(c.env, c.executionCtx, form, fields, result.submission, { isTest: true });
@@ -692,29 +718,60 @@ formsRoute.post('/:id/submissions/:submissionId/replies', adminEmailRateLimit, a
   const bodies = buildBodies(fields.bodyHtml);
   const bodyHtml = bodies.html;
 
+  // Uploaded files are kept as private Media before anything is sent, so the thread — and the
+  // owning account, for an account-linked submission — can still download them afterwards.
+  // Media Library attachments already exist as Media and are referenced by their mediaId.
+  const uploads = collected.attachments.filter((attachment) => !attachment.mediaId);
+  const stored = await uploadMessageFiles(
+    db,
+    c.env.MEDIA_BUCKET,
+    uploads.map((attachment) => ({ filename: attachment.filename, bytes: attachment.content })),
+  );
+  if (!stored.ok) {
+    return c.json({ error: stored.error }, stored.status);
+  }
+  const storedIds = stored.uploaded.map(({ media }) => media.id);
+  let uploadIndex = 0;
+  const attachmentMeta = describeAttachments(collected.attachments).map((meta) =>
+    meta.source === 'upload' ? { ...meta, mediaId: storedIds[uploadIndex++]! } : meta,
+  );
+
+  // An account-linked submission's email also points the recipient at where the full thread
+  // and files live on the site, when the form says where that is.
+  const viewUrl = submission.accountUserId ? accountSubmissionUrl(form, submission.id) : null;
+  const emailBodies = viewUrl
+    ? {
+        html: `${bodies.html}<p style="margin-top:24px;"><a href="${escapeHtml(viewUrl)}">View this conversation and any files online</a></p>`,
+        text: `${bodies.text}\n\nView this conversation and any files online: ${viewUrl}`,
+      }
+    : bodies;
+
   const from = await getAdminFrom(db);
   try {
     await getEmailSender(c.env).send({
       to,
       subject,
-      ...bodies,
+      ...emailBodies,
       replyTo: fields.replyTo ?? (await getDefaultReplyTo(db, author.email)),
       ...(from ? { from } : {}),
       ...(collected.attachments.length ? { attachments: collected.attachments } : {}),
     });
   } catch (error) {
     console.error('Failed to send a form-submission reply:', error);
+    for (const mediaId of storedIds) await deleteMediaIfUnreferenced(db, c.env.MEDIA_BUCKET, mediaId);
     return c.json({ error: 'The email provider rejected or failed to send this message.' }, 502);
   }
 
   const reply = await createFormSubmissionReply(db, {
     submissionId: submission.id,
     authorUserId: author.id,
+    direction: 'outbound',
     to,
     subject,
     bodyHtml,
-    attachments: describeAttachments(collected.attachments),
+    attachments: attachmentMeta,
   });
+  await linkMessageFiles(db, reply.id, storedIds);
   await recordAudit(db, {
     actorUserId: author.id,
     action: 'form_submission.replied',
@@ -760,6 +817,135 @@ formsRoute.openAPIRegistry.registerPath({
     502: { description: 'The provider failed to send.', content: { 'application/json': { schema: notFoundSchema } } },
   },
 });
+
+// Streams a file attached to one of this submission's messages (a staff reply's stored upload or
+// Media Library file, or an account's message attachment). Only a mediaId actually attached to
+// this submission's thread resolves; any other id is a 404.
+formsRoute.get('/:id/submissions/:submissionId/attachments/:mediaId', async (c) => {
+  const { id, submissionId, mediaId } = c.req.param();
+  const db = getDb(c);
+  const submission = await getFormSubmissionById(db, submissionId);
+  if (!submission || submission.formId !== id) {
+    return c.json({ error: 'Submission not found' }, 404);
+  }
+  const file = await findSubmissionFile(db, submission, await listFormSubmissionReplies(db, submission.id), mediaId);
+  const response = file ? await mediaDownloadResponse(c.env.MEDIA_BUCKET, file.media, file.filename) : null;
+  return response ?? c.json({ error: 'File not found' }, 404);
+});
+
+formsRoute.openAPIRegistry.registerPath({
+  method: 'get',
+  path: '/{id}/submissions/{submissionId}/attachments/{mediaId}',
+  tags: ['Forms'],
+  summary: "Download a file attached to a submission's message thread",
+  request: {
+    params: z.object({ id: z.string().min(1), submissionId: z.string().min(1), mediaId: z.string().min(1) }),
+  },
+  responses: {
+    200: { description: 'The raw file bytes.' },
+    404: {
+      description: 'No such submission, or that file is not attached to its thread.',
+      content: { 'application/json': { schema: notFoundSchema } },
+    },
+  },
+});
+
+// Moves a submission to another of its form's stages and records it in the progress history the
+// owning account sees. Same editorial floor as triage (no extra role gate). Emails the owning
+// account unless notifyAccount is false.
+formsRoute.openapi(
+  createRoute({
+    method: 'put',
+    path: '/{id}/submissions/{submissionId}/stage',
+    tags: ['Forms'],
+    summary: "Change a submission's progress stage",
+    request: {
+      params: submissionParamsSchema,
+      body: { content: { 'application/json': { schema: updateFormSubmissionStageSchema } } },
+    },
+    responses: {
+      200: {
+        description: 'The updated submission.',
+        content: { 'application/json': { schema: formSubmissionSchema } },
+      },
+      400: {
+        description: "The form has no stages, or the stage isn't one of them.",
+        content: { 'application/json': { schema: notFoundSchema } },
+      },
+      404: {
+        description: 'No form or submission matching those ids.',
+        content: { 'application/json': { schema: notFoundSchema } },
+      },
+    },
+  }),
+  async (c) => {
+    const { id, submissionId } = c.req.valid('param');
+    const db = getDb(c);
+    const form = await getFormById(db, id);
+    if (!form) {
+      return c.json({ error: 'Form not found' }, 404);
+    }
+    const submission = await getFormSubmissionById(db, submissionId);
+    if (!submission || submission.formId !== form.id) {
+      return c.json({ error: 'Submission not found' }, 404);
+    }
+
+    const { stage, notifyAccount } = c.req.valid('json');
+    if (!form.stages?.includes(stage)) {
+      return c.json({ error: "That stage isn't one of this form's stages" }, 400);
+    }
+    if (submission.stage === stage) {
+      return c.json(toFormSubmission(submission), 200);
+    }
+
+    const actor = c.get('user');
+    const updated = await updateFormSubmissionStage(db, submission.id, stage, actor.id);
+    await recordAudit(db, {
+      actorUserId: actor.id,
+      action: 'form_submission.stage_changed',
+      targetType: 'form_submission',
+      targetId: submission.id,
+      metadata: { formId: form.id, from: submission.stage, to: stage },
+    });
+    if (notifyAccount !== false) {
+      await notifyAccountOfStageChange(db, c.env, c.executionCtx, form, updated, stage);
+    }
+    return c.json(toFormSubmission(updated), 200);
+  },
+);
+
+formsRoute.openapi(
+  createRoute({
+    method: 'get',
+    path: '/{id}/submissions/{submissionId}/stage-history',
+    tags: ['Forms'],
+    summary: "List a submission's progress stage changes",
+    request: { params: submissionParamsSchema },
+    responses: {
+      200: {
+        description: 'Every stage the submission has moved into, oldest first.',
+        content: { 'application/json': { schema: z.array(formSubmissionStageChangeSchema) } },
+      },
+      404: {
+        description: 'No form or submission matching those ids.',
+        content: { 'application/json': { schema: notFoundSchema } },
+      },
+    },
+  }),
+  async (c) => {
+    const { id, submissionId } = c.req.valid('param');
+    const db = getDb(c);
+    const submission = await getFormSubmissionById(db, submissionId);
+    if (!submission || submission.formId !== id) {
+      return c.json({ error: 'Submission not found' }, 404);
+    }
+    const history = await listStageChanges(db, submission.id);
+    return c.json(
+      history.map((change) => ({ stage: change.stage, createdAt: change.createdAt.toISOString() })),
+      200,
+    );
+  },
+);
 
 // No role gate — triaging submissions (new/read/archived) is an editorial action, same as
 // entry create/edit, which also has no server-side role check.
@@ -842,6 +1028,9 @@ formsRoute.openapi(
     // unreferenced" behavior Phase 5 requires — never a blind delete that could destroy a Media
     // asset another owner still points at.
     const attachments = await deleteAttachmentsForOwner(db, 'form_submission', submissionId);
+    for (const reply of await listFormSubmissionReplies(db, submissionId)) {
+      attachments.push(...(await deleteAttachmentsForOwner(db, REPLY_ATTACHMENT_OWNER, reply.id)));
+    }
     await deleteFormSubmission(db, submissionId);
     for (const attachment of attachments) {
       await deleteMediaIfUnreferenced(db, c.env.MEDIA_BUCKET, attachment.mediaId);

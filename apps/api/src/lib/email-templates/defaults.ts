@@ -15,9 +15,9 @@ export interface EmailTemplateDefault {
   content: EmailTemplateContent;
   // Which of this template's own call-site variables (send.ts) the CTA button links to — fixed
   // per email type, never admin-editable (a non-technical admin edits the button's *label*, not
-  // which link it points to). 'expiresIn' isn't listed here since every current template's
-  // fine print already references it the same way.
-  primaryCtaVariable: 'verificationUrl' | 'resetUrl';
+  // which link it points to). 'expiresIn' isn't listed here since the templates that expire
+  // already reference it in their fine print.
+  primaryCtaVariable: 'verificationUrl' | 'resetUrl' | 'submissionUrl';
   // Every variable name this template's context actually supplies (render.ts) — surfaced in the
   // Developer-mode editor as a reference and used there to flag a `{{typo}}` before it ships.
   // `design.*` and `site.*` are NOT listed per-template: every template gets them for free (see
@@ -132,10 +132,34 @@ const passwordResetDefault: EmailTemplateDefault = {
   ),
 };
 
+const formSubmissionUpdateContent: EmailTemplateContent = {
+  heading: 'Your {{form.name}} request has an update',
+  bodyText: 'Your request is now at the "{{stage}}" stage. Sign in to see the details, messages and any files.',
+  ctaLabel: 'View your request',
+  fineprint: "You're receiving this because you submitted a request on {{site.name}}.",
+};
+
+const formSubmissionUpdateDefault: EmailTemplateDefault = {
+  key: 'form_submission_update',
+  name: 'Request update (website account)',
+  description:
+    "Sent to the website account that owns a submission (a form that requires an account) when staff move it to another stage.",
+  subject: 'Update on your {{form.name}} request',
+  content: formSubmissionUpdateContent,
+  primaryCtaVariable: 'submissionUrl',
+  variables: ['user.name', 'user.email', 'form.name', 'stage', 'submissionUrl'],
+  bodyHtml: buildDefaultBodyHtml(
+    formSubmissionUpdateContent,
+    '{{submissionUrl}}',
+    'There is an update on your request.',
+  ),
+};
+
 export const EMAIL_TEMPLATE_DEFAULTS: Record<EmailTemplateKey, EmailTemplateDefault> = {
   email_verification: emailVerificationDefault,
   email_verification_staff: emailVerificationStaffDefault,
   password_reset: passwordResetDefault,
+  form_submission_update: formSubmissionUpdateDefault,
 };
 
 export function getEmailTemplateDefault(key: EmailTemplateKey): EmailTemplateDefault {

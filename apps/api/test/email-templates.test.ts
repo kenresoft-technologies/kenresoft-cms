@@ -25,12 +25,17 @@ describe('email templates (real D1)', () => {
     clearTestEmails();
   });
 
-  it('seeds all three known templates on first access, each enabled and not yet customized', async () => {
+  it('seeds every known template on first access, each enabled and not yet customized', async () => {
     const headers = await adminHeaders('templates-list@example.test');
     const res = await SELF.fetch('https://example.com/api/v1/admin/email-templates', { headers });
     expect(res.status).toBe(200);
     const templates = await res.json<{ key: string; enabled: boolean; isCustomized: boolean; availableVariables: string[] }[]>();
-    expect(templates.map((t) => t.key).sort()).toEqual(['email_verification', 'email_verification_staff', 'password_reset']);
+    expect(templates.map((t) => t.key).sort()).toEqual([
+      'email_verification',
+      'email_verification_staff',
+      'form_submission_update',
+      'password_reset',
+    ]);
     for (const t of templates) {
       expect(t.enabled).toBe(true);
       expect(t.isCustomized).toBe(false);

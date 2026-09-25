@@ -11,7 +11,7 @@ const pdfBytes = (size: number) => {
 };
 
 describe('attachment size limits and reply log', () => {
-  it('rejects over-limit attachments, and logs attachment metadata (not the binary) on a reply without touching R2', async () => {
+  it('rejects over-limit attachments, and keeps a reply upload as private Media referenced from the reply log', async () => {
     const cookie = await signUpVerifiedAndGetCookie('replylog@example.test', {
       password: 'correct horse battery staple',
       name: 'Reply Log',
@@ -58,9 +58,9 @@ describe('attachment size limits and reply log', () => {
       { method: 'POST', headers: { cookie }, body: reply },
     );
     expect(replyRes.status).toBe(201);
-    const created = await replyRes.json<{ attachments: unknown[] }>();
+    const created = await replyRes.json<{ attachments: { mediaId?: string }[] }>();
     expect(created.attachments).toEqual([
-      { filename: 'quote.pdf', contentType: 'application/pdf', size: 19, source: 'upload' },
+      { filename: 'quote.pdf', contentType: 'application/pdf', size: 19, source: 'upload', mediaId: expect.any(String) },
     ]);
     expect(getTestEmails().filter((m) => m.subject === 'Re: Attached')[0]!.attachments).toHaveLength(1);
 
@@ -71,8 +71,12 @@ describe('attachment size limits and reply log', () => {
     const replies = await listRes.json<{ attachments: { filename: string; size: number }[] }[]>();
     expect(replies[0]!.attachments[0]).toMatchObject({ filename: 'quote.pdf', size: 19 });
 
-    // Attachments live only in request memory — nothing was staged in R2, so nothing to orphan.
-    expect((await env.MEDIA_BUCKET.list()).objects.length).toBe(before);
+    // The upload is stored once, privately, so the thread can offer it for download later.
+    expect((await env.MEDIA_BUCKET.list()).objects.length).toBe(before + 1);
+    const media = await env.DB.prepare('SELECT visibility FROM media WHERE id = ?')
+      .bind(created.attachments[0]!.mediaId)
+      .first<{ visibility: string }>();
+    expect(media?.visibility).toBe('private');
   });
 });
 
