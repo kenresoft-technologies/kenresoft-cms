@@ -168,6 +168,18 @@ describe('account-linked form submissions (real D1)', () => {
 
     // Tampering with the file id: Ada's file through Bob's own submission.
     expect((await account(bob.cookie, `/submissions/${bobSubmission.id}/files/${adaMediaId}`)).status).toBe(404);
+    // Nothing was written by the rejected message.
+    expect((await env.DB.prepare('SELECT COUNT(*) AS n FROM form_submission_replies').first<{ n: number }>())?.n).toBe(0);
+
+    // Guessed file ids: a made-up one, and a real Media Library item that isn't part of the thread.
+    expect((await account(bob.cookie, `/submissions/${bobSubmission.id}/files/${crypto.randomUUID()}`)).status).toBe(404);
+    const libraryUpload = new FormData();
+    libraryUpload.set('file', new File([pdf()], 'internal.pdf'));
+    libraryUpload.set('visibility', 'private');
+    const library = await SELF.fetch(`${BASE}/api/v1/admin/media`, { method: 'POST', headers: { cookie: ownerCookie }, body: libraryUpload });
+    expect(library.status).toBe(201);
+    const libraryId = (await library.json<{ id: string }>()).id;
+    expect((await account(bob.cookie, `/submissions/${bobSubmission.id}/files/${libraryId}`)).status).toBe(404);
 
     // No session at all.
     expect((await SELF.fetch(`${BASE}/api/v1/account/forms/submissions`)).status).toBe(401);
@@ -185,6 +197,9 @@ describe('account-linked form submissions (real D1)', () => {
       (await adminJson(cookie, `/api/v1/admin/forms/${form.id}/submissions/${created.id}/stage`, 'PUT', { stage: 'Completed' })).status,
     ).toBe(403);
     expect((await adminJson(cookie, '/api/v1/admin/users', 'GET')).status).toBe(403);
+    expect((await adminJson(cookie, '/api/v1/admin/media', 'GET')).status).toBe(403);
+    expect((await adminJson(cookie, `/api/v1/admin/forms/${form.id}/submissions/${created.id}/replies`, 'GET')).status).toBe(403);
+    expect((await adminJson(cookie, `/api/v1/admin/forms/${form.id}/submissions/${created.id}`, 'DELETE')).status).toBe(403);
   });
 
   it('lets staff move a submission through its stages, emailing the account, and shows the account on the admin list', async () => {
@@ -340,6 +355,53 @@ describe('account-linked form submissions (real D1)', () => {
     expect(res.status).toBe(204);
     expect((await env.DB.prepare('SELECT COUNT(*) AS n FROM media').first<{ n: number }>())?.n).toBe(0);
     expect((await env.MEDIA_BUCKET.list()).objects).toHaveLength(0);
+  });
+
+  it('keeps a submission, its files and its thread workable for staff after its account is deleted', async () => {
+    const form = await createAccountForm(ownerCookie);
+    const { customer, cookie } = await registerWebsiteUser('ada@example.test');
+    const created = await (await submit(form.slug, { cookie, file: true })).json<{ id: string }>();
+    const message = new FormData();
+    message.set('body', 'Here is my cover letter too.');
+    message.append('files', new File([pdf()], 'letter.pdf'));
+    expect((await account(cookie, `/submissions/${created.id}/messages`, { method: 'POST', body: message })).status).toBe(201);
+
+    expect((await adminJson(ownerCookie, `/api/v1/admin/users/${customer.id}`, 'DELETE')).status).toBe(204);
+    clearTestEmails();
+
+    // The student is gone: their old session no longer works.
+    expect((await account(cookie, '/submissions')).status).toBe(401);
+
+    // Staff still see the submission, now without an owner, with its data and files intact.
+    const list = await (await adminJson(ownerCookie, `/api/v1/admin/forms/${form.id}/submissions`, 'GET')).json<
+      { id: string; accountUserId: string | null; account: unknown; stage: string; data: Record<string, unknown> }[]
+    >();
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({ id: created.id, accountUserId: null, account: null, stage: 'Submitted' });
+    expect(list[0]!.data['document']).toMatchObject({ filename: 'cv.pdf' });
+
+    const submitted = await adminJson(ownerCookie, `/api/v1/admin/forms/${form.id}/submissions/${created.id}/files/document`, 'GET');
+    expect(submitted.status).toBe(200);
+    await submitted.arrayBuffer();
+
+    const replies = await (
+      await adminJson(ownerCookie, `/api/v1/admin/forms/${form.id}/submissions/${created.id}/replies`, 'GET')
+    ).json<{ direction: string; authorName: string | null; attachments: { mediaId: string }[] }[]>();
+    expect(replies).toEqual([expect.objectContaining({ direction: 'inbound', authorName: null })]);
+    const threadFile = await adminJson(
+      ownerCookie,
+      `/api/v1/admin/forms/${form.id}/submissions/${created.id}/attachments/${replies[0]!.attachments[0]!.mediaId}`,
+      'GET',
+    );
+    expect(threadFile.status).toBe(200);
+    await threadFile.arrayBuffer();
+
+    // Staff can keep moving it along. There is no account left to email.
+    const stage = await adminJson(ownerCookie, `/api/v1/admin/forms/${form.id}/submissions/${created.id}/stage`, 'PUT', {
+      stage: 'Under Review',
+    });
+    expect(stage.status).toBe(200);
+    expect(getTestEmails()).toHaveLength(0);
   });
 
   it('validates stage lists and the account submission URL on the form', async () => {

@@ -119,6 +119,9 @@ export function SubmissionDetailPage() {
   const sender = submission?.account
     ? { name: submission.account.name || detectedSender?.name || null, email: submission.account.email }
     : detectedSender;
+  // A real submission on an account-only form with no account: the account was deleted after it
+  // was sent (account_user_id is set null, the submission and its files stay for staff).
+  const accountRemoved = Boolean(form?.requiresAccount && submission && !submission.isTest && !submission.account);
   const preferredMailClient = session?.user.preferredMailClient ?? null;
 
   const { fieldEntries, attachmentEntries } = useMemo(() => {
@@ -363,7 +366,7 @@ export function SubmissionDetailPage() {
                 {replies?.map((reply) => {
                   const inbound = reply.direction === 'inbound';
                   const author = inbound
-                    ? (reply.authorName ?? submission.account?.name ?? 'Submitter')
+                    ? (reply.authorName ?? submission.account?.name ?? (accountRemoved ? 'Former website account' : 'Submitter'))
                     : (reply.authorName ?? session?.user.name ?? 'A staff member');
                   return (
                     <div key={reply.id} className="flex min-w-0 gap-2.5">
@@ -433,6 +436,23 @@ export function SubmissionDetailPage() {
                       {submission.account.name || submission.account.email}
                     </Link>
                     <p className="truncate text-xs text-muted-foreground">{submission.account.email}</p>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : accountRemoved ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">Website account</CardTitle>
+                </CardHeader>
+                <CardContent className="flex items-start gap-2.5">
+                  <UserRound className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                  <div className="min-w-0 text-sm">
+                    <p className="font-medium">No longer available</p>
+                    <p className="text-xs text-muted-foreground">
+                      No website account is linked to this request, most likely because it was deleted. You can still
+                      work on it{sender?.email ? `, and replies go to ${sender.email}` : ''}. Nobody can follow it on
+                      the site any more.
+                    </p>
                   </div>
                 </CardContent>
               </Card>
