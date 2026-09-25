@@ -47,6 +47,14 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
+// Kinds a file field can be limited to (config.accept). The API checks the file's actual bytes
+// against them. None ticked means any supported file is accepted.
+const FILE_KINDS = [
+  { value: 'pdf', label: 'PDF' },
+  { value: 'docx', label: 'Word (.docx)' },
+  { value: 'image', label: 'Images (PNG, JPEG, GIF, WebP)' },
+] as const;
+
 // Handles both "Add field" and "Edit field" — see the identical pattern (and rationale) in
 // ContentTypeDetailPage.tsx's FieldDialog: the form body only mounts while open, so it always
 // starts from fresh props-derived state instead of needing a reset-on-open effect.
@@ -90,6 +98,7 @@ function FormFieldForm({
   const [fieldType, setFieldType] = useState<FormFieldType>(field?.fieldType ?? 'text');
   const [required, setRequired] = useState(field?.required ?? false);
   const [options, setOptions] = useState<string[]>((field?.config?.options as string[] | undefined) ?? []);
+  const [accept, setAccept] = useState<string[]>((field?.config?.accept as string[] | undefined) ?? []);
   const [error, setError] = useState<string | null>(null);
   const createField = useCreateFormField(formId);
   const updateField = useUpdateFormField(formId);
@@ -99,7 +108,8 @@ function FormFieldForm({
     event.preventDefault();
     setError(null);
 
-    const config = fieldType === 'select' ? { options } : null;
+    const config =
+      fieldType === 'select' ? { options } : fieldType === 'file' && accept.length > 0 ? { accept } : null;
 
     try {
       if (isEditing && field) {
@@ -160,6 +170,28 @@ function FormFieldForm({
       </div>
 
       {fieldType === 'select' ? <OptionListEditor options={options} onChange={setOptions} /> : null}
+      {fieldType === 'file' ? (
+        <fieldset className="flex flex-col gap-2">
+          <legend className="mb-2 text-sm font-medium">Accepted files</legend>
+          {FILE_KINDS.map((kind) => (
+            <div key={kind.value} className="flex items-center gap-2">
+              <Checkbox
+                id={`form-field-accept-${kind.value}`}
+                checked={accept.includes(kind.value)}
+                onCheckedChange={(checked) =>
+                  setAccept((current) =>
+                    checked === true ? [...current, kind.value] : current.filter((value) => value !== kind.value),
+                  )
+                }
+              />
+              <Label htmlFor={`form-field-accept-${kind.value}`}>{kind.label}</Label>
+            </div>
+          ))}
+          <p className="text-xs text-muted-foreground">
+            Leave all unticked to accept any of these. Files are checked by their content, not their name. 10 MB max.
+          </p>
+        </fieldset>
+      ) : null}
 
       <div className="flex items-center gap-2">
         <Checkbox

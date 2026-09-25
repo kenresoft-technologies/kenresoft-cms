@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { FormField } from '@kenresoft-cms/database';
 
-import { sniffAttachment } from './attachment-metadata';
+import { ATTACHMENT_KINDS, acceptedAttachmentKinds, sniffAttachment } from './attachment-metadata';
 
 // Public form input is adversarial by default (§9) — strips every angle bracket from a
 // string value before it's ever persisted, rather than trusting that Zod's type/format
@@ -102,8 +102,14 @@ export async function validateSubmission(
   const files: Record<string, ValidatedAttachment> = {};
   for (const field of fileFields) {
     const file = uploadedFiles.get(field.name);
-    if (!file || file.size === 0) {
+    // A browser sends an empty, unnamed part for a file input left blank. That means "no file".
+    // An empty file the visitor actually picked is refused rather than dropped.
+    if (!file || (file.size === 0 && !file.name)) {
       if (field.required) issues.push({ path: [field.name], message: 'File is required' });
+      continue;
+    }
+    if (file.size === 0) {
+      issues.push({ path: [field.name], message: 'File is empty' });
       continue;
     }
     if (file.size > MAX_ATTACHMENT_BYTES) {
@@ -115,6 +121,14 @@ export async function validateSubmission(
     const sniffed = sniffAttachment(bytes);
     if (!sniffed) {
       issues.push({ path: [field.name], message: 'Unsupported or unrecognized file format' });
+      continue;
+    }
+    const accepted = acceptedAttachmentKinds(field.config);
+    if (accepted && !accepted.some((kind) => (ATTACHMENT_KINDS[kind].contentTypes as readonly string[]).includes(sniffed.contentType))) {
+      issues.push({
+        path: [field.name],
+        message: `File must be ${accepted.map((kind) => ATTACHMENT_KINDS[kind].label).join(' or ')}`,
+      });
       continue;
     }
 

@@ -146,6 +146,38 @@ describe('FormDetailPage', () => {
     );
   });
 
+  it('limits a file field to the accepted file kinds that are ticked', async () => {
+    getMock.mockImplementation((path: string) => {
+      if (path.endsWith('/fields')) return Promise.resolve([]);
+      return Promise.resolve({ id: 'f-1', name: 'Contact', slug: 'contact' });
+    });
+    postMock.mockResolvedValue({ id: 'ff-1', name: 'document', label: 'Document', fieldType: 'file', required: true });
+
+    renderPage();
+    await waitFor(() => expect(screen.getByText('No fields yet')).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole('button', { name: 'Add field' }));
+    const dialog = screen.getByRole('dialog');
+    await userEvent.type(within(dialog).getByLabelText('Name'), 'document');
+    await userEvent.type(within(dialog).getByLabelText('Label'), 'Document');
+    await userEvent.click(within(dialog).getByLabelText('Type'));
+    await userEvent.click(screen.getByRole('option', { name: 'file' }));
+    await userEvent.click(within(dialog).getByLabelText('PDF'));
+    await userEvent.click(within(dialog).getByLabelText('Word (.docx)'));
+    await userEvent.click(within(dialog).getByLabelText('Required'));
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Add field' }));
+
+    await waitFor(() =>
+      expect(postMock).toHaveBeenCalledWith('/api/v1/admin/forms/f-1/fields', {
+        name: 'document',
+        label: 'Document',
+        fieldType: 'file',
+        required: true,
+        config: { accept: ['pdf', 'docx'] },
+      }),
+    );
+  });
+
   it('shows a "No notifications configured" badge, and sets notification emails through Edit form', async () => {
     getMock.mockImplementation((path: string) => {
       if (path.endsWith('/fields')) return Promise.resolve([]);
