@@ -15,6 +15,10 @@ export const formSubmissionSchema = z.object({
   // real visitor data (counts/exports should exclude it by default; the inbox UI shows it with
   // a badge instead of hiding it outright).
   isTest: z.boolean(),
+  // The owning website account, for a form with requiresAccount; null for anonymous submissions.
+  accountUserId: z.string().nullable(),
+  // The current progress stage (one of the form's own stages), or null if the form has none.
+  stage: z.string().nullable(),
   createdAt: z.string(),
 });
 
@@ -22,8 +26,16 @@ export const updateFormSubmissionStatusSchema = z.object({
   status: z.enum(FORM_SUBMISSION_STATUSES),
 });
 
+// Moves a submission to another of its form's stages. `notifyAccount` emails the owning
+// account (if any) that its submission was updated; defaults to true.
+export const updateFormSubmissionStageSchema = z.object({
+  stage: z.string().min(1).max(60),
+  notifyAccount: z.boolean().optional(),
+});
+
 export type FormSubmission = z.infer<typeof formSubmissionSchema>;
 export type UpdateFormSubmissionStatusInput = z.infer<typeof updateFormSubmissionStatusSchema>;
+export type UpdateFormSubmissionStageInput = z.infer<typeof updateFormSubmissionStageSchema>;
 
 // Admin-only — backs the unified "all submissions" listing across every form, the same way
 // entryWithContentTypeSchema backs the unified entries listing (packages/contracts/schemas/
@@ -31,6 +43,14 @@ export type UpdateFormSubmissionStatusInput = z.infer<typeof updateFormSubmissio
 export const formSubmissionWithFormSchema = formSubmissionSchema.extend({
   formName: z.string(),
   formSlug: z.string(),
+  account: z.object({ id: z.string(), name: z.string(), email: z.string() }).nullable(),
 });
 
 export type FormSubmissionWithForm = z.infer<typeof formSubmissionWithFormSchema>;
+
+export const formSubmissionStageChangeSchema = z.object({
+  stage: z.string(),
+  createdAt: z.string(),
+});
+
+export type FormSubmissionStageChange = z.infer<typeof formSubmissionStageChangeSchema>;

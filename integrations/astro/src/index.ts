@@ -1,4 +1,8 @@
 import type {
+  AccountSubmissionDetail,
+  AccountSubmissionFile,
+  AccountSubmissionMessage,
+  AccountSubmissionSummary,
   BlockInstance,
   ChildBlockInstance,
   ContactSettingsData,
@@ -45,6 +49,7 @@ export type { BlockInstance, ChildBlockInstance, Page, ReusableBlock };
 // client's return types stay in sync with the API's real response shapes instead of a
 // hand-maintained copy — see the "Types" note in docs/ASTRO.md.
 export type { Entry, FormSubmission, PublicMedia, PublicMediaListItem, RoutePatternEntry };
+export type { AccountSubmissionDetail, AccountSubmissionFile, AccountSubmissionMessage, AccountSubmissionSummary };
 
 // Phase 1 of the schema-driven frontend work (docs/SITE_BUILDER.md) — a read-only field
 // renderer registry, independent of the request/response client below. Re-exported here so
@@ -455,9 +460,10 @@ export interface SubmitFormOptions {
   /**
    * Field values keyed by each field's name. No fixed shape — validated server-side against
    * that form's own field definitions (there's no client-side equivalent of those definitions
-   * to validate against here, since there's no public form-metadata endpoint either).
+   * to validate against here, since there's no public form-metadata endpoint either). Pass a
+   * FormData instead of an object to include files for the form's file-type fields.
    */
-  data: Record<string, unknown>;
+  data: Record<string, unknown> | FormData;
 }
 
 export interface KenresoftClient {
@@ -525,6 +531,32 @@ export interface KenresoftClient {
      * (404) or exceeding the rate limit (429).
      */
     submit(options: SubmitFormOptions): Promise<FormSubmission>;
+  };
+  /**
+   * The signed-in visitor's own submissions to forms that require an account. Every call is
+   * for the session's account only; another account's submission id behaves exactly like one
+   * that doesn't exist (404). Use it through the same-origin `/cms` proxy (`createCmsProxy`)
+   * so the session cookie is sent.
+   */
+  account: {
+    submissions: {
+      /** Every submission the account owns, newest first. Pass `form` (a slug) to narrow to one form. Throws KenresoftApiError (401) when signed out. */
+      list(options?: { form?: string }): Promise<AccountSubmissionSummary[]>;
+      /** One submission with its stage history, messages and files, or null if the account doesn't own one with that id. Throws (401) when signed out. */
+      get(options: { id: string }): Promise<AccountSubmissionDetail | null>;
+      /**
+       * A download URL for one of the submission's files (a submitted file or a message
+       * attachment). A plain link: the browser sends the session cookie, and the API only
+       * serves it to the owning account.
+       */
+      fileUrl(options: { id: string; mediaId: string }): string;
+      /**
+       * Posts a message on the submission, with optional files (up to 5; PDF, DOCX or image,
+       * 10 MB each). Throws KenresoftApiError: 400 (empty message or unsupported file), 401,
+       * 404, 429.
+       */
+      sendMessage(options: { id: string; body: string; files?: File[] }): Promise<AccountSubmissionMessage>;
+    };
   };
   globalVariables: {
     /**
@@ -795,6 +827,18 @@ export function createKenresoftClient(config: KenresoftClientConfig): KenresoftC
     return (await response.json()) as T;
   }
 
+  async function accountRequest<T>(path: string, init?: RequestInit): Promise<T> {
+    const response = await doFetch(`${baseUrl}/api/v1/account${path}`, { credentials: 'include', ...init });
+    if (!response.ok) {
+      const body = (await response.json().catch(() => null)) as { error?: string } | null;
+      throw new KenresoftApiError(
+        response.status,
+        body?.error ?? `Kenresoft CMS API request failed: ${init?.method ?? 'GET'} /api/v1/account${path} -> ${response.status}`,
+      );
+    }
+    return (await response.json()) as T;
+  }
+
   async function request<T>(path: string): Promise<T | null> {
     const response = await doFetch(`${baseUrl}${path}`);
 
@@ -844,10 +888,14 @@ export function createKenresoftClient(config: KenresoftClientConfig): KenresoftC
     forms: {
       async submit({ formSlug, data }) {
         const path = `/api/v1/public/forms/${formSlug}/submissions`;
+        // credentials: 'include' so a form that requires an account receives the session.
+        // FormData sets its own multipart Content-Type (with the boundary).
         const response = await doFetch(`${baseUrl}${path}`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data),
+          credentials: 'include',
+          ...(data instanceof FormData
+            ? { body: data }
+            : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }),
         });
 
         if (!response.ok) {
@@ -862,6 +910,34 @@ export function createKenresoftClient(config: KenresoftClientConfig): KenresoftC
         }
 
         return (await response.json()) as FormSubmission;
+      },
+    },
+    account: {
+      submissions: {
+        list(options) {
+          const query = options?.form ? `?form=${encodeURIComponent(options.form)}` : '';
+          return accountRequest<AccountSubmissionSummary[]>(`/forms/submissions${query}`);
+        },
+        async get({ id }) {
+          try {
+            return await accountRequest<AccountSubmissionDetail>(`/forms/submissions/${encodeURIComponent(id)}`);
+          } catch (error) {
+            if (error instanceof KenresoftApiError && error.status === 404) return null;
+            throw error;
+          }
+        },
+        fileUrl({ id, mediaId }) {
+          return `${baseUrl}/api/v1/account/forms/submissions/${encodeURIComponent(id)}/files/${encodeURIComponent(mediaId)}`;
+        },
+        sendMessage({ id, body, files }) {
+          const form = new FormData();
+          form.set('body', body);
+          for (const file of files ?? []) form.append('files', file);
+          return accountRequest<AccountSubmissionMessage>(`/forms/submissions/${encodeURIComponent(id)}/messages`, {
+            method: 'POST',
+            body: form,
+          });
+        },
       },
     },
     globalVariables: {

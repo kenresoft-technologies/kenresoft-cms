@@ -1,9 +1,9 @@
-import type { Database, FormField, FormSubmission } from '@kenresoft-cms/database';
+import type { Database, Form, FormField, FormSubmission } from '@kenresoft-cms/database';
 
 import { validateSubmission } from './form-submission-validation';
 import { uploadMedia } from './media-service';
 import { createMediaAttachment } from '../repositories/media-attachments';
-import { createFormSubmission, updateFormSubmissionData } from '../repositories/form-submissions';
+import { createFormSubmission, recordStageChange, updateFormSubmissionData } from '../repositories/form-submissions';
 
 // Shared by the public submission route (routes/public/forms.ts) and the admin "Preview & Test"
 // route (routes/admin/forms.ts's test-submissions) — both need the exact same validate → create
@@ -52,10 +52,11 @@ export type SubmitFormResult =
 export async function submitForm(
   db: Database,
   bucket: R2Bucket,
-  formId: string,
+  form: Pick<Form, 'id' | 'stages'>,
   fields: FormField[],
   parsed: ParsedSubmissionBody,
-  options: { isTest: boolean },
+  // accountUserId comes only from the server-verified session, never from the request body.
+  options: { isTest: boolean; accountUserId?: string | null },
 ): Promise<SubmitFormResult> {
   const validated = await validateSubmission(fields, parsed.body, parsed.uploadedFiles);
   if (validated.issues) {
@@ -63,7 +64,17 @@ export async function submitForm(
   }
 
   const data: Record<string, unknown> = { ...validated.data };
-  const submission = await createFormSubmission(db, { formId, data, isTest: options.isTest });
+  // A form with stages starts every submission in its first one, recorded as the first entry of
+  // the progress history.
+  const initialStage = form.stages?.[0] ?? null;
+  const submission = await createFormSubmission(db, {
+    formId: form.id,
+    data,
+    isTest: options.isTest,
+    accountUserId: options.accountUserId ?? null,
+    stage: initialStage,
+  });
+  if (initialStage) await recordStageChange(db, submission.id, initialStage, null);
 
   // A file's real Media reference isn't known until after upload, and media_attachments needs
   // the submission's own id — so file fields are attached in a second pass, right after

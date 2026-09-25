@@ -5,11 +5,13 @@ import {
   Download,
   ExternalLink,
   Inbox,
+  ListChecks,
   MailOpen,
   MoreHorizontal,
   Paperclip,
   Send,
   Trash2,
+  UserRound,
 } from 'lucide-react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { toast } from 'sonner';
@@ -20,7 +22,13 @@ import { formatBytes } from '@/lib/format';
 import { buildReplyLink, opensInNewTab } from '@/lib/mail-compose-links';
 import { useForm } from '@/lib/queries/forms';
 import { useFormFields } from '@/lib/queries/form-fields';
-import { submissionAttachmentUrl, useFormSubmissions } from '@/lib/queries/form-submissions';
+import {
+  submissionAttachmentUrl,
+  submissionThreadAttachmentUrl,
+  useFormSubmissions,
+  useSubmissionStageHistory,
+  useUpdateSubmissionStage,
+} from '@/lib/queries/form-submissions';
 import { useDeleteSubmissionGlobal, useUpdateSubmissionStatusGlobal } from '@/lib/queries/all-submissions';
 import { EmailAttachments } from '@/components/email-attachments';
 import { useSettings } from '@/lib/queries/settings';
@@ -46,7 +54,9 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -56,6 +66,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { FormSubmissionStatus } from '@/lib/types';
 
@@ -84,6 +95,9 @@ export function SubmissionDetailPage() {
   const { data: replies, isPending: repliesPending } = useSubmissionReplies(formId ?? '', submissionId ?? '');
   const sendReply = useSendSubmissionReply(formId ?? '', submissionId ?? '');
   const updateStatus = useUpdateSubmissionStatusGlobal();
+  const updateStage = useUpdateSubmissionStage(formId ?? '', submissionId ?? '');
+  const { data: stageHistory } = useSubmissionStageHistory(formId ?? '', submissionId ?? '');
+  const [notifyAccount, setNotifyAccount] = useState(true);
   const deleteSubmission = useDeleteSubmissionGlobal();
 
   const [pendingDelete, setPendingDelete] = useState(false);
@@ -100,7 +114,11 @@ export function SubmissionDetailPage() {
     [submissions, submissionId],
   );
   const fieldLabels = useMemo(() => new Map((fields ?? []).map((field) => [field.name, field.label])), [fields]);
-  const sender = submission ? getSubmissionSender(submission.data) : null;
+  const detectedSender = submission ? getSubmissionSender(submission.data) : null;
+  // An account-linked submission replies to its account, whatever email the form data holds.
+  const sender = submission?.account
+    ? { name: submission.account.name || detectedSender?.name || null, email: submission.account.email }
+    : detectedSender;
   const preferredMailClient = session?.user.preferredMailClient ?? null;
 
   const { fieldEntries, attachmentEntries } = useMemo(() => {
@@ -122,6 +140,16 @@ export function SubmissionDetailPage() {
     updateStatus.mutate(
       { formId, id: submission.id, status },
       { onError: (err) => toast.error(err instanceof ApiError ? err.message : 'Failed to update submission') },
+    );
+  }
+
+  function setStage(stage: string) {
+    updateStage.mutate(
+      { stage, notifyAccount: Boolean(submission?.account) && notifyAccount },
+      {
+        onSuccess: () => toast.success(`Moved to ${stage}`),
+        onError: (err) => toast.error(err instanceof ApiError ? err.message : 'Failed to change stage'),
+      },
     );
   }
 
@@ -177,6 +205,12 @@ export function SubmissionDetailPage() {
               <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
                 <span>{new Date(submission.createdAt).toLocaleString()}</span>
                 <StatusBadge status={submission.status} />
+                {submission.stage ? (
+                  <Badge variant="secondary" className="gap-1 font-normal">
+                    <ListChecks className="size-3" />
+                    {submission.stage}
+                  </Badge>
+                ) : null}
                 {submission.isTest ? <TestSubmissionBadge /> : null}
               </div>
             ) : null}
@@ -324,43 +358,136 @@ export function SubmissionDetailPage() {
               <CardContent className="flex flex-col gap-3">
                 {repliesPending ? <Skeleton className="h-16 w-full" /> : null}
                 {replies && replies.length === 0 && !repliesPending ? (
-                  <p className="text-sm text-muted-foreground">No replies sent yet.</p>
+                  <p className="text-sm text-muted-foreground">No messages yet.</p>
                 ) : null}
-                {replies?.map((reply) => (
-                  <div key={reply.id} className="flex min-w-0 gap-2.5">
-                    <Avatar className="mt-0.5 shrink-0">
-                      <AvatarFallback>{initials(reply.authorName ?? session?.user.name ?? '?')}</AvatarFallback>
-                    </Avatar>
-                    <div className="flex min-w-0 flex-1 flex-col gap-1 rounded-lg border bg-muted/30 p-3">
-                      <div className="flex flex-wrap items-baseline justify-between gap-2 text-xs text-muted-foreground">
-                        <span className="font-medium text-foreground">
-                          {reply.authorName ?? session?.user.name ?? 'A staff member'}
-                        </span>
-                        <span>{new Date(reply.createdAt).toLocaleString()}</span>
+                {replies?.map((reply) => {
+                  const inbound = reply.direction === 'inbound';
+                  const author = inbound
+                    ? (reply.authorName ?? submission.account?.name ?? 'Submitter')
+                    : (reply.authorName ?? session?.user.name ?? 'A staff member');
+                  return (
+                    <div key={reply.id} className="flex min-w-0 gap-2.5">
+                      <Avatar className="mt-0.5 shrink-0">
+                        <AvatarFallback>{initials(author)}</AvatarFallback>
+                      </Avatar>
+                      <div
+                        className={`flex min-w-0 flex-1 flex-col gap-1 rounded-lg border p-3 ${inbound ? 'border-primary/30 bg-primary/5' : 'bg-muted/30'}`}
+                      >
+                        <div className="flex flex-wrap items-baseline justify-between gap-2 text-xs text-muted-foreground">
+                          <span className="font-medium text-foreground">
+                            {author}
+                            {inbound ? <span className="ml-1.5 font-normal text-muted-foreground">sent from the site</span> : null}
+                          </span>
+                          <span>{new Date(reply.createdAt).toLocaleString()}</span>
+                        </div>
+                        {!inbound ? (
+                          <p className="text-xs break-words text-muted-foreground">
+                            To {reply.to} · {reply.subject}
+                          </p>
+                        ) : null}
+                        <div className="ProseMirror text-sm break-words" dangerouslySetInnerHTML={{ __html: reply.bodyHtml }} />
+                        {reply.attachments?.length ? (
+                          <ul className="mt-1.5 flex flex-wrap gap-1.5">
+                            {reply.attachments.map((a, i) => (
+                              <li key={i}>
+                                {a.mediaId ? (
+                                  <a
+                                    href={submissionThreadAttachmentUrl(formId ?? '', submission.id, a.mediaId)}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex items-center gap-1 rounded-md border bg-muted/30 px-2 py-0.5 text-xs hover:bg-muted"
+                                  >
+                                    <Download className="size-3" />
+                                    {a.filename}
+                                    <span className="text-muted-foreground">({formatBytes(a.size)})</span>
+                                  </a>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 rounded-md border bg-muted/30 px-2 py-0.5 text-xs">
+                                    <Paperclip className="size-3" />
+                                    {a.filename}
+                                    <span className="text-muted-foreground">({formatBytes(a.size)})</span>
+                                  </span>
+                                )}
+                              </li>
+                            ))}
+                          </ul>
+                        ) : null}
                       </div>
-                      <p className="text-xs break-words text-muted-foreground">
-                        To {reply.to} · {reply.subject}
-                      </p>
-                      <div className="ProseMirror text-sm break-words" dangerouslySetInnerHTML={{ __html: reply.bodyHtml }} />
-                      {reply.attachments?.length ? (
-                        <ul className="mt-1.5 flex flex-wrap gap-1.5">
-                          {reply.attachments.map((a, i) => (
-                            <li key={i} className="inline-flex items-center gap-1 rounded-md border bg-muted/30 px-2 py-0.5 text-xs">
-                              <Paperclip className="size-3" />
-                              {a.filename}
-                              <span className="text-muted-foreground">({formatBytes(a.size)})</span>
-                            </li>
-                          ))}
-                        </ul>
-                      ) : null}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </CardContent>
             </Card>
           </div>
 
-          <div className="min-w-0 lg:col-span-2">
+          <div className="flex min-w-0 flex-col gap-6 lg:col-span-2">
+            {submission.account ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">Website account</CardTitle>
+                </CardHeader>
+                <CardContent className="flex items-center gap-2.5">
+                  <UserRound className="size-4 shrink-0 text-muted-foreground" />
+                  <div className="min-w-0">
+                    <Link to={`/users/${submission.account.id}`} className="block truncate text-sm font-medium hover:underline">
+                      {submission.account.name || submission.account.email}
+                    </Link>
+                    <p className="truncate text-xs text-muted-foreground">{submission.account.email}</p>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : null}
+
+            {form?.stages?.length ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">Progress</CardTitle>
+                </CardHeader>
+                <CardContent className="flex flex-col gap-4">
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="submission-stage" className="text-xs text-muted-foreground">
+                      Stage
+                    </Label>
+                    <Select value={submission.stage ?? ''} onValueChange={setStage} disabled={updateStage.isPending}>
+                      <SelectTrigger id="submission-stage" className="w-full">
+                        <SelectValue placeholder="Choose a stage" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {form.stages.map((stage) => (
+                          <SelectItem key={stage} value={stage}>
+                            {stage}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {submission.account ? (
+                    <div className="flex items-start gap-2">
+                      <Checkbox
+                        id="submission-stage-notify"
+                        className="mt-0.5"
+                        checked={notifyAccount}
+                        onCheckedChange={(checked) => setNotifyAccount(checked === true)}
+                      />
+                      <Label htmlFor="submission-stage-notify" className="text-sm leading-snug font-normal">
+                        Email {submission.account.email} when the stage changes
+                      </Label>
+                    </div>
+                  ) : null}
+                  {stageHistory?.length ? (
+                    <ol className="flex flex-col gap-2 border-l pl-3">
+                      {stageHistory.map((change, index) => (
+                        <li key={index} className="flex flex-wrap items-baseline justify-between gap-x-3 text-xs">
+                          <span className="font-medium">{change.stage}</span>
+                          <span className="text-muted-foreground">{new Date(change.createdAt).toLocaleString()}</span>
+                        </li>
+                      ))}
+                    </ol>
+                  ) : null}
+                </CardContent>
+              </Card>
+            ) : null}
+
             <Card>
               <CardHeader>
                 <CardTitle className="text-sm">Reply</CardTitle>

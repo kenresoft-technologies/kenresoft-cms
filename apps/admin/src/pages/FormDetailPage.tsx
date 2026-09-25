@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { ListPlus, Mail, Pencil, Plus, Trash2 } from 'lucide-react';
+import { ListChecks, ListPlus, Mail, Pencil, Plus, Trash2, UserRound } from 'lucide-react';
 import { Link, useParams } from 'react-router';
 import { toast } from 'sonner';
 
@@ -8,7 +8,7 @@ import { authClient } from '@/lib/auth-client';
 import { useDeveloperMode } from '@/lib/developer-mode';
 import { useForm, useUpdateForm } from '@/lib/queries/forms';
 import { useCreateFormField, useDeleteFormField, useFormFields, useUpdateFormField } from '@/lib/queries/form-fields';
-import { FORM_FIELD_TYPES, roleAtLeast, type FormField, type FormFieldType, type UserRole } from '@/lib/types';
+import { FORM_FIELD_TYPES, roleAtLeast, type Form, type FormField, type FormFieldType, type UserRole } from '@/lib/types';
 import { EmptyState } from '@/components/empty-state';
 import { FormDeveloperPanel } from '@/components/developer-panel/form-developer-panel';
 import { FieldTypeBadge, fieldTypeIcon } from '@/components/field-type-badge';
@@ -179,17 +179,7 @@ function FormFieldForm({
   );
 }
 
-function EditFormDialog({
-  formId,
-  name,
-  slug,
-  notificationEmails,
-}: {
-  formId: string;
-  name: string;
-  slug: string;
-  notificationEmails: string[] | null;
-}) {
+function EditFormDialog({ form }: { form: Form }) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -200,7 +190,7 @@ function EditFormDialog({
           Edit
         </Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Edit form</DialogTitle>
           <DialogDescription>
@@ -209,13 +199,7 @@ function EditFormDialog({
           </DialogDescription>
         </DialogHeader>
         {open ? (
-          <EditFormForm
-            formId={formId}
-            name={name}
-            slug={slug}
-            notificationEmails={notificationEmails}
-            onDone={() => setOpen(false)}
-          />
+          <EditFormForm form={form} onDone={() => setOpen(false)} />
         ) : null}
       </DialogContent>
     </Dialog>
@@ -231,34 +215,34 @@ function parseEmailList(raw: string): string[] {
   return [...new Set(raw.split(/[,\n]/).map((entry) => entry.trim()).filter(Boolean))];
 }
 
-function EditFormForm({
-  formId,
-  name,
-  slug,
-  notificationEmails,
-  onDone,
-}: {
-  formId: string;
-  name: string;
-  slug: string;
-  notificationEmails: string[] | null;
-  onDone: () => void;
-}) {
-  const [nameValue, setNameValue] = useState(name);
-  const [slugValue, setSlugValue] = useState(slug);
-  const [notificationEmailsValue, setNotificationEmailsValue] = useState((notificationEmails ?? []).join(', '));
+// One stage per line, in order; blank lines are ignored.
+function parseStageList(raw: string): string[] {
+  return raw.split('\n').map((entry) => entry.trim()).filter(Boolean);
+}
+
+function EditFormForm({ form, onDone }: { form: Form; onDone: () => void }) {
+  const [nameValue, setNameValue] = useState(form.name);
+  const [slugValue, setSlugValue] = useState(form.slug);
+  const [notificationEmailsValue, setNotificationEmailsValue] = useState((form.notificationEmails ?? []).join(', '));
+  const [requiresAccount, setRequiresAccount] = useState(form.requiresAccount);
+  const [stagesValue, setStagesValue] = useState((form.stages ?? []).join('\n'));
+  const [accountUrlValue, setAccountUrlValue] = useState(form.accountSubmissionUrl ?? '');
   const [error, setError] = useState<string | null>(null);
-  const updateForm = useUpdateForm(formId);
+  const updateForm = useUpdateForm(form.id);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
     const parsedEmails = parseEmailList(notificationEmailsValue);
+    const parsedStages = parseStageList(stagesValue);
     try {
       await updateForm.mutateAsync({
         name: nameValue,
         slug: slugValue,
         notificationEmails: parsedEmails.length > 0 ? parsedEmails : null,
+        requiresAccount,
+        stages: parsedStages.length > 0 ? parsedStages : null,
+        accountSubmissionUrl: accountUrlValue.trim() || null,
       });
       toast.success('Form updated');
       onDone();
@@ -293,6 +277,52 @@ function EditFormForm({
           blank to disable.
         </p>
       </div>
+      <div className="flex flex-col gap-2">
+        <Label htmlFor="form-edit-stages">Progress stages</Label>
+        <Textarea
+          id="form-edit-stages"
+          rows={4}
+          placeholder={'Submitted\nIn Progress\nCompleted'}
+          value={stagesValue}
+          onChange={(e) => setStagesValue(e.target.value)}
+        />
+        <p className="text-xs text-muted-foreground">
+          One per line, in order. New submissions start in the first stage, and you move them along from
+          each submission. Leave blank for no stages.
+        </p>
+      </div>
+      <div className="flex items-start gap-2">
+        <Checkbox
+          id="form-edit-requires-account"
+          className="mt-0.5"
+          checked={requiresAccount}
+          onCheckedChange={(checked) => setRequiresAccount(checked === true)}
+        />
+        <div className="flex flex-col gap-1">
+          <Label htmlFor="form-edit-requires-account">Require a website account</Label>
+          <p className="text-xs text-muted-foreground">
+            Only signed-in website accounts can submit. Each submission belongs to its account, which can
+            follow its stage, read your replies, send messages and download files from your site.
+          </p>
+        </div>
+      </div>
+      {requiresAccount ? (
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="form-edit-account-url">Account page URL</Label>
+          <Input
+            id="form-edit-account-url"
+            type="url"
+            placeholder="https://example.com/account/requests/{id}"
+            value={accountUrlValue}
+            onChange={(e) => setAccountUrlValue(e.target.value)}
+          />
+          <p className="text-xs text-muted-foreground">
+            Where a submitter views a submission on your site. <code>{'{id}'}</code> is replaced with the
+            submission&apos;s id. Stage-change emails and replies link here; without it, no stage-change
+            email is sent.
+          </p>
+        </div>
+      ) : null}
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
       <DialogFooter>
         <Button type="submit" disabled={updateForm.isPending}>
@@ -348,12 +378,7 @@ export function FormDetailPage() {
             {formId && fields && fields.length > 0 ? <FormTestDialog formId={formId} fields={fields} /> : null}
             {developerMode && form && fields ? <FormDeveloperPanel form={form} fields={fields} /> : null}
             {canManageFields && form && formId ? (
-              <EditFormDialog
-                formId={formId}
-                name={form.name}
-                slug={form.slug}
-                notificationEmails={form.notificationEmails}
-              />
+              <EditFormDialog form={form} />
             ) : null}
             {canManageFields && formId ? (
               <FormFieldDialog
@@ -389,6 +414,18 @@ export function FormDetailPage() {
                 No notifications configured
               </Badge>
             )}
+            {form.requiresAccount ? (
+              <Badge variant="secondary" className="gap-1 font-normal">
+                <UserRound className="size-3" />
+                Requires an account
+              </Badge>
+            ) : null}
+            {form.stages?.length ? (
+              <Badge variant="secondary" className="gap-1 font-normal" title={form.stages.join(' → ')}>
+                <ListChecks className="size-3" />
+                {form.stages.length} stages
+              </Badge>
+            ) : null}
             <span className="ml-auto text-sm text-muted-foreground">
               {fields?.length ?? 0} {fields?.length === 1 ? 'field' : 'fields'}
             </span>

@@ -1,12 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { apiClient } from '@/lib/api-client';
-import type { FormSubmission, FormSubmissionStatus } from '@/lib/types';
+import type {
+  FormSubmission,
+  FormSubmissionStageChange,
+  FormSubmissionStatus,
+  FormSubmissionWithForm,
+} from '@/lib/types';
 
 export function useFormSubmissions(formId: string) {
   return useQuery({
     queryKey: ['form-submissions', formId],
-    queryFn: () => apiClient.get<FormSubmission[]>(`/api/v1/admin/forms/${formId}/submissions`),
+    queryFn: () => apiClient.get<FormSubmissionWithForm[]>(`/api/v1/admin/forms/${formId}/submissions`),
     enabled: Boolean(formId),
   });
 }
@@ -15,6 +20,34 @@ export function useFormSubmissions(formId: string) {
 // inside the authenticated admin UI only.
 export function submissionAttachmentUrl(formId: string, submissionId: string, fieldName: string): string {
   return `${import.meta.env.VITE_API_URL}/api/v1/admin/forms/${formId}/submissions/${submissionId}/files/${fieldName}`;
+}
+
+// A file attached to a message on the submission's thread (a staff reply or an account message).
+export function submissionThreadAttachmentUrl(formId: string, submissionId: string, mediaId: string): string {
+  return `${import.meta.env.VITE_API_URL}/api/v1/admin/forms/${formId}/submissions/${submissionId}/attachments/${mediaId}`;
+}
+
+export function useSubmissionStageHistory(formId: string, submissionId: string) {
+  return useQuery({
+    queryKey: ['form-submission-stages', formId, submissionId],
+    queryFn: () =>
+      apiClient.get<FormSubmissionStageChange[]>(`/api/v1/admin/forms/${formId}/submissions/${submissionId}/stage-history`),
+    enabled: Boolean(formId) && Boolean(submissionId),
+  });
+}
+
+export function useUpdateSubmissionStage(formId: string, submissionId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: { stage: string; notifyAccount: boolean }) =>
+      apiClient.put<FormSubmission>(`/api/v1/admin/forms/${formId}/submissions/${submissionId}/stage`, input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['form-submissions', formId] });
+      void queryClient.invalidateQueries({ queryKey: ['submissions'] });
+      void queryClient.invalidateQueries({ queryKey: ['form-submission-stages', formId, submissionId] });
+    },
+  });
 }
 
 export function useUpdateFormSubmissionStatus(formId: string) {

@@ -21,6 +21,7 @@ import { EmptyState } from '@/components/empty-state';
 import { PageBreadcrumb } from '@/components/page-breadcrumb';
 import { PageHeader } from '@/components/page-header';
 import { StatusBadge } from '@/components/status-badge';
+import { Badge } from '@/components/ui/badge';
 import { TableSkeleton } from '@/components/table-skeleton';
 import { TestSubmissionBadge } from '@/components/test-submission-badge';
 import {
@@ -188,6 +189,11 @@ export function FormSubmissionsPage() {
         cell: ({ row }) => (
           <div className="flex items-center gap-1.5">
             <StatusBadge status={row.original.status} />
+            {row.original.stage ? (
+              <Badge variant="outline" className="font-normal">
+                {row.original.stage}
+              </Badge>
+            ) : null}
             {row.original.isTest ? <TestSubmissionBadge /> : null}
           </div>
         ),

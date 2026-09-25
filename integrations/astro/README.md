@@ -216,7 +216,28 @@ try {
 
 Submissions are rate limited and validated server-side against the form's actual field
 definitions. This client doesn't duplicate that validation, it just surfaces the server's
-response.
+response. Pass a `FormData` as `data` to include files for the form's file fields.
+
+### Forms that require an account
+
+A form can be set to require a website account (Forms > Edit in the admin). Then only a
+signed-in visitor can submit it, the submission belongs to that visitor, and they can follow it
+from your site. Staff move it through the form's own stages and reply from the admin. Call
+these through the same-origin proxy so the session cookie is sent:
+
+```ts
+const cms = createKenresoftClient({ url: '/cms' });
+
+await cms.forms.submit({ formSlug: 'support', data: formData }); // 401 when signed out
+const mine = await cms.account.submissions.list({ form: 'support' });
+const one = await cms.account.submissions.get({ id }); // stage, stageHistory, messages, files; null if not theirs
+await cms.account.submissions.sendMessage({ id, body: 'Here is the brief', files: [file] });
+const href = cms.account.submissions.fileUrl({ id, mediaId }); // a plain download link
+```
+
+Server-side, `cmsForRequest(Astro.request).account.submissions.get({ id })` reads the same data
+during SSR. Another visitor's submission is always a 404, and files are only served to their
+owner.
 
 ## Authentication
 

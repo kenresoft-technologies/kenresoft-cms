@@ -60,14 +60,26 @@ describe('createCmsProxy', () => {
     assert.deepEqual(res.headers.getSetCookie(), ['session=abc; Path=/; Secure; SameSite=None', 'other=1; Path=/']);
   });
 
-  it('only forwards the public/auth surface — never the admin API or unknown paths', async () => {
+  it('only forwards the public/auth/account surface — never the admin API or unknown paths', async () => {
     const { proxy, seen } = setup(() => Response.json({}));
-    for (const path of ['/cms/api/v1/admin/users', '/cms/api/v1/system/status', '/cms/api/v1/auth/../admin/users', '/cms/other', '/cms/']) {
+    for (const path of [
+      '/cms/api/v1/admin/users',
+      '/cms/api/v1/system/status',
+      '/cms/api/v1/auth/../admin/users',
+      '/cms/api/v1/account/../admin/forms',
+      '/cms/other',
+      '/cms/',
+    ]) {
       assert.equal((await proxy(new Request(`${site}${path}`))).status, 404, path);
     }
     assert.equal((await proxy(new Request(`${site}/other`))).status, 404);
     assert.equal(seen.length, 0);
-    for (const path of ['/cms/api/v1/public/pages', '/cms/api/plugins/commerce/public/v1/cart', '/cms/api/v1/auth/get-session']) {
+    for (const path of [
+      '/cms/api/v1/public/pages',
+      '/cms/api/plugins/commerce/public/v1/cart',
+      '/cms/api/v1/auth/get-session',
+      '/cms/api/v1/account/forms/submissions',
+    ]) {
       assert.equal((await proxy(new Request(`${site}${path}`))).status, 200, path);
     }
   });

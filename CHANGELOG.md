@@ -10,6 +10,21 @@ landed on `develop`.
 
 ## Unreleased
 
+### Added
+
+- **Account-linked form submissions.** A form can now require a website account (Forms > Edit > "Require a website account"). Only a signed-in, verified account can submit it, and the submission belongs to that account. The owner is always taken from the session, never from the request. The account can then follow its own submissions from your site through a new account API, `/api/v1/account/forms/submissions`: list, detail, file downloads and messages. Another account's submission is always a 404. Anonymous forms work exactly as before.
+- **Per-form progress stages.** A form can have its own ordered stages (for example Submitted, In Progress, Completed). New submissions start in the first stage. Staff move a submission along from its detail page (`PUT /api/v1/admin/forms/:id/submissions/:submissionId/stage`), which records the change in a history the owning account can see. A stage is separate from the inbox status (new/read/archived), which the account never sees. If the form has an "Account page URL", the owning account gets an email when the stage changes, through a new admin-editable template, **Request update (website account)**.
+- **Two-way submission threads.** The owning account can post messages with up to 5 files (PDF, DOCX or image, 10 MB each) from your site, and the form's notification recipients are emailed. Staff replies still go out by email as before, and now also appear in the account's view of the submission, with a link back to it in the email when the form has an Account page URL. Staff see account messages in the submission's conversation.
+- `@kenresoft-cms/astro` 0.8.0: `client.account.submissions` (`list`, `get`, `fileUrl`, `sendMessage`), `forms.submit()` accepts `FormData` (for file fields) and sends the session cookie, and the `/cms` proxy forwards `/api/v1/account/*`. Update with `npx @kenresoft-cms/create astro --update`. Requires publishing a new `@kenresoft-cms/astro`.
+
+### Changed
+
+- Files attached to a staff reply are now kept as private Media, so the thread (and the owning account, for an account-linked submission) can download them later. Before, only their names were recorded and the file itself was only emailed. Older replies keep their name-only record. Deleting a submission also deletes these stored files.
+
+### Migration
+
+- `0056_account_linked_submissions.sql` adds `forms.requires_account` / `stages` / `account_submission_url`, `form_submissions.account_user_id` / `stage`, and a `form_submission_stage_changes` table. It also rebuilds `form_submission_replies` to add `direction` and make `to`/`subject` nullable. Every existing reply is copied across as an outbound reply, unchanged. No data backfill is needed: existing submissions have no owner and no stage, and no account can see them. Applied by `pnpm run update`.
+
 ### Fixed
 
 - `pnpm run update -- --admin-domain` now also migrates the API's `CORS_ORIGINS` allow-list, not just `ADMIN_URL` — connecting a custom domain to the Admin app previously left the *old* admin origin (and, until the very first run, no admin origin at all) in `CORS_ORIGINS` indefinitely, since nothing wired that up automatically. The old admin origin is now replaced in place with the new one; every unrelated origin (your public site, a staging origin, ...) is preserved untouched, and the API is redeployed only when `CORS_ORIGINS` actually changed. It still never touches `BETTER_AUTH_URL` (a separate, API-side concept — use `--auth` for that) and is safe to re-run: a second run with the same domain makes no further changes. If the Admin Worker's own deploy fails, nothing else is touched; if the follow-up API-side step fails, the command says so plainly ("Admin deployed, API configuration still pending") instead of claiming success. `pnpm run update -- --admin-domain --ci` (`ADMIN_CUSTOM_DOMAIN_NEW`) behaves identically. No action needed unless you're actively migrating the Admin app's domain, in which case just run the command as documented in `docs/DEPLOYMENT.md`.
