@@ -17,6 +17,7 @@ import { mountPlugins } from './plugins/mount';
 import { getContentTypeById } from './repositories/content-types';
 import { publishDueEntries } from './repositories/entries';
 import { publishDuePages } from './repositories/pages';
+import { accountFormsRoute } from './routes/account/forms';
 import { auditLogRoute } from './routes/admin/audit-log';
 import { cacheRoute } from './routes/admin/cache';
 import { contentTypesRoute } from './routes/admin/content-types';
@@ -92,6 +93,9 @@ app.route('/api/v1/public', publicContentRoute);
 app.route('/api/v1/system', systemRoute);
 app.route('/api/v1/system', bootstrapRoute);
 
+// A signed-in account's own data (website accounts included, no CMS role needed). Each route
+// file applies requireAccount/requireAccountOrigin itself.
+app.route('/api/v1/account/forms', accountFormsRoute);
 app.use('/api/v1/admin/*', requireSession);
 app.use('/api/v1/admin/*', requireTrustedOrigin());
 app.use('/api/v1/admin/*', blockViewerMutations);

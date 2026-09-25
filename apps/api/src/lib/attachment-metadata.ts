@@ -71,7 +71,28 @@ function sniffDocx(bytes: Uint8Array): SniffedAttachment | null {
 
   const isOoxml = names.includes('[Content_Types].xml');
   const isWordDocument = names.includes('word/document.xml');
-  return isOoxml && isWordDocument ? { contentType: DOCX_CONTENT_TYPE, extension: 'docx' } : null;
+  // A macro-enabled document (.docm) renamed to .docx has the same structure plus a VBA project.
+  // It isn't a plain .docx, so it's refused rather than stored and handed on to staff.
+  const hasMacros = names.includes('word/vbaProject.bin');
+  return isOoxml && isWordDocument && !hasMacros ? { contentType: DOCX_CONTENT_TYPE, extension: 'docx' } : null;
+}
+
+// The kinds a form's file field can be limited to through its config.accept (e.g.
+// { accept: ['pdf', 'docx'] }). A field without that setting accepts all of them.
+export const ATTACHMENT_KINDS = {
+  pdf: { label: 'PDF', contentTypes: ['application/pdf'] },
+  docx: { label: 'DOCX', contentTypes: [DOCX_CONTENT_TYPE] },
+  image: { label: 'image', contentTypes: ['image/png', 'image/jpeg', 'image/gif', 'image/webp'] },
+} as const satisfies Record<string, { label: string; contentTypes: AttachmentContentType[] }>;
+
+export type AttachmentKind = keyof typeof ATTACHMENT_KINDS;
+
+// Unknown values are ignored. An empty or missing list means every kind is accepted.
+export function acceptedAttachmentKinds(config: Record<string, unknown> | null | undefined): AttachmentKind[] | null {
+  const accept = config?.['accept'];
+  if (!Array.isArray(accept)) return null;
+  const kinds = accept.filter((kind): kind is AttachmentKind => typeof kind === 'string' && kind in ATTACHMENT_KINDS);
+  return kinds.length > 0 ? kinds : null;
 }
 
 const IMAGE_EXTENSIONS: Record<string, string> = {

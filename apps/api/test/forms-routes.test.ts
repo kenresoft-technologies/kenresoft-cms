@@ -1,5 +1,6 @@
 import { SELF, env } from 'cloudflare:test';
 import { signUpVerifiedAndGetCookie } from './helpers/auth';
+import { startInFreshRateLimitWindow } from './helpers/rate-limit';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { clearTestEmails, getTestEmails, isEmailProviderConfigured } from '../src/lib/email';
@@ -372,6 +373,7 @@ describe('forms routes (real D1)', () => {
       });
 
     const results = [];
+    await startInFreshRateLimitWindow();
     for (let i = 0; i < 6; i++) {
       results.push(await submit());
     }

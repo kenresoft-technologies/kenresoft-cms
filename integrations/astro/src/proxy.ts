@@ -13,8 +13,9 @@
 //   const proxy = createCmsProxy({ url: import.meta.env.PUBLIC_KENRESOFT_CMS_URL, trustedProxySecret: import.meta.env.TRUSTED_PROXY_SECRET });
 //   export const ALL = ({ request }) => proxy(request);
 //
-// Security: only the public/auth surface is forwarded, never /api/v1/admin/* — the proxy is a
-// door for visitors, not a way to expose the admin API through the site.
+// Security: only the public, auth and signed-in-account surfaces are forwarded, never
+// /api/v1/admin/* — the proxy is a door for visitors, not a way to expose the admin API through
+// the site. Account routes only ever return the signed-in visitor's own data.
 
 export interface CmsProxyOptions {
   /** The CMS API's real base URL, e.g. "https://api.example.com". */
@@ -39,11 +40,22 @@ export function isProxiedPathAllowed(path: string): boolean {
   return (
     path.startsWith('/api/v1/auth/') ||
     path.startsWith('/api/v1/public/') ||
+    path.startsWith('/api/v1/account/') ||
     /^\/api\/plugins\/[^/]+\/public\//.test(path)
   );
 }
 
 export function createCmsProxy(options: CmsProxyOptions): (request: Request) => Promise<Response> {
+  // A missing URL is a deployment setting, not a visitor error: say so in the logs and answer 503,
+  // rather than crashing on undefined (which frameworks can turn into a bare 404).
+  if (typeof options.url !== 'string' || !options.url) {
+    return async () => {
+      console.error(
+        '[kenresoft] The /cms proxy has no CMS URL. Set PUBLIC_KENRESOFT_CMS_URL for the build and/or as a runtime variable.',
+      );
+      return Response.json({ error: 'The CMS connection is not configured' }, { status: 503 });
+    };
+  }
   const upstreamBase = options.url.replace(/\/$/, '');
   const basePath = (options.basePath ?? '/cms').replace(/\/$/, '');
   const doFetch = options.fetch ?? fetch;

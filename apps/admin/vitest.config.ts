@@ -25,10 +25,12 @@ export default defineConfig({
     // listener goes away) that can fire after jsdom is torn down at the end of the run. It throws
     // 'window is not defined' from inside a timer, which Vitest reports as a failed run even
     // though every test passed. Only that exact error is ignored. Anything else still fails.
+    // The error arrives serialized from the test worker (a plain object, not a ReferenceError
+    // instance), so match on its name rather than instanceof.
     onUnhandledError(error) {
       const stack = String((error as { stack?: string }).stack ?? '');
       if (
-        error instanceof ReferenceError &&
+        error.name === 'ReferenceError' &&
         error.message === 'window is not defined' &&
         stack.includes('cleanupBroadcastSetup')
       ) {

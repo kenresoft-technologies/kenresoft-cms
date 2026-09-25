@@ -31,5 +31,13 @@ export function buildSampleVariables(key: EmailTemplateKey): TemplateVariables {
         resetUrl: 'https://example.com/reset-password?token=sample-preview-token',
         expiresIn: '1 hour',
       };
+    case 'form_submission_update':
+      return {
+        'user.name': 'Jane Doe',
+        'user.email': 'jane@example.com',
+        'form.name': 'Support request',
+        stage: 'In Progress',
+        submissionUrl: 'https://example.com/account/requests/sample-submission-id',
+      };
   }
 }

@@ -1,15 +1,21 @@
 import { asc, eq, formSubmissionReplies, user } from '@kenresoft-cms/database';
-import type { Database, FormSubmissionReply } from '@kenresoft-cms/database';
+import type { Database, FormSubmissionReply, NewFormSubmissionReply } from '@kenresoft-cms/database';
 
 export function createFormSubmissionReply(
   db: Database,
-  input: { submissionId: string; authorUserId: string; to: string; subject: string; bodyHtml: string; attachments: NonNullable<FormSubmissionReply['attachments']> },
+  input: Pick<NewFormSubmissionReply, 'submissionId' | 'authorUserId' | 'direction' | 'to' | 'subject' | 'bodyHtml'> & {
+    attachments: NonNullable<FormSubmissionReply['attachments']>;
+  },
 ): Promise<FormSubmissionReply> {
   return db
     .insert(formSubmissionReplies)
     .values(input)
     .returning()
     .then(([reply]) => reply!);
+}
+
+export async function deleteFormSubmissionReply(db: Database, id: string): Promise<void> {
+  await db.delete(formSubmissionReplies).where(eq(formSubmissionReplies.id, id));
 }
 
 // Joined with the author's current name — a reply thread reads as "who said what," and a
@@ -24,6 +30,7 @@ export function listFormSubmissionReplies(
       id: formSubmissionReplies.id,
       submissionId: formSubmissionReplies.submissionId,
       authorUserId: formSubmissionReplies.authorUserId,
+      direction: formSubmissionReplies.direction,
       to: formSubmissionReplies.to,
       subject: formSubmissionReplies.subject,
       bodyHtml: formSubmissionReplies.bodyHtml,

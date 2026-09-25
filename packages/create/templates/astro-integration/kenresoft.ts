@@ -3,7 +3,9 @@ import { createKenresoftClient, KenresoftApiError } from '@kenresoft-cms/astro';
 const url = import.meta.env.PUBLIC_KENRESOFT_CMS_URL;
 
 // Server-side client for reading PUBLIC content in your pages (frontmatter / endpoints).
-export const cms = createKenresoftClient({ url });
+// Marked pure so a browser script that only imports browserCms from this file doesn't also ship
+// this client, and with it your API's address, to the visitor.
+export const cms = /* @__PURE__ */ createKenresoftClient({ url });
 
 // Server-side client that also knows WHO is signed in: forwards the visitor's own cookie to the
 // API. The cookie is first-party to your site because the browser talks to the API through the

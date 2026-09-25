@@ -1,6 +1,6 @@
 {
   "name": "@kenresoft-cms/create",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "type": "module",
   "description": "Scaffold a new Kenresoft CMS install, or just an Astro frontend for one (--astro): npm create @kenresoft-cms@latest my-cms",
   "license": "MIT",

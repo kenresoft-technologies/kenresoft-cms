@@ -11,6 +11,7 @@ import { listFormFields } from '../../repositories/form-fields';
 import { getFormBySlug } from '../../repositories/forms';
 import type { FormSubmission as DbFormSubmission } from '@kenresoft-cms/database';
 import { getClientIp } from '../../lib/client-ip';
+import { resolveAccount } from '../../middleware/require-account';
 
 export const publicFormsRoute = createOpenApiApp<{ Bindings: Bindings }>();
 
@@ -21,6 +22,8 @@ function toFormSubmission(row: DbFormSubmission): FormSubmission {
     data: row.data,
     status: row.status as FormSubmissionStatus,
     isTest: row.isTest,
+    accountUserId: row.accountUserId,
+    stage: row.stage,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -35,6 +38,23 @@ publicFormsRoute.post('/:slug/submissions', async (c) => {
   const form = await getFormBySlug(db, c.req.param('slug'));
   if (!form) {
     return c.json({ error: 'Form not found' }, 404);
+  }
+
+  // A form that requires an account only accepts a signed-in, verified account, from a trusted
+  // origin (the session cookie makes this a state change on that account's behalf). The owner is
+  // taken from the session alone; nothing in the body can set or change it.
+  let accountUserId: string | null = null;
+  if (form.requiresAccount) {
+    const origin = c.req.header('Origin');
+    const allowList = c.env.CORS_ORIGINS.split(',').map((entry) => entry.trim());
+    if (!origin || !allowList.includes(origin)) {
+      return c.json({ error: 'Origin not allowed' }, 403);
+    }
+    const account = await resolveAccount(c.env, c.req.raw.headers);
+    if (!account) {
+      return c.json({ error: 'Sign in to submit this form' }, 401);
+    }
+    accountUserId = account.id;
   }
 
   // Rate limited per client IP (§9) — CF-Connecting-IP is set by Cloudflare's edge and can't
@@ -52,9 +72,12 @@ publicFormsRoute.post('/:slug/submissions', async (c) => {
   }
 
   const fields = await listFormFields(db, form.id);
-  const result = await submitForm(db, c.env.MEDIA_BUCKET, form.id, fields, parsedBody.parsed, { isTest: false });
+  const result = await submitForm(db, c.env.MEDIA_BUCKET, form, fields, parsedBody.parsed, {
+    isTest: false,
+    accountUserId,
+  });
   if (!result.ok) {
-    return c.json({ error: result.error, issues: result.issues }, 400);
+    return c.json({ error: result.error, issues: result.issues }, result.status);
   }
 
   sendFormSubmissionNotification(c.env, c.executionCtx, form, fields, result.submission);
@@ -68,7 +91,9 @@ publicFormsRoute.openAPIRegistry.registerPath({
   summary: 'Submit a public form',
   description:
     "The request body's valid shape varies per form, built dynamically from that form's own " +
-    'field definitions — there is no fixed schema. Rate limited per client IP (5/60s).',
+    'field definitions — there is no fixed schema. Rate limited per client IP (5/60s). A form with ' +
+    'requiresAccount needs a signed-in, verified account session and a trusted Origin; the ' +
+    'submission is then owned by that account.',
   request: {
     params: z.object({ slug: z.string() }),
     body: { content: { 'application/json': { schema: z.record(z.string(), z.unknown()) } } },
@@ -80,6 +105,14 @@ publicFormsRoute.openAPIRegistry.registerPath({
     },
     400: {
       description: 'Malformed JSON, or the body failed the form-specific validation.',
+      content: { 'application/json': { schema: z.object({ error: z.string() }) } },
+    },
+    401: {
+      description: 'The form requires an account and the request has no signed-in, verified session.',
+      content: { 'application/json': { schema: z.object({ error: z.string() }) } },
+    },
+    403: {
+      description: 'The form requires an account and the request did not come from a trusted origin.',
       content: { 'application/json': { schema: z.object({ error: z.string() }) } },
     },
     404: {

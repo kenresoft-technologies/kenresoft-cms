@@ -87,8 +87,8 @@ export async function prepareTemplatedEmail(
     console.error(`Failed to render email template "${key}"; falling back to a minimal plain-text send.`, error);
     // A last-resort, template-system-free message — no design tokens, no stored copy, just
     // enough for the recipient to actually complete the flow they're waiting on. ownVariables
-    // always carries the one link (verificationUrl/resetUrl) this minimal message needs.
-    const link = ownVariables.verificationUrl ?? ownVariables.resetUrl ?? '';
+    // always carries the one link (verificationUrl/resetUrl/submissionUrl) this minimal message needs.
+    const link = ownVariables.verificationUrl ?? ownVariables.resetUrl ?? ownVariables.submissionUrl ?? '';
     return {
       subject: def.subject,
       html: '',

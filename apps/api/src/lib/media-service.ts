@@ -79,6 +79,8 @@ export async function uploadMedia(
   const key = `media/${crypto.randomUUID()}.${sniffed.extension}`;
   await bucket.put(key, input.bytes, { httpMetadata: { contentType: sniffed.contentType } });
 
+  // If the row can't be written, remove the object just stored so it isn't left in the bucket
+  // with nothing in the CMS pointing at it.
   const row = await createMedia(db, {
     key,
     filename: input.filename || key,
@@ -89,6 +91,9 @@ export async function uploadMedia(
     altText: input.altText,
     folderId: input.folderId ?? null,
     visibility,
+  }).catch(async (error: unknown) => {
+    await bucket.delete(key).catch(() => undefined);
+    throw error;
   });
 
   return { ok: true, media: row };
