@@ -742,9 +742,7 @@ formsRoute.post('/:id/submissions/:submissionId/replies', adminEmailRateLimit, a
   const emailBodies = viewUrl
     ? {
         html: `${bodies.html}<p style="margin-top:24px;"><a href="${escapeHtml(viewUrl)}">View this conversation and any files online</a></p>`,
-        text: `${bodies.text}
-
-View this conversation and any files online: ${viewUrl}`,
+        text: `${bodies.text}\n\nView this conversation and any files online: ${viewUrl}`,
       }
     : bodies;
 
