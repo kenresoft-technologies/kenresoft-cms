@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import { clearTestEmails, getTestEmails } from '../src/lib/email';
 import { signUpVerifiedAndGetCookie } from './helpers/auth';
+import { startInFreshRateLimitWindow } from './helpers/rate-limit';
 
 const json = (cookie: string, body: unknown) => ({
   method: 'POST',
@@ -131,6 +132,7 @@ describe('subject header-injection guard', () => {
         json(cookie, { to: 'a@example.test', subject: 'Hi', bodyHtml: '<p>Hello</p>' }),
       );
     const statuses: number[] = [];
+    await startInFreshRateLimitWindow();
     for (let i = 0; i < 12; i++) statuses.push((await send()).status);
     expect(statuses.slice(0, 10).every((s) => s === 200)).toBe(true);
     expect(statuses.slice(10)).toEqual([429, 429]);
