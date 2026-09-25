@@ -532,7 +532,7 @@ formsRoute.post('/:id/test-submissions', async (c) => {
   const fields = await listFormFields(db, form.id);
   const result = await submitForm(db, c.env.MEDIA_BUCKET, form, fields, parsedBody.parsed, { isTest: true });
   if (!result.ok) {
-    return c.json({ error: result.error, issues: result.issues }, 400);
+    return c.json({ error: result.error, issues: result.issues }, result.status);
   }
 
   sendFormSubmissionNotification(c.env, c.executionCtx, form, fields, result.submission, { isTest: true });
@@ -728,7 +728,7 @@ formsRoute.post('/:id/submissions/:submissionId/replies', adminEmailRateLimit, a
     uploads.map((attachment) => ({ filename: attachment.filename, bytes: attachment.content })),
   );
   if (!stored.ok) {
-    return c.json({ error: stored.error }, 400);
+    return c.json({ error: stored.error }, stored.status);
   }
   const storedIds = stored.uploaded.map(({ media }) => media.id);
   let uploadIndex = 0;

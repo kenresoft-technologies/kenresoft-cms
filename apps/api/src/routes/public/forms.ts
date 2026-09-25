@@ -77,7 +77,7 @@ publicFormsRoute.post('/:slug/submissions', async (c) => {
     accountUserId,
   });
   if (!result.ok) {
-    return c.json({ error: result.error, issues: result.issues }, 400);
+    return c.json({ error: result.error, issues: result.issues }, result.status);
   }
 
   sendFormSubmissionNotification(c.env, c.executionCtx, form, fields, result.submission);

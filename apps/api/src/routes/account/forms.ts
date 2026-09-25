@@ -13,9 +13,9 @@ import { recordAudit } from '../../lib/audit';
 import { getDb } from '../../lib/db';
 import { escapeHtml } from '../../lib/email-templates/render';
 import type { Bindings } from '../../lib/env';
-import { deleteMediaIfUnreferenced } from '../../lib/media-service';
 import { createOpenApiApp } from '../../lib/openapi';
 import {
+  deleteMediaFiles,
   findSubmissionFile,
   linkMessageFiles,
   mediaDownloadResponse,
@@ -25,7 +25,11 @@ import {
 } from '../../lib/submission-thread';
 import { requireAccount, requireAccountOrigin } from '../../middleware/require-account';
 import type { AccountVariables } from '../../middleware/require-account';
-import { createFormSubmissionReply, listFormSubmissionReplies } from '../../repositories/form-submission-replies';
+import {
+  createFormSubmissionReply,
+  deleteFormSubmissionReply,
+  listFormSubmissionReplies,
+} from '../../repositories/form-submission-replies';
 import { getAccountSubmission, listAccountSubmissions, listStageChanges } from '../../repositories/form-submissions';
 
 // The signed-in account's own submissions, for forms with requiresAccount. Every route resolves
@@ -239,11 +243,14 @@ accountFormsRoute.post('/submissions/:submissionId/messages', async (c) => {
     await Promise.all(files.map(async (file) => ({ filename: file.name || 'file', bytes: new Uint8Array(await file.arrayBuffer()) }))),
   );
   if (!stored.ok) {
-    return c.json({ error: stored.error }, 400);
+    return c.json({ error: stored.error }, stored.status);
   }
 
+  // The message and its file links are written together or not at all: if either fails, the
+  // message is removed along with the files, and the student sees an error they can retry.
+  let reply: FormSubmissionReply | null = null;
   try {
-    const reply = await createFormSubmissionReply(db, {
+    reply = await createFormSubmissionReply(db, {
       submissionId: row.submission.id,
       authorUserId: account.id,
       direction: 'inbound',
@@ -263,19 +270,22 @@ accountFormsRoute.post('/submissions/:submissionId/messages', async (c) => {
       reply.id,
       stored.uploaded.map(({ media }) => media.id),
     );
-    await recordAudit(db, {
-      actorUserId: account.id,
-      action: 'form_submission.account_message',
-      targetType: 'form_submission',
-      targetId: row.submission.id,
-      metadata: { formId: row.form.id, attachments: stored.uploaded.length },
-    });
-    notifyStaffOfAccountMessage(c.env, c.executionCtx, row.form, row.submission.id, account);
-    return c.json(toMessage({ ...reply, authorName: account.name }), 201);
   } catch (error) {
-    for (const { media } of stored.uploaded) await deleteMediaIfUnreferenced(db, c.env.MEDIA_BUCKET, media.id);
-    throw error;
+    console.error('Failed to save an account message:', error);
+    if (reply) await deleteFormSubmissionReply(db, reply.id).catch(() => undefined);
+    await deleteMediaFiles(db, c.env.MEDIA_BUCKET, stored.uploaded.map(({ media }) => media.id));
+    return c.json({ error: 'Your message could not be saved. Nothing was sent, please try again.' }, 500);
   }
+
+  await recordAudit(db, {
+    actorUserId: account.id,
+    action: 'form_submission.account_message',
+    targetType: 'form_submission',
+    targetId: row.submission.id,
+    metadata: { formId: row.form.id, attachments: stored.uploaded.length },
+  });
+  notifyStaffOfAccountMessage(c.env, c.executionCtx, row.form, row.submission.id, account);
+  return c.json(toMessage({ ...reply, authorName: account.name }), 201);
 });
 
 accountFormsRoute.openAPIRegistry.registerPath({

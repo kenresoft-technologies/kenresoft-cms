@@ -3,7 +3,7 @@ import type { Database, Form, FormSubmission, FormSubmissionReply, Media } from 
 import { getEmailSender } from './email';
 import { prepareTemplatedEmail, sendPreparedEmail } from './email-templates/send';
 import type { Bindings } from './env';
-import { uploadMedia } from './media-service';
+import { deleteMediaFile, uploadMedia } from './media-service';
 import { createMediaAttachment } from '../repositories/media-attachments';
 import { getMediaById } from '../repositories/media';
 import { getUserById } from '../repositories/users';
@@ -14,27 +14,49 @@ type AttachmentMeta = NonNullable<FormSubmissionReply['attachments']>[number];
 export const REPLY_ATTACHMENT_OWNER = 'form_submission_reply';
 
 // Stores files posted with a message as private Media, so the thread keeps them after any email
-// has gone. Every file is sniffed by uploadMedia (PDF, DOCX or image); the first rejected file
-// fails the whole batch before anything is written, so a message is never half-attached.
+// has gone. Every file is sniffed by uploadMedia (PDF, DOCX or image). If any file is rejected
+// (status 400) or can't be stored (status 500), the files already stored in this batch are
+// deleted again, so a message is never half-attached and nothing is left orphaned.
 export async function uploadMessageFiles(
   db: Database,
   bucket: R2Bucket,
   files: { filename: string; bytes: Uint8Array }[],
-): Promise<{ ok: true; uploaded: { media: Media }[] } | { ok: false; error: string }> {
+): Promise<{ ok: true; uploaded: { media: Media }[] } | { ok: false; status: 400 | 500; error: string }> {
   const uploaded: { media: Media }[] = [];
+  let failure: { status: 400 | 500; error: string } | null = null;
   for (const file of files) {
-    const result = await uploadMedia(db, bucket, {
-      bytes: file.bytes,
-      filename: file.filename,
-      altText: null,
-      visibility: 'private',
-    });
-    if (!result.ok) {
-      return { ok: false, error: `"${file.filename}": ${result.error}` };
+    try {
+      const result = await uploadMedia(db, bucket, {
+        bytes: file.bytes,
+        filename: file.filename,
+        altText: null,
+        visibility: 'private',
+      });
+      if (!result.ok) {
+        failure = { status: 400, error: `"${file.filename}": ${result.error}` };
+        break;
+      }
+      uploaded.push({ media: result.media });
+    } catch (error) {
+      console.error('Failed to store a message file:', error);
+      failure = { status: 500, error: 'Your files could not be saved. Nothing was sent, please try again.' };
+      break;
     }
-    uploaded.push({ media: result.media });
+  }
+  if (failure) {
+    await deleteMediaFiles(db, bucket, uploaded.map(({ media }) => media.id));
+    return { ok: false, ...failure };
   }
   return { ok: true, uploaded };
+}
+
+// Removes Media created moments ago for a message or submission that is being abandoned. Each
+// delete runs even if another fails. Deleting a Media row also removes its attachment rows.
+export async function deleteMediaFiles(db: Database, bucket: R2Bucket, mediaIds: string[]): Promise<void> {
+  const results = await Promise.allSettled(mediaIds.map((id) => deleteMediaFile(db, bucket, id)));
+  for (const result of results) {
+    if (result.status === 'rejected') console.error('Failed to remove an abandoned file:', result.reason);
+  }
 }
 
 export async function linkMessageFiles(db: Database, replyId: string, mediaIds: string[]): Promise<void> {

@@ -14,6 +14,10 @@ export function createFormSubmissionReply(
     .then(([reply]) => reply!);
 }
 
+export async function deleteFormSubmissionReply(db: Database, id: string): Promise<void> {
+  await db.delete(formSubmissionReplies).where(eq(formSubmissionReplies.id, id));
+}
+
 // Joined with the author's current name — a reply thread reads as "who said what," and a
 // deleted account (authorUserId set null by the FK above) should still show the thread entry,
 // just without an author name.
