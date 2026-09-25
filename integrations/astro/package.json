@@ -36,7 +36,7 @@
     "lint": "eslint ."
   },
   "dependencies": {
-    "@kenresoft-cms/contracts": "^0.5.0"
+    "@kenresoft-cms/contracts": "^0.6.0"
   },
   "devDependencies": {
     "@kenresoft-cms/config": "workspace:*",
