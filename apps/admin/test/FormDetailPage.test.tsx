@@ -25,6 +25,16 @@ vi.mock('@/lib/auth-client', () => ({
   authClient: { useSession: () => ({ data: { user: { role: 'admin' } } }) },
 }));
 
+const baseForm = {
+  id: 'f-1',
+  name: 'Contact',
+  slug: 'contact',
+  notificationEmails: null,
+  requiresAccount: false,
+  stages: null,
+  accountSubmissionUrl: null,
+};
+
 function renderPage() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -139,14 +149,9 @@ describe('FormDetailPage', () => {
   it('shows a "No notifications configured" badge, and sets notification emails through Edit form', async () => {
     getMock.mockImplementation((path: string) => {
       if (path.endsWith('/fields')) return Promise.resolve([]);
-      return Promise.resolve({ id: 'f-1', name: 'Contact', slug: 'contact', notificationEmails: null });
+      return Promise.resolve({ ...baseForm });
     });
-    patchMock.mockResolvedValue({
-      id: 'f-1',
-      name: 'Contact',
-      slug: 'contact',
-      notificationEmails: ['hr@example.com', 'ops@example.com'],
-    });
+    patchMock.mockResolvedValue({ ...baseForm, notificationEmails: ['hr@example.com', 'ops@example.com'] });
 
     renderPage();
     await waitFor(() => expect(screen.getByText('No notifications configured')).toBeInTheDocument());
@@ -164,6 +169,37 @@ describe('FormDetailPage', () => {
         name: 'Contact',
         slug: 'contact',
         notificationEmails: ['hr@example.com', 'ops@example.com'],
+        requiresAccount: false,
+        stages: null,
+        accountSubmissionUrl: null,
+      }),
+    );
+  });
+
+  it('turns on accounts and progress stages through Edit form, and badges the form', async () => {
+    getMock.mockImplementation((path: string) => {
+      if (path.endsWith('/fields')) return Promise.resolve([]);
+      return Promise.resolve({ ...baseForm });
+    });
+    patchMock.mockResolvedValue({ ...baseForm });
+
+    renderPage();
+    await waitFor(() => expect(screen.getByText('No notifications configured')).toBeInTheDocument());
+    await userEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    const dialog = screen.getByRole('dialog');
+    await userEvent.type(within(dialog).getByLabelText('Progress stages'), 'Submitted{Enter}In Progress{Enter}{Enter}Completed');
+    await userEvent.click(within(dialog).getByLabelText('Require a website account'));
+    await userEvent.type(within(dialog).getByLabelText('Account page URL'), 'https://example.com/requests/{{id}');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save changes' }));
+
+    await waitFor(() =>
+      expect(patchMock).toHaveBeenCalledWith('/api/v1/admin/forms/f-1', {
+        name: 'Contact',
+        slug: 'contact',
+        notificationEmails: null,
+        requiresAccount: true,
+        stages: ['Submitted', 'In Progress', 'Completed'],
+        accountSubmissionUrl: 'https://example.com/requests/{id}',
       }),
     );
   });
