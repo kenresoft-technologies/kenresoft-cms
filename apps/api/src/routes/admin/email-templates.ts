@@ -1,5 +1,6 @@
 import { createRoute } from '@hono/zod-openapi';
 import {
+  emailDesignSchema,
   emailTemplateKeySchema,
   emailTemplatePreviewResultSchema,
   emailTemplateSchema,
@@ -14,7 +15,9 @@ import { recordAudit } from '../../lib/audit';
 import { getDb } from '../../lib/db';
 import { COMMON_VARIABLES, getEmailTemplateDefault } from '../../lib/email-templates/defaults';
 import { buildCommonTemplateContext } from '../../lib/email-templates/context';
+import { listEmailDesigns } from '../../lib/email-templates/designs';
 import { renderEmailTemplate } from '../../lib/email-templates/render';
+import { renderStandardModeBodyHtml } from '../../lib/email-templates/standard-render';
 import { buildSampleVariables } from '../../lib/email-templates/sample-data';
 import { getEmailSender, isEmailProviderConfigured } from '../../lib/email';
 import { createOpenApiApp } from '../../lib/openapi';
@@ -36,15 +39,35 @@ emailTemplatesRoute.use('*', requireRole('admin'));
 const notFoundSchema = z.object({ error: z.string() });
 const keyParamSchema = z.object({ key: emailTemplateKeySchema });
 
+// A legacy row (mode still null — see repositories/email-templates.ts's resolveLegacyMode) is
+// always resolved by the repository before it reaches a route handler, so `row.mode` is never
+// actually null by the time toEmailTemplate runs; this fallback exists only so the type checker
+// (the DB column itself is nullable) doesn't need an assertion.
 function toEmailTemplate(row: DbEmailTemplate): EmailTemplate {
   const def = getEmailTemplateDefault(row.key);
-  const isCustomized = row.subject !== def.subject || row.bodyHtml !== def.bodyHtml || row.plainText !== null;
+  const mode = row.mode ?? 'developer';
+  const content = {
+    heading: row.heading ?? def.content.heading,
+    bodyText: row.bodyText ?? def.content.bodyText,
+    ctaLabel: row.ctaLabel ?? def.content.ctaLabel,
+    fineprint: row.fineprint ?? def.content.fineprint,
+  };
+  const isCustomized =
+    mode === 'standard'
+      ? row.subject !== def.subject ||
+        content.heading !== def.content.heading ||
+        content.bodyText !== def.content.bodyText ||
+        content.ctaLabel !== def.content.ctaLabel ||
+        content.fineprint !== def.content.fineprint
+      : row.subject !== def.subject || row.bodyHtml !== def.bodyHtml || row.plainText !== null;
   return {
     id: row.id,
     key: row.key,
     name: row.name,
     description: row.description,
     subject: row.subject,
+    mode,
+    content,
     bodyHtml: row.bodyHtml,
     plainText: row.plainText,
     enabled: row.enabled,
@@ -69,6 +92,21 @@ emailTemplatesRoute.openapi(
     },
   }),
   async (c) => c.json((await listEmailTemplates(getDb(c))).map(toEmailTemplate), 200),
+);
+
+// Static registry metadata for the Standard-mode design gallery — no DB, no auth beyond the
+// route group's own requireRole('admin').
+emailTemplatesRoute.openapi(
+  createRoute({
+    method: 'get',
+    path: '/designs',
+    tags: ['Email templates'],
+    summary: 'List the built-in email designs (admin only)',
+    responses: {
+      200: { description: 'The design registry.', content: { 'application/json': { schema: z.array(emailDesignSchema) } } },
+    },
+  }),
+  (c) => c.json(listEmailDesigns(), 200),
 );
 
 emailTemplatesRoute.openapi(
@@ -113,7 +151,7 @@ emailTemplatesRoute.openapi(
       action: 'email_template.updated',
       targetType: 'email_template',
       targetId: key,
-      metadata: { enabled: updated!.enabled },
+      metadata: { enabled: updated!.enabled, mode: updated!.mode },
     });
     return c.json(toEmailTemplate(updated!), 200);
   },
@@ -124,7 +162,7 @@ emailTemplatesRoute.openapi(
     method: 'post',
     path: '/{key}/restore-default',
     tags: ['Email templates'],
-    summary: "Reset a template's subject/HTML/plain-text back to the shipped default (admin only)",
+    summary: "Reset a template's content back to the shipped default (admin only)",
     request: { params: keyParamSchema },
     responses: {
       200: { description: 'The restored template.', content: { 'application/json': { schema: emailTemplateSchema } } },
@@ -144,15 +182,17 @@ emailTemplatesRoute.openapi(
   },
 );
 
-// Renders the *given* (possibly unsaved) subject/bodyHtml/plainText against realistic sample
-// data plus the deployment's real current site/design tokens — never writes anything, so an
-// admin can preview an edit before deciding to save it.
+// Renders the *given* (possibly unsaved) content against realistic sample data plus the
+// deployment's real current branding — never writes anything, so an admin can preview an edit
+// (or, with `designId` set, a candidate design from the gallery) before deciding to save it. In
+// Standard mode this goes through exactly the same renderStandardModeBodyHtml() call a real send
+// uses; in Developer mode it's the same substitute-and-sanitize pass it always was.
 emailTemplatesRoute.openapi(
   createRoute({
     method: 'post',
     path: '/{key}/preview',
     tags: ['Email templates'],
-    summary: 'Render a (possibly unsaved) template body against sample data (admin only)',
+    summary: 'Render a (possibly unsaved) template against sample data (admin only)',
     request: {
       params: keyParamSchema,
       body: { content: { 'application/json': { schema: previewEmailTemplateSchema } } },
@@ -169,10 +209,11 @@ emailTemplatesRoute.openapi(
     const input = c.req.valid('json');
     const db = getDb(c);
     const variables = { ...(await buildCommonTemplateContext(db, c.env)), ...buildSampleVariables(key as EmailTemplateKey) };
-    const rendered = renderEmailTemplate(
-      { subject: input.subject, bodyHtml: input.bodyHtml, plainText: input.plainText ?? null },
-      variables,
-    );
+    const bodyHtml =
+      input.mode === 'standard'
+        ? await renderStandardModeBodyHtml(db, c.env, key as EmailTemplateKey, input.content, input.designId)
+        : input.bodyHtml;
+    const rendered = renderEmailTemplate({ subject: input.subject, bodyHtml, plainText: input.plainText ?? null }, variables);
     return c.json(rendered, 200);
   },
 );
@@ -202,15 +243,18 @@ emailTemplatesRoute.openapi(
     const { key } = c.req.valid('param');
     const { to } = c.req.valid('json');
     const db = getDb(c);
-    const template = await getEmailTemplateByKey(db, key);
+    const row = await getEmailTemplateByKey(db, key);
+    const template = toEmailTemplate(row!);
     const variables = { ...(await buildCommonTemplateContext(db, c.env)), ...buildSampleVariables(key as EmailTemplateKey) };
-    const rendered = renderEmailTemplate(template!, variables);
+    const bodyHtml =
+      template.mode === 'standard' ? await renderStandardModeBodyHtml(db, c.env, key, template.content) : template.bodyHtml;
+    const rendered = renderEmailTemplate({ subject: template.subject, bodyHtml, plainText: template.plainText }, variables);
 
     await getEmailSender(c.env).send({
       to,
       subject: `[Test] ${rendered.subject}`,
-      html: `<p style="background:#fef3c7; color:#92400e; padding:8px 12px; border-radius:6px; font-family:sans-serif; font-size:13px;">This is a test send of the "${template!.name}" template — no real action was taken.</p>${rendered.html}`,
-      text: `THIS IS A TEST SEND of the "${template!.name}" template — no real action was taken.\n\n${rendered.text}`,
+      html: `<p style="background:#fef3c7; color:#92400e; padding:8px 12px; border-radius:6px; font-family:sans-serif; font-size:13px;">This is a test send of the "${template.name}" template — no real action was taken.</p>${rendered.html}`,
+      text: `THIS IS A TEST SEND of the "${template.name}" template — no real action was taken.\n\n${rendered.text}`,
     });
 
     await recordAudit(db, {

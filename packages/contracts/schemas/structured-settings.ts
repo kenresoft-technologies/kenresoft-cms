@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { SOCIAL_PLATFORMS, STRUCTURED_SETTINGS_MODULES } from './enums';
+import { EMAIL_DESIGN_IDS, SOCIAL_PLATFORMS, STRUCTURED_SETTINGS_MODULES } from './enums';
 import { safeUrlSchema } from './safe-url';
 
 export const structuredSettingsModuleSchema = z.enum(STRUCTURED_SETTINGS_MODULES);
@@ -99,6 +99,21 @@ export const emailBrandingSettingsDataSchema = z.object({
   buttonTextColor: hexColorSchema,
   logoMediaId: z.string().nullable(),
   footerText: z.string().max(500).nullable(),
+  // The one active built-in design every system email (verification, password reset, ...)
+  // renders through — null means the shipped default ('modern-minimal'). Deliberately global,
+  // not per-template-key: switching designs is a single deployment-wide choice
+  // (apps/api/src/lib/email-templates/designs.ts holds the registry), so every system email
+  // keeps looking like it came from the same system rather than admins picking a different look
+  // per email type.
+  // .nullable().optional() rather than just .nullable(): an admin PUT built against the old
+  // shape (before this field existed) sends no key for it at all, which .nullable() alone would
+  // reject as a missing required property.
+  designId: z.enum(EMAIL_DESIGN_IDS).nullable().optional(),
+  // Whether the admin UI's Developer Customization option (raw-HTML per-template editing) is
+  // shown at all — null/false means Standard mode only. Doesn't retroactively touch a template
+  // already sitting in Developer mode from before this was turned off; it only hides the control
+  // that would let someone newly switch a template *into* Developer mode.
+  developerModeEnabled: z.boolean().nullable().optional(),
 });
 
 export type EmailBrandingSettingsData = z.infer<typeof emailBrandingSettingsDataSchema>;

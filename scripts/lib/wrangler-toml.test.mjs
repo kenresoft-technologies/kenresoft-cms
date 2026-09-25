@@ -2,12 +2,16 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  addCorsOrigin,
   addCustomDomainRoute,
   hasVarLine,
+  readCorsOrigins,
   readCustomDomainRoutes,
   readVarLine,
   readWorkersDevEnabled,
+  removeCustomDomainRoute,
   removeVarLine,
+  replaceCorsOrigin,
   setVarLine,
   setWorkersDevEnabled,
 } from './wrangler-toml.mjs';
@@ -88,4 +92,90 @@ test('addCustomDomainRoute appends a [[routes]] block, is idempotent, and suppor
 test('readCustomDomainRoutes ignores a [[routes]] block that is not a custom_domain route', () => {
   const withPlainRoute = TOML + '\n[[routes]]\npattern = "example.com/*"\nzone_name = "example.com"\n';
   assert.deepEqual(readCustomDomainRoutes(withPlainRoute), []);
+});
+
+test('removeCustomDomainRoute drops exactly the matching block, leaves others and the rest of the file untouched', () => {
+  const withTwo = addCustomDomainRoute(addCustomDomainRoute(TOML, 'cms.example.com'), 'api.example.com');
+  const removed = removeCustomDomainRoute(withTwo, 'cms.example.com');
+  assert.deepEqual(readCustomDomainRoutes(removed), ['api.example.com']);
+  assert.equal(readVarLine(removed, 'BETTER_AUTH_URL'), readVarLine(TOML, 'BETTER_AUTH_URL'));
+});
+
+test('removeCustomDomainRoute is a no-op when the pattern is not present', () => {
+  const withOne = addCustomDomainRoute(TOML, 'api.example.com');
+  assert.equal(removeCustomDomainRoute(withOne, 'nonexistent.example.com'), withOne);
+});
+
+// ---- CORS_ORIGINS helpers ----
+// These back setup.mjs (first-time append), rename-worker.mjs, and configure.mjs's admin-domain
+// migration — the shared regression coverage for a bug class already hit twice independently in
+// those callers (duplicate-appending, and clobbering unrelated origins).
+
+test('readCorsOrigins parses a comma-separated list, trimming and dropping empties', () => {
+  assert.deepEqual(readCorsOrigins(TOML), ['http://localhost:5173']);
+  assert.deepEqual(readCorsOrigins(setVarLine(TOML, 'CORS_ORIGINS', 'https://a.example.com, https://b.example.com')), [
+    'https://a.example.com',
+    'https://b.example.com',
+  ]);
+});
+
+test('addCorsOrigin appends once and is idempotent on a second call with the same origin', () => {
+  const once = addCorsOrigin(TOML, 'https://admin.example.com');
+  assert.equal(once.changed, true);
+  assert.deepEqual(readCorsOrigins(once.toml), ['http://localhost:5173', 'https://admin.example.com']);
+
+  const twice = addCorsOrigin(once.toml, 'https://admin.example.com');
+  assert.equal(twice.changed, false);
+  assert.deepEqual(readCorsOrigins(twice.toml), ['http://localhost:5173', 'https://admin.example.com']);
+});
+
+test('replaceCorsOrigin swaps the old admin origin for the new one, preserving unrelated origins', () => {
+  const before = setVarLine(TOML, 'CORS_ORIGINS', 'https://cms.example.com,https://example.com');
+  const { toml: after, changed } = replaceCorsOrigin(before, 'https://cms.example.com', 'https://admin.example.com');
+  assert.equal(changed, true);
+  assert.deepEqual(readCorsOrigins(after), ['https://admin.example.com', 'https://example.com']);
+});
+
+test('replaceCorsOrigin preserves every unrelated origin, not just the first', () => {
+  const before = setVarLine(TOML, 'CORS_ORIGINS', 'https://cms.example.com,https://app.example.com,https://staging.example.com');
+  const { toml: after } = replaceCorsOrigin(before, 'https://cms.example.com', 'https://admin.example.com');
+  assert.deepEqual(readCorsOrigins(after), ['https://admin.example.com', 'https://app.example.com', 'https://staging.example.com']);
+});
+
+test('replaceCorsOrigin never produces a duplicate when the new origin is already present', () => {
+  const before = setVarLine(TOML, 'CORS_ORIGINS', 'https://admin.example.com,https://example.com');
+  const { toml: after, changed } = replaceCorsOrigin(before, 'https://cms.example.com', 'https://admin.example.com');
+  assert.equal(changed, false);
+  assert.deepEqual(readCorsOrigins(after), ['https://admin.example.com', 'https://example.com']);
+});
+
+test('replaceCorsOrigin handles no existing CORS configuration by creating it', () => {
+  const blank = setVarLine(TOML, 'CORS_ORIGINS', '');
+  const { toml: after, changed } = replaceCorsOrigin(blank, 'https://cms.example.com', 'https://admin.example.com');
+  assert.equal(changed, true);
+  assert.deepEqual(readCorsOrigins(after), ['https://admin.example.com']);
+});
+
+test('replaceCorsOrigin appends rather than throwing when the old origin was never actually in the list', () => {
+  const before = setVarLine(TOML, 'CORS_ORIGINS', 'https://example.com');
+  const { toml: after, changed } = replaceCorsOrigin(before, 'https://never-there.example.com', 'https://admin.example.com');
+  assert.equal(changed, true);
+  assert.deepEqual(readCorsOrigins(after), ['https://example.com', 'https://admin.example.com']);
+});
+
+test('replaceCorsOrigin is a true no-op when old and new origin are identical (idempotent rerun)', () => {
+  const before = setVarLine(TOML, 'CORS_ORIGINS', 'https://admin.example.com,https://example.com');
+  const { toml: after, changed } = replaceCorsOrigin(before, 'https://admin.example.com', 'https://admin.example.com');
+  assert.equal(changed, false);
+  assert.deepEqual(readCorsOrigins(after), ['https://admin.example.com', 'https://example.com']);
+});
+
+// Direct regression test for a real, reported production incident: an unrelated CORS_ORIGINS
+// entry was silently dropped during an admin-domain migration (traced to the caller passing a
+// wrong `oldOrigin`, not this function's own dedup logic — but this is the last line of defense
+// underneath that). Every origin other than the one actually being replaced must survive, always.
+test('replaceCorsOrigin never silently drops an unrelated origin, across many origins and positions', () => {
+  const before = setVarLine(TOML, 'CORS_ORIGINS', 'https://a.example.com,https://cms.example.com,https://b.example.com,https://c.example.com');
+  const { toml: after } = replaceCorsOrigin(before, 'https://cms.example.com', 'https://admin.example.com');
+  assert.deepEqual(readCorsOrigins(after), ['https://a.example.com', 'https://admin.example.com', 'https://b.example.com', 'https://c.example.com']);
 });

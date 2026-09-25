@@ -1,9 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { apiClient } from '@/lib/api-client';
-import type { EmailTemplate } from '@/lib/types';
+import type { EmailDesign, EmailTemplate, EmailTemplateContent } from '@/lib/types';
 
 const templatesKey = ['email-templates'] as const;
+const designsKey = ['email-templates', 'designs'] as const;
 
 export function useEmailTemplates() {
   return useQuery({
@@ -12,8 +13,20 @@ export function useEmailTemplates() {
   });
 }
 
+// Static registry metadata — cached indefinitely for this session; the design list can only
+// change with a CMS code update, never at runtime.
+export function useEmailDesigns() {
+  return useQuery({
+    queryKey: designsKey,
+    queryFn: () => apiClient.get<EmailDesign[]>('/api/v1/admin/email-templates/designs'),
+    staleTime: Infinity,
+  });
+}
+
 export interface UpdateEmailTemplateInput {
   subject?: string;
+  mode?: 'standard' | 'developer';
+  content?: EmailTemplateContent;
   bodyHtml?: string;
   plainText?: string | null;
   enabled?: boolean;
@@ -48,9 +61,13 @@ export interface EmailTemplatePreviewResult {
   text: string;
 }
 
+export type PreviewEmailTemplateInput =
+  | { mode: 'standard'; subject: string; content: EmailTemplateContent; plainText?: string | null; designId?: string }
+  | { mode: 'developer'; subject: string; bodyHtml: string; plainText?: string | null };
+
 export function usePreviewEmailTemplate(key: string) {
   return useMutation({
-    mutationFn: (input: { subject: string; bodyHtml: string; plainText?: string | null }) =>
+    mutationFn: (input: PreviewEmailTemplateInput) =>
       apiClient.post<EmailTemplatePreviewResult>(`/api/v1/admin/email-templates/${key}/preview`, input),
   });
 }

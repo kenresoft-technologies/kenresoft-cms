@@ -21,7 +21,15 @@ import { dirname, join } from 'node:path';
 import { runWrangler, runWranglerInherit } from './lib/wrangler-cli.mjs';
 import { buildAndDeployAdmin, checkWorkerOwnership, deployApi } from './lib/deploy-helpers.mjs';
 import { closePrompt, confirm } from './lib/prompt.mjs';
-import { readDatabaseId, readTomlFile, readWorkerName, replaceLine, writeTomlFile, writeWorkerName } from './lib/wrangler-toml.mjs';
+import {
+  readDatabaseId,
+  readTomlFile,
+  readWorkerName,
+  replaceCorsOrigin as replaceCorsOriginInToml,
+  replaceLine,
+  writeTomlFile,
+  writeWorkerName,
+} from './lib/wrangler-toml.mjs';
 
 const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const API_DIR = join(REPO_ROOT, 'apps', 'api');
@@ -63,14 +71,8 @@ function readVar(toml, key) {
 // Worker retires its old origin, so the allow-list needs the old one *replaced*, not just a new
 // one tacked on next to a now-dead entry.
 function replaceCorsOrigin(oldOrigin, newOrigin) {
-  const toml = readTomlFile(WRANGLER_TOML_PATH);
-  const match = toml.match(/CORS_ORIGINS = "([^"]*)"/);
-  if (!match) throw new Error('Could not find CORS_ORIGINS in wrangler.toml.');
-  const existing = match[1].split(',').map((entry) => entry.trim()).filter(Boolean);
-  const updated = existing.includes(oldOrigin)
-    ? existing.map((entry) => (entry === oldOrigin ? newOrigin : entry))
-    : [...existing, newOrigin];
-  writeTomlFile(WRANGLER_TOML_PATH, toml.replace(/CORS_ORIGINS = "([^"]*)"/, `CORS_ORIGINS = "${updated.join(',')}"`));
+  const { toml } = replaceCorsOriginInToml(readTomlFile(WRANGLER_TOML_PATH), oldOrigin, newOrigin);
+  writeTomlFile(WRANGLER_TOML_PATH, toml);
 }
 
 async function renameApi(newName) {

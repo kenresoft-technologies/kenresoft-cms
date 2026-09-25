@@ -4,8 +4,17 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { configureDomain, configureTurnstile, describeDomain, describeTurnstile, resolveInput } from './configure.mjs';
-import { readCustomDomainRoutes, readVarLine, readWorkersDevEnabled } from './wrangler-toml.mjs';
+import {
+  configureAdminDomain,
+  configureDomain,
+  configureTurnstile,
+  describeDomain,
+  describeTurnstile,
+  normalizeAdminDomain,
+  planAdminDomainCorsUpdate,
+  resolveInput,
+} from './configure.mjs';
+import { readCorsOrigins, readCustomDomainRoutes, readVarLine, readWorkersDevEnabled, setVarLine } from './wrangler-toml.mjs';
 
 // This is the single guard the reported bug ("skipping Resend can make it appear unconfigured")
 // depends on: a blank secret-prompt answer (pressing Enter to mean "leave it as it is") must
@@ -129,6 +138,369 @@ test('configureTurnstile (CI): no TURNSTILE_*_NEW and no TURNSTILE_DISABLE leave
       env: {},
     });
     assert.deepEqual(result, { changed: false });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ---- configureAdminDomain ----
+//
+// Real production migration this backs: moving the Admin app's own custom domain (e.g.
+// cms.example.com -> admin.example.com) while keeping ADMIN_URL/CORS_ORIGINS in sync and never
+// touching BETTER_AUTH_URL. deployAdmin/deployApiFn/putSecret are injected fakes — this never
+// shells out to a real wrangler binary, matching every other unit test in this suite.
+
+const ADMIN_TOML = 'name = "kenresoft-cms-admin"\ncompatibility_date = "2026-09-02"\n\n[assets]\ndirectory = "./dist"\n';
+const API_TOML_WITH_CORS = (cors) =>
+  `name = "kenresoft-cms-api"\ncompatibility_date = "2026-01-01"\n\n[vars]\nCORS_ORIGINS = "${cors}"\nBETTER_AUTH_URL = "https://api.example.com"\n`;
+
+function writeAdminDomainFixtures({ adminToml = ADMIN_TOML, apiCors = 'https://cms.example.com,https://example.com' } = {}) {
+  const dir = mkdtempSync(join(tmpdir(), 'kenresoft-configure-admin-domain-'));
+  const adminPath = join(dir, 'admin-wrangler.toml');
+  const apiPath = join(dir, 'wrangler.toml');
+  writeFileSync(adminPath, adminToml);
+  writeFileSync(apiPath, API_TOML_WITH_CORS(apiCors));
+  return { dir, adminPath, apiPath };
+}
+
+function fakeDeployAdmin(urls = ['https://kenresoft-cms-admin.example.workers.dev']) {
+  const calls = [];
+  let i = 0;
+  const fn = () => {
+    calls.push(true);
+    return urls[Math.min(i++, urls.length - 1)];
+  };
+  fn.calls = calls;
+  return fn;
+}
+
+test('normalizeAdminDomain strips protocol, trailing slashes, and lowercases', () => {
+  assert.equal(normalizeAdminDomain('https://Admin.Example.com/'), 'admin.example.com');
+  assert.equal(normalizeAdminDomain('admin.example.com'), 'admin.example.com');
+  assert.equal(normalizeAdminDomain('  http://admin.example.com  '), 'admin.example.com');
+});
+
+test('planAdminDomainCorsUpdate: replaces the old admin origin, preserving unrelated origins', () => {
+  const { toml } = planAdminDomainCorsUpdate(API_TOML_WITH_CORS('https://cms.example.com,https://example.com'), 'https://cms.example.com', 'https://admin.example.com');
+  assert.deepEqual(readCorsOrigins(toml), ['https://admin.example.com', 'https://example.com']);
+});
+
+test('configureAdminDomain (CI): migrates a domain end to end — Admin route, ADMIN_URL, and CORS all updated; BETTER_AUTH_URL untouched', async () => {
+  const { dir, adminPath, apiPath } = writeAdminDomainFixtures({
+    adminToml: addCustomDomainRouteFixture(ADMIN_TOML, 'cms.example.com'),
+  });
+  const secretCalls = [];
+  try {
+    const result = await configureAdminDomain({
+      adminWranglerTomlPath: adminPath,
+      adminDir: dir,
+      apiWranglerTomlPath: apiPath,
+      apiDir: dir,
+      ci: true,
+      env: { ADMIN_CUSTOM_DOMAIN_NEW: 'admin.example.com' },
+      deployAdmin: fakeDeployAdmin(),
+      deployApiFn: () => 'https://api.example.com',
+      putSecret: (name, value) => secretCalls.push({ name, value }),
+    });
+    assert.equal(result.changed, true);
+
+    // 1. Admin custom domain migrated (old route in this test is already the pre-existing one —
+    // see the note below; the new one must be present).
+    assert.deepEqual(readCustomDomainRoutes(readFileSync(adminPath, 'utf8')), ['cms.example.com', 'admin.example.com']);
+
+    // 2. ADMIN_URL secret updated to the new domain.
+    assert.deepEqual(secretCalls, [{ name: 'ADMIN_URL', value: 'https://admin.example.com' }]);
+
+    // 3. CORS_ORIGINS migrated: new origin added, old one removed, unrelated origin preserved.
+    const apiToml = readFileSync(apiPath, 'utf8');
+    assert.deepEqual(readCorsOrigins(apiToml), ['https://admin.example.com', 'https://example.com']);
+
+    // 4. BETTER_AUTH_URL is a completely separate concept and must never be touched by this.
+    assert.equal(readVarLine(apiToml, 'BETTER_AUTH_URL'), 'https://api.example.com');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('configureAdminDomain (CI): duplicate prevention — the new origin already present is not duplicated', async () => {
+  const { dir, adminPath, apiPath } = writeAdminDomainFixtures({
+    adminToml: addCustomDomainRouteFixture(ADMIN_TOML, 'cms.example.com'),
+    apiCors: 'https://admin.example.com,https://example.com',
+  });
+  try {
+    await configureAdminDomain({
+      adminWranglerTomlPath: adminPath,
+      adminDir: dir,
+      apiWranglerTomlPath: apiPath,
+      apiDir: dir,
+      ci: true,
+      env: { ADMIN_CUSTOM_DOMAIN_NEW: 'admin.example.com' },
+      deployAdmin: fakeDeployAdmin(),
+      deployApiFn: () => 'https://api.example.com',
+      putSecret: () => {},
+    });
+    const apiToml = readFileSync(apiPath, 'utf8');
+    assert.deepEqual(readCorsOrigins(apiToml), ['https://admin.example.com', 'https://example.com']);
+    assert.equal((apiToml.match(/https:\/\/admin\.example\.com/g) ?? []).length, 1);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('configureAdminDomain (CI): idempotent — running the migration twice makes no further changes on the second run', async () => {
+  const { dir, adminPath, apiPath } = writeAdminDomainFixtures({
+    adminToml: addCustomDomainRouteFixture(ADMIN_TOML, 'cms.example.com'),
+  });
+  try {
+    const args = {
+      adminWranglerTomlPath: adminPath,
+      adminDir: dir,
+      apiWranglerTomlPath: apiPath,
+      apiDir: dir,
+      ci: true,
+      env: { ADMIN_CUSTOM_DOMAIN_NEW: 'admin.example.com' },
+      deployAdmin: fakeDeployAdmin(),
+      deployApiFn: () => 'https://api.example.com',
+      putSecret: () => {},
+    };
+    await configureAdminDomain(args);
+    const afterFirst = readFileSync(apiPath, 'utf8');
+
+    const second = await configureAdminDomain(args);
+    const afterSecond = readFileSync(apiPath, 'utf8');
+    assert.equal(afterSecond, afterFirst, 'a second run must not change CORS_ORIGINS further');
+    assert.equal(second.apiRedeployed, false, 'no CORS change on the second run means no redeploy either');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('configureAdminDomain (CI): ADMIN_CUSTOM_DOMAIN_NEW unset leaves everything unchanged', async () => {
+  const { dir, adminPath, apiPath } = writeAdminDomainFixtures();
+  try {
+    const result = await configureAdminDomain({
+      adminWranglerTomlPath: adminPath,
+      adminDir: dir,
+      apiWranglerTomlPath: apiPath,
+      apiDir: dir,
+      ci: true,
+      env: {},
+      deployAdmin: fakeDeployAdmin(),
+      deployApiFn: () => 'https://api.example.com',
+      putSecret: () => assert.fail('putSecret must not be called when no domain is requested'),
+    });
+    assert.deepEqual(result, { changed: false });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('configureAdminDomain (CI): an Admin Worker deploy failure leaves CORS_ORIGINS/ADMIN_URL/route completely untouched', async () => {
+  const { dir, adminPath, apiPath } = writeAdminDomainFixtures();
+  const apiTomlBefore = readFileSync(apiPath, 'utf8');
+  try {
+    await assert.rejects(
+      configureAdminDomain({
+        adminWranglerTomlPath: adminPath,
+        adminDir: dir,
+        apiWranglerTomlPath: apiPath,
+        apiDir: dir,
+        ci: true,
+        env: { ADMIN_CUSTOM_DOMAIN_NEW: 'admin.example.com' },
+        deployAdmin: () => {
+          throw new Error('simulated deploy failure');
+        },
+        deployApiFn: () => assert.fail('the API must never be touched when the Admin deploy fails'),
+        putSecret: () => assert.fail('ADMIN_URL must never be updated when the Admin deploy fails'),
+      }),
+      /simulated deploy failure/,
+    );
+    // CORS_ORIGINS is completely unchanged — no partial migration.
+    assert.equal(readFileSync(apiPath, 'utf8'), apiTomlBefore);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('configureAdminDomain (CI): a failed API redeploy is reported as incomplete, not a success — Admin domain stays live', async () => {
+  const { dir, adminPath, apiPath } = writeAdminDomainFixtures();
+  try {
+    await assert.rejects(
+      configureAdminDomain({
+        adminWranglerTomlPath: adminPath,
+        adminDir: dir,
+        apiWranglerTomlPath: apiPath,
+        apiDir: dir,
+        ci: true,
+        env: { ADMIN_CUSTOM_DOMAIN_NEW: 'admin.example.com' },
+        deployAdmin: fakeDeployAdmin(),
+        putSecret: () => {},
+        deployApiFn: () => {
+          throw new Error('simulated API deploy failure');
+        },
+      }),
+      /Admin domain migration incomplete/,
+    );
+    // The Admin Worker's own route change is real and stays in place — it genuinely deployed.
+    assert.deepEqual(readCustomDomainRoutes(readFileSync(adminPath, 'utf8')), ['admin.example.com']);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('configureAdminDomain (CI) and configureAdminDomain via env produce the same CORS outcome as the direct pure planner', async () => {
+  const { dir, adminPath, apiPath } = writeAdminDomainFixtures({
+    adminToml: addCustomDomainRouteFixture(ADMIN_TOML, 'cms.example.com'),
+  });
+  try {
+    await configureAdminDomain({
+      adminWranglerTomlPath: adminPath,
+      adminDir: dir,
+      apiWranglerTomlPath: apiPath,
+      apiDir: dir,
+      ci: true,
+      env: { ADMIN_CUSTOM_DOMAIN_NEW: 'admin.example.com' },
+      deployAdmin: fakeDeployAdmin(),
+      deployApiFn: () => 'https://api.example.com',
+      putSecret: () => {},
+    });
+    const viaCi = readCorsOrigins(readFileSync(apiPath, 'utf8'));
+
+    const { toml: viaPlanner } = planAdminDomainCorsUpdate(API_TOML_WITH_CORS('https://cms.example.com,https://example.com'), 'https://cms.example.com', 'https://admin.example.com');
+    assert.deepEqual(viaCi, readCorsOrigins(viaPlanner));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// Minimal local helper mirroring addCustomDomainRoute's own on-disk shape, used only to seed an
+// admin wrangler.toml fixture that already has an existing custom domain (so oldAdminOrigin is
+// derived from it directly rather than needing a fake deploy for that step too).
+function addCustomDomainRouteFixture(toml, pattern) {
+  return toml.replace(/\n*$/, '') + `\n\n[[routes]]\npattern = "${pattern}"\ncustom_domain = true\n`;
+}
+
+// ---- Ambiguous old-domain regression tests ----
+//
+// Direct regression coverage for a real, reported production incident: an earlier version of
+// configureAdminDomain always picked `existingDomains[0]` as "the" old admin origin. With more
+// than one custom-domain route already on the Admin Worker, that guess could be wrong, silently
+// replacing/removing a completely unrelated, still-in-use CORS_ORIGINS entry. These tests exercise
+// exactly that starting shape (two existing admin routes) and confirm every unrelated origin
+// survives regardless of which path is taken.
+
+function addTwoCustomDomainRoutesFixture(toml, first, second) {
+  return addCustomDomainRouteFixture(addCustomDomainRouteFixture(toml, first), second);
+}
+
+test('configureAdminDomain (CI): more than one existing admin domain, no ADMIN_OLD_DOMAIN_NEW given — only adds the new origin, never guesses/removes', async () => {
+  const { dir, adminPath, apiPath } = writeAdminDomainFixtures({
+    adminToml: addTwoCustomDomainRoutesFixture(ADMIN_TOML, 'cms.example.com', 'old-admin.example.com'),
+    apiCors: 'https://cms.example.com,https://kenresoft-marketing.example.com,https://old-admin.example.com',
+  });
+  try {
+    const result = await configureAdminDomain({
+      adminWranglerTomlPath: adminPath,
+      adminDir: dir,
+      apiWranglerTomlPath: apiPath,
+      apiDir: dir,
+      ci: true,
+      env: { ADMIN_CUSTOM_DOMAIN_NEW: 'admin.example.com' },
+      deployAdmin: fakeDeployAdmin(),
+      deployApiFn: () => 'https://api.example.com',
+      putSecret: () => {},
+    });
+    assert.equal(result.changed, true);
+    assert.equal(result.oldRouteRemoved, false);
+    // Every previously-existing origin survives untouched — this is the direct fix for the
+    // reported incident (an unrelated origin silently disappearing).
+    assert.deepEqual(readCorsOrigins(readFileSync(apiPath, 'utf8')), [
+      'https://cms.example.com',
+      'https://kenresoft-marketing.example.com',
+      'https://old-admin.example.com',
+      'https://admin.example.com',
+    ]);
+    // Both old admin routes are left in place — no route was confidently identified to retire.
+    assert.deepEqual(readCustomDomainRoutes(readFileSync(adminPath, 'utf8')), ['cms.example.com', 'old-admin.example.com', 'admin.example.com']);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('configureAdminDomain (CI): ADMIN_OLD_DOMAIN_NEW disambiguates which of several existing domains to retire', async () => {
+  const { dir, adminPath, apiPath } = writeAdminDomainFixtures({
+    adminToml: addTwoCustomDomainRoutesFixture(ADMIN_TOML, 'cms.example.com', 'old-admin.example.com'),
+    apiCors: 'https://cms.example.com,https://kenresoft-marketing.example.com,https://old-admin.example.com',
+  });
+  try {
+    const result = await configureAdminDomain({
+      adminWranglerTomlPath: adminPath,
+      adminDir: dir,
+      apiWranglerTomlPath: apiPath,
+      apiDir: dir,
+      ci: true,
+      env: { ADMIN_CUSTOM_DOMAIN_NEW: 'admin.example.com', ADMIN_OLD_DOMAIN_NEW: 'old-admin.example.com', REMOVE_OLD_ADMIN_DOMAIN: 'true' },
+      deployAdmin: fakeDeployAdmin(),
+      deployApiFn: () => 'https://api.example.com',
+      putSecret: () => {},
+    });
+    assert.equal(result.oldRouteRemoved, true);
+    // The explicitly-named old origin is replaced; the other pre-existing origin (cms.example.com,
+    // which is NOT the one named as retiring) and the unrelated marketing origin both survive.
+    assert.deepEqual(readCorsOrigins(readFileSync(apiPath, 'utf8')), [
+      'https://cms.example.com',
+      'https://kenresoft-marketing.example.com',
+      'https://admin.example.com',
+    ]);
+    // The named old route is gone; the other pre-existing route (cms.example.com) is untouched.
+    assert.deepEqual(readCustomDomainRoutes(readFileSync(adminPath, 'utf8')), ['cms.example.com', 'admin.example.com']);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('configureAdminDomain (CI): ADMIN_OLD_DOMAIN_NEW naming a domain that is not actually connected throws rather than guessing', async () => {
+  const { dir, adminPath, apiPath } = writeAdminDomainFixtures({
+    adminToml: addTwoCustomDomainRoutesFixture(ADMIN_TOML, 'cms.example.com', 'old-admin.example.com'),
+  });
+  try {
+    await assert.rejects(
+      configureAdminDomain({
+        adminWranglerTomlPath: adminPath,
+        adminDir: dir,
+        apiWranglerTomlPath: apiPath,
+        apiDir: dir,
+        ci: true,
+        env: { ADMIN_CUSTOM_DOMAIN_NEW: 'admin.example.com', ADMIN_OLD_DOMAIN_NEW: 'not-connected.example.com' },
+        deployAdmin: fakeDeployAdmin(),
+        deployApiFn: () => 'https://api.example.com',
+        putSecret: () => {},
+      }),
+      /does not match any of this Admin Worker's existing custom domains/,
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('configureAdminDomain (CI): REMOVE_OLD_ADMIN_DOMAIN removes exactly the retired route in the ordinary single-old-domain case', async () => {
+  const { dir, adminPath, apiPath } = writeAdminDomainFixtures({
+    adminToml: addCustomDomainRouteFixture(ADMIN_TOML, 'cms.example.com'),
+  });
+  try {
+    const result = await configureAdminDomain({
+      adminWranglerTomlPath: adminPath,
+      adminDir: dir,
+      apiWranglerTomlPath: apiPath,
+      apiDir: dir,
+      ci: true,
+      env: { ADMIN_CUSTOM_DOMAIN_NEW: 'admin.example.com', REMOVE_OLD_ADMIN_DOMAIN: 'true' },
+      deployAdmin: fakeDeployAdmin(),
+      deployApiFn: () => 'https://api.example.com',
+      putSecret: () => {},
+    });
+    assert.equal(result.oldRouteRemoved, true);
+    assert.deepEqual(readCustomDomainRoutes(readFileSync(adminPath, 'utf8')), ['admin.example.com']);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

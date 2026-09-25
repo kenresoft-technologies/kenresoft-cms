@@ -38,17 +38,59 @@ describe('email templates (real D1)', () => {
     }
   });
 
-  it('updates a template, marks it customized, and restore-default reverts it (but leaves enabled alone)', async () => {
+  it('classifies a legacy (pre-mode-column) row lazily on first read: untouched bodyHtml becomes Standard, customized bodyHtml becomes Developer', async () => {
+    const headers = await adminHeaders('templates-legacy@example.test');
+
+    // Seed normally, then simulate two rows exactly as migration 0055 would have left them —
+    // mode/heading/bodyText/ctaLabel/fineprint all NULL, only the old bodyHtml column populated.
+    await SELF.fetch('https://example.com/api/v1/admin/email-templates', { headers });
+    const untouchedRow = await env.DB.prepare('SELECT body_html FROM email_templates WHERE key = ?')
+      .bind('email_verification')
+      .first<{ body_html: string }>();
+    await env.DB.exec(
+      `UPDATE email_templates SET mode = NULL, heading = NULL, body_text = NULL, cta_label = NULL, fineprint = NULL WHERE key = 'email_verification'`,
+    );
+    await env.DB.prepare(
+      `UPDATE email_templates SET mode = NULL, heading = NULL, body_text = NULL, cta_label = NULL, fineprint = NULL, body_html = ? WHERE key = 'password_reset'`,
+    )
+      .bind('<p>A hand-written custom template, {{user.name}}</p>')
+      .run();
+
+    const res = await SELF.fetch('https://example.com/api/v1/admin/email-templates', { headers });
+    const templates = await res.json<{ key: string; mode: string; isCustomized: boolean; content: { heading: string } }[]>();
+    const untouched = templates.find((t) => t.key === 'email_verification')!;
+    const customized = templates.find((t) => t.key === 'password_reset')!;
+
+    expect(untouched.mode).toBe('standard');
+    expect(untouched.isCustomized).toBe(false);
+    expect(untouched.content.heading).toBe('Verify your email address');
+
+    expect(customized.mode).toBe('developer');
+    expect(customized.isCustomized).toBe(true);
+
+    // The classification is persisted, not recomputed every call — a second read shows the same
+    // mode without needing the row to still look "legacy".
+    const row = await env.DB.prepare('SELECT mode FROM email_templates WHERE key = ?').bind('email_verification').first<{ mode: string }>();
+    expect(row?.mode).toBe('standard');
+    expect(untouchedRow?.body_html).toBeTruthy();
+  });
+
+  it('updates a template in Standard mode, marks it customized, and restore-default reverts it (but leaves enabled alone)', async () => {
     const headers = await adminHeaders('templates-update@example.test');
 
     const updateRes = await SELF.fetch('https://example.com/api/v1/admin/email-templates/password_reset', {
       method: 'PATCH',
       headers,
-      body: JSON.stringify({ subject: 'Custom subject', bodyHtml: '<p>Custom {{resetUrl}}</p>', enabled: false }),
+      body: JSON.stringify({
+        subject: 'Custom subject',
+        content: { heading: 'Reset it', bodyText: 'Custom body copy.', ctaLabel: 'Go', fineprint: 'Expires soon.' },
+        enabled: false,
+      }),
     });
     expect(updateRes.status).toBe(200);
-    const updated = await updateRes.json<{ subject: string; enabled: boolean; isCustomized: boolean }>();
+    const updated = await updateRes.json<{ subject: string; mode: string; enabled: boolean; isCustomized: boolean }>();
     expect(updated.subject).toBe('Custom subject');
+    expect(updated.mode).toBe('standard');
     expect(updated.enabled).toBe(false);
     expect(updated.isCustomized).toBe(true);
 
@@ -57,21 +99,38 @@ describe('email templates (real D1)', () => {
       headers,
     });
     expect(restoreRes.status).toBe(200);
-    const restored = await restoreRes.json<{ subject: string; enabled: boolean; isCustomized: boolean }>();
+    const restored = await restoreRes.json<{ subject: string; mode: string; enabled: boolean; isCustomized: boolean }>();
     expect(restored.subject).toBe('Reset your password');
+    expect(restored.mode).toBe('standard');
     expect(restored.isCustomized).toBe(false);
     // Restoring copy is not the same action as re-enabling — an admin who disabled a template
     // on purpose isn't silently overridden by clicking "Restore default".
     expect(restored.enabled).toBe(false);
   });
 
-  it('preview renders a (possibly unsaved) body against sample data, substituting and HTML-escaping variables, and sanitizes the output', async () => {
+  it('switches a template into Developer mode, edits raw HTML directly, and marks it customized', async () => {
+    const headers = await adminHeaders('templates-developer-mode@example.test');
+
+    const updateRes = await SELF.fetch('https://example.com/api/v1/admin/email-templates/password_reset', {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify({ mode: 'developer', subject: 'Custom subject', bodyHtml: '<p>Custom {{resetUrl}}</p>' }),
+    });
+    expect(updateRes.status).toBe(200);
+    const updated = await updateRes.json<{ mode: string; isCustomized: boolean; bodyHtml: string }>();
+    expect(updated.mode).toBe('developer');
+    expect(updated.isCustomized).toBe(true);
+    expect(updated.bodyHtml).toBe('<p>Custom {{resetUrl}}</p>');
+  });
+
+  it('Developer-mode preview renders a (possibly unsaved) body against sample data, substituting and HTML-escaping variables, and sanitizes the output', async () => {
     const headers = await adminHeaders('templates-preview@example.test');
 
     const res = await SELF.fetch('https://example.com/api/v1/admin/email-templates/password_reset/preview', {
       method: 'POST',
       headers,
       body: JSON.stringify({
+        mode: 'developer',
         subject: 'Hi {{user.name}}',
         bodyHtml: '<p>Click <a href="{{resetUrl}}">here</a>, {{user.name}}</p><script>alert(1)</script>',
       }),
@@ -88,6 +147,59 @@ describe('email templates (real D1)', () => {
     expect(rendered.text).toContain('Jane Doe');
   });
 
+  it('Standard-mode preview renders structured content through the active design, escaping admin-supplied text', async () => {
+    const headers = await adminHeaders('templates-preview-standard@example.test');
+
+    const res = await SELF.fetch('https://example.com/api/v1/admin/email-templates/password_reset/preview', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        mode: 'standard',
+        subject: 'Reset it',
+        content: {
+          heading: '<script>alert(1)</script>Reset your password',
+          bodyText: 'Tap the button below.',
+          ctaLabel: 'Reset',
+          fineprint: 'Expires soon.',
+        },
+      }),
+    });
+    expect(res.status).toBe(200);
+    const rendered = await res.json<{ html: string }>();
+    expect(rendered.html).toContain('https://example.com/reset-password?token=sample-preview-token');
+    expect(rendered.html).toContain('Tap the button below.');
+    expect(rendered.html).not.toContain('<script>alert(1)</script>');
+    expect(rendered.html).toContain('&lt;script&gt;');
+    // The structural greeting is always present and never editable through `content`.
+    expect(rendered.html).toContain('Jane Doe');
+  });
+
+  it("the design gallery's preview accepts a candidate designId without changing what's saved", async () => {
+    const headers = await adminHeaders('templates-preview-design@example.test');
+
+    const designsRes = await SELF.fetch('https://example.com/api/v1/admin/email-templates/designs', { headers });
+    expect(designsRes.status).toBe(200);
+    const designs = await designsRes.json<{ id: string }[]>();
+    expect(designs.map((d) => d.id).sort()).toEqual(['cloudflare-inspired', 'corporate', 'elegant', 'modern-minimal', 'simple']);
+
+    const res = await SELF.fetch('https://example.com/api/v1/admin/email-templates/email_verification/preview', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        mode: 'standard',
+        subject: 'Verify',
+        designId: 'simple',
+        content: { heading: 'Verify your email', bodyText: 'One click.', ctaLabel: 'Verify', fineprint: 'Expires soon.' },
+      }),
+    });
+    expect(res.status).toBe(200);
+
+    // The deployment's actually-active design (never saved here) is untouched by a preview call.
+    const listRes = await SELF.fetch('https://example.com/api/v1/admin/structured-settings/emailBranding', { headers });
+    const branding = await listRes.json();
+    expect(branding).toBeNull();
+  });
+
   it('HTML-escapes a variable value that itself contains markup, so it can never break out of the template', async () => {
     const headers = await adminHeaders('templates-escape@example.test');
 
@@ -102,7 +214,7 @@ describe('email templates (real D1)', () => {
     const res = await SELF.fetch('https://example.com/api/v1/admin/email-templates/email_verification/preview', {
       method: 'POST',
       headers,
-      body: JSON.stringify({ subject: 'Hi {{user.name}}', bodyHtml: '<p>{{site.name}}</p>' }),
+      body: JSON.stringify({ mode: 'developer', subject: 'Hi {{user.name}}', bodyHtml: '<p>{{site.name}}</p>' }),
     });
     expect(res.status).toBe(200);
     const rendered = await res.json<{ html: string }>();

@@ -9,6 +9,7 @@ import { getEmailTemplateDefault } from './defaults';
 import { getEmailTemplateByKeyReadOnly } from '../../repositories/email-templates';
 import { renderEmailTemplate } from './render';
 import type { TemplateVariables } from './render';
+import { renderStandardModeBodyHtml } from './standard-render';
 
 export interface PreparedTemplatedEmail {
   subject: string;
@@ -55,8 +56,20 @@ export async function prepareTemplatedEmail(
     const template = await getEmailTemplateByKeyReadOnly(db, key);
     if (template && template.enabled) {
       subject = template.subject;
-      bodyHtml = template.bodyHtml;
       plainText = template.plainText;
+      // 'standard' renders live from the structured content columns (current branding/design
+      // included, never stale); 'developer' — and a legacy row whose `mode` is still null,
+      // never resolved because this read-only path deliberately never writes — uses the stored
+      // bodyHtml directly, exactly as every template worked before this mode split existed.
+      bodyHtml =
+        template.mode === 'standard' && template.heading && template.bodyText && template.ctaLabel && template.fineprint
+          ? await renderStandardModeBodyHtml(db, env, key, {
+              heading: template.heading,
+              bodyText: template.bodyText,
+              ctaLabel: template.ctaLabel,
+              fineprint: template.fineprint,
+            })
+          : template.bodyHtml;
     } else if (template && !template.enabled) {
       // An admin explicitly disabled this template — a strange thing to do for a security-
       // critical email, but the safe minimal fallback below still sends something rather than

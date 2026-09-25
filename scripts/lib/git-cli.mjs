@@ -68,7 +68,15 @@ async function confirm(question) {
 // rather than `main` (whatever a real install's own auto-detection would otherwise resolve to).
 // Left undefined for every normal install, which keeps following upstream's actual default
 // branch automatically, same as before this option existed.
-export async function pullLatestCode(repoRoot, { branch } = {}) {
+//
+// `ci`, when true, answers the one-time "unrelated histories" reconciliation prompt below
+// automatically instead of asking — required for any unattended run (a deployer's own CI/CD
+// pipeline running `pnpm run update`, matching the real report that it was stuck failing every
+// run there with no way to answer a y/N prompt on a pipeline with no TTY attached). Without this,
+// `confirm()`'s `readline.question()` reads immediate EOF on a non-interactive stdin and resolves
+// to an empty answer, which reads as "no" — silently cancelling the update on every single CI
+// run, not failing loudly or asking again next time.
+export async function pullLatestCode(repoRoot, { branch, ci = false } = {}) {
   if (!existsSync(join(repoRoot, '.git'))) {
     console.log('Not a git repository — skipping the automatic code pull (deploying whatever is on disk).');
     return;
@@ -148,10 +156,16 @@ export async function pullLatestCode(repoRoot, { branch } = {}) {
           'BETTER_AUTH_URL, any custom-domain routes — is restored verbatim right after this\n' +
           'merge, not overwritten by the incoming template).',
       );
-      const proceed = await confirm('Proceed with this one-time reconciliation?');
+      // Unattended (--ci): there's no one to ask, and re-running gets the same unrelated-
+      // histories state every time regardless — proceeding automatically is what makes `pnpm
+      // run update` in CI/CD actually converge instead of failing identically forever.
+      const proceed = ci ? true : await confirm('Proceed with this one-time reconciliation?');
+      if (ci) {
+        console.log('--ci given: proceeding with the one-time reconciliation automatically.');
+      }
       if (!proceed) {
         if (stashed) runGitInherit(['stash', 'pop'], repoRoot);
-        throw new Error('Update cancelled — code was not pulled. Re-run when ready.');
+        throw new Error('Update cancelled — code was not pulled. Re-run when ready, or pass --ci to skip this prompt.');
       }
       runGitInherit(
         ['merge', `upstream/${defaultBranch}`, '--allow-unrelated-histories', '-X', 'theirs', '--no-edit'],

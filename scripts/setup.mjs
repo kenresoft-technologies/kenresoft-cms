@@ -27,6 +27,7 @@ import { runWrangler, runWranglerInherit } from './lib/wrangler-cli.mjs';
 import { buildAndDeployAdmin, checkWorkerOwnership, deployApi, resolveAdminApiUrl } from './lib/deploy-helpers.mjs';
 import { ask, closePrompt, confirm, select } from './lib/prompt.mjs';
 import {
+  addCorsOrigin as addCorsOriginToToml,
   extractTomlValue,
   findTopLevelBlock,
   insertAfterLine,
@@ -264,16 +265,9 @@ async function ensureAuthSecret() {
 // keep appending the same origin to CORS_ORIGINS every time — parses the existing comma-separated
 // list and only writes back (and reports a change) if `origin` isn't already one of its entries.
 function addCorsOrigin(origin) {
-  const toml = readToml();
-  const match = toml.match(/CORS_ORIGINS = "([^"]*)"/);
-  if (!match) throw new Error('Could not find CORS_ORIGINS in wrangler.toml.');
-
-  const existing = match[1].split(',').map((entry) => entry.trim()).filter(Boolean);
-  if (existing.includes(origin)) return false;
-
-  const updatedList = [...existing, origin].join(',');
-  writeToml(toml.replace(/CORS_ORIGINS = "([^"]*)"/, `CORS_ORIGINS = "${updatedList}"`));
-  return true;
+  const { toml, changed } = addCorsOriginToToml(readToml(), origin);
+  if (changed) writeToml(toml);
+  return changed;
 }
 
 // Unlike `d1/r2 ... create`, `wrangler deploy` has no "already exists" failure mode — every fork
