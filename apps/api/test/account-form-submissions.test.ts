@@ -21,7 +21,7 @@ async function adminJson(cookie: string, path: string, method: string, body?: un
   return SELF.fetch(`${BASE}${path}`, {
     method,
     headers: { cookie, 'content-type': 'application/json' },
-    body: body === undefined ? undefined : JSON.stringify(body),
+    body: body === undefined ? null : JSON.stringify(body),
   });
 }
 
