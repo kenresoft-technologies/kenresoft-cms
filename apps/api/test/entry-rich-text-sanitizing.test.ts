@@ -64,10 +64,11 @@ describe('entry rich_text fields are sanitised', () => {
       config: null,
       presentation: null,
     });
+    // What the admin editor sends (apps/admin's toStoredRichTextHtml).
     const checklist =
-      '<ul data-type="taskList"><li data-checked="true" data-type="taskItem"><label><input type="checkbox" checked="checked"><span></span></label><div><p>Book venue</p></div></li></ul>';
+      '<ul data-type="taskList" style="list-style: none"><li data-checked="true" data-type="taskItem"><input type="checkbox" checked="checked" disabled="">Book venue</li></ul>';
     const saved =
-      '<ul data-type="taskList"><li data-checked="true" data-type="taskItem"><label><input type="checkbox" disabled checked><span></span></label><div><p>Book venue</p></div></li></ul>';
+      '<ul data-type="taskList" style="list-style: none"><li data-checked="true" data-type="taskItem"><input type="checkbox" disabled checked style="display: inline-block; width: auto; margin: 0 0.4em 0 0">Book venue</li></ul>';
 
     const entry = await createEntry(db, ct.id, { slug: 'b', status: 'published', data: { body: checklist } }, null);
     expect(entry.data['body']).toBe(saved);

@@ -49,10 +49,10 @@ const { html } = Astro.props;
     margin-top: 0.35em;
   }
 
-  /* Task lists (`- [ ] item` / the editor's checklist button). The editor stores each item as
-     <li data-type="taskItem"><label><input type="checkbox"><span></span></label><div><p>…</p></div></li>,
-     which without these rules renders as a bullet with the checkbox and its text on separate
-     lines. The checkbox is display-only here — a visitor ticking it would change nothing. */
+  /* Checklists. Saved as <ul data-type="taskList" style="list-style: none"><li data-type="taskItem">
+     <input type="checkbox" disabled> text</li></ul>, which already renders on one line with no
+     CSS; these rules only tidy the indent. The second group handles checklists saved before that
+     shape existed, where the checkbox sits in a <label> and the text in a separate <div>. */
   .rich-text :global(ul[data-type='taskList']) {
     list-style: none;
     padding-left: 0.25em;
@@ -63,19 +63,10 @@ const { html } = Astro.props;
     padding-left: 1.4em;
   }
 
-  .rich-text :global(li[data-type='taskItem']) {
+  .rich-text :global(li[data-type='taskItem']:has(> label)) {
     display: flex;
     align-items: flex-start;
     gap: 0.5em;
-  }
-
-  .rich-text :global(li[data-type='taskItem'] > label) {
-    margin-top: 0.3em;
-    pointer-events: none;
-  }
-
-  .rich-text :global(li[data-type='taskItem'] > div) {
-    flex: 1;
   }
 
   .rich-text :global(li[data-type='taskItem'] > div > p) {

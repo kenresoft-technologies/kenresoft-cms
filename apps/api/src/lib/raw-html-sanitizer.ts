@@ -62,10 +62,11 @@ const PAGE_STYLE_PROPERTIES = [
 ];
 
 // The page preset also sanitizes `rich_text` entry fields and the RichText block, whose HTML
-// comes from the admin's Tiptap editor. Its checklist markup —
-//   <ul data-type="taskList"><li data-type="taskItem" data-checked="true">
-//     <label><input type="checkbox" checked><span></span></label><div><p>…</p></div></li></ul>
-// — needs the data-* attributes (the editor re-reads a checklist from them) and a checkbox (what
+// comes from the admin's editor. Its checklists are saved as
+//   <ul data-type="taskList" style="list-style: none"><li data-type="taskItem" data-checked="true">
+//     <input type="checkbox" disabled checked> text</li></ul>
+// (apps/admin's toStoredRichTextHtml), and older saves as Tiptap's own <label>/<div> variant.
+// Both need the data-* attributes (the editor re-reads a checklist from them) and a checkbox (what
 // a public site shows). Without them, saving turned every checklist into a plain bullet. Each is
 // value-validated below, <label> gets no attributes at all (so no `for`), and <input> is handled
 // by sanitizeTaskCheckbox. Page preset only: an email has no use for either.
@@ -267,9 +268,14 @@ function isTrackingPixel(attrs: Map<string, string>): boolean {
 // so nothing else about the original tag (name, value, form, autofocus, handlers...) can carry
 // over. It is always `disabled` — on a public page it only shows the item's state. Any other input
 // type is dropped whole: an input without a valid type would render as a text box.
-function sanitizeTaskCheckbox(attrs: Map<string, string>): string | null {
-  if (attrs.get('type')?.trim().toLowerCase() !== 'checkbox') return null;
-  return attrs.has('checked') ? '<input type="checkbox" disabled checked>' : '<input type="checkbox" disabled>';
+// The fixed inline style keeps it on the same line as its item's text even on a site whose own
+// CSS styles every <input> as a full-width block (a common form reset), which otherwise pushes the
+// text onto the next line.
+const TASK_CHECKBOX_STYLE = 'style="display: inline-block; width: auto; margin: 0 0.4em 0 0"';
+
+function sanitizeTaskCheckbox(attrs: Map<string, string>): string {
+  const checked = attrs.has('checked') ? ' checked' : '';
+  return `<input type="checkbox" disabled${checked} ${TASK_CHECKBOX_STYLE}>`;
 }
 
 function sanitizeWith(html: string, config: SanitizerConfig): string {
@@ -309,8 +315,8 @@ function sanitizeWith(html: string, config: SanitizerConfig): string {
     const parsed = parseAttributes(token.rawAttributes);
     if (token.tagName === 'img' && config.dropTrackingPixels && isTrackingPixel(parsed)) continue;
     if (token.tagName === 'input') {
-      const checkbox = config.taskListCheckboxes ? sanitizeTaskCheckbox(parsed) : null;
-      if (checkbox) output += checkbox;
+      const isCheckbox = parsed.get('type')?.trim().toLowerCase() === 'checkbox';
+      if (config.taskListCheckboxes && isCheckbox) output += sanitizeTaskCheckbox(parsed);
       continue;
     }
     const allowed = config.tagAttributes[token.tagName];

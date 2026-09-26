@@ -129,19 +129,45 @@ describe('RichTextEditor task lists', () => {
     expect(taskItems(onValue.mock.calls.at(-1)![0] as string)).toEqual([{ checked: 'true', text: 'shipped' }]);
   });
 
-  // Exactly what the API stores after sanitizing a saved checklist (apps/api's
-  // raw-html-sanitizer.ts rebuilds each checkbox as `disabled`). Reopening a saved entry must give
-  // back the same checklist, nesting and checked states included, not a plain bullet list.
-  it('reopens a saved, API-sanitized checklist unchanged', async () => {
+  const EDITOR_CHECKLIST =
+    '<ol start="3"><li><p>three</p></li></ol><ul data-type="taskList"><li data-checked="true" data-type="taskItem"><label><input type="checkbox" checked="checked"><span></span></label><div><p>done task</p></div></li><li data-checked="false" data-type="taskItem"><label><input type="checkbox"><span></span></label><div><p>open task</p><ul data-type="taskList"><li data-checked="true" data-type="taskItem"><label><input type="checkbox" checked="checked"><span></span></label><div><p>sub task</p></div></li></ul></div></li></ul>';
+
+  // What a save stores: the flat one-line shape, then run through apps/api's sanitizer (which adds
+  // the checkbox's inline style). And the <label>/<div> shape saved before the flat one existed.
+  const STORED_CHECKLISTS = {
+    flat: '<ol start="3"><li><p>three</p></li></ol><ul data-type="taskList" style="list-style: none"><li data-checked="true" data-type="taskItem"><input type="checkbox" disabled checked style="display: inline-block; width: auto; margin: 0 0.4em 0 0">done task</li><li data-checked="false" data-type="taskItem"><input type="checkbox" disabled style="display: inline-block; width: auto; margin: 0 0.4em 0 0">open task<ul data-type="taskList" style="list-style: none"><li data-checked="true" data-type="taskItem"><input type="checkbox" disabled checked style="display: inline-block; width: auto; margin: 0 0.4em 0 0">sub task</li></ul></li></ul>',
+    label:
+      '<ol start="3"><li><p>three</p></li></ol><ul data-type="taskList"><li data-checked="true" data-type="taskItem"><label><input type="checkbox" disabled checked><span></span></label><div><p>done task</p></div></li><li data-checked="false" data-type="taskItem"><label><input type="checkbox" disabled><span></span></label><div><p>open task</p><ul data-type="taskList"><li data-checked="true" data-type="taskItem"><label><input type="checkbox" disabled checked><span></span></label><div><p>sub task</p></div></li></ul></div></li></ul>',
+  };
+
+  // Reopening a saved entry must give back the same checklist, nesting and checked states
+  // included, not a plain bullet list.
+  it.each(Object.entries(STORED_CHECKLISTS))('reopens a saved checklist (%s shape) unchanged', async (_shape, stored) => {
     const user = userEvent.setup();
-    const stored =
-      '<ol start="3"><li><p>three</p></li></ol><ul data-type="taskList"><li data-checked="true" data-type="taskItem"><label><input type="checkbox" disabled checked><span></span></label><div><p>done task</p></div></li><li data-checked="false" data-type="taskItem"><label><input type="checkbox" disabled><span></span></label><div><p>open task</p><ul data-type="taskList"><li data-checked="true" data-type="taskItem"><label><input type="checkbox" disabled checked><span></span></label><div><p>sub task</p></div></li></ul></div></li></ul>';
     render(<Harness initial={stored} onValue={vi.fn()} />);
 
     await screen.findByRole('combobox', { name: 'Editor mode' });
     await switchTo(user, 'HTML');
-    expect((screen.getByLabelText('HTML source') as HTMLTextAreaElement).value).toBe(
-      '<ol start="3"><li><p>three</p></li></ol><ul data-type="taskList"><li data-checked="true" data-type="taskItem"><label><input type="checkbox" checked="checked"><span></span></label><div><p>done task</p></div></li><li data-checked="false" data-type="taskItem"><label><input type="checkbox"><span></span></label><div><p>open task</p><ul data-type="taskList"><li data-checked="true" data-type="taskItem"><label><input type="checkbox" checked="checked"><span></span></label><div><p>sub task</p></div></li></ul></div></li></ul>',
+    expect((screen.getByLabelText('HTML source') as HTMLTextAreaElement).value).toBe(EDITOR_CHECKLIST);
+  });
+
+  // The saved shape must render on one line with no site CSS: checkbox directly in the <li>,
+  // followed by the text, bullets off. No <label>/<div>/<p> block inside the item.
+  it('saves checklists in the flat shape that renders on one line without CSS', async () => {
+    const user = userEvent.setup();
+    const onValue = vi.fn();
+    render(<Harness onValue={onValue} />);
+
+    await screen.findByRole('combobox', { name: 'Editor mode' });
+    await switchTo(user, 'HTML');
+    fireEvent.change(screen.getByLabelText('HTML source'), { target: { value: EDITOR_CHECKLIST } });
+    await switchTo(user, 'Write');
+
+    await waitFor(() => expect(onValue).toHaveBeenCalled());
+    expect(onValue.mock.calls.at(-1)![0]).toBe(
+      '<ol start="3"><li><p>three</p></li></ol><ul data-type="taskList" style="list-style: none"><li data-checked="true" data-type="taskItem"><input type="checkbox" checked="checked" disabled="">done task</li><li data-checked="false" data-type="taskItem"><input type="checkbox" disabled="">open task<ul data-type="taskList" style="list-style: none"><li data-checked="true" data-type="taskItem"><input type="checkbox" checked="checked" disabled="">sub task</li></ul></li></ul>' +
+        // Tiptap's trailing node: a document ending in a list always gets an empty paragraph.
+        '<p></p>',
     );
   });
 
