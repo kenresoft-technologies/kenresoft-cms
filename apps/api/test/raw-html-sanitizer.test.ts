@@ -239,12 +239,14 @@ describe('sanitizeEmailHtml', () => {
 });
 
 describe('tokenizer resource limits', () => {
-  // These used to take ~60s (quadratic rescanning of unterminated tags); now ~40ms locally. The
-  // timeout is the assertion. It's 30s, not vitest's default 5s: on shared CI runners the whole
-  // workerd-hosted run is 50-100x slower than a laptop, and 5s started failing there with no code
-  // change (measured: same speed before and after the last sanitizer change). 30s still fails
-  // clearly on the quadratic behavior this guards against.
-  it('handles pathological unterminated-tag input in bounded time', { timeout: 30_000 }, () => {
+  // These used to take ~60s (quadratic rescanning of unterminated tags); now ~50ms on a laptop.
+  // The timeout is the assertion. It's 45s, not vitest's default 5s: on shared CI runners the
+  // workerd-hosted run is 50-100x slower, and this took 9.7-12s there with no sanitizer change
+  // (benchmarked: same speed before and after the last one), still well under the quadratic ~60s.
+  // It yields between calls because ~10s of unbroken synchronous CPU made the workers pool lose
+  // its connection to the isolate ("Network connection lost"), failing the run on its own.
+  it('handles pathological unterminated-tag input in bounded time', { timeout: 45_000 }, async () => {
+    const yieldToRunner = () => new Promise((resolve) => setTimeout(resolve, 0));
     const inputs = [
       '<'.repeat(100000),
       '<a "'.repeat(25000),
@@ -255,9 +257,13 @@ describe('tokenizer resource limits', () => {
     for (const input of inputs) {
       const out = sanitizeRawHtml(input);
       expect(out).not.toContain('<script');
+      await yieldToRunner();
       expect(sanitizeRawHtml(out)).toBe(out);
+      await yieldToRunner();
       sanitizeEmailHtml(input);
+      await yieldToRunner();
       sanitizeReplyHtml(input.slice(0, 20000));
+      await yieldToRunner();
     }
   });
 
