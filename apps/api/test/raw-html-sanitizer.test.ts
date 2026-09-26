@@ -144,6 +144,21 @@ describe('sanitizeRawHtml', () => {
     expect(sanitizeRawHtml(out)).toBe(out);
   });
 
+  // Wrappers nested inside wrappers (never written by the editor, but pastable into a Raw HTML
+  // block) must be unwrapped in the same pass, or a second pass changes the output — which makes a
+  // stored block look edited on every save.
+  it('stays idempotent for nested legacy wrappers', () => {
+    const inputs = [
+      '<li data-type="taskItem"><label><label><input type="checkbox">a</label></label><div><div><p>b</p></div></div></li>',
+      '<li data-type="taskItem"><div></span></b><input type="checkbox">txt<div>x</div></li>',
+      '<li data-type="taskItem"><label><div><p>c</p></div></label></li>',
+    ];
+    for (const input of inputs) {
+      const once = sanitizeRawHtml(input);
+      expect(sanitizeRawHtml(once), input).toBe(once);
+    }
+  });
+
   it('only ever lets a bare, disabled checkbox through', () => {
     expect(sanitizeRawHtml('<input>')).toBe('');
     expect(sanitizeRawHtml('<input type="text" name="password" placeholder="Password">')).toBe('');

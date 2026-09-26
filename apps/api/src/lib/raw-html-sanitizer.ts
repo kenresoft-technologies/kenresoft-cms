@@ -66,8 +66,9 @@ const PAGE_STYLE_PROPERTIES = [
 //   <ul data-type="taskList" style="list-style: none"><li data-type="taskItem" data-checked="true">
 //     <input type="checkbox" disabled checked> text</li></ul>
 // (apps/admin's toStoredRichTextHtml). Older saves used Tiptap's own <label>/<div> variant, which
-// sanitizeWith rewrites into that shape (see unwrapLegacyTaskTag). Both need the data-* attributes (the editor re-reads a checklist from them) and a checkbox (what
-// a public site shows). Without them, saving turned every checklist into a plain bullet. Each is
+// sanitizeWith rewrites into that shape (see unwrapLegacyTaskTag). Both need the data-* attributes
+// (the editor re-reads a checklist from them) and a checkbox (what a public site shows). Without
+// them, saving turned every checklist into a plain bullet. Each is
 // value-validated below, <label> gets no attributes at all (so no `for`), and <input> is handled
 // by sanitizeTaskCheckbox. Page preset only: an email has no use for either.
 const PAGE_CONFIG: SanitizerConfig = {
@@ -294,11 +295,18 @@ function openTagName(entry: string): string {
 }
 
 // The open-stack entry for a legacy checklist wrapper to unwrap, or null to keep the tag.
+// A <label>/<div> is matched against its nearest *kept* ancestor: an already-unwrapped wrapper
+// leaves no trace in the output, so a second pass would see the inner tag directly under the item
+// and unwrap it then — counting it as a parent here would break sanitize(sanitize(x)) === sanitize(x)
+// for nested wrappers like <label><label> (which the editor never writes, but pasted HTML can).
 function unwrapLegacyTaskTag(tagName: string, open: string[]): string | null {
   const parent = open[open.length - 1];
-  if (tagName === 'label' && parent === TASK_ITEM) return '!label';
+  let keptIndex = open.length - 1;
+  while (keptIndex >= 0 && open[keptIndex]!.startsWith(UNWRAPPED)) keptIndex--;
+  const keptParent = open[keptIndex];
+  if (tagName === 'label' && keptParent === TASK_ITEM) return '!label';
   if (tagName === 'span' && parent === '!label') return '!span';
-  if (tagName === 'div' && parent === TASK_ITEM) return '!div';
+  if (tagName === 'div' && keptParent === TASK_ITEM) return '!div';
   if (tagName === 'p' && parent === '!div') {
     open[open.length - 1] = '!div*'; // only the first paragraph joins the checkbox's line
     return '!p';
