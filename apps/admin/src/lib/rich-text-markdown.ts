@@ -27,12 +27,13 @@ turndownService.addRule('alignedBlock', {
 // turndown escapes Markdown punctuation in text but not `<` or HTML entities, so literal text
 // like "use the <div> tag" (stored as `&lt;div&gt;`) came out as a raw `<div>` in Markdown —
 // which marked then parsed as a real tag and the editor's schema dropped, deleting the words
-// outright. Backslash-escaping `<` and entity-shaped `&` keeps them literal text.
+// outright. Writing them as entities (`&` first, so the `&lt;` added next isn't re-escaped)
+// keeps them literal text: marked decodes the entity back to the character.
 const baseEscape = turndownService.escape.bind(turndownService);
 turndownService.escape = (text: string) =>
   baseEscape(text)
     .replace(/&(?=#?[a-z0-9]+;)/gi, '&amp;')
-    .replace(/</g, '\\<');
+    .replace(/</g, '&lt;');
 
 // turndown-plugin-gfm's taskListItems rule only fires for a checkbox that's both a *direct*
 // child of <li> and immediately followed by inline text (the flat shape a plain markdown

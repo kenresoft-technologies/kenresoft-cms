@@ -47,7 +47,7 @@ it('round-trips every editor format through Markdown mode unchanged', async () =
   await switchTo(user, 'HTML');
   const after = (screen.getByLabelText('HTML source') as HTMLTextAreaElement).value;
   expect(md).toContain('<u>under</u> <mark>highlight</mark>');
-  expect(md).toContain('\\<tag>');
+  expect(md).toContain('&lt;tag>');
   expect(md).toContain('*   [x] done task');
   expect(after).toBe(before);
 }, 30000);

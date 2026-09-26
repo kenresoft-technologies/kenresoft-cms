@@ -23,9 +23,7 @@ function Harness({ initial = '', onValue }: { initial?: string; onValue: (html: 
 }
 
 function parse(html: string) {
-  const container = document.createElement('div');
-  container.innerHTML = html;
-  return container;
+  return new DOMParser().parseFromString(html, 'text/html').body;
 }
 
 function taskItems(html: string) {
