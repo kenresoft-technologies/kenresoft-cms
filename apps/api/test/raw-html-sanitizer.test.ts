@@ -239,9 +239,12 @@ describe('sanitizeEmailHtml', () => {
 });
 
 describe('tokenizer resource limits', () => {
-  // These used to take ~60s (quadratic rescanning of unterminated tags). The default 5s test
-  // timeout is the assertion: they must now finish essentially instantly.
-  it('handles pathological unterminated-tag input in bounded time', () => {
+  // These used to take ~60s (quadratic rescanning of unterminated tags); now ~40ms locally. The
+  // timeout is the assertion. It's 30s, not vitest's default 5s: on shared CI runners the whole
+  // workerd-hosted run is 50-100x slower than a laptop, and 5s started failing there with no code
+  // change (measured: same speed before and after the last sanitizer change). 30s still fails
+  // clearly on the quadratic behavior this guards against.
+  it('handles pathological unterminated-tag input in bounded time', { timeout: 30_000 }, () => {
     const inputs = [
       '<'.repeat(100000),
       '<a "'.repeat(25000),
