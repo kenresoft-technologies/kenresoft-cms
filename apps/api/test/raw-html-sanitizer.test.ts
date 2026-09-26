@@ -100,6 +100,34 @@ describe('sanitizeRawHtml', () => {
       expect(sanitizeRawHtml(once)).toBe(once);
     }
   });
+
+  // The admin editor's checklist markup. Stripping it turned every checklist in a saved entry
+  // into a plain bullet list.
+  const TIPTAP_CHECKLIST =
+    '<ul data-type="taskList"><li data-checked="true" data-type="taskItem"><label><input type="checkbox" checked="checked"><span></span></label><div><p>done</p></div></li>' +
+    '<li data-checked="false" data-type="taskItem"><label><input type="checkbox"><span></span></label><div><p>open</p></div></li></ul>';
+
+  it('keeps editor checklists and numbered-list starts, idempotently', () => {
+    const out = sanitizeRawHtml(`<ol start="3"><li>three</li></ol>${TIPTAP_CHECKLIST}`);
+    expect(out).toBe(
+      '<ol start="3"><li>three</li></ol>' +
+        '<ul data-type="taskList"><li data-checked="true" data-type="taskItem"><label><input type="checkbox" disabled checked><span></span></label><div><p>done</p></div></li>' +
+        '<li data-checked="false" data-type="taskItem"><label><input type="checkbox" disabled><span></span></label><div><p>open</p></div></li></ul>',
+    );
+    expect(sanitizeRawHtml(out)).toBe(out);
+  });
+
+  it('only ever lets a bare, disabled checkbox through', () => {
+    expect(sanitizeRawHtml('<input>')).toBe('');
+    expect(sanitizeRawHtml('<input type="text" name="password" placeholder="Password">')).toBe('');
+    expect(sanitizeRawHtml('<input type="hidden" value="x"><input type="submit">')).toBe('');
+    expect(sanitizeRawHtml('<input type=checkbox name=x value=y form=f autofocus onfocus=alert(1)>')).toBe(
+      '<input type="checkbox" disabled>',
+    );
+    expect(sanitizeRawHtml('<label for="x" onclick="a()" style="position: fixed">L</label>')).toBe('<label>L</label>');
+    expect(sanitizeRawHtml('<li data-type="evil" data-checked="maybe" data-foo="x">i</li>')).toBe('<li>i</li>');
+    expect(sanitizeRawHtml('<ol start="-1" reversed>x</ol>')).toBe('<ol>x</ol>');
+  });
 });
 
 describe('shared href check (also used by reply sanitising)', () => {
@@ -132,6 +160,10 @@ describe('sanitizeEmailHtml', () => {
     for (const gone of ['<html', '<head', '<body', '<style', '<title', 'DOCTYPE', '.x{']) {
       expect(out).not.toContain(gone);
     }
+  });
+
+  it('does not keep checklist checkboxes or labels (page preset only)', () => {
+    expect(sanitizeEmailHtml('<label><input type="checkbox" checked>x</label>')).toBe('x');
   });
 
   it('removes scripts, forms, event handlers and unsafe or relative URLs and data: images', () => {
