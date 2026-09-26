@@ -26,6 +26,10 @@ export interface Bindings {
   EMAIL?: SendEmail;
   // Resend — only needed when EMAIL_PROVIDER=resend.
   RESEND_API_KEY?: string;
+  // Where the admin's "update available" check looks for releases (lib/update-check.ts). Unset =
+  // the upstream Kenresoft CMS repo; "owner/repo" = a fork that publishes its own releases;
+  // "off" = no check (the admin just shows the running version).
+  UPDATE_CHECK_REPO?: string;
   // The break-glass owner-recovery endpoint (POST /api/v1/system/recover-owner) 404s outright
   // when this is unset — zero attack surface for any deployment that hasn't explicitly opted
   // in via `wrangler secret put OWNER_RECOVERY_SECRET`. Never given a default value here or in

@@ -30,5 +30,20 @@ export function parseUpdateArgs(argv, env = process.env) {
     throw new Error('--branch only applies to the plain code-pull update, not --auth/--email/--storage/--database/--turnstile.');
   }
 
-  return { ci, branch: branch ?? null, category };
+  // --version pins a specific release (docs/RELEASING.md); without it, the latest release is used.
+  const versionFlagIndex = argv.findIndex((arg) => arg === '--version' || arg.startsWith('--version='));
+  let version = null;
+  if (versionFlagIndex !== -1) {
+    const flag = argv[versionFlagIndex];
+    version = flag.includes('=') ? flag.slice(flag.indexOf('=') + 1) : argv[versionFlagIndex + 1];
+    if (!version || version.startsWith('--')) throw new Error('--version requires a value, e.g. --version 0.9.1.');
+    if (category) throw new Error('--version only applies to the plain code-pull update, not a configuration change.');
+    if (branch) {
+      throw new Error(
+        `--version and --branch can't be combined${argv.includes('--branch') || argv.some((a) => a.startsWith('--branch=')) ? '' : ' (UPDATE_BRANCH is set)'}: pick a release or a branch.`,
+      );
+    }
+  }
+
+  return { ci, branch: branch ?? null, version, category };
 }
