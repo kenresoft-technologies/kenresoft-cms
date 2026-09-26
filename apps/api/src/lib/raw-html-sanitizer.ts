@@ -291,7 +291,7 @@ const TASK_ITEM = 'li#task';
 
 function openTagName(entry: string): string {
   if (entry === TASK_ITEM) return 'li';
-  return entry.startsWith(UNWRAPPED) ? entry.slice(1).replace('*', '') : entry;
+  return entry.startsWith(UNWRAPPED) ? entry.slice(1).replace(/\*/g, '') : entry;
 }
 
 // The open-stack entry for a legacy checklist wrapper to unwrap, or null to keep the tag.
