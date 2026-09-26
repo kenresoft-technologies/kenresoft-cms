@@ -15,6 +15,10 @@ export const contentTypes = sqliteTable(
     // content type has no frontend route of its own; validated at the API layer (shape,
     // reserved-path, and uniqueness), not constrained beyond the unique index at the DB layer.
     routePattern: text('route_pattern'),
+    // "Only one featured entry": when true, featuring an entry of this type un-features every
+    // other one (apps/api/src/repositories/entries.ts), for a single homepage/hero slot. False
+    // (the default, and every content type before this existed) allows any number.
+    singleFeatured: integer('single_featured', { mode: 'boolean' }).notNull().default(false),
     createdAt: integer('created_at', { mode: 'timestamp' })
       .notNull()
       .default(sql`(unixepoch())`),
