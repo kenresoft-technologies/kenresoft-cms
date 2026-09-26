@@ -118,14 +118,45 @@ describe('sanitizeRawHtml', () => {
     expect(sanitizeRawHtml(out)).toBe(out);
   });
 
-  // Saved before checklists were stored in the flat shape above.
-  it('keeps the older <label>/<div> checklist shape too', () => {
+  // Saved before checklists were stored in the flat shape above; without CSS for it, each item's
+  // text rendered on the line below its checkbox.
+  it('rewrites the older <label>/<div> checklist shape into the flat one, idempotently', () => {
     const out = sanitizeRawHtml(
-      '<ul data-type="taskList"><li data-checked="true" data-type="taskItem"><label><input type="checkbox" checked="checked"><span></span></label><div><p>done</p></div></li></ul>',
+      '<ul data-type="taskList"><li data-checked="true" data-type="taskItem"><label><input type="checkbox" checked="checked"><span></span></label><div><p>done <code>x</code></p></div></li></ul>',
     );
     expect(out).toBe(
-      `<ul data-type="taskList"><li data-checked="true" data-type="taskItem"><label><input type="checkbox" disabled checked ${CHECKBOX_STYLE}><span></span></label><div><p>done</p></div></li></ul>`,
+      `<ul data-type="taskList" style="list-style: none"><li data-checked="true" data-type="taskItem"><input type="checkbox" disabled checked ${CHECKBOX_STYLE}>done <code>x</code></li></ul>`,
     );
+    expect(sanitizeRawHtml(out)).toBe(out);
+  });
+
+  it('keeps a legacy item’s later paragraphs and nested checklist on their own lines', () => {
+    const out = sanitizeRawHtml(
+      '<ul data-type="taskList"><li data-checked="false" data-type="taskItem"><label><input type="checkbox"><span></span></label><div><p>one</p><p>two</p>' +
+        '<ul data-type="taskList"><li data-checked="false" data-type="taskItem"><label><input type="checkbox"><span></span></label><div><p>sub</p></div></li></ul></div></li></ul>' +
+        '<div><label>kept</label></div>',
+    );
+    expect(out).toBe(
+      `<ul data-type="taskList" style="list-style: none"><li data-checked="false" data-type="taskItem"><input type="checkbox" disabled ${CHECKBOX_STYLE}>one<p>two</p>` +
+        `<ul data-type="taskList" style="list-style: none"><li data-checked="false" data-type="taskItem"><input type="checkbox" disabled ${CHECKBOX_STYLE}>sub</li></ul></li></ul>` +
+        '<div><label>kept</label></div>',
+    );
+    expect(sanitizeRawHtml(out)).toBe(out);
+  });
+
+  // Wrappers nested inside wrappers (never written by the editor, but pastable into a Raw HTML
+  // block) must be unwrapped in the same pass, or a second pass changes the output — which makes a
+  // stored block look edited on every save.
+  it('stays idempotent for nested legacy wrappers', () => {
+    const inputs = [
+      '<li data-type="taskItem"><label><label><input type="checkbox">a</label></label><div><div><p>b</p></div></div></li>',
+      '<li data-type="taskItem"><div></span></b><input type="checkbox">txt<div>x</div></li>',
+      '<li data-type="taskItem"><label><div><p>c</p></div></label></li>',
+    ];
+    for (const input of inputs) {
+      const once = sanitizeRawHtml(input);
+      expect(sanitizeRawHtml(once), input).toBe(once);
+    }
   });
 
   it('only ever lets a bare, disabled checkbox through', () => {
