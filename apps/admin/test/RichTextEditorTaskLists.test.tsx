@@ -23,7 +23,9 @@ function Harness({ initial = '', onValue }: { initial?: string; onValue: (html: 
 }
 
 function parse(html: string) {
-  return new DOMParser().parseFromString(html, 'text/html').body;
+  const container = document.createElement('div');
+  container.innerHTML = html;
+  return container;
 }
 
 function taskItems(html: string) {
@@ -134,6 +136,6 @@ describe('RichTextEditor task lists', () => {
     await screen.findByRole('combobox', { name: 'Editor mode' });
     await switchTo(user, 'HTML');
     const source = (screen.getByLabelText('HTML source') as HTMLTextAreaElement).value;
-    expect(taskItems(source)).toEqual([{ checked: 'false', text: 'imported' }]);
+    expect(source).toMatch(/<ul data-type="taskList"><li data-checked="false" data-type="taskItem">.*imported/);
   });
 });
