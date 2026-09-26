@@ -235,6 +235,32 @@ describe('EntryEditorPage', () => {
     );
   });
 
+  it('warns that featuring an entry un-features the current one when its content type allows only one', async () => {
+    getMock.mockImplementation((path: string) => {
+      if (path.endsWith('/fields')) return Promise.resolve(fields);
+      if (path.endsWith('/revisions')) return Promise.resolve([]);
+      if (path === '/api/v1/admin/content-types/ct-1') {
+        return Promise.resolve({ id: 'ct-1', name: 'Hero', slug: 'hero', routePattern: null, singleFeatured: true });
+      }
+      return Promise.resolve({
+        id: 'e-1',
+        slug: 'hello-world',
+        status: 'draft',
+        data: { title: 'Hello World', featured: false },
+        publishAt: null,
+        featured: false,
+      });
+    });
+
+    renderEditor('/content-types/ct-1/entries/e-1');
+    await waitFor(() => expect(screen.getByLabelText('Slug')).toHaveValue('hello-world'));
+    const warning = /Saving un-features the current one/;
+    expect(screen.queryByText(warning)).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByLabelText('Featured entry'));
+    expect(screen.getByText(warning)).toBeInTheDocument();
+  });
+
   it('stays on the editor after saving an existing entry, instead of bouncing back to the list', async () => {
     let saved = false;
     getMock.mockImplementation((path: string) => {

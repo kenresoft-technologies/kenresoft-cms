@@ -1,0 +1,1 @@
+ALTER TABLE `content_types` ADD `single_featured` integer DEFAULT false NOT NULL;

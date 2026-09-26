@@ -16,7 +16,7 @@ import { z } from 'zod';
 import { recordAudit } from '../../lib/audit';
 import { getDb } from '../../lib/db';
 import { createOpenApiApp } from '../../lib/openapi';
-import { invalidatePublicRoutePatternsCache } from '../../lib/public-cache';
+import { invalidatePublicEntryCache, invalidatePublicRoutePatternsCache } from '../../lib/public-cache';
 import { requireRole } from '../../middleware/require-role';
 import {
   createContentType,
@@ -28,6 +28,7 @@ import {
   listContentTypesWithCounts,
   updateContentType,
 } from '../../repositories/content-types';
+import { keepOnlyLatestFeatured } from '../../repositories/entries';
 import { findPageMatchingRoutePattern } from '../../repositories/pages';
 import {
   createFieldDefinition,
@@ -53,6 +54,7 @@ function toContentType(row: DbContentType): ContentType {
     slug: row.slug,
     description: row.description,
     routePattern: row.routePattern,
+    singleFeatured: row.singleFeatured,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -260,13 +262,23 @@ contentTypesRoute.openapi(
     }
 
     const updated = await updateContentType(db, id, input);
+    // Switching "Only one featured entry" on while several entries are featured: the most
+    // recently updated one stays featured and the rest are un-featured, so the rule holds from
+    // now on rather than only after the next time someone features an entry.
+    const unfeatured =
+      input.singleFeatured === true && !existing.singleFeatured ? await keepOnlyLatestFeatured(db, id) : [];
     await recordAudit(db, {
       actorUserId: c.get('user').id,
       action: 'content_type.updated',
       targetType: 'content_type',
       targetId: id,
-      metadata: { ...input },
+      metadata: { ...input, ...(unfeatured.length > 0 ? { unfeaturedEntrySlugs: unfeatured.map((e) => e.slug) } : {}) },
     });
+    if (unfeatured.length > 0) {
+      c.executionCtx.waitUntil(
+        Promise.all(unfeatured.map((entry) => invalidatePublicEntryCache(updated!.slug, entry.slug))),
+      );
+    }
     if ('routePattern' in input && input.routePattern !== existing.routePattern) {
       await invalidatePublicRoutePatternsCache();
     }

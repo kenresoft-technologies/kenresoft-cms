@@ -124,4 +124,97 @@ describe('entry featured flag (real D1)', () => {
     ).json<{ slug: string }[]>();
     expect(allAgain.map((e) => e.slug).sort()).toEqual(['a', 'b']);
   });
+
+  // "Only one featured entry" (contentTypes.singleFeatured).
+  describe('only one featured entry', () => {
+    async function patchEntry(headers: Record<string, string>, id: string, body: Record<string, unknown>) {
+      return (
+        await SELF.fetch(`https://example.com/api/v1/admin/entries/${id}`, {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify(body),
+        })
+      ).json<{ featured: boolean }>();
+    }
+
+    async function featuredSlugs(headers: Record<string, string>, contentTypeId: string): Promise<string[]> {
+      const rows = await (
+        await SELF.fetch(`https://example.com/api/v1/admin/entries?contentTypeId=${contentTypeId}&featured=true`, {
+          headers: { Cookie: headers.Cookie! },
+        })
+      ).json<{ slug: string }[]>();
+      return rows.map((e) => e.slug).sort();
+    }
+
+    it('is off by default, allowing several featured entries, and survives an unrelated rename', async () => {
+      const headers = await authedHeaders('single-featured-off@example.test');
+      const contentType = await createContentType(headers, { name: 'Post', slug: 'post' });
+      expect(contentType).toMatchObject({ singleFeatured: false });
+      await createEntry(headers, contentType.id, { slug: 'a', data: {}, featured: true });
+      await createEntry(headers, contentType.id, { slug: 'b', data: {}, featured: true });
+      expect(await featuredSlugs(headers, contentType.id)).toEqual(['a', 'b']);
+
+      const typed = await createContentType(headers, { name: 'Hero', slug: 'hero', singleFeatured: true });
+      const renamed = await (
+        await SELF.fetch(`https://example.com/api/v1/admin/content-types/${typed.id}`, {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify({ name: 'Hero slot' }),
+        })
+      ).json<{ singleFeatured: boolean }>();
+      expect(renamed.singleFeatured).toBe(true);
+    });
+
+    it('featuring an entry, on create or update, un-features the others of that type only', async () => {
+      const headers = await authedHeaders('single-featured-on@example.test');
+      const contentType = await createContentType(headers, { name: 'Hero', slug: 'hero', singleFeatured: true });
+      const other = await createContentType(headers, { name: 'Post', slug: 'post' });
+      await createEntry(headers, other.id, { slug: 'elsewhere', data: {}, featured: true });
+
+      const a = await createEntry(headers, contentType.id, { slug: 'a', status: 'published', data: {}, featured: true });
+      const b = await createEntry(headers, contentType.id, { slug: 'b', status: 'published', data: {}, featured: true });
+      expect(await featuredSlugs(headers, contentType.id)).toEqual(['b']);
+
+      // Warm the public caches that currently say `a` isn't featured and `b` is.
+      await (await SELF.fetch('https://example.com/api/v1/public/hero?featured=true')).text();
+      await (await SELF.fetch('https://example.com/api/v1/public/hero/b')).text();
+
+      expect((await patchEntry(headers, a.id, { featured: true })).featured).toBe(true);
+      expect(await featuredSlugs(headers, contentType.id)).toEqual(['a']);
+      // Saving the featured entry again (the editor always sends `featured`) keeps it featured.
+      expect((await patchEntry(headers, a.id, { featured: true, slug: 'a' })).featured).toBe(true);
+      expect(await featuredSlugs(headers, contentType.id)).toEqual(['a']);
+
+      // The public featured list and the un-featured entry's own page reflect it right away.
+      const publicFeatured = await (
+        await SELF.fetch('https://example.com/api/v1/public/hero?featured=true')
+      ).json<{ slug: string }[]>();
+      expect(publicFeatured.map((e) => e.slug)).toEqual(['a']);
+      const bPage = await (await SELF.fetch('https://example.com/api/v1/public/hero/b')).json<{ featured: boolean }>();
+      expect(bPage.featured).toBe(false);
+
+      // Another content type's featured entry is untouched.
+      expect(await featuredSlugs(headers, other.id)).toEqual(['elsewhere']);
+      expect(b.featured).toBe(true);
+    });
+
+    it('turning it on keeps only the most recently updated featured entry', async () => {
+      const headers = await authedHeaders('single-featured-switch@example.test');
+      const contentType = await createContentType(headers, { name: 'Post', slug: 'post' });
+      const a = await createEntry(headers, contentType.id, { slug: 'a', data: {}, featured: true });
+      await createEntry(headers, contentType.id, { slug: 'b', data: {}, featured: true });
+      await createEntry(headers, contentType.id, { slug: 'c', data: {}, featured: true });
+      await patchEntry(headers, a.id, { data: { title: 'edited last' } });
+
+      const updated = await (
+        await SELF.fetch(`https://example.com/api/v1/admin/content-types/${contentType.id}`, {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify({ singleFeatured: true }),
+        })
+      ).json<{ singleFeatured: boolean }>();
+      expect(updated.singleFeatured).toBe(true);
+      expect(await featuredSlugs(headers, contentType.id)).toEqual(['a']);
+    });
+  });
 });

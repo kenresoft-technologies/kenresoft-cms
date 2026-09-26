@@ -32,6 +32,7 @@ import {
   deleteEntry,
   getEntryById,
   getEntryBySlug,
+  listEntriesToUnfeature,
   listEntriesWithContentType,
   listEntryRevisions,
   restoreEntryRevision,
@@ -120,6 +121,23 @@ async function invalidateCacheForEntry(
   await invalidatePublicEntryCache(contentType.slug, entry.slug);
 }
 
+// Featuring an entry of a content type with "Only one featured entry" on un-features the others
+// (repositories/entries.ts). Their slugs are read before the write so their own cached public
+// responses, which still say `featured: true`, can be cleared along with this entry's.
+async function entriesUnfeaturedBy(
+  db: Database,
+  input: { featured?: boolean | undefined },
+  contentTypeId: string,
+  entryId?: string,
+): Promise<{ slug: string }[]> {
+  return input.featured === true ? listEntriesToUnfeature(db, contentTypeId, entryId) : [];
+}
+
+async function invalidateCacheForEntries(db: Database, contentTypeId: string, others: { slug: string }[]): Promise<void> {
+  if (others.length === 0) return;
+  await Promise.all(others.map((other) => invalidateCacheForEntry(db, { contentTypeId, slug: other.slug })));
+}
+
 // Deliberately just the entry's identity/status, not its full `data` — keeps every delivered
 // payload small and bounded regardless of entry size, and avoids handing an entry's complete
 // content to every configured webhook by default. A subscriber that needs the full content can
@@ -197,8 +215,10 @@ entriesRoute.openapi(
     const db = getDb(c);
     const userId = c.get('user').id;
     try {
+      const unfeatured = await entriesUnfeaturedBy(db, input, contentTypeId);
       const entry = await createEntry(db, contentTypeId, input, userId);
       c.executionCtx.waitUntil(invalidateCacheForEntry(db, entry));
+      c.executionCtx.waitUntil(invalidateCacheForEntries(db, contentTypeId, unfeatured));
       dispatchWebhookEvent(db, c.executionCtx, 'entry.created', entry.contentTypeId, webhookPayload(entry));
       await auditEntryChange(db, userId, 'entry.created', entry);
       if (entry.status === 'published') {
@@ -452,11 +472,13 @@ entriesRoute.openapi(
 
     const input = c.req.valid('json');
     const previousStatus = existing.status;
+    const unfeatured = await entriesUnfeaturedBy(db, input, existing.contentTypeId, id);
     const entry = await updateEntry(db, id, input, user.id);
     if (!entry) {
       return c.json({ error: 'Entry not found' }, 404);
     }
     c.executionCtx.waitUntil(invalidateCacheForEntry(db, entry));
+    c.executionCtx.waitUntil(invalidateCacheForEntries(db, entry.contentTypeId, unfeatured));
     dispatchWebhookEvent(db, c.executionCtx, 'entry.updated', entry.contentTypeId, webhookPayload(entry));
     await auditEntryChange(db, user.id, 'entry.updated', entry);
     if (previousStatus !== 'published' && entry.status === 'published') {

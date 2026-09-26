@@ -154,7 +154,7 @@ describe('ContentTypeDetailPage', () => {
   it('edits a content type, including its route pattern, through the edit dialog', async () => {
     getMock.mockImplementation((path: string) => {
       if (path.endsWith('/fields')) return Promise.resolve([]);
-      return Promise.resolve({ id: 'ct-1', name: 'Blog Post', slug: 'blog-post', routePattern: null });
+      return Promise.resolve({ id: 'ct-1', name: 'Blog Post', slug: 'blog-post', routePattern: null, singleFeatured: false });
     });
     patchMock.mockResolvedValue({
       id: 'ct-1',
@@ -182,7 +182,31 @@ describe('ContentTypeDetailPage', () => {
         slug: 'blog-post',
         description: null,
         routePattern: '/blog/{slug}',
+        singleFeatured: false,
       }),
+    );
+  });
+
+  it('turns on "Only one featured entry", explaining what happens to entries already featured', async () => {
+    getMock.mockImplementation((path: string) => {
+      if (path.endsWith('/fields')) return Promise.resolve([]);
+      return Promise.resolve({ id: 'ct-1', name: 'Hero', slug: 'hero', routePattern: null, singleFeatured: false });
+    });
+    patchMock.mockResolvedValue({ id: 'ct-1', name: 'Hero', slug: 'hero', routePattern: null, singleFeatured: true });
+
+    renderPage();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument());
+    await userEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    const dialog = screen.getByRole('dialog');
+    await userEvent.click(within(dialog).getByRole('switch', { name: 'Only one featured entry' }));
+    expect(within(dialog).getByText(/only the most recently updated featured entry stays featured/)).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save changes' }));
+
+    await waitFor(() =>
+      expect(patchMock).toHaveBeenCalledWith(
+        '/api/v1/admin/content-types/ct-1',
+        expect.objectContaining({ singleFeatured: true }),
+      ),
     );
   });
 

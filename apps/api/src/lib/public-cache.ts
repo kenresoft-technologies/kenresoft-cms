@@ -30,6 +30,10 @@ export async function invalidatePublicEntryCache(
   const cache = caches.default;
   await Promise.all([
     cache.delete(publicCacheKey(`/api/v1/public/${contentTypeSlug}`)),
+    // The list route caches per query string (routes/public/content.ts), and `featured=true` is
+    // the only query it accepts. Without this, featuring or un-featuring an entry took up to the
+    // full TTL to show up in a site's featured list.
+    cache.delete(publicCacheKey(`/api/v1/public/${contentTypeSlug}?featured=true`)),
     cache.delete(publicCacheKey(`/api/v1/public/${contentTypeSlug}/${entrySlug}`)),
   ]);
 }

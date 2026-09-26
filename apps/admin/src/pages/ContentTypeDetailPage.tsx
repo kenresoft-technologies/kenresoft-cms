@@ -60,6 +60,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 const OPTION_LIST_TYPES: FieldType[] = ['select', 'multi_select'];
@@ -258,12 +259,14 @@ function EditContentTypeDialog({
   slug,
   description,
   routePattern,
+  singleFeatured,
 }: {
   contentTypeId: string;
   name: string;
   slug: string;
   description: string | null;
   routePattern: string | null;
+  singleFeatured: boolean;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -290,6 +293,7 @@ function EditContentTypeDialog({
             slug={slug}
             description={description}
             routePattern={routePattern}
+            singleFeatured={singleFeatured}
             onDone={() => setOpen(false)}
           />
         ) : null}
@@ -307,6 +311,7 @@ function ContentTypeForm({
   slug,
   description,
   routePattern,
+  singleFeatured,
   onDone,
 }: {
   contentTypeId: string;
@@ -314,12 +319,14 @@ function ContentTypeForm({
   slug: string;
   description: string | null;
   routePattern: string | null;
+  singleFeatured: boolean;
   onDone: () => void;
 }) {
   const [nameValue, setNameValue] = useState(name);
   const [slugValue, setSlugValue] = useState(slug);
   const [descriptionValue, setDescriptionValue] = useState(description ?? '');
   const [routePatternValue, setRoutePatternValue] = useState(routePattern ?? '');
+  const [singleFeaturedValue, setSingleFeaturedValue] = useState(singleFeatured);
   const [error, setError] = useState<string | null>(null);
   const updateContentType = useUpdateContentType(contentTypeId);
 
@@ -332,6 +339,7 @@ function ContentTypeForm({
         slug: slugValue,
         description: descriptionValue || null,
         routePattern: routePatternValue.trim() || null,
+        singleFeatured: singleFeaturedValue,
       });
       toast.success('Content type updated');
       onDone();
@@ -373,6 +381,21 @@ function ContentTypeForm({
           content type without a developer wiring a specific route for it. Leave blank if this
           content type isn't addressed by its own URL. Must end with exactly one "{'{slug}'}"
           parameter, e.g. "/blog/{'{slug}'}".
+        </p>
+      </div>
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center justify-between gap-4">
+          <Label htmlFor="content-type-edit-single-featured">Only one featured entry</Label>
+          <Switch
+            id="content-type-edit-single-featured"
+            checked={singleFeaturedValue}
+            onCheckedChange={setSingleFeaturedValue}
+          />
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {singleFeaturedValue && !singleFeatured
+            ? 'When you save, only the most recently updated featured entry stays featured. After that, featuring an entry un-features the previous one.'
+            : 'Featuring an entry un-features the previous one, for a single spot such as a homepage hero. Off allows any number of featured entries.'}
         </p>
       </div>
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
@@ -550,6 +573,7 @@ export function ContentTypeDetailPage() {
                 slug={contentType.slug}
                 description={contentType.description}
                 routePattern={contentType.routePattern}
+                singleFeatured={contentType.singleFeatured}
               />
             ) : null}
             {canManageFields && contentTypeId ? (

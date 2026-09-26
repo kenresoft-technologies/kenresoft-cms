@@ -1,4 +1,4 @@
-import { and, contentTypes, desc, entries, entryRevisions, eq, isNull, lte, user } from '@kenresoft-cms/database';
+import { and, contentTypes, desc, entries, entryRevisions, eq, isNull, lte, ne, user } from '@kenresoft-cms/database';
 import type { Database, Entry, EntryRevision, NewEntry } from '@kenresoft-cms/database';
 
 import { sanitizeEntryDataForType } from '../lib/entry-html';
@@ -47,7 +47,7 @@ export async function createEntry(
     throw new Error(`Content type ${contentTypeId} not found`);
   }
 
-  const [entry] = await db
+  const insert = db
     .insert(entries)
     .values({
       ...input,
@@ -56,8 +56,74 @@ export async function createEntry(
       createdBy,
     })
     .returning();
+  let entry: Entry | undefined;
+  if (input.featured === true && contentType.singleFeatured) {
+    // The new entry doesn't exist yet, so "every other" is every currently featured one.
+    const [, inserted] = await db.batch([unfeatureQuery(db, contentTypeId), insert]);
+    entry = inserted[0];
+  } else {
+    [entry] = await insert;
+  }
   await snapshotRevision(db, entry!, createdBy);
   return entry!;
+}
+
+// A content type with "Only one featured entry" (contentTypes.singleFeatured) never has more than
+// one featured entry: featuring one un-features the rest *in the same D1 batch* as the write, so
+// two editors featuring different entries at the same moment still end with exactly one featured
+// (the last batch to run), never zero or two. updatedAt is deliberately left alone on the entries
+// un-featured this way — they weren't edited, and bumping it would reorder "recently updated".
+function unfeatureQuery(db: Database, contentTypeId: string, exceptEntryId?: string) {
+  return db
+    .update(entries)
+    .set({ featured: false })
+    .where(
+      and(
+        eq(entries.contentTypeId, contentTypeId),
+        eq(entries.featured, true),
+        exceptEntryId ? ne(entries.id, exceptEntryId) : undefined,
+      ),
+    );
+}
+
+// The featured entries a write featuring `entryId` (undefined for a new entry) would un-feature,
+// so the caller can clear their public-cache copies too. Empty unless the content type has
+// "Only one featured entry" on.
+export async function listEntriesToUnfeature(
+  db: Database,
+  contentTypeId: string,
+  entryId?: string,
+): Promise<Pick<Entry, 'id' | 'slug'>[]> {
+  const contentType = await db.query.contentTypes.findFirst({ where: eq(contentTypes.id, contentTypeId) });
+  if (!contentType?.singleFeatured) return [];
+  return db
+    .select({ id: entries.id, slug: entries.slug })
+    .from(entries)
+    .where(
+      and(
+        eq(entries.contentTypeId, contentTypeId),
+        eq(entries.featured, true),
+        entryId ? ne(entries.id, entryId) : undefined,
+      ),
+    );
+}
+
+// Turning "Only one featured entry" on for a content type that already has several featured
+// entries: the most recently updated one stays featured, the rest are un-featured in one batch.
+// Returns the un-featured entries (for cache invalidation and the audit log).
+export async function keepOnlyLatestFeatured(
+  db: Database,
+  contentTypeId: string,
+): Promise<Pick<Entry, 'id' | 'slug'>[]> {
+  const featured = await db
+    .select({ id: entries.id, slug: entries.slug })
+    .from(entries)
+    .where(and(eq(entries.contentTypeId, contentTypeId), eq(entries.featured, true)))
+    .orderBy(desc(entries.updatedAt));
+  if (featured.length <= 1) return [];
+  const [keep, ...rest] = featured;
+  await unfeatureQuery(db, contentTypeId, keep!.id);
+  return rest;
 }
 
 // entries.createdBy is `onDelete: 'set null'` — once a user is hard-deleted, the FK is gone
@@ -183,7 +249,7 @@ export async function updateEntry(
 
   await snapshotRevision(db, current, updatedBy);
 
-  const [entry] = await db
+  const update = db
     .update(entries)
     .set({
       ...input,
@@ -192,6 +258,16 @@ export async function updateEntry(
     })
     .where(eq(entries.id, id))
     .returning();
+  if (input.featured === true) {
+    const contentType = await db.query.contentTypes.findFirst({
+      where: eq(contentTypes.id, current.contentTypeId),
+    });
+    if (contentType?.singleFeatured) {
+      const [, updated] = await db.batch([unfeatureQuery(db, current.contentTypeId, id), update]);
+      return updated[0];
+    }
+  }
+  const [entry] = await update;
   return entry;
 }
 

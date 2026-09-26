@@ -11,6 +11,8 @@ export const contentTypeSchema = z.object({
   // Phase 2 (docs/SITE_BUILDER.md): e.g. "/blog/{slug}" — null means this content type has no
   // frontend route of its own, exactly like every content type before this feature existed.
   routePattern: routePatternSchema.nullable(),
+  // Only one entry of this type can be featured at a time: featuring one un-features the rest.
+  singleFeatured: z.boolean(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -20,6 +22,9 @@ export const createContentTypeSchema = z.object({
   slug: slugSchema,
   description: z.string().max(2000).nullable().optional(),
   routePattern: routePatternSchema.nullable().optional(),
+  // No .default(): updateContentTypeSchema below is .partial(), which keeps a default, so an
+  // unrelated PATCH (a rename) would silently switch this back off. The column defaults to false.
+  singleFeatured: z.boolean().optional(),
 });
 
 export const updateContentTypeSchema = createContentTypeSchema.partial();

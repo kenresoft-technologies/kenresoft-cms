@@ -400,6 +400,13 @@
       "when": 1790322795438,
       "tag": "0056_account_linked_submissions",
       "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "6",
+      "when": 1790444758318,
+      "tag": "0057_single_featured_content_types",
+      "breakpoints": true
     }
   ]
 }

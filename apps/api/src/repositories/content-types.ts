@@ -9,7 +9,7 @@ export interface ContentTypeWithCounts extends ContentType {
 
 export async function createContentType(
   db: Database,
-  input: Pick<NewContentType, 'name' | 'slug' | 'description' | 'routePattern'>,
+  input: Pick<NewContentType, 'name' | 'slug' | 'description' | 'routePattern' | 'singleFeatured'>,
 ): Promise<ContentType> {
   const [contentType] = await db.insert(contentTypes).values(input).returning();
   return contentType!;

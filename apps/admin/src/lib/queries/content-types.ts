@@ -46,11 +46,18 @@ export function useUpdateContentType(contentTypeId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (input: { name?: string; slug?: string; description?: string | null; routePattern?: string | null }) =>
-      apiClient.patch<ContentType>(`/api/v1/admin/content-types/${contentTypeId}`, input),
-    onSuccess: () => {
+    mutationFn: (input: {
+      name?: string;
+      slug?: string;
+      description?: string | null;
+      routePattern?: string | null;
+      singleFeatured?: boolean;
+    }) => apiClient.patch<ContentType>(`/api/v1/admin/content-types/${contentTypeId}`, input),
+    onSuccess: (_updated, input) => {
       void queryClient.invalidateQueries({ queryKey: contentTypesKey });
       void queryClient.invalidateQueries({ queryKey: ['content-types', 'by-id', contentTypeId] });
+      // Turning "Only one featured entry" on can un-feature entries of this type.
+      if (input.singleFeatured) void queryClient.invalidateQueries({ queryKey: ['entries'] });
     },
   });
 }
