@@ -8,9 +8,11 @@
 // failure, since update.mjs's later steps (install/migrate/redeploy) are still useful against
 // whatever code is already on disk.
 import { execFileSync } from 'node:child_process';
-import { existsSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline/promises';
+
+import { compareVersions, latestReleaseTag, parseVersion } from './versioning.mjs';
 
 function runGit(args, cwd) {
   return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
@@ -53,6 +55,57 @@ export function restoreOwnWranglerToml(repoRoot, atRef) {
   return true;
 }
 
+// The CMS version this checkout is on (root package.json), or null if it can't be read.
+export function readRootVersion(repoRoot) {
+  try {
+    const version = JSON.parse(readFileSync(join(repoRoot, 'package.json'), 'utf8')).version;
+    return parseVersion(version) ? version : null;
+  } catch {
+    return null;
+  }
+}
+
+// Which ref `pnpm run update` merges — see pullLatestCode's comment for the precedence. Exported
+// for unit testing against real temporary repos (git-cli.test.mjs).
+export function resolveUpdateTarget(repoRoot, { branch, version } = {}) {
+  if (branch) {
+    const exists = tryRunGit(['rev-parse', '--verify', `refs/remotes/upstream/${branch}`], repoRoot);
+    if (!exists.ok) {
+      throw new Error(`upstream/${branch} does not exist — check the branch name (e.g. "main" or "develop").`);
+    }
+    console.log(`✓ Using explicitly requested branch: upstream/${branch} (unreleased code, not a release)`);
+    return { mergeRef: `upstream/${branch}`, label: `upstream/${branch}`, toVersionHint: null };
+  }
+
+  if (version) {
+    const parsed = parseVersion(version);
+    if (!parsed) throw new Error(`"${version}" is not a version like 0.9.1.`);
+    const tag = `v${version.replace(/^v/, '')}`;
+    if (!tryRunGit(['rev-parse', '-q', '--verify', `refs/tags/${tag}`], repoRoot).ok) {
+      throw new Error(`There is no release ${tag} — see the Releases page on GitHub for the available versions.`);
+    }
+    console.log(`✓ Using requested release ${tag}`);
+    return { mergeRef: tag, label: tag, toVersionHint: tag.slice(1) };
+  }
+
+  const tags = tryRunGit(['tag', '--list', 'v*'], repoRoot);
+  const latest = latestReleaseTag(tags.ok ? tags.output.split('\n').map((t) => t.trim()).filter(Boolean) : []);
+  if (latest) {
+    console.log(`✓ Latest release: ${latest}`);
+    return { mergeRef: latest, label: latest, toVersionHint: latest.slice(1) };
+  }
+
+  // No releases published yet: follow upstream's actual default branch, as every install did
+  // before releases existed. Discovered rather than assumed — the local branch's own name isn't
+  // guaranteed to match (a renamed branch, or an install scaffolded before `develop` was the
+  // default).
+  runGit(['remote', 'set-head', 'upstream', '--auto'], repoRoot);
+  const headRef = runGit(['symbolic-ref', 'refs/remotes/upstream/HEAD'], repoRoot).trim();
+  const defaultBranch = headRef.replace('refs/remotes/upstream/', '');
+  console.log(`Upstream has no releases yet — following its default branch, upstream/${defaultBranch}.`);
+  return { mergeRef: `upstream/${defaultBranch}`, label: `upstream/${defaultBranch}`, toVersionHint: null };
+}
+
 async function confirm(question) {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   try {
@@ -63,11 +116,16 @@ async function confirm(question) {
   }
 }
 
-// `branch`, when given, pulls that exact branch instead of auto-detecting upstream's default —
-// e.g. a test/staging deployment that deliberately wants to track `develop` (pre-release code)
-// rather than `main` (whatever a real install's own auto-detection would otherwise resolve to).
-// Left undefined for every normal install, which keeps following upstream's actual default
-// branch automatically, same as before this option existed.
+// What gets merged, in order of precedence:
+//   - `branch`: that exact upstream branch — e.g. a test/staging install that deliberately tracks
+//     `develop` (unreleased code).
+//   - `version`: that release tag (`v0.9.1` or `0.9.1`) — pin an install to a specific release.
+//   - neither (every normal install): the newest release tag upstream has (docs/RELEASING.md),
+//     so a deployment only ever moves between tested releases, never onto whatever happens to
+//     be on `develop` that minute. An upstream with no release tags at all falls back to its
+//     default branch, which is how every install worked before releases existed.
+// Returns { fromVersion, toVersion } (root package.json before and after, null when there was
+// nothing to pull) so the caller can show what the update brought.
 //
 // `ci`, when true, answers the one-time "unrelated histories" reconciliation prompt below
 // automatically instead of asking — required for any unattended run (a deployer's own CI/CD
@@ -76,10 +134,11 @@ async function confirm(question) {
 // `confirm()`'s `readline.question()` reads immediate EOF on a non-interactive stdin and resolves
 // to an empty answer, which reads as "no" — silently cancelling the update on every single CI
 // run, not failing loudly or asking again next time.
-export async function pullLatestCode(repoRoot, { branch, ci = false } = {}) {
+export async function pullLatestCode(repoRoot, { branch, version, ci = false } = {}) {
+  const nothingPulled = { fromVersion: null, toVersion: null };
   if (!existsSync(join(repoRoot, '.git'))) {
     console.log('Not a git repository — skipping the automatic code pull (deploying whatever is on disk).');
-    return;
+    return nothingPulled;
   }
 
   const remotes = tryRunGit(['remote'], repoRoot);
@@ -89,32 +148,32 @@ export async function pullLatestCode(repoRoot, { branch, ci = false } = {}) {
         '  Add one yourself to enable it: git remote add upstream ' +
         'https://github.com/kenresoft-technologies/kenresoft-cms.git',
     );
-    return;
+    return nothingPulled;
   }
 
   console.log('Fetching the latest CMS code from upstream...');
   // No refspec — fetches every branch upstream has (git's default refspec for a remote is
   // `+refs/heads/*:refs/remotes/upstream/*`), so both `upstream/main` and `upstream/develop`
-  // land locally regardless of which one ends up merged below.
-  runGitInherit(['fetch', 'upstream'], repoRoot);
+  // land locally regardless of which one ends up merged below. --tags adds every release tag.
+  runGitInherit(['fetch', '--tags', 'upstream'], repoRoot);
 
-  let targetBranch = branch;
-  if (targetBranch) {
-    const exists = tryRunGit(['rev-parse', '--verify', `refs/remotes/upstream/${targetBranch}`], repoRoot);
-    if (!exists.ok) {
-      throw new Error(`upstream/${targetBranch} does not exist — check the branch name (e.g. "main" or "develop").`);
+  const fromVersion = readRootVersion(repoRoot);
+  const { mergeRef, label, toVersionHint } = resolveUpdateTarget(repoRoot, { branch, version });
+
+  // Already contains the target (up to date, or ahead of it — e.g. an install that tracked
+  // `develop` and is now back on releases): nothing to merge. An explicitly requested older
+  // release is refused rather than silently doing nothing — merging it can't downgrade, and a
+  // real downgrade needs care because database migrations don't run backwards.
+  if (tryRunGit(['merge-base', '--is-ancestor', mergeRef, 'HEAD'], repoRoot).ok) {
+    if (version && toVersionHint && fromVersion && compareVersions(toVersionHint, fromVersion) < 0) {
+      throw new Error(
+        `This install is on v${fromVersion}, newer than ${label}. \`pnpm run update\` doesn't downgrade — ` +
+          'see "Rolling back" in docs/RELEASING.md.',
+      );
     }
-    console.log(`✓ Using explicitly requested branch: upstream/${targetBranch}`);
-  } else {
-    // Discover upstream's actual default branch rather than assuming the local branch's own name
-    // matches it — true for a fresh `git clone`-based scaffold, not guaranteed for an older
-    // install (e.g. one whose local branch got renamed, or scaffolded before this repo's default
-    // branch was `develop`).
-    runGit(['remote', 'set-head', 'upstream', '--auto'], repoRoot);
-    const headRef = runGit(['symbolic-ref', 'refs/remotes/upstream/HEAD'], repoRoot).trim();
-    targetBranch = headRef.replace('refs/remotes/upstream/', '');
+    console.log(`✓ Already up to date with ${label}${fromVersion ? ` (running v${fromVersion})` : ''}.`);
+    return nothingPulled;
   }
-  const defaultBranch = targetBranch;
 
   // Local config edits (wrangler.toml's database_id/CORS_ORIGINS, pnpm-lock.yaml) are always
   // uncommitted, expected local state on a real deployment — stash them out of the way so the
@@ -134,7 +193,7 @@ export async function pullLatestCode(repoRoot, { branch, ci = false } = {}) {
   // once any of it was ever committed.
   const preMergeHead = runGit(['rev-parse', 'HEAD'], repoRoot).trim();
 
-  const merge = tryRunGit(['merge', `upstream/${defaultBranch}`, '--no-edit'], repoRoot);
+  const merge = tryRunGit(['merge', mergeRef, '--no-edit'], repoRoot);
   if (!merge.ok) {
     if (/refusing to merge unrelated histories/i.test(merge.stderr)) {
       // Only true for an install scaffolded before this project's create-tool switched from a
@@ -168,7 +227,7 @@ export async function pullLatestCode(repoRoot, { branch, ci = false } = {}) {
         throw new Error('Update cancelled — code was not pulled. Re-run when ready, or pass --ci to skip this prompt.');
       }
       runGitInherit(
-        ['merge', `upstream/${defaultBranch}`, '--allow-unrelated-histories', '-X', 'theirs', '--no-edit'],
+        ['merge', mergeRef, '--allow-unrelated-histories', '-X', 'theirs', '--no-edit'],
         repoRoot,
       );
 
@@ -190,7 +249,7 @@ export async function pullLatestCode(repoRoot, { branch, ci = false } = {}) {
         console.error('(Your local config changes are safely stashed — recover them with `git stash pop` after resolving.)');
       }
       throw new Error(
-        `Merging upstream/${defaultBranch} hit a real conflict:\n${merge.stderr}\n` +
+        `Merging ${label} hit a real conflict:\n${merge.stderr}\n` +
           'Resolve it yourself (git status), commit, then re-run `pnpm run update`.',
       );
     }
@@ -206,5 +265,11 @@ export async function pullLatestCode(repoRoot, { branch, ci = false } = {}) {
     }
   }
 
-  console.log('✓ Code updated.');
+  const toVersion = readRootVersion(repoRoot);
+  console.log(
+    fromVersion && toVersion && fromVersion !== toVersion
+      ? `✓ Code updated: v${fromVersion} → v${toVersion}.`
+      : `✓ Code updated to ${label}.`,
+  );
+  return { fromVersion, toVersion };
 }

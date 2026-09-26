@@ -5,13 +5,16 @@ what changed before running `pnpm run update` (see `docs/DEPLOYMENT.md`'s "Updat
 install" section). This starts here rather than reconstructing the project's full history:
 see `git log` for everything before this file existed.
 
-Format loosely follows [Keep a Changelog](https://keepachangelog.com/). Dates are when a change
-landed on `develop`.
+Format loosely follows [Keep a Changelog](https://keepachangelog.com/), and releases follow
+[semantic versioning](https://semver.org/) as described in `docs/RELEASING.md`. Each
+`## [X.Y.Z] - date` section is one release, dated the day it was released; `## Unreleased` is what
+the next release will contain.
 
 ## Unreleased
 
 ### Added
 
+- **Numbered releases.** Kenresoft CMS now ships as versioned releases (`v0.9.0` onwards), each a git tag, a GitHub release and a section of this changelog. **Settings → Updates** shows the version a deployment runs and whether a newer release exists, and Admins and Owners see an "Update available" notice in the sidebar. The check asks GitHub from the API Worker, cached for hours; a fork can point it at its own repo, or turn it off, with the new optional `UPDATE_CHECK_REPO` variable. The running version is only shown to Admins and Owners, never on a public endpoint. Maintainers cut releases with `pnpm run release`; the version rules and process are in `docs/RELEASING.md`. Requires publishing `@kenresoft-cms/contracts` 0.6.2 (the version endpoint's schema).
 - **Account-linked form submissions.** A form can now require a website account (Forms > Edit > "Require a website account"). Only a signed-in, verified account can submit it, and the submission belongs to that account. The owner is always taken from the session, never from the request. The account can then follow its own submissions from your site through a new account API, `/api/v1/account/forms/submissions`: list, detail, file downloads and messages. Another account's submission is always a 404. Anonymous forms work exactly as before.
 - **Per-form progress stages.** A form can have its own ordered stages (for example Submitted, In Progress, Completed). New submissions start in the first stage. Staff move a submission along from its detail page (`PUT /api/v1/admin/forms/:id/submissions/:submissionId/stage`), which records the change in a history the owning account can see. A stage is separate from the inbox status (new/read/archived), which the account never sees. If the form has an "Account page URL", the owning account gets an email when the stage changes, through a new admin-editable template, **Request update (website account)**.
 - **Two-way submission threads.** The owning account can post messages with up to 5 files (PDF, DOCX or image, 10 MB each) from your site, and the form's notification recipients are emailed. Staff replies still go out by email as before, and now also appear in the account's view of the submission, with a link back to it in the email when the form has an Account page URL. Staff see account messages in the submission's conversation.
@@ -21,6 +24,7 @@ landed on `develop`.
 
 ### Changed
 
+- **`pnpm run update` now moves to the latest release instead of the tip of `develop`.** It prints what's new since your version, and does nothing but redeploy when you're already on the latest release. `pnpm run update -- --version 0.9.1` moves to a specific release. Following unreleased code is still possible for test installs with `--branch develop` or `UPDATE_BRANCH=develop`. It never downgrades; see "Rolling back" in `docs/RELEASING.md`. An install that was tracking `develop` is ahead of the first release and stays where it is until a release catches up with it.
 - **A form submission with files is now all-or-nothing.** Files are stored before the submission is created, and if any file, the submission or its attachment links can't be saved, everything already stored is removed and the API answers 500 with nothing kept. Before, a file that failed to store was skipped and the submission was still reported as a success without it. Messages with files from an account follow the same rule. An uploaded Media object whose database row can't be written is also removed from R2 instead of being left behind.
 - A file field no longer silently ignores an empty file someone actually picked: it's refused with "File is empty". A file input left blank still counts as no file. A macro-enabled Word document renamed to `.docx` is refused as unsupported.
 - Admin: a submission on an account-only form whose website account was later deleted now says the account is no longer available, where replies go instead, and labels the account's earlier messages "Former website account". The submission, its files and its thread stay fully workable for staff.

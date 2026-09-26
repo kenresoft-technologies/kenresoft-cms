@@ -8,6 +8,7 @@ import {
   Menu,
   Palette,
   Plug,
+  RefreshCw,
   Search,
   Settings2,
   Share2,
@@ -30,6 +31,7 @@ import { GeneralSection } from './GeneralSection';
 import { NavigationSection } from './NavigationSection';
 import { SeoSection } from './SeoSection';
 import { SocialSection } from './SocialSection';
+import { UpdatesSection } from './UpdatesSection';
 import { WebhooksSection } from './WebhooksSection';
 
 export type SettingsGroupId = 'site' | 'experience' | 'system' | 'developer';
@@ -80,6 +82,7 @@ export type SettingsSectionId =
   | 'database'
   | 'api'
   | 'cache'
+  | 'updates'
   | 'webhooks'
   | 'advanced';
 
@@ -239,6 +242,15 @@ export const SETTINGS_SECTIONS: SettingsSectionMeta[] = [
     available: true,
     keywords: ['purge', 'invalidate', 'edge cache'],
     render: ({ readOnly }) => <CacheSection readOnly={readOnly} />,
+  },
+  {
+    id: 'updates',
+    label: 'Updates',
+    icon: RefreshCw,
+    group: 'system',
+    available: true,
+    keywords: ['version', 'release', 'upgrade', 'changelog', 'about'],
+    render: ({ readOnly }) => <UpdatesSection readOnly={readOnly} />,
   },
   {
     id: 'advanced',

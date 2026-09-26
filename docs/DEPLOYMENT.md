@@ -457,11 +457,11 @@ CI provider is just as valid a way to ship changes.
 
 ## Updating an existing install
 
-New CMS features and fixes are developed on the project's `develop` branch, then periodically
-merged into `main`. The repository's default branch, and the one `pnpm run update`,
-`npm create @kenresoft-cms@latest`, and the "Deploy to Cloudflare" buttons all pull from (each
-follows GitHub's default branch automatically rather than a hardcoded name). `CHANGELOG.md`
-tracks what actually changed, in plain terms, so you know what you're pulling in before you do.
+Kenresoft CMS ships as numbered **releases** (`v0.9.0`, `v0.9.1`, …), each a git tag with a
+GitHub release and a section in `CHANGELOG.md` saying what changed. `pnpm run update` moves your
+install to the latest release, never to unreleased work in progress. To see which version you're
+running, open **Settings → Updates** in the admin (Admins and Owners); it also says when a newer
+release exists. How releases are numbered and made: [`RELEASING.md`](RELEASING.md).
 
 From the repo root, run:
 
@@ -469,9 +469,11 @@ From the repo root, run:
 pnpm run update
 ```
 
-That's the whole thing. It pulls the latest code from the `upstream` git remote (both a plain
+That's the whole thing. It pulls the latest release from the `upstream` git remote (both a plain
 `git clone` of this repo and one scaffolded via `npm create @kenresoft-cms@latest` have one
-already), installs dependencies, applies any new database migrations, and redeploys both Workers.
+already), prints what's new since your version, installs dependencies, applies any new database
+migrations, and redeploys both Workers. Already on the latest release, it just redeploys. To move
+to a specific release instead of the latest: `pnpm run update -- --version 0.9.1`.
 Deliberately **not** `pnpm run setup` run again: unlike `setup`, bare `pnpm run update` never
 touches your `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, email configuration, D1/R2, or CORS. It's
 the safe subset for an install that already exists, and touches nothing this deployment's own
@@ -492,12 +494,8 @@ auto-filled while it's still the pre-deploy placeholder. Never once it holds a r
 custom domain included. And email configuration is only touched if you pick "change" for it. See
 "Updating configuration" below for the equivalent standalone commands.
 
-By default `update` follows whatever GitHub reports as `upstream`'s actual default branch
-(currently `develop`, the project's own working branch; `main` is reserved for release
-promotion, see `CLAUDE.md`'s branch rules). Correct for a real install, which should always
-track the currently-recommended stable line. A deployment used deliberately for *testing*
-pre-release code. E.g. a staging install that wants to try `develop` before it's promoted to
-`main`, or vice versa. Can override this per run:
+A deployment used deliberately for *testing* unreleased code, e.g. a staging install that wants
+to try `develop` before the next release, can follow a branch instead of releases, per run:
 
 ```bash
 pnpm run update -- --branch develop
@@ -514,7 +512,9 @@ pnpm run update
 
 An explicit `--branch` always wins over `UPDATE_BRANCH` if both are given. This only affects the
 plain code-pull update. It's rejected if combined with `--auth`/`--email`/`--storage`/
-`--database`, which never touch git at all.
+`--database`, which never touch git at all, or with `--version`. A branch install is ahead of the
+latest release; running plain `pnpm run update` later (without `UPDATE_BRANCH`) leaves it where it
+is until a release catches up with it.
 
 If your install has no `upstream` remote at all (a raw zip download, or one deliberately
 removed), `update` skips the code-pull step with a note and still redeploys whatever's on disk:

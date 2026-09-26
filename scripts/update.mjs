@@ -36,14 +36,13 @@
 // which is a separate, API-side concept (`--auth` changes that one). See scripts/lib/configure.mjs's
 // configureAdminDomain for the full sequencing/failure-handling contract.
 //
-// Which branch to pull: bare `pnpm run update` follows upstream's actual default branch,
-// auto-detected every run (see lib/git-cli.mjs) — correct for a real install, which should
-// always track whatever the project currently ships as stable. A deployment deliberately used
-// for *testing* pre-release code (e.g. a staging install that wants to try `develop` before it
-// reaches `main`) can override this per run with `--branch <name>`, or set it once via the
-// `UPDATE_BRANCH` environment variable so every future `pnpm run update` in that checkout keeps
-// using it without repeating the flag — an explicit `--branch` always wins over `UPDATE_BRANCH`
-// if both are given.
+// What to pull: bare `pnpm run update` moves to the latest *release* (a `vX.Y.Z` tag, see
+// docs/RELEASING.md), never the unreleased tip of a branch, and prints that release's notes.
+// `--version <x>` pins a specific release instead. A deployment deliberately used for *testing*
+// unreleased code (e.g. a staging install trying `develop`) can follow a branch per run with
+// `--branch <name>`, or set it once via the `UPDATE_BRANCH` environment variable — an explicit
+// `--branch` always wins over `UPDATE_BRANCH`. An upstream with no releases yet falls back to its
+// default branch (lib/git-cli.mjs).
 //
 // Usage:
 //   pnpm run update [--ci]
@@ -54,6 +53,7 @@
 //   pnpm run update -- --domain [--ci]
 //   pnpm run update -- --admin-domain [--ci]
 //   pnpm run update -- --turnstile [--ci]
+//   pnpm run update -- --version 0.9.1      # a specific release instead of the latest
 //   pnpm run update -- --branch develop     # or: UPDATE_BRANCH=develop pnpm run update
 //
 // --ci on the bare (no-category) form specifically answers the one-time "unrelated histories"
@@ -62,6 +62,7 @@
 // other step of the bare update already runs with no prompts regardless of --ci.
 
 import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -81,8 +82,10 @@ import {
 } from './lib/configure.mjs';
 import { closePrompt } from './lib/prompt.mjs';
 import { parseUpdateArgs } from './lib/update-args.mjs';
+import { changelogBetween } from './lib/versioning.mjs';
 
 const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
+const RELEASES_URL = 'https://github.com/kenresoft-technologies/kenresoft-cms/releases';
 const API_DIR = join(REPO_ROOT, 'apps', 'api');
 const ADMIN_DIR = join(REPO_ROOT, 'apps', 'admin');
 const WRANGLER_TOML_PATH = join(REPO_ROOT, 'wrangler.toml');
@@ -153,8 +156,30 @@ async function runAdminDomainConfigure(ci) {
   console.log(result.changed ? '\n✓ Admin domain configuration updated.' : '\nNo changes made.');
 }
 
+const RELEASE_NOTES_MAX_LINES = 60;
+
+// What the update brought: every CHANGELOG.md release section after the old version up to the
+// new one. Long notes are cut short with a pointer to the full text, so the rest of the update's
+// output (migrations, deploys) doesn't scroll away.
+function printReleaseNotes(fromVersion, toVersion) {
+  let notes = '';
+  try {
+    notes = changelogBetween(readFileSync(join(REPO_ROOT, 'CHANGELOG.md'), 'utf8').replace(/\r\n/g, '\n'), fromVersion, toVersion);
+  } catch {
+    return;
+  }
+  if (!notes) return;
+  const lines = notes.split('\n');
+  console.log(`\nWhat's new since v${fromVersion ?? '?'}:\n`);
+  console.log(lines.slice(0, RELEASE_NOTES_MAX_LINES).map((line) => `  ${line}`).join('\n'));
+  if (lines.length > RELEASE_NOTES_MAX_LINES) {
+    console.log(`\n  … the rest is in CHANGELOG.md, or on GitHub: ${RELEASES_URL}`);
+  }
+  console.log('');
+}
+
 async function main() {
-  const { ci, branch, category } = parseUpdateArgs(process.argv.slice(2));
+  const { ci, branch, version, category } = parseUpdateArgs(process.argv.slice(2));
   if (category === 'admin-domain') {
     await runAdminDomainConfigure(ci);
     return;
@@ -168,7 +193,8 @@ async function main() {
   console.log('This never touches your secrets, D1/R2 resources, CORS config, or other application configuration.\n');
   if (branch) console.log(`Pulling explicitly requested branch: ${branch}\n`);
 
-  await pullLatestCode(REPO_ROOT, { branch, ci });
+  const { fromVersion, toVersion } = await pullLatestCode(REPO_ROOT, { branch, version, ci });
+  if (toVersion && fromVersion !== toVersion) printReleaseNotes(fromVersion, toVersion);
 
   console.log('\nInstalling dependencies...');
   execFileSync('pnpm', ['install'], { cwd: REPO_ROOT, stdio: 'inherit', shell: true });
