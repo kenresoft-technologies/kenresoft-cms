@@ -6,7 +6,8 @@ import { isSafeHref, parseAttributes, tokenize } from './html-sanitizer';
 // account is compromised or pastes markup from an untrusted source. Guarantees, for both presets:
 //   * Only allow-listed tags/attributes survive. No script, style, iframe, object, embed, form,
 //     input, svg, math, base, link, meta, video/audio — and the content of those elements is
-//     dropped entirely, not shown as text.
+//     dropped entirely, not shown as text. (One narrow exception, page preset only: a disabled
+//     checklist checkbox, rebuilt from scratch — see PAGE_CONFIG and sanitizeTaskCheckbox.)
 //   * No event handlers, no `id`/`name` (DOM clobbering), no `srcdoc`, no data:/javascript:/
 //     vbscript: URLs; images may only load over http(s) (page preset also allows relative paths).
 //   * Inline `style` is filtered to a property allow-list; no `position`/`z-index`/`transform`
@@ -32,6 +33,8 @@ interface SanitizerConfig {
   imageExtraAttributes: string[];
   // Drop images that are 0-2px wide/high — the classic email tracking pixel.
   dropTrackingPixels?: boolean;
+  // Keep the rich-text editor's checklists (Tiptap TaskList/TaskItem): see sanitizeTaskCheckbox.
+  taskListCheckboxes?: boolean;
 }
 
 const DIGITS = /^[0-9]{1,4}$/;
@@ -58,9 +61,20 @@ const PAGE_STYLE_PROPERTIES = [
   'list-style', 'list-style-type', 'object-fit',
 ];
 
+// The page preset also sanitizes `rich_text` entry fields and the RichText block, whose HTML
+// comes from the admin's editor. Its checklists are saved as
+//   <ul data-type="taskList" style="list-style: none"><li data-type="taskItem" data-checked="true">
+//     <input type="checkbox" disabled checked> text</li></ul>
+// (apps/admin's toStoredRichTextHtml). Older saves used Tiptap's own <label>/<div> variant, which
+// sanitizeWith rewrites into that shape (see unwrapLegacyTaskTag). Both need the data-* attributes
+// (the editor re-reads a checklist from them) and a checkbox (what a public site shows). Without
+// them, saving turned every checklist into a plain bullet. Each is
+// value-validated below, <label> gets no attributes at all (so no `for`), and <input> is handled
+// by sanitizeTaskCheckbox. Page preset only: an email has no use for either.
 const PAGE_CONFIG: SanitizerConfig = {
-  allowedTags: new Set(PAGE_TAGS),
-  voidTags: new Set(['br', 'hr', 'img', 'col']),
+  taskListCheckboxes: true,
+  allowedTags: new Set([...PAGE_TAGS, 'label', 'input']),
+  voidTags: new Set(['br', 'hr', 'img', 'col', 'input']),
   globalAttributes: new Set(['class', 'title', 'lang', 'dir', 'style', 'aria-label', 'aria-hidden']),
   tagAttributes: {
     a: new Set(['href', 'target']),
@@ -68,6 +82,9 @@ const PAGE_CONFIG: SanitizerConfig = {
     td: new Set(['colspan', 'rowspan']),
     th: new Set(['colspan', 'rowspan', 'scope']),
     time: new Set(['datetime']),
+    ol: new Set(['start']),
+    ul: new Set(['data-type']),
+    li: new Set(['data-type', 'data-checked']),
   },
   styleProperties: new Set(PAGE_STYLE_PROPERTIES),
   displayValues: new Set(['block', 'inline', 'inline-block', 'flex', 'inline-flex', 'grid', 'none']),
@@ -79,6 +96,9 @@ const PAGE_CONFIG: SanitizerConfig = {
     dir: (v) => ['ltr', 'rtl', 'auto'].includes(v.toLowerCase()),
     scope: (v) => ['row', 'col', 'rowgroup', 'colgroup'].includes(v.toLowerCase()),
     target: (v) => v === '_blank',
+    start: (v) => DIGITS.test(v),
+    'data-type': (v) => v === 'taskList' || v === 'taskItem',
+    'data-checked': (v) => v === 'true' || v === 'false',
   },
   allowRelativeUrls: true,
   imageExtraAttributes: ['loading="lazy"'],
@@ -245,6 +265,59 @@ function isTrackingPixel(attrs: Map<string, string>): boolean {
   );
 }
 
+// The only <input> that survives: a checklist checkbox, rebuilt from scratch rather than filtered,
+// so nothing else about the original tag (name, value, form, autofocus, handlers...) can carry
+// over. It is always `disabled` — on a public page it only shows the item's state. Any other input
+// type is dropped whole: an input without a valid type would render as a text box.
+// The fixed inline style keeps it on the same line as its item's text even on a site whose own
+// CSS styles every <input> as a full-width block (a common form reset), which otherwise pushes the
+// text onto the next line.
+const TASK_CHECKBOX_STYLE = 'style="display: inline-block; width: auto; margin: 0 0.4em 0 0"';
+
+function sanitizeTaskCheckbox(attrs: Map<string, string>): string {
+  const checked = attrs.has('checked') ? ' checked' : '';
+  return `<input type="checkbox" disabled${checked} ${TASK_CHECKBOX_STYLE}>`;
+}
+
+// Checklists saved before the flat shape existed (see PAGE_CONFIG) put the checkbox in a <label>
+// and the item's text in a <div><p> block, which puts the text on the line below the checkbox on
+// any site without checklist-specific CSS. The sanitizer runs on every read, so it rewrites those
+// items into the flat shape: the <label>, its <span> and the <div> are unwrapped, and so is the
+// div's first <p> (a later paragraph or a nested list keeps its own line). Open-stack entries for
+// an unwrapped element start with UNWRAPPED and emit no closing tag; a checklist item's <li> is
+// pushed as TASK_ITEM so its children can be recognised.
+const UNWRAPPED = '!';
+const TASK_ITEM = 'li#task';
+
+function openTagName(entry: string): string {
+  if (entry === TASK_ITEM) return 'li';
+  return entry.startsWith(UNWRAPPED) ? entry.slice(1).replace(/\*/g, '') : entry;
+}
+
+// The open-stack entry for a legacy checklist wrapper to unwrap, or null to keep the tag.
+// A <label>/<div> is matched against its nearest *kept* ancestor: an already-unwrapped wrapper
+// leaves no trace in the output, so a second pass would see the inner tag directly under the item
+// and unwrap it then — counting it as a parent here would break sanitize(sanitize(x)) === sanitize(x)
+// for nested wrappers like <label><label> (which the editor never writes, but pasted HTML can).
+function unwrapLegacyTaskTag(tagName: string, open: string[]): string | null {
+  const parent = open[open.length - 1];
+  let keptIndex = open.length - 1;
+  while (keptIndex >= 0 && open[keptIndex]!.startsWith(UNWRAPPED)) keptIndex--;
+  const keptParent = open[keptIndex];
+  if (tagName === 'label' && keptParent === TASK_ITEM) return '!label';
+  if (tagName === 'span' && parent === '!label') return '!span';
+  if (tagName === 'div' && keptParent === TASK_ITEM) return '!div';
+  if (tagName === 'p' && parent === '!div') {
+    open[open.length - 1] = '!div*'; // only the first paragraph joins the checkbox's line
+    return '!p';
+  }
+  return null;
+}
+
+function closeOpenEntry(entry: string): string {
+  return entry.startsWith(UNWRAPPED) ? '' : `</${openTagName(entry)}>`;
+}
+
 function sanitizeWith(html: string, config: SanitizerConfig): string {
   const tokens = tokenize(html);
   const open: string[] = [];
@@ -269,9 +342,10 @@ function sanitizeWith(html: string, config: SanitizerConfig): string {
     if (!config.allowedTags.has(token.tagName)) continue;
 
     if (token.closing) {
-      const index = open.lastIndexOf(token.tagName);
+      let index = open.length - 1;
+      while (index >= 0 && openTagName(open[index]!) !== token.tagName) index--;
       if (index < 0) continue; // stray closing tag
-      while (open.length > index) output += `</${open.pop()}>`;
+      while (open.length > index) output += closeOpenEntry(open.pop()!);
       continue;
     }
 
@@ -279,8 +353,19 @@ function sanitizeWith(html: string, config: SanitizerConfig): string {
     // to make browsers and mail clients slow or crash, so anything deeper is dropped.
     if (!config.voidTags.has(token.tagName) && open.length >= MAX_NESTING_DEPTH) continue;
 
+    const unwrapped = config.taskListCheckboxes ? unwrapLegacyTaskTag(token.tagName, open) : null;
+    if (unwrapped) {
+      open.push(unwrapped);
+      continue;
+    }
+
     const parsed = parseAttributes(token.rawAttributes);
     if (token.tagName === 'img' && config.dropTrackingPixels && isTrackingPixel(parsed)) continue;
+    if (token.tagName === 'input') {
+      const isCheckbox = parsed.get('type')?.trim().toLowerCase() === 'checkbox';
+      if (config.taskListCheckboxes && isCheckbox) output += sanitizeTaskCheckbox(parsed);
+      continue;
+    }
     const allowed = config.tagAttributes[token.tagName];
     const kept: string[] = [];
 
@@ -302,12 +387,17 @@ function sanitizeWith(html: string, config: SanitizerConfig): string {
       kept.push('rel="noopener noreferrer"');
     }
     if (token.tagName === 'img') kept.push(...config.imageExtraAttributes);
+    // A checklist never shows bullets, including one saved before its <ul> carried this style.
+    if (token.tagName === 'ul' && kept.includes('data-type="taskList"') && !kept.some((a) => a.startsWith('style='))) {
+      kept.push('style="list-style: none"');
+    }
+    const isTaskItem = token.tagName === 'li' && kept.includes('data-type="taskItem"');
 
     output += kept.length > 0 ? `<${token.tagName} ${kept.join(' ')}>` : `<${token.tagName}>`;
-    if (!config.voidTags.has(token.tagName)) open.push(token.tagName);
+    if (!config.voidTags.has(token.tagName)) open.push(isTaskItem ? TASK_ITEM : token.tagName);
   }
 
-  while (open.length > 0) output += `</${open.pop()}>`;
+  while (open.length > 0) output += closeOpenEntry(open.pop()!);
   return output;
 }
 

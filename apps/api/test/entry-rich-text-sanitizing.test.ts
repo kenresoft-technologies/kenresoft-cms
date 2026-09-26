@@ -51,4 +51,44 @@ describe('entry rich_text fields are sanitised', () => {
     const body = await res.json<{ data: { body: string } }>();
     expectClean(body.data.body);
   });
+
+  it('keeps an editor checklist through save and public read', async () => {
+    const ct = await createContentType(db, { name: 'Post', slug: 'post', description: null });
+    await createFieldDefinition(db, {
+      contentTypeId: ct.id,
+      name: 'body',
+      label: 'body',
+      fieldType: 'rich_text',
+      required: false,
+      sortOrder: 0,
+      config: null,
+      presentation: null,
+    });
+    // What the admin editor sends (apps/admin's toStoredRichTextHtml).
+    const checklist =
+      '<ul data-type="taskList" style="list-style: none"><li data-checked="true" data-type="taskItem"><input type="checkbox" checked="checked" disabled="">Book venue</li></ul>';
+    const saved =
+      '<ul data-type="taskList" style="list-style: none"><li data-checked="true" data-type="taskItem"><input type="checkbox" disabled checked style="display: inline-block; width: auto; margin: 0 0.4em 0 0">Book venue</li></ul>';
+
+    const entry = await createEntry(db, ct.id, { slug: 'b', status: 'published', data: { body: checklist } }, null);
+    expect(entry.data['body']).toBe(saved);
+
+    const res = await SELF.fetch('https://example.com/api/v1/public/post/b');
+    expect(res.status).toBe(200);
+    expect((await res.json<{ data: { body: string } }>()).data.body).toBe(saved);
+
+    // A checklist saved before the flat shape existed (checkbox in a <label>, text in a <div><p>),
+    // written straight to the row: the public API serves it in the one-line shape without a re-save.
+    await env.DB.prepare('UPDATE entries SET data = ? WHERE id = ?')
+      .bind(
+        JSON.stringify({
+          body: '<ul data-type="taskList"><li data-checked="true" data-type="taskItem"><label><input type="checkbox" disabled checked style="display: inline-block; width: auto; margin: 0 0.4em 0 0"><span></span></label><div><p>Book venue</p></div></li></ul>',
+        }),
+        entry.id,
+      )
+      .run();
+    const legacy = await SELF.fetch('https://example.com/api/v1/public/post/b');
+    expect(legacy.status).toBe(200);
+    expect((await legacy.json<{ data: { body: string } }>()).data.body).toBe(saved);
+  });
 });

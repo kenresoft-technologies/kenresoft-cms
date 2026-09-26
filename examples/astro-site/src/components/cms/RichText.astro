@@ -49,6 +49,30 @@ const { html } = Astro.props;
     margin-top: 0.35em;
   }
 
+  /* Checklists. Saved as <ul data-type="taskList" style="list-style: none"><li data-type="taskItem">
+     <input type="checkbox" disabled> text</li></ul>, which already renders on one line with no
+     CSS; these rules only tidy the indent. The second group handles checklists saved before that
+     shape existed, where the checkbox sits in a <label> and the text in a separate <div>. */
+  .rich-text :global(ul[data-type='taskList']) {
+    list-style: none;
+    padding-left: 0.25em;
+  }
+
+  .rich-text :global(ul[data-type='taskList'] ul[data-type='taskList']) {
+    margin: 0.35em 0 0;
+    padding-left: 1.4em;
+  }
+
+  .rich-text :global(li[data-type='taskItem']:has(> label)) {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5em;
+  }
+
+  .rich-text :global(li[data-type='taskItem'] > div > p) {
+    margin: 0;
+  }
+
   .rich-text :global(blockquote) {
     margin: 1.25em 0;
     padding-left: 1rem;

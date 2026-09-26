@@ -49,10 +49,18 @@ export function useCreateEntry(contentTypeId: string) {
   return useMutation({
     mutationFn: (input: EntryWriteInput) =>
       apiClient.post<Entry>(`/api/v1/admin/entries?contentTypeId=${contentTypeId}`, input),
-    onSuccess: () => {
+    onSuccess: (entry) => {
       void queryClient.invalidateQueries({ queryKey: ['entries', contentTypeId] });
+      invalidateIfFeatured(queryClient, entry);
     },
   });
+}
+
+// Featuring an entry can un-feature others of its type ("Only one featured entry"), so their
+// cached copies — including an open or cached editor, whose next save would otherwise send
+// `featured: true` and take the spot back — must be refetched too, not just this entry's.
+function invalidateIfFeatured(queryClient: ReturnType<typeof useQueryClient>, entry: Entry): void {
+  if (entry.featured) void queryClient.invalidateQueries({ queryKey: ['entries'] });
 }
 
 export function useUpdateEntry(contentTypeId: string, id: string) {
@@ -60,9 +68,10 @@ export function useUpdateEntry(contentTypeId: string, id: string) {
 
   return useMutation({
     mutationFn: (input: EntryWriteInput) => apiClient.patch<Entry>(`/api/v1/admin/entries/${id}`, input),
-    onSuccess: () => {
+    onSuccess: (entry) => {
       void queryClient.invalidateQueries({ queryKey: ['entries', contentTypeId] });
       void queryClient.invalidateQueries({ queryKey: ['entries', 'by-id', id] });
+      invalidateIfFeatured(queryClient, entry);
     },
   });
 }

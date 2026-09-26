@@ -118,6 +118,7 @@ function toDatetimeLocalValue(iso: string | null): string {
 interface EntryFormProps {
   contentTypeId: string;
   contentTypeSlug: string;
+  singleFeatured: boolean;
   entryId: string;
   fields: FieldDefinition[];
   entry: Entry | undefined;
@@ -223,7 +224,7 @@ function DeleteEntryAlert({ contentTypeId, entryId, slug }: { contentTypeId: str
 // loading gate below — so local state can be initialized once via useState's lazy
 // initializer instead of syncing it in from a query with useEffect + setState (which
 // eslint-plugin-react-hooks flags: react.dev/learn/you-might-not-need-an-effect).
-function EntryForm({ contentTypeId, contentTypeSlug, entryId, fields, entry }: EntryFormProps) {
+function EntryForm({ contentTypeId, contentTypeSlug, singleFeatured, entryId, fields, entry }: EntryFormProps) {
   const isNew = entry === undefined;
   const navigate = useNavigate();
   const createEntry = useCreateEntry(contentTypeId);
@@ -462,6 +463,11 @@ function EntryForm({ contentTypeId, contentTypeSlug, entryId, fields, entry }: E
                 </Label>
                 <Switch id="entry-featured" checked={featured} onCheckedChange={setFeatured} />
               </div>
+              {singleFeatured && featured && !initialFeatured ? (
+                <p className="-mt-1 text-xs text-muted-foreground">
+                  Only one entry of this type can be featured. Saving un-features the current one.
+                </p>
+              ) : null}
               <div className="flex flex-col gap-2">
                 <Button type="submit" disabled={isSaving}>
                   {isSaving ? 'Saving…' : 'Save entry'}
@@ -622,9 +628,13 @@ export function EntryEditorPage() {
 
       {ready && contentTypeId && entryId && contentType ? (
         <EntryForm
-          key={`${entryId}-${entry?.updatedAt ?? 'new'}`}
+          // `featured` too: featuring another entry of a "single featured" type un-features this
+          // one without changing its updatedAt, and a form still holding `featured: true` would
+          // take the spot back on its next save.
+          key={`${entryId}-${entry?.updatedAt ?? 'new'}-${entry?.featured ?? ''}`}
           contentTypeId={contentTypeId}
           contentTypeSlug={contentType.slug}
+          singleFeatured={contentType.singleFeatured}
           entryId={entryId}
           fields={fields!}
           entry={isNew ? undefined : entry}

@@ -47,7 +47,7 @@ import {
 } from 'lucide-react';
 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { htmlToMarkdown, markdownToHtml } from '@/lib/rich-text-markdown';
+import { htmlToMarkdown, markdownToHtml, normalizeTaskListHtml, toStoredRichTextHtml } from '@/lib/rich-text-markdown';
 import { mediaFileUrl } from '@/lib/queries/media';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -411,9 +411,14 @@ export function RichTextEditor({ value, onChange, placeholder }: RichTextEditorP
       CharacterCount,
       Placeholder.configure({ placeholder: placeholder ?? 'Write something…' }),
     ],
-    content: value,
+    // Stored HTML didn't necessarily come from this editor (the API, entry import, a migration
+    // from another CMS) — plain GFM checkbox lists would otherwise lose their checkboxes here.
+    // A no-op for anything without a checkbox in it.
+    content: normalizeTaskListHtml(value),
     onUpdate: ({ editor: instance }) => {
-      const html = instance.getHTML();
+      // Checklists are saved in a shape that renders on one line without any site CSS — see
+      // toStoredRichTextHtml.
+      const html = toStoredRichTextHtml(instance.getHTML());
       lastEmitted.current = html;
       onChange(html);
     },
@@ -428,7 +433,7 @@ export function RichTextEditor({ value, onChange, placeholder }: RichTextEditorP
     if (!editor) return;
     if (value !== lastEmitted.current) {
       lastEmitted.current = value;
-      editor.commands.setContent(value || '', { emitUpdate: false });
+      editor.commands.setContent(normalizeTaskListHtml(value || ''), { emitUpdate: false });
     }
   }, [value, editor]);
 
@@ -446,7 +451,7 @@ export function RichTextEditor({ value, onChange, placeholder }: RichTextEditorP
     // Same apply-on-leave contract as Markdown: pasted/edited HTML goes through the editor's own
     // schema, so only supported markup survives (no scripts, event handlers, or unknown tags).
     if (mode === 'html' && next !== 'html') {
-      editor.commands.setContent(htmlDraft);
+      editor.commands.setContent(normalizeTaskListHtml(htmlDraft));
     } else if (next === 'html') {
       setHtmlDraft(editor.getHTML());
     }

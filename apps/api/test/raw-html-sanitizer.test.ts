@@ -100,6 +100,77 @@ describe('sanitizeRawHtml', () => {
       expect(sanitizeRawHtml(once)).toBe(once);
     }
   });
+
+  // The admin editor's checklist markup, as saved (apps/admin's toStoredRichTextHtml). Stripping it
+  // turned every checklist in a saved entry into a plain bullet list.
+  const CHECKBOX_STYLE = 'style="display: inline-block; width: auto; margin: 0 0.4em 0 0"';
+  const SAVED_CHECKLIST =
+    '<ul data-type="taskList" style="list-style: none"><li data-checked="true" data-type="taskItem"><input type="checkbox" checked="checked" disabled="">done</li>' +
+    '<li data-checked="false" data-type="taskItem"><input type="checkbox" disabled="">open</li></ul>';
+
+  it('keeps editor checklists and numbered-list starts, idempotently', () => {
+    const out = sanitizeRawHtml(`<ol start="3"><li>three</li></ol>${SAVED_CHECKLIST}`);
+    expect(out).toBe(
+      '<ol start="3"><li>three</li></ol>' +
+        `<ul data-type="taskList" style="list-style: none"><li data-checked="true" data-type="taskItem"><input type="checkbox" disabled checked ${CHECKBOX_STYLE}>done</li>` +
+        `<li data-checked="false" data-type="taskItem"><input type="checkbox" disabled ${CHECKBOX_STYLE}>open</li></ul>`,
+    );
+    expect(sanitizeRawHtml(out)).toBe(out);
+  });
+
+  // Saved before checklists were stored in the flat shape above; without CSS for it, each item's
+  // text rendered on the line below its checkbox.
+  it('rewrites the older <label>/<div> checklist shape into the flat one, idempotently', () => {
+    const out = sanitizeRawHtml(
+      '<ul data-type="taskList"><li data-checked="true" data-type="taskItem"><label><input type="checkbox" checked="checked"><span></span></label><div><p>done <code>x</code></p></div></li></ul>',
+    );
+    expect(out).toBe(
+      `<ul data-type="taskList" style="list-style: none"><li data-checked="true" data-type="taskItem"><input type="checkbox" disabled checked ${CHECKBOX_STYLE}>done <code>x</code></li></ul>`,
+    );
+    expect(sanitizeRawHtml(out)).toBe(out);
+  });
+
+  it('keeps a legacy item’s later paragraphs and nested checklist on their own lines', () => {
+    const out = sanitizeRawHtml(
+      '<ul data-type="taskList"><li data-checked="false" data-type="taskItem"><label><input type="checkbox"><span></span></label><div><p>one</p><p>two</p>' +
+        '<ul data-type="taskList"><li data-checked="false" data-type="taskItem"><label><input type="checkbox"><span></span></label><div><p>sub</p></div></li></ul></div></li></ul>' +
+        '<div><label>kept</label></div>',
+    );
+    expect(out).toBe(
+      `<ul data-type="taskList" style="list-style: none"><li data-checked="false" data-type="taskItem"><input type="checkbox" disabled ${CHECKBOX_STYLE}>one<p>two</p>` +
+        `<ul data-type="taskList" style="list-style: none"><li data-checked="false" data-type="taskItem"><input type="checkbox" disabled ${CHECKBOX_STYLE}>sub</li></ul></li></ul>` +
+        '<div><label>kept</label></div>',
+    );
+    expect(sanitizeRawHtml(out)).toBe(out);
+  });
+
+  // Wrappers nested inside wrappers (never written by the editor, but pastable into a Raw HTML
+  // block) must be unwrapped in the same pass, or a second pass changes the output — which makes a
+  // stored block look edited on every save.
+  it('stays idempotent for nested legacy wrappers', () => {
+    const inputs = [
+      '<li data-type="taskItem"><label><label><input type="checkbox">a</label></label><div><div><p>b</p></div></div></li>',
+      '<li data-type="taskItem"><div></span></b><input type="checkbox">txt<div>x</div></li>',
+      '<li data-type="taskItem"><label><div><p>c</p></div></label></li>',
+    ];
+    for (const input of inputs) {
+      const once = sanitizeRawHtml(input);
+      expect(sanitizeRawHtml(once), input).toBe(once);
+    }
+  });
+
+  it('only ever lets a bare, disabled checkbox through', () => {
+    expect(sanitizeRawHtml('<input>')).toBe('');
+    expect(sanitizeRawHtml('<input type="text" name="password" placeholder="Password">')).toBe('');
+    expect(sanitizeRawHtml('<input type="hidden" value="x"><input type="submit">')).toBe('');
+    // Its own style is discarded too; only the fixed one-line style is added.
+    expect(
+      sanitizeRawHtml('<input type=checkbox name=x value=y form=f autofocus onfocus=alert(1) style="position: fixed">'),
+    ).toBe(`<input type="checkbox" disabled ${CHECKBOX_STYLE}>`);
+    expect(sanitizeRawHtml('<label for="x" onclick="a()" style="position: fixed">L</label>')).toBe('<label>L</label>');
+    expect(sanitizeRawHtml('<li data-type="evil" data-checked="maybe" data-foo="x">i</li>')).toBe('<li>i</li>');
+    expect(sanitizeRawHtml('<ol start="-1" reversed>x</ol>')).toBe('<ol>x</ol>');
+  });
 });
 
 describe('shared href check (also used by reply sanitising)', () => {
@@ -132,6 +203,10 @@ describe('sanitizeEmailHtml', () => {
     for (const gone of ['<html', '<head', '<body', '<style', '<title', 'DOCTYPE', '.x{']) {
       expect(out).not.toContain(gone);
     }
+  });
+
+  it('does not keep checklist checkboxes or labels (page preset only)', () => {
+    expect(sanitizeEmailHtml('<label><input type="checkbox" checked>x</label>')).toBe('x');
   });
 
   it('removes scripts, forms, event handlers and unsafe or relative URLs and data: images', () => {
