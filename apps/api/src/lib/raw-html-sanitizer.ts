@@ -6,7 +6,8 @@ import { isSafeHref, parseAttributes, tokenize } from './html-sanitizer';
 // account is compromised or pastes markup from an untrusted source. Guarantees, for both presets:
 //   * Only allow-listed tags/attributes survive. No script, style, iframe, object, embed, form,
 //     input, svg, math, base, link, meta, video/audio — and the content of those elements is
-//     dropped entirely, not shown as text.
+//     dropped entirely, not shown as text. (One narrow exception, page preset only: a disabled
+//     checklist checkbox, rebuilt from scratch — see PAGE_CONFIG and sanitizeTaskCheckbox.)
 //   * No event handlers, no `id`/`name` (DOM clobbering), no `srcdoc`, no data:/javascript:/
 //     vbscript: URLs; images may only load over http(s) (page preset also allows relative paths).
 //   * Inline `style` is filtered to a property allow-list; no `position`/`z-index`/`transform`
@@ -32,6 +33,8 @@ interface SanitizerConfig {
   imageExtraAttributes: string[];
   // Drop images that are 0-2px wide/high — the classic email tracking pixel.
   dropTrackingPixels?: boolean;
+  // Keep the rich-text editor's checklists (Tiptap TaskList/TaskItem): see sanitizeTaskCheckbox.
+  taskListCheckboxes?: boolean;
 }
 
 const DIGITS = /^[0-9]{1,4}$/;
@@ -58,9 +61,18 @@ const PAGE_STYLE_PROPERTIES = [
   'list-style', 'list-style-type', 'object-fit',
 ];
 
+// The page preset also sanitizes `rich_text` entry fields and the RichText block, whose HTML
+// comes from the admin's Tiptap editor. Its checklist markup —
+//   <ul data-type="taskList"><li data-type="taskItem" data-checked="true">
+//     <label><input type="checkbox" checked><span></span></label><div><p>…</p></div></li></ul>
+// — needs the data-* attributes (the editor re-reads a checklist from them) and a checkbox (what
+// a public site shows). Without them, saving turned every checklist into a plain bullet. Each is
+// value-validated below, <label> gets no attributes at all (so no `for`), and <input> is handled
+// by sanitizeTaskCheckbox. Page preset only: an email has no use for either.
 const PAGE_CONFIG: SanitizerConfig = {
-  allowedTags: new Set(PAGE_TAGS),
-  voidTags: new Set(['br', 'hr', 'img', 'col']),
+  taskListCheckboxes: true,
+  allowedTags: new Set([...PAGE_TAGS, 'label', 'input']),
+  voidTags: new Set(['br', 'hr', 'img', 'col', 'input']),
   globalAttributes: new Set(['class', 'title', 'lang', 'dir', 'style', 'aria-label', 'aria-hidden']),
   tagAttributes: {
     a: new Set(['href', 'target']),
@@ -68,6 +80,9 @@ const PAGE_CONFIG: SanitizerConfig = {
     td: new Set(['colspan', 'rowspan']),
     th: new Set(['colspan', 'rowspan', 'scope']),
     time: new Set(['datetime']),
+    ol: new Set(['start']),
+    ul: new Set(['data-type']),
+    li: new Set(['data-type', 'data-checked']),
   },
   styleProperties: new Set(PAGE_STYLE_PROPERTIES),
   displayValues: new Set(['block', 'inline', 'inline-block', 'flex', 'inline-flex', 'grid', 'none']),
@@ -79,6 +94,9 @@ const PAGE_CONFIG: SanitizerConfig = {
     dir: (v) => ['ltr', 'rtl', 'auto'].includes(v.toLowerCase()),
     scope: (v) => ['row', 'col', 'rowgroup', 'colgroup'].includes(v.toLowerCase()),
     target: (v) => v === '_blank',
+    start: (v) => DIGITS.test(v),
+    'data-type': (v) => v === 'taskList' || v === 'taskItem',
+    'data-checked': (v) => v === 'true' || v === 'false',
   },
   allowRelativeUrls: true,
   imageExtraAttributes: ['loading="lazy"'],
@@ -245,6 +263,15 @@ function isTrackingPixel(attrs: Map<string, string>): boolean {
   );
 }
 
+// The only <input> that survives: a checklist checkbox, rebuilt from scratch rather than filtered,
+// so nothing else about the original tag (name, value, form, autofocus, handlers...) can carry
+// over. It is always `disabled` — on a public page it only shows the item's state. Any other input
+// type is dropped whole: an input without a valid type would render as a text box.
+function sanitizeTaskCheckbox(attrs: Map<string, string>): string | null {
+  if (attrs.get('type')?.trim().toLowerCase() !== 'checkbox') return null;
+  return attrs.has('checked') ? '<input type="checkbox" disabled checked>' : '<input type="checkbox" disabled>';
+}
+
 function sanitizeWith(html: string, config: SanitizerConfig): string {
   const tokens = tokenize(html);
   const open: string[] = [];
@@ -281,6 +308,11 @@ function sanitizeWith(html: string, config: SanitizerConfig): string {
 
     const parsed = parseAttributes(token.rawAttributes);
     if (token.tagName === 'img' && config.dropTrackingPixels && isTrackingPixel(parsed)) continue;
+    if (token.tagName === 'input') {
+      const checkbox = config.taskListCheckboxes ? sanitizeTaskCheckbox(parsed) : null;
+      if (checkbox) output += checkbox;
+      continue;
+    }
     const allowed = config.tagAttributes[token.tagName];
     const kept: string[] = [];
 

@@ -51,4 +51,29 @@ describe('entry rich_text fields are sanitised', () => {
     const body = await res.json<{ data: { body: string } }>();
     expectClean(body.data.body);
   });
+
+  it('keeps an editor checklist through save and public read', async () => {
+    const ct = await createContentType(db, { name: 'Post', slug: 'post', description: null });
+    await createFieldDefinition(db, {
+      contentTypeId: ct.id,
+      name: 'body',
+      label: 'body',
+      fieldType: 'rich_text',
+      required: false,
+      sortOrder: 0,
+      config: null,
+      presentation: null,
+    });
+    const checklist =
+      '<ul data-type="taskList"><li data-checked="true" data-type="taskItem"><label><input type="checkbox" checked="checked"><span></span></label><div><p>Book venue</p></div></li></ul>';
+    const saved =
+      '<ul data-type="taskList"><li data-checked="true" data-type="taskItem"><label><input type="checkbox" disabled checked><span></span></label><div><p>Book venue</p></div></li></ul>';
+
+    const entry = await createEntry(db, ct.id, { slug: 'b', status: 'published', data: { body: checklist } }, null);
+    expect(entry.data['body']).toBe(saved);
+
+    const res = await SELF.fetch('https://example.com/api/v1/public/post/b');
+    expect(res.status).toBe(200);
+    expect((await res.json<{ data: { body: string } }>()).data.body).toBe(saved);
+  });
 });
