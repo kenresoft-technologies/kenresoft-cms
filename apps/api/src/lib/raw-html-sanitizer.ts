@@ -65,8 +65,8 @@ const PAGE_STYLE_PROPERTIES = [
 // comes from the admin's editor. Its checklists are saved as
 //   <ul data-type="taskList" style="list-style: none"><li data-type="taskItem" data-checked="true">
 //     <input type="checkbox" disabled checked> text</li></ul>
-// (apps/admin's toStoredRichTextHtml), and older saves as Tiptap's own <label>/<div> variant.
-// Both need the data-* attributes (the editor re-reads a checklist from them) and a checkbox (what
+// (apps/admin's toStoredRichTextHtml). Older saves used Tiptap's own <label>/<div> variant, which
+// sanitizeWith rewrites into that shape (see unwrapLegacyTaskTag). Both need the data-* attributes (the editor re-reads a checklist from them) and a checkbox (what
 // a public site shows). Without them, saving turned every checklist into a plain bullet. Each is
 // value-validated below, <label> gets no attributes at all (so no `for`), and <input> is handled
 // by sanitizeTaskCheckbox. Page preset only: an email has no use for either.
@@ -278,6 +278,38 @@ function sanitizeTaskCheckbox(attrs: Map<string, string>): string {
   return `<input type="checkbox" disabled${checked} ${TASK_CHECKBOX_STYLE}>`;
 }
 
+// Checklists saved before the flat shape existed (see PAGE_CONFIG) put the checkbox in a <label>
+// and the item's text in a <div><p> block, which puts the text on the line below the checkbox on
+// any site without checklist-specific CSS. The sanitizer runs on every read, so it rewrites those
+// items into the flat shape: the <label>, its <span> and the <div> are unwrapped, and so is the
+// div's first <p> (a later paragraph or a nested list keeps its own line). Open-stack entries for
+// an unwrapped element start with UNWRAPPED and emit no closing tag; a checklist item's <li> is
+// pushed as TASK_ITEM so its children can be recognised.
+const UNWRAPPED = '!';
+const TASK_ITEM = 'li#task';
+
+function openTagName(entry: string): string {
+  if (entry === TASK_ITEM) return 'li';
+  return entry.startsWith(UNWRAPPED) ? entry.slice(1).replace('*', '') : entry;
+}
+
+// The open-stack entry for a legacy checklist wrapper to unwrap, or null to keep the tag.
+function unwrapLegacyTaskTag(tagName: string, open: string[]): string | null {
+  const parent = open[open.length - 1];
+  if (tagName === 'label' && parent === TASK_ITEM) return '!label';
+  if (tagName === 'span' && parent === '!label') return '!span';
+  if (tagName === 'div' && parent === TASK_ITEM) return '!div';
+  if (tagName === 'p' && parent === '!div') {
+    open[open.length - 1] = '!div*'; // only the first paragraph joins the checkbox's line
+    return '!p';
+  }
+  return null;
+}
+
+function closeOpenEntry(entry: string): string {
+  return entry.startsWith(UNWRAPPED) ? '' : `</${openTagName(entry)}>`;
+}
+
 function sanitizeWith(html: string, config: SanitizerConfig): string {
   const tokens = tokenize(html);
   const open: string[] = [];
@@ -302,15 +334,22 @@ function sanitizeWith(html: string, config: SanitizerConfig): string {
     if (!config.allowedTags.has(token.tagName)) continue;
 
     if (token.closing) {
-      const index = open.lastIndexOf(token.tagName);
+      let index = open.length - 1;
+      while (index >= 0 && openTagName(open[index]!) !== token.tagName) index--;
       if (index < 0) continue; // stray closing tag
-      while (open.length > index) output += `</${open.pop()}>`;
+      while (open.length > index) output += closeOpenEntry(open.pop()!);
       continue;
     }
 
     // Real documents nest a few dozen levels at most; tens of thousands of open tags only serve
     // to make browsers and mail clients slow or crash, so anything deeper is dropped.
     if (!config.voidTags.has(token.tagName) && open.length >= MAX_NESTING_DEPTH) continue;
+
+    const unwrapped = config.taskListCheckboxes ? unwrapLegacyTaskTag(token.tagName, open) : null;
+    if (unwrapped) {
+      open.push(unwrapped);
+      continue;
+    }
 
     const parsed = parseAttributes(token.rawAttributes);
     if (token.tagName === 'img' && config.dropTrackingPixels && isTrackingPixel(parsed)) continue;
@@ -340,12 +379,17 @@ function sanitizeWith(html: string, config: SanitizerConfig): string {
       kept.push('rel="noopener noreferrer"');
     }
     if (token.tagName === 'img') kept.push(...config.imageExtraAttributes);
+    // A checklist never shows bullets, including one saved before its <ul> carried this style.
+    if (token.tagName === 'ul' && kept.includes('data-type="taskList"') && !kept.some((a) => a.startsWith('style='))) {
+      kept.push('style="list-style: none"');
+    }
+    const isTaskItem = token.tagName === 'li' && kept.includes('data-type="taskItem"');
 
     output += kept.length > 0 ? `<${token.tagName} ${kept.join(' ')}>` : `<${token.tagName}>`;
-    if (!config.voidTags.has(token.tagName)) open.push(token.tagName);
+    if (!config.voidTags.has(token.tagName)) open.push(isTaskItem ? TASK_ITEM : token.tagName);
   }
 
-  while (open.length > 0) output += `</${open.pop()}>`;
+  while (open.length > 0) output += closeOpenEntry(open.pop()!);
   return output;
 }
 
