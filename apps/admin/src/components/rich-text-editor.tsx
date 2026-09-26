@@ -47,7 +47,7 @@ import {
 } from 'lucide-react';
 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { htmlToMarkdown, markdownToHtml, normalizeTaskListHtml } from '@/lib/rich-text-markdown';
+import { htmlToMarkdown, markdownToHtml, normalizeTaskListHtml, toStoredRichTextHtml } from '@/lib/rich-text-markdown';
 import { mediaFileUrl } from '@/lib/queries/media';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -416,7 +416,9 @@ export function RichTextEditor({ value, onChange, placeholder }: RichTextEditorP
     // A no-op for anything without a checkbox in it.
     content: normalizeTaskListHtml(value),
     onUpdate: ({ editor: instance }) => {
-      const html = instance.getHTML();
+      // Checklists are saved in a shape that renders on one line without any site CSS — see
+      // toStoredRichTextHtml.
+      const html = toStoredRichTextHtml(instance.getHTML());
       lastEmitted.current = html;
       onChange(html);
     },

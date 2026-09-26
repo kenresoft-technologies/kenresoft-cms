@@ -47,7 +47,11 @@ turndownService.escape = (text: string) =>
 function flattenTaskListHtml(html: string): string {
   const container = document.createElement('div');
   container.innerHTML = html;
+  flattenTaskItems(container);
+  return container.innerHTML;
+}
 
+function flattenTaskItems(container: HTMLElement): void {
   for (const item of container.querySelectorAll('li[data-type="taskItem"]')) {
     const checkbox = item.querySelector('input[type="checkbox"]');
     if (!(checkbox instanceof HTMLInputElement)) continue;
@@ -67,7 +71,28 @@ function flattenTaskListHtml(html: string): string {
 
     item.insertBefore(checkbox, item.firstChild);
   }
+}
 
+// The HTML a rich-text field is saved as. Tiptap's own checklist markup puts the checkbox in a
+// <label> and the item's text in a separate <div><p> block, which only renders on one line with
+// checklist-specific CSS — on a site without it (most sites) every item showed as a bullet with
+// the checkbox on one line and its text on the next. Saved checklists instead use the plain GFM
+// shape (`<li><input type="checkbox"> text</li>`, the same one flattenTaskListHtml produces for
+// Markdown) in a list with its bullets turned off, which renders correctly with no CSS at all.
+// The data-* attributes stay, so the editor reads it straight back as a checklist (Tiptap's
+// TaskItem matches `li[data-type="taskItem"]`, wraps the loose text in a paragraph, and ignores
+// the checkbox, taking the state from data-checked). A no-op for content without a checklist.
+export function toStoredRichTextHtml(html: string): string {
+  if (!html.includes('data-type="taskList"')) return html;
+  const container = document.createElement('div');
+  container.innerHTML = html;
+  flattenTaskItems(container);
+  for (const list of container.querySelectorAll('ul[data-type="taskList"]')) {
+    list.setAttribute('style', 'list-style: none');
+  }
+  for (const checkbox of container.querySelectorAll('li[data-type="taskItem"] > input[type="checkbox"]')) {
+    checkbox.setAttribute('disabled', '');
+  }
   return container.innerHTML;
 }
 

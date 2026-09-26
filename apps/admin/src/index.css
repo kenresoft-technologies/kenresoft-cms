@@ -222,8 +222,14 @@
 .ProseMirror ul[data-type='taskList'] {
   @apply list-none pl-1;
 }
-.ProseMirror ul[data-type='taskList'] li {
+/* The editor's own checklist markup (checkbox in a <label>, text in a sibling <div>) needs flex
+   to sit on one line. Saved content (entry Preview tab) uses the flat
+   `<li><input type="checkbox"> text</li>` shape instead, which is already on one line. */
+.ProseMirror ul[data-type='taskList'] li:has(> label) {
   @apply flex items-start gap-2;
+}
+.ProseMirror ul[data-type='taskList'] li > input[type='checkbox'] {
+  @apply mr-2;
 }
 .ProseMirror ul[data-type='taskList'] li > label {
   @apply mt-1 select-none;

@@ -101,29 +101,41 @@ describe('sanitizeRawHtml', () => {
     }
   });
 
-  // The admin editor's checklist markup. Stripping it turned every checklist in a saved entry
-  // into a plain bullet list.
-  const TIPTAP_CHECKLIST =
-    '<ul data-type="taskList"><li data-checked="true" data-type="taskItem"><label><input type="checkbox" checked="checked"><span></span></label><div><p>done</p></div></li>' +
-    '<li data-checked="false" data-type="taskItem"><label><input type="checkbox"><span></span></label><div><p>open</p></div></li></ul>';
+  // The admin editor's checklist markup, as saved (apps/admin's toStoredRichTextHtml). Stripping it
+  // turned every checklist in a saved entry into a plain bullet list.
+  const CHECKBOX_STYLE = 'style="display: inline-block; width: auto; margin: 0 0.4em 0 0"';
+  const SAVED_CHECKLIST =
+    '<ul data-type="taskList" style="list-style: none"><li data-checked="true" data-type="taskItem"><input type="checkbox" checked="checked" disabled="">done</li>' +
+    '<li data-checked="false" data-type="taskItem"><input type="checkbox" disabled="">open</li></ul>';
 
   it('keeps editor checklists and numbered-list starts, idempotently', () => {
-    const out = sanitizeRawHtml(`<ol start="3"><li>three</li></ol>${TIPTAP_CHECKLIST}`);
+    const out = sanitizeRawHtml(`<ol start="3"><li>three</li></ol>${SAVED_CHECKLIST}`);
     expect(out).toBe(
       '<ol start="3"><li>three</li></ol>' +
-        '<ul data-type="taskList"><li data-checked="true" data-type="taskItem"><label><input type="checkbox" disabled checked><span></span></label><div><p>done</p></div></li>' +
-        '<li data-checked="false" data-type="taskItem"><label><input type="checkbox" disabled><span></span></label><div><p>open</p></div></li></ul>',
+        `<ul data-type="taskList" style="list-style: none"><li data-checked="true" data-type="taskItem"><input type="checkbox" disabled checked ${CHECKBOX_STYLE}>done</li>` +
+        `<li data-checked="false" data-type="taskItem"><input type="checkbox" disabled ${CHECKBOX_STYLE}>open</li></ul>`,
     );
     expect(sanitizeRawHtml(out)).toBe(out);
+  });
+
+  // Saved before checklists were stored in the flat shape above.
+  it('keeps the older <label>/<div> checklist shape too', () => {
+    const out = sanitizeRawHtml(
+      '<ul data-type="taskList"><li data-checked="true" data-type="taskItem"><label><input type="checkbox" checked="checked"><span></span></label><div><p>done</p></div></li></ul>',
+    );
+    expect(out).toBe(
+      `<ul data-type="taskList"><li data-checked="true" data-type="taskItem"><label><input type="checkbox" disabled checked ${CHECKBOX_STYLE}><span></span></label><div><p>done</p></div></li></ul>`,
+    );
   });
 
   it('only ever lets a bare, disabled checkbox through', () => {
     expect(sanitizeRawHtml('<input>')).toBe('');
     expect(sanitizeRawHtml('<input type="text" name="password" placeholder="Password">')).toBe('');
     expect(sanitizeRawHtml('<input type="hidden" value="x"><input type="submit">')).toBe('');
-    expect(sanitizeRawHtml('<input type=checkbox name=x value=y form=f autofocus onfocus=alert(1)>')).toBe(
-      '<input type="checkbox" disabled>',
-    );
+    // Its own style is discarded too; only the fixed one-line style is added.
+    expect(
+      sanitizeRawHtml('<input type=checkbox name=x value=y form=f autofocus onfocus=alert(1) style="position: fixed">'),
+    ).toBe(`<input type="checkbox" disabled ${CHECKBOX_STYLE}>`);
     expect(sanitizeRawHtml('<label for="x" onclick="a()" style="position: fixed">L</label>')).toBe('<label>L</label>');
     expect(sanitizeRawHtml('<li data-type="evil" data-checked="maybe" data-foo="x">i</li>')).toBe('<li>i</li>');
     expect(sanitizeRawHtml('<ol start="-1" reversed>x</ol>')).toBe('<ol>x</ol>');
