@@ -45,7 +45,8 @@ pnpm run setup
 ```
 
 (Equivalent to `git clone https://github.com/kenresoft-technologies/kenresoft-cms.git
-your-site-name`, same files, no GitHub URL to remember.)
+your-site-name` followed by checking out the latest `vX.Y.Z` release tag, with no GitHub URL to
+remember.)
 
 `npm create` here is only the bootstrap mechanism, it's the standard, zero-install way any npm
 user can fetch and scaffold a new project (`npm create <pkg>` is npm's built-in convention, akin

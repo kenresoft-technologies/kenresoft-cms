@@ -27,6 +27,7 @@ export * from '../schemas/routing';
 export * from '../schemas/safe-url';
 export * from '../schemas/settings';
 export * from '../schemas/structured-settings';
+export * from '../schemas/system';
 export * from '../schemas/templates';
 export * from '../schemas/users';
 export * from '../schemas/webhooks';

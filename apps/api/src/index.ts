@@ -34,6 +34,7 @@ import { pagesRoute } from './routes/admin/pages';
 import { pluginsRoute } from './routes/admin/plugins';
 import { reusableBlocksRoute } from './routes/admin/reusable-blocks';
 import { securityRoute } from './routes/admin/security';
+import { adminSystemRoute } from './routes/admin/system';
 import { settingsRoute } from './routes/admin/settings';
 import { structuredSettingsRoute } from './routes/admin/structured-settings';
 import { submissionsRoute } from './routes/admin/submissions';
@@ -119,6 +120,7 @@ app.route('/api/v1/admin/email-templates', emailTemplatesRoute);
 app.route('/api/v1/admin/structured-settings', structuredSettingsRoute);
 app.route('/api/v1/admin/users', usersRoute);
 app.route('/api/v1/admin/security', securityRoute);
+app.route('/api/v1/admin/system', adminSystemRoute);
 app.route('/api/v1/admin/webhooks', webhooksRoute);
 app.route('/api/v1/admin/plugins', pluginsRoute);
 

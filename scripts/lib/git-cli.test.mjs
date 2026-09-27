@@ -134,3 +134,90 @@ test('restoreOwnWranglerToml returns false when wrangler.toml did not exist at t
     repo.cleanup();
   }
 });
+
+// --- Release tags (docs/RELEASING.md) -------------------------------------------------------
+
+function commitVersion(dir, version, extraFile) {
+  writeFileSync(join(dir, 'package.json'), `${JSON.stringify({ name: 'kenresoft-cms', version }, null, 2)}\n`);
+  git(['add', 'package.json'], dir);
+  if (extraFile) {
+    writeFileSync(join(dir, extraFile), 'x\n');
+    git(['add', extraFile], dir);
+  }
+  git(['commit', '--quiet', '-m', `at ${version}`], dir);
+}
+
+// An upstream on `develop` with v0.9.0 released, cloned (real shared history, remote named
+// "upstream", like packages/create does); then upstream releases v0.9.1 and keeps going with an
+// unreleased commit on top.
+function releasedUpstreamAndClone() {
+  const upstream = makeRepo();
+  git(['checkout', '--quiet', '-b', 'develop'], upstream.dir);
+  commitVersion(upstream.dir, '0.9.0');
+  git(['tag', '-a', 'v0.9.0', '-m', 'v0.9.0'], upstream.dir);
+
+  const parent = mkdtempSync(join(tmpdir(), 'kenresoft-git-cli-clone-'));
+  const cloneDir = join(parent, 'clone');
+  git(['clone', '--quiet', '--origin', 'upstream', upstream.dir, cloneDir], parent);
+  git(['config', 'user.email', 'test@example.test'], cloneDir);
+  git(['config', 'user.name', 'Test'], cloneDir);
+
+  commitVersion(upstream.dir, '0.9.1', 'released.txt');
+  git(['tag', '-a', 'v0.9.1', '-m', 'v0.9.1'], upstream.dir);
+  commitVersion(upstream.dir, '0.9.1', 'unreleased.txt');
+
+  return {
+    upstreamDir: upstream.dir,
+    cloneDir,
+    cleanup: () => {
+      upstream.cleanup();
+      rmSync(parent, { recursive: true, force: true });
+    },
+  };
+}
+
+test('pullLatestCode follows the latest release tag, never the unreleased tip of develop', async () => {
+  const repos = releasedUpstreamAndClone();
+  try {
+    const result = await pullLatestCode(repos.cloneDir, { ci: true });
+    assert.deepEqual(result, { fromVersion: '0.9.0', toVersion: '0.9.1' });
+    assert.ok(existsSync(join(repos.cloneDir, 'released.txt')));
+    assert.ok(!existsSync(join(repos.cloneDir, 'unreleased.txt')), 'unreleased develop code must not be pulled');
+
+    // Running it again has nothing to do.
+    assert.deepEqual(await pullLatestCode(repos.cloneDir, { ci: true }), { fromVersion: null, toVersion: null });
+  } finally {
+    repos.cleanup();
+  }
+});
+
+test('pullLatestCode can pin a release, refuses to downgrade, and still follows a branch on request', async () => {
+  const repos = releasedUpstreamAndClone();
+  try {
+    await assert.rejects(pullLatestCode(repos.cloneDir, { version: '0.8.0', ci: true }), /no release v0\.8\.0/);
+
+    assert.deepEqual(await pullLatestCode(repos.cloneDir, { version: 'v0.9.1', ci: true }), {
+      fromVersion: '0.9.0',
+      toVersion: '0.9.1',
+    });
+    await assert.rejects(pullLatestCode(repos.cloneDir, { version: '0.9.0', ci: true }), /doesn't downgrade/);
+
+    await pullLatestCode(repos.cloneDir, { branch: 'develop', ci: true });
+    assert.ok(existsSync(join(repos.cloneDir, 'unreleased.txt')), '--branch develop pulls unreleased code');
+  } finally {
+    repos.cleanup();
+  }
+});
+
+test('pullLatestCode falls back to the default branch when upstream has no releases yet', async () => {
+  const repos = releasedUpstreamAndClone();
+  try {
+    for (const tag of ['v0.9.0', 'v0.9.1']) git(['tag', '-d', tag], repos.upstreamDir);
+    // The clone was made before v0.9.1 existed, so it only has v0.9.0 locally.
+    git(['tag', '-d', 'v0.9.0'], repos.cloneDir);
+    await pullLatestCode(repos.cloneDir, { ci: true });
+    assert.ok(existsSync(join(repos.cloneDir, 'unreleased.txt')));
+  } finally {
+    repos.cleanup();
+  }
+});

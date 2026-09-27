@@ -1,6 +1,6 @@
 {
   "name": "@kenresoft-cms/contracts",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "type": "module",
   "description": "Zod schemas and API contract shared between Kenresoft CMS's API Worker and Admin Worker.",
   "license": "MIT",
