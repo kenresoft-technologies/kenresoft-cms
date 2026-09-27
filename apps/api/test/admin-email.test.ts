@@ -131,10 +131,12 @@ describe('subject header-injection guard', () => {
         'http://localhost/api/v1/admin/email/send',
         json(cookie, { to: 'a@example.test', subject: 'Hi', bodyHtml: '<p>Hello</p>' }),
       );
-    const statuses: number[] = [];
+    // Sent together, not one after another: twelve sequential sends took ~8s on a slow CI runner,
+    // long enough to cross into the next rate-limit window and reset the count.
     await startInFreshRateLimitWindow();
-    for (let i = 0; i < 12; i++) statuses.push((await send()).status);
-    expect(statuses.slice(0, 10).every((s) => s === 200)).toBe(true);
-    expect(statuses.slice(10)).toEqual([429, 429]);
+    const responses = await Promise.all(Array.from({ length: 12 }, () => send()));
+    await Promise.all(responses.map((r) => r.body?.cancel()));
+    const statuses = responses.map((r) => r.status).sort();
+    expect(statuses).toEqual([...Array(10).fill(200), 429, 429]);
   });
 });

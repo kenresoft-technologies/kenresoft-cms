@@ -372,11 +372,10 @@ describe('forms routes (real D1)', () => {
         body: JSON.stringify({ name: 'Jane', email: 'jane@example.com' }),
       });
 
-    const results = [];
+    // Sent together so the burst can't straddle a rate-limit window boundary on a slow runner.
     await startInFreshRateLimitWindow();
-    for (let i = 0; i < 6; i++) {
-      results.push(await submit());
-    }
+    const results = await Promise.all(Array.from({ length: 6 }, () => submit()));
+    await Promise.all(results.map((r) => r.body?.cancel()));
     const statuses = results.map((r) => r.status);
     expect(statuses.filter((s) => s === 201)).toHaveLength(5);
     expect(statuses.filter((s) => s === 429)).toHaveLength(1);
