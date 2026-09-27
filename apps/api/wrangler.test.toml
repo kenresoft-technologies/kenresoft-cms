@@ -58,6 +58,9 @@ BETTER_AUTH_URL = "http://localhost:8787"
 # layer. Never a real deployment value (getEmailSender falls back to the noop sender for
 # anything but "cloudflare"/"resend"/"test").
 EMAIL_PROVIDER = "test"
+# No real GitHub calls from tests: the admin version endpoint reports updateCheck "disabled".
+# lib/update-check.ts is unit-tested with an injected fetch instead (update-check.test.ts).
+UPDATE_CHECK_REPO = "off"
 
 [[ratelimits]]
 name = "ADMIN_EMAIL_RATE_LIMITER"

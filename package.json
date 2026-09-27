@@ -18,7 +18,8 @@
     "clean": "pnpm -r clean",
     "setup": "node scripts/setup.mjs",
     "update": "node scripts/update.mjs",
-    "rename-worker": "node scripts/rename-worker.mjs"
+    "rename-worker": "node scripts/rename-worker.mjs",
+    "release": "node scripts/release.mjs"
   },
   "devDependencies": {
     "wrangler": "^4.129.0"

@@ -62,6 +62,9 @@ describe('AppLayout', () => {
           recentEntries: [],
         });
       }
+      if (path === '/api/v1/admin/system/version') {
+        return Promise.resolve({ version: '0.9.0', latest: null, updateAvailable: false, updateCheck: 'ok' });
+      }
       if (path.startsWith('/api/v1/admin/plugins')) {
         return Promise.resolve([
           { id: 'hello', name: 'Hello', description: null, version: '0.1.0', enabled: true },
@@ -97,6 +100,45 @@ describe('AppLayout', () => {
 
     expect(screen.getByText('Protected content')).toBeInTheDocument();
     expect(screen.getByText('admin@example.test')).toBeInTheDocument();
+  });
+
+  it('shows admins the running version, and a notice linking to Settings → Updates when a newer release exists', async () => {
+    useSessionMock.mockReturnValue({
+      data: { user: { email: 'admin@example.test', role: 'admin' } },
+      isPending: false,
+    });
+    const defaultGet = getMock.getMockImplementation()!;
+    getMock.mockImplementation((path: string) =>
+      path === '/api/v1/admin/system/version'
+        ? Promise.resolve({
+            version: '0.9.0',
+            latest: { version: '0.9.1', url: 'https://github.com/o/r/releases/tag/v0.9.1', publishedAt: null },
+            updateAvailable: true,
+            updateCheck: 'ok',
+          })
+        : defaultGet(path),
+    );
+
+    renderAppLayout();
+
+    const notice = await screen.findByRole('link', { name: /Update available: v0\.9\.1/ });
+    expect(notice).toHaveAttribute('href', '/settings?section=updates');
+    await userEvent.click(screen.getByText('admin@example.test'));
+    expect(await screen.findByText('Kenresoft CMS v0.9.0')).toBeInTheDocument();
+  });
+
+  it('never asks for version information for a non-admin', async () => {
+    useSessionMock.mockReturnValue({
+      data: { user: { email: 'editor@example.test', role: 'editor' } },
+      isPending: false,
+    });
+
+    renderAppLayout();
+    await userEvent.click(screen.getByText('editor@example.test'));
+
+    expect(await screen.findByText('Profile')).toBeInTheDocument();
+    expect(screen.queryByText(/Kenresoft CMS v/)).not.toBeInTheDocument();
+    expect(getMock).not.toHaveBeenCalledWith('/api/v1/admin/system/version');
   });
 
   it('links to the official documentation from the user menu', async () => {
@@ -155,6 +197,9 @@ describe('AppLayout', () => {
           mediaStorageBytes: 0,
           recentEntries: [],
         });
+      }
+      if (path === '/api/v1/admin/system/version') {
+        return Promise.resolve({ version: '0.9.0', latest: null, updateAvailable: false, updateCheck: 'ok' });
       }
       if (path.startsWith('/api/v1/admin/plugins')) {
         return Promise.resolve([

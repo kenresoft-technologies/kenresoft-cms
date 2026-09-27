@@ -132,6 +132,11 @@ BETTER_AUTH_URL = "https://REPLACE_AFTER_FIRST_DEPLOY.workers.dev"
 # for EMAIL_FROM's domain; "resend" needs RESEND_API_KEY as a secret
 # (`wrangler secret put RESEND_API_KEY`) and a domain verified in the Resend dashboard.
 
+# The admin's "update available" notice checks the upstream Kenresoft CMS releases on GitHub
+# (cached for hours; see docs/RELEASING.md). A fork that publishes its own releases points it at
+# its own repo; "off" turns the check off (the admin still shows the running version):
+#   UPDATE_CHECK_REPO = "your-org/your-fork"   # or "off"
+
 # The break-glass owner-recovery endpoint (POST /api/v1/system/recover-owner) is disabled
 # (404) unless this secret is set — deliberately absent here and with no default anywhere in
 # the code. An operator who wants it enables it explicitly:

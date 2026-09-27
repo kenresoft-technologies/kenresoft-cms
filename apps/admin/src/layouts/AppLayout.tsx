@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import {
+  ArrowUpCircle,
   Blocks,
   ClipboardList,
   FileText,
@@ -27,6 +28,7 @@ import { Link, Navigate, NavLink, Outlet, useLocation } from 'react-router';
 import kenresoftLogoMark from '@/assets/kenresoft-cms-logo-mark.svg';
 import { authClient } from '@/lib/auth-client';
 import { usePlugins } from '@/lib/queries/plugins';
+import { useSystemVersion } from '@/lib/queries/system';
 import { roleAtLeast, type UserRole } from '@/lib/types';
 import { pluginNavItems } from '@/plugins/registry';
 import type { PluginNavItem } from '@/plugins/registry';
@@ -146,6 +148,10 @@ export function AppLayout() {
   const location = useLocation();
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const { data: plugins } = usePlugins();
+  // Admin-only on the server (GET /api/v1/admin/system/version), so it's never requested for
+  // anyone else. Shown in the account menu, and as a sidebar notice when a newer release exists.
+  const isAdmin = session ? roleAtLeast(session.user.role as UserRole, 'admin') : false;
+  const { data: systemVersion } = useSystemVersion({ enabled: isAdmin });
 
   if (isPending) {
     return <div className="flex min-h-svh items-center justify-center">Loading…</div>;
@@ -227,6 +233,18 @@ export function AppLayout() {
           ))}
         </SidebarContent>
         <SidebarFooter>
+          {systemVersion?.updateAvailable && systemVersion.latest ? (
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild tooltip={`Update available: v${systemVersion.latest.version}`}>
+                  <Link to="/settings?section=updates" className="text-sidebar-primary">
+                    <ArrowUpCircle />
+                    <span>Update available: v{systemVersion.latest.version}</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          ) : null}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <SidebarMenuButton size="lg">
@@ -262,6 +280,13 @@ export function AppLayout() {
                   Documentation
                 </a>
               </DropdownMenuItem>
+              {systemVersion ? (
+                <DropdownMenuItem asChild>
+                  <Link to="/settings?section=updates" className="text-xs text-muted-foreground">
+                    Kenresoft CMS v{systemVersion.version}
+                  </Link>
+                </DropdownMenuItem>
+              ) : null}
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => authClient.signOut()}>
                 <LogOut />
