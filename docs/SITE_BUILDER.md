@@ -512,7 +512,7 @@ to `packages/plugin-sdk`, following the exact precedent `publicRoutes`/`publicRa
 already set as opt-in `PluginRegistration` fields) — not designed in detail here because
 building it before a second real consumer exists would repeat the exact mistake this
 codebase's own Workers-KV and generic-plugin-config decisions were explicitly written to
-avoid (see CLAUDE.md's own standing rule against speculative extensibility).
+avoid (the project avoids speculative extensibility).
 
 ---
 
@@ -1454,9 +1454,9 @@ whole codebase for each import) passing individually: `reusable-blocks-routes`,
 files, all green). This pass hit a worse variant of this codebase's own standing Windows/
 workerd-flakiness note than previously documented — even 6-file batches reliably failed after
 several hours of continuous testing, traced partly to ~440 stale `miniflare-*` temp directories
-never cleaned up across the session (cleared, but batches above ~2 files still failed
+never cleaned up across the run (cleared, but batches above ~2 files still failed
 afterward). Verified via single-file/2-file runs instead, which stayed reliable throughout; a
-full single-pass run of the entire `apps/api` suite (66 files) was not obtained this session —
+full single-pass run of the entire `apps/api` suite (66 files) was not obtained in that pass —
 flagged honestly rather than claimed, open for a fresher environment to confirm. The full
 `apps/admin` suite (38 files, 205 tests, a different non-workerd runtime unaffected by this) ran
 clean in one pass.

@@ -76,7 +76,7 @@ pnpm build
 
 Formatting and linting are enforced by the shared config in `packages/config` and checked in CI
 (`pnpm lint`). There's no separate style guide beyond what the linter enforces plus the general
-principles in this repo's own `CLAUDE.md` (no speculative abstraction, no dead code paths, minimal
+principles this codebase follows (no speculative abstraction, no dead code paths, minimal
 comments — explain *why*, not *what*).
 
 ## License
