@@ -499,7 +499,6 @@ to try `develop` before the next release, can follow a branch instead of release
 
 ```bash
 pnpm run update -- --branch develop
-pnpm run update -- --branch main
 ```
 
 or set it once so every future `pnpm run update` in that checkout keeps using it without

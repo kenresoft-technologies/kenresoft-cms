@@ -56,8 +56,11 @@ It shows the new version and release notes, checks you're on a clean `develop` i
 4. pushes `develop` and the tag, and creates the GitHub release from that changelog section,
 5. opens the `develop` → `main` pull request (or points at the open one).
 
-Deployers get it with `pnpm run update` as soon as the tag is pushed. Merging the `main` pull
-request keeps `main` pointing at the latest release; it doesn't affect deployers.
+Deployers get it with `pnpm run update` as soon as the tag is pushed, and new installs made with
+`npm create @kenresoft-cms@latest` start on it too, since the scaffolder checks out the latest
+release tag. Merging the `main` pull request keeps `main` (the repository's default branch, what
+GitHub shows and a plain `git clone` gets) pointing at the latest release; it doesn't affect
+deployers.
 
 If any npm package changed in the release (for example the admin needs a newer
 `@kenresoft-cms/contracts`), publish it before or right after cutting the release; the changelog

@@ -20,6 +20,7 @@ import { execFileSync } from 'node:child_process';
 import { cpSync, existsSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { latestReleaseTag } from '../lib/release.mjs';
 
 // Overridable only via env var, not a documented CLI flag — an internal hook for testing this
 // script against a fork/branch before a real release, not something an end user needs.
@@ -157,6 +158,21 @@ async function scaffoldFullCms(target, targetArg) {
   cloneArgs.push(REPO_URL, target);
   execFileSync('git', cloneArgs, { stdio: 'inherit' });
 
+  // Start on the latest release rather than the tip of the default branch, so a new install
+  // runs exactly the code a released version number describes, the same code `pnpm run update`
+  // moves existing installs to (docs/RELEASING.md). The clone already fetched every tag. The
+  // local branch is moved to the release (not a detached checkout), so it stays an ordinary
+  // branch the next update can merge newer releases into. An explicit KENRESOFT_CREATE_REF, or
+  // an upstream with no releases yet, keeps the branch tip.
+  if (REF === 'HEAD') {
+    const tags = execFileSync('git', ['tag', '--list', 'v*'], { cwd: target, encoding: 'utf8' }).split('\n');
+    const release = latestReleaseTag(tags);
+    if (release) {
+      execFileSync('git', ['reset', '--hard', '--quiet', release], { cwd: target, stdio: 'inherit' });
+      console.log(`Checked out the latest release, ${release}.`);
+    }
+  }
+
   console.log('\nDone! Next steps:\n');
   if (targetArg) console.log(`  cd ${targetArg}`);
   console.log('  pnpm install');
@@ -166,7 +182,7 @@ async function scaffoldFullCms(target, targetArg) {
   );
   console.log(
     '\nTo pull in future CMS updates later, just run: pnpm run update — it fetches and merges ' +
-      'the latest\nupstream code automatically before redeploying. See ' +
+      'the latest\nrelease automatically before redeploying. See ' +
       'https://docs.kenresoft.com/cms/deployment/updates/',
   );
 }
