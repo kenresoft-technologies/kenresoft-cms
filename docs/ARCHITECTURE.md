@@ -2,10 +2,9 @@
 
 > The published, maintained documentation is at https://docs.kenresoft.com/cms/. This file is the in-repo design source of truth: https://docs.kenresoft.com/cms/concepts/architecture/.
 
-Version 0.8 — Foundation Specification
-First production target: a real corporate website
 Vision: Cloudflare-native, API-first, reusable, scalable, open-source-ready CMS
-Status: Proposed / Ready for implementation
+Status: Implemented and maintained. The Changelog below records each design decision and why;
+user-facing release notes are in `CHANGELOG.md`.
 
 ## Changelog
 

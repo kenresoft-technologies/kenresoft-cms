@@ -73,6 +73,8 @@ rather than oversights — for example, webhook destination URLs are intentional
 (an admin-only capability; see the comment in `packages/contracts/schemas/webhooks.ts`), and the
 break-glass `OWNER_RECOVERY_SECRET` route is off by default and 404s indistinguishably from a
 route that doesn't exist until an operator deliberately sets it (`docs/ARCHITECTURE.md` §10.1).
+The Site Builder's Raw HTML block has its own write-up of its safeguards in
+[`docs/RAW_HTML_BLOCK.md`](docs/RAW_HTML_BLOCK.md).
 If you're reporting something in this territory, it's still worth reporting — we'd rather
 re-confirm a trade-off than miss a real issue — just know the report may come back as "working as
 designed, here's why" rather than a fix.

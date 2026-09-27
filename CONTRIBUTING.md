@@ -14,6 +14,7 @@ the domain model, the API contract, and security rules.
   examples of features that were explicitly deferred rather than built speculatively) — an
   up-front discussion saves you from building something that doesn't fit.
 - **Security vulnerabilities**: do not open a public issue or PR. See [`SECURITY.md`](SECURITY.md).
+- **How decisions are made**: see [`GOVERNANCE.md`](GOVERNANCE.md).
 
 ## Project layout
 
