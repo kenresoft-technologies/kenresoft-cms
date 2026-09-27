@@ -1,6 +1,6 @@
 {
   "name": "kenresoft-cms",
-  "version": "0.1.0",
+  "version": "0.9.0",
   "private": true,
   "description": "Cloudflare-native, API-first, reusable CMS. Single-site-per-deployment, self-hostable.",
   "license": "MIT",

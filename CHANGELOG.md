@@ -12,6 +12,8 @@ the next release will contain.
 
 ## Unreleased
 
+## [0.9.0] - 2026-09-27
+
 ### Added
 
 - **Numbered releases.** Kenresoft CMS now ships as versioned releases (`v0.9.0` onwards), each a git tag, a GitHub release and a section of this changelog. **Settings → Updates** shows the version a deployment runs and whether a newer release exists, and Admins and Owners see an "Update available" notice in the sidebar. The check asks GitHub from the API Worker, cached for hours; a fork can point it at its own repo, or turn it off, with the new optional `UPDATE_CHECK_REPO` variable. The running version is only shown to Admins and Owners, never on a public endpoint. Maintainers cut releases with `pnpm run release`; the version rules and process are in `docs/RELEASING.md`. Requires publishing `@kenresoft-cms/contracts` 0.6.2 (the version endpoint's schema).
