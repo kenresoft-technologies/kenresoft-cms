@@ -319,8 +319,14 @@ export async function publishDueEntries(db: Database): Promise<Entry[]> {
 
   const published: Entry[] = [];
   for (const entry of due) {
-    const updated = await updateEntry(db, entry.id, { status: 'published' }, null);
-    if (updated) published.push(updated);
+    // One entry that fails to publish must not stop the rest of the sweep; it stays a due draft
+    // and is retried on the next run.
+    try {
+      const updated = await updateEntry(db, entry.id, { status: 'published' }, null);
+      if (updated) published.push(updated);
+    } catch (error) {
+      console.error(`Scheduled publish failed for entry ${entry.id}:`, error);
+    }
   }
   return published;
 }
