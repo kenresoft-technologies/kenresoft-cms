@@ -228,8 +228,7 @@ Not done yet, so you do not assume otherwise:
 frontend, scaffold one with `npm create @kenresoft-cms@latest my-site -- --astro`, or connect an
 existing Astro project as described above.
 
-For the detailed, continuously-updated record of what shipped and how it was verified, see the
-**Status** section of [`CLAUDE.md`](CLAUDE.md) and [`CHANGELOG.md`](CHANGELOG.md).
+For what changed in each release, see [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Package manager
 

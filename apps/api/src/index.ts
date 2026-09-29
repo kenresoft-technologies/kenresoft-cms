@@ -11,12 +11,9 @@ import { publicContentRateLimit } from './middleware/public-content-rate-limit';
 import { requireSession } from './middleware/require-session';
 import { requireTrustedOrigin } from './middleware/require-trusted-origin';
 import { securityHeaders } from './middleware/security-headers';
-import { enqueueCachePurgePaths, processCachePurgeQueue } from './lib/cache-purge';
-import { dispatchWebhookEvent, retryFailedWebhookDeliveries } from './lib/webhooks';
+import { opportunisticPublishSweep, runScheduledPublishing } from './lib/scheduled-publishing';
+import { retryFailedWebhookDeliveries } from './lib/webhooks';
 import { mountPlugins } from './plugins/mount';
-import { getContentTypeById } from './repositories/content-types';
-import { publishDueEntries } from './repositories/entries';
-import { publishDuePages } from './repositories/pages';
 import { accountFormsRoute } from './routes/account/forms';
 import { auditLogRoute } from './routes/admin/audit-log';
 import { cacheRoute } from './routes/admin/cache';
@@ -41,6 +38,7 @@ import { submissionsRoute } from './routes/admin/submissions';
 import { templatesRoute } from './routes/admin/templates';
 import { usersRoute } from './routes/admin/users';
 import { webhooksRoute } from './routes/admin/webhooks';
+import { integrationsRoute } from './routes/admin/integrations';
 import { healthRoute } from './routes/health';
 import { publicContentRoute } from './routes/public/content';
 import { publicFormsRoute } from './routes/public/forms';
@@ -64,6 +62,9 @@ app.use('*', securityHeaders);
 app.use('*', corsMiddleware);
 
 app.route('/api/v1/health', healthRoute);
+
+app.use('/api/v1/public/*', opportunisticPublishSweep);
+app.use('/api/v1/admin/*', opportunisticPublishSweep);
 
 app.use('/api/v1/auth/*', authRateLimit);
 app.use('/api/v1/auth/*', signUpTurnstile);
@@ -109,6 +110,7 @@ app.route('/api/v1/admin/entry-folders', entryFoldersRoute);
 app.route('/api/v1/admin/pages', pagesRoute);
 app.route('/api/v1/admin/templates', templatesRoute);
 app.route('/api/v1/admin/reusable-blocks', reusableBlocksRoute);
+app.route('/api/v1/admin/integrations', integrationsRoute);
 app.route('/api/v1/admin/media', mediaRoute);
 app.route('/api/v1/admin/media-folders', mediaFoldersRoute);
 app.route('/api/v1/admin/forms', formsRoute);
@@ -165,54 +167,12 @@ app.get(
 
 export default {
   fetch: app.fetch,
-  // Scheduled publishing (§13): a Cron Trigger (see wrangler.toml [triggers]) periodically
-  // transitions draft entries whose publishAt has elapsed to published.
+  // Scheduled publishing (§13): a Cron Trigger (see wrangler.toml [triggers]) transitions draft
+  // entries/pages whose publishAt has elapsed to published — see lib/scheduled-publishing.ts, which
+  // request traffic also drives (throttled) so it works under `wrangler dev`, where cron never fires.
   scheduled: async (_controller: ScheduledController, env: Bindings, ctx: ExecutionContext) => {
     const db = createDb(env.DB);
-    ctx.waitUntil(
-      (async () => {
-        const published = await publishDueEntries(db);
-        // Newly-published entries invalidate the public API cache the same way an admin edit
-        // does (§12/§13) — otherwise a cached "not published yet" response could outlive the
-        // auto-publish by up to the cache TTL. Queued rather than invalidated directly (as a
-        // single admin edit still is, just two keys) since an unusually large batch of entries
-        // becoming due in the same tick could otherwise exceed a Worker invocation's subrequest
-        // budget the same way the manual "Purge Cache" button used to — see lib/cache-purge.ts.
-        if (published.length > 0) {
-          const paths = new Set<string>();
-          for (const entry of published) {
-            const contentType = await getContentTypeById(db, entry.contentTypeId);
-            if (!contentType) continue;
-            paths.add(`/api/v1/public/${contentType.slug}`);
-            paths.add(`/api/v1/public/${contentType.slug}/${entry.slug}`);
-          }
-          if (paths.size > 0) await enqueueCachePurgePaths(db, Array.from(paths));
-        }
-        for (const entry of published) {
-          dispatchWebhookEvent(db, ctx, 'entry.published', entry.contentTypeId, {
-            entryId: entry.id,
-            contentTypeId: entry.contentTypeId,
-            slug: entry.slug,
-            status: entry.status,
-          });
-        }
-        // Pages reuse this same sweep verbatim (docs/SITE_BUILDER.md §3.1/§13) — a due draft
-        // Page transitions to published on the same cadence as a due draft Entry.
-        const publishedPages = await publishDuePages(db);
-        if (publishedPages.length > 0) {
-          const pagePaths = new Set<string>(['/api/v1/public/pages']);
-          for (const page of publishedPages) {
-            pagePaths.add(`/api/v1/public/pages/by-route?route=${encodeURIComponent(page.route)}`);
-          }
-          await enqueueCachePurgePaths(db, Array.from(pagePaths));
-        }
-        // Continues whichever cache-purge job has been waiting longest — a manual "Purge
-        // Cache" click, a bulk import, or the enqueue just above, whichever is oldest — one
-        // bounded batch per tick, draining the queue in the background without anyone needing
-        // to keep re-clicking.
-        await processCachePurgeQueue(db);
-      })(),
-    );
+    ctx.waitUntil(runScheduledPublishing(db, ctx));
     // Retries failed webhook deliveries on the same 5-minute cadence as scheduled publishing
     // above, rather than introducing a second Cron Trigger or a queue for this — see
     // lib/webhooks.ts for the retry/attempt-limit logic itself.

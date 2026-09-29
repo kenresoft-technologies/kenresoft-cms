@@ -5,9 +5,11 @@ import { toast } from 'sonner';
 import { API_URL, ApiError } from '@/lib/api-client';
 import { DOCS_LINKS } from '@/lib/docs-links';
 import { useSystemStatus } from '@/lib/queries/password-recovery';
+import { useIntegrationsStatus, useRemovePixabayKey, useSavePixabayKey } from '@/lib/queries/integrations';
 import { useUpdateSettings } from '@/lib/queries/settings';
 import type { Settings } from '@/lib/types';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -489,6 +491,91 @@ function LivePreviewSection({ settings, readOnly }: SectionProps) {
   );
 }
 
+// Third-party image search keys. Deliberately limited to low-risk, read-only keys: they're stored
+// encrypted in the database and never shown again. A key set as a Worker secret takes precedence.
+function ImageSourcesSection({ readOnly }: { readOnly: boolean }) {
+  const { data, isPending } = useIntegrationsStatus(!readOnly);
+  const save = useSavePixabayKey();
+  const remove = useRemovePixabayKey();
+  const [apiKey, setApiKey] = useState('');
+  const pixabay = data?.pixabay;
+
+  async function handleSave() {
+    try {
+      await save.mutateAsync(apiKey.trim());
+      setApiKey('');
+      toast.success('Pixabay key saved');
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Failed to save key');
+    }
+  }
+
+  async function handleRemove() {
+    try {
+      await remove.mutateAsync();
+      toast.success('Pixabay key removed');
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Failed to remove key');
+    }
+  }
+
+  return (
+    <SettingsSection
+      title="Image sources"
+      description="Stock-photo search in the Media picker. Picsum needs no key; Pixabay adds real keyword search."
+    >
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center gap-2">
+          <Label htmlFor="pixabay-api-key">Pixabay API key</Label>
+          {readOnly ? null : isPending ? (
+            <Skeleton className="h-5 w-24" />
+          ) : pixabay?.configured ? (
+            <Badge className="font-normal">Configured{pixabay.source === 'env' ? ' (Worker secret)' : ''}</Badge>
+          ) : (
+            <Badge variant="outline" className="font-normal">Not configured</Badge>
+          )}
+        </div>
+        {readOnly ? (
+          <p className="text-sm text-muted-foreground">Only administrators can manage integration keys.</p>
+        ) : pixabay?.source === 'env' ? (
+          <p className="text-sm text-muted-foreground">
+            This key is set as the PIXABAY_API_KEY Worker secret, which takes precedence — change it with
+            wrangler, not here.
+          </p>
+        ) : (
+          <>
+            <div className="flex max-w-md gap-2">
+              <Input
+                id="pixabay-api-key"
+                type="password"
+                autoComplete="off"
+                placeholder={pixabay?.configured ? 'Enter a new key to replace it' : 'Paste your Pixabay API key'}
+                value={apiKey}
+                onChange={(event) => setApiKey(event.target.value)}
+              />
+              <Button type="button" disabled={apiKey.trim().length < 8 || save.isPending} onClick={() => void handleSave()}>
+                {save.isPending ? 'Saving…' : pixabay?.configured ? 'Replace' : 'Save'}
+              </Button>
+              {pixabay?.configured ? (
+                <Button type="button" variant="outline" disabled={remove.isPending} onClick={() => void handleRemove()}>
+                  Remove
+                </Button>
+              ) : null}
+            </div>
+            <p className="max-w-md text-xs text-muted-foreground">
+              Get a free key at{' '}
+              <a href="https://pixabay.com/api/docs/" target="_blank" rel="noreferrer" className="underline">
+                pixabay.com/api/docs
+              </a>
+              . The key is stored encrypted and is never shown again.
+            </p>
+          </>
+        )}
+      </div>
+    </SettingsSection>
+  );
+}
+
 export function ApiSection({ settings, readOnly }: SectionProps) {
   return (
     <div className="flex flex-col gap-6">
@@ -529,6 +616,8 @@ export function ApiSection({ settings, readOnly }: SectionProps) {
       <AuthSecuritySection />
 
       <TurnstileSection />
+
+      <ImageSourcesSection readOnly={readOnly} />
 
       <LivePreviewSection settings={settings} readOnly={readOnly} />
 

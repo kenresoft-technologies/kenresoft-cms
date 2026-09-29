@@ -2,10 +2,9 @@
 
 > The published, maintained documentation is at https://docs.kenresoft.com/cms/. This file is the in-repo design source of truth: https://docs.kenresoft.com/cms/concepts/architecture/.
 
-Version 0.8 — Foundation Specification
-First production target: a real corporate website
 Vision: Cloudflare-native, API-first, reusable, scalable, open-source-ready CMS
-Status: Proposed / Ready for implementation
+Status: Implemented and maintained. The Changelog below records each design decision and why;
+user-facing release notes are in `CHANGELOG.md`.
 
 ## Changelog
 
@@ -1500,19 +1499,18 @@ Astro renders the post
 
 ---
 
-## 21. AI-Assisted Development Strategy
+## 21. Development Practices
 
-AI coding agents are suitable for this project and can materially accelerate
-implementation. The architecture, security model, database boundaries, migration policy and
-API contracts remain human-controlled.
+The architecture, security model, database boundaries, migration policy and API contracts are
+changed deliberately and reviewed, never as a side effect of other work.
 
-- This document is the architectural source of truth for any agent working on the project.
+- This document is the architectural source of truth for anyone working on the project.
 - Require small, reviewable commits.
 - Require tests for new business logic.
-- Never allow an agent to silently change database schema without a migration.
+- Never change the database schema without a migration.
 - Review authentication and authorization code manually.
 - Use CI to enforce type-checking, linting, tests and builds.
-- Have agents generate documentation alongside implementation.
+- Write documentation alongside implementation.
 
 ---
 
@@ -1544,7 +1542,7 @@ API contracts remain human-controlled.
 | Authentication mistakes | better-auth (established library) + security review, not custom crypto |
 | Data loss | D1 recovery/export procedures, revisions and tested migrations |
 | Open-source maintenance burden | Modular architecture, tests, documentation and semantic versioning |
-| AI-generated architectural drift | Source-of-truth specification and human review |
+| Architectural drift | Source-of-truth specification and code review |
 | Client misuse | Simple admin UX, validation, confirmations, revisions and role controls |
 | Vendor lock-in | Repository abstraction, standard SQL concepts, REST/OpenAPI and portable content model |
 

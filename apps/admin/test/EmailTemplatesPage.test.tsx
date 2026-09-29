@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router';
+import { createMemoryRouter, RouterProvider } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { getMock, patchMock, postMock, putMock } = vi.hoisted(() => ({
@@ -17,6 +17,11 @@ vi.mock('@/lib/api-client', async () => {
 });
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+
+// The one deployment-wide Developer experience setting (Settings → API) — the editor no longer has
+// a separate email-only flag, so tests flip this instead.
+const { developerModeMock } = vi.hoisted(() => ({ developerModeMock: vi.fn() }));
+vi.mock('@/lib/developer-mode', () => ({ useDeveloperMode: developerModeMock }));
 
 import { EmailTemplatesPage } from '@/pages/EmailTemplatesPage';
 
@@ -73,7 +78,7 @@ const designs = [
   { id: 'simple', name: 'Simple', description: 'Very lightweight.' },
 ];
 
-function mockGet(developerModeEnabled = false, brandingOverrides: Record<string, unknown> = {}) {
+function mockGet(brandingOverrides: Record<string, unknown> = {}) {
   getMock.mockImplementation((path: string) => {
     if (path === '/api/v1/admin/email-templates') return Promise.resolve(templates);
     if (path === '/api/v1/admin/email-templates/designs') return Promise.resolve(designs);
@@ -83,7 +88,6 @@ function mockGet(developerModeEnabled = false, brandingOverrides: Record<string,
         module: 'emailBranding',
         data: {
           designId: 'modern-minimal',
-          developerModeEnabled,
           logoMediaId: null,
           footerText: null,
           brandColor: null,
@@ -106,15 +110,17 @@ function mockGet(developerModeEnabled = false, brandingOverrides: Record<string,
   });
 }
 
-function renderPage() {
+function renderPage(initialUrl = '/') {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
+  // A data router: the editor uses useBlocker for its unsaved-changes guard.
+  const router = createMemoryRouter([{ path: '*', element: <EmailTemplatesPage /> }], {
+    initialEntries: [initialUrl],
+  });
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter>
-        <EmailTemplatesPage />
-      </MemoryRouter>
+      <RouterProvider router={router} />
     </QueryClientProvider>,
   );
 }
@@ -126,6 +132,7 @@ describe('EmailTemplatesPage', () => {
     postMock.mockReset();
     putMock.mockReset();
     postMock.mockResolvedValue({ subject: 'x', html: '<p>x</p>', text: 'x' });
+    developerModeMock.mockReturnValue(false);
     mockGet();
   });
 
@@ -150,7 +157,7 @@ describe('EmailTemplatesPage', () => {
     putMock.mockResolvedValue({
       id: 'b-1',
       module: 'emailBranding',
-      data: { designId: 'corporate', developerModeEnabled: false },
+      data: { designId: 'corporate' },
       createdAt: '2026-01-01T00:00:00.000Z',
       updatedAt: '2026-01-01T00:00:00.000Z',
     });
@@ -336,7 +343,7 @@ describe('EmailTemplatesPage', () => {
     );
   });
 
-  it('offers "Enable developer mode" for a Standard-mode email until Developer options is on deployment-wide', async () => {
+  it('offers no custom-HTML switch for a Standard-mode email unless Developer experience is on, and no separate email-only gate', async () => {
     renderPage();
     await waitFor(() => expect(screen.getByText('Email Verification')).toBeInTheDocument());
     const row = screen.getByText('Email Verification').closest('.border-b') as HTMLElement;
@@ -344,11 +351,12 @@ describe('EmailTemplatesPage', () => {
     await waitFor(() => expect(screen.getByLabelText('Subject')).toBeInTheDocument());
 
     expect(screen.queryByText('Use custom HTML for this email instead of the fields below')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Enable developer mode' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Enable developer mode' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Developer options')).not.toBeInTheDocument();
   });
 
-  it('a Standard-mode email gets the custom-HTML switch once Developer options is on', async () => {
-    mockGet(true);
+  it('a Standard-mode email gets the custom-HTML switch once Developer experience is on', async () => {
+    developerModeMock.mockReturnValue(true);
     renderPage();
     await waitFor(() => expect(screen.getByText('Email Verification')).toBeInTheDocument());
     const row = screen.getByText('Email Verification').closest('.border-b') as HTMLElement;
@@ -383,7 +391,7 @@ describe('EmailTemplatesPage', () => {
   });
 
   it('shows a custom branding override distinctly from inherited defaults', async () => {
-    mockGet(false, { brandColor: '#ff0000', footerText: 'Custom footer', logoMediaId: 'custom-logo' });
+    mockGet({ brandColor: '#ff0000', footerText: 'Custom footer', logoMediaId: 'custom-logo' });
     renderPage();
     await waitFor(() => expect(screen.getByText('Email Branding')).toBeInTheDocument());
 
@@ -403,6 +411,49 @@ describe('EmailTemplatesPage', () => {
         '/api/v1/admin/email-templates/password_reset/preview',
         expect.objectContaining({ mode: 'developer', bodyHtml: '<p>Reset {{resetUrl}}</p>' }),
       ),
+    );
+  });
+  it('opens the email named in the URL, so a reload lands back on the same email', async () => {
+    renderPage('/?template=password_reset');
+
+    await waitFor(() => expect(screen.getByLabelText('Subject')).toHaveValue('Reset your password'));
+  });
+
+  it('a custom-HTML email (no structured content) is not dirty until something is actually edited', async () => {
+    renderPage('/?template=password_reset');
+    await waitFor(() => expect(screen.getByLabelText('Subject')).toBeInTheDocument());
+
+    expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled();
+  });
+
+  it('toggling Enabled keeps unsaved content edits instead of wiping them', async () => {
+    patchMock.mockResolvedValue({ ...templates[0], enabled: false, updatedAt: '2026-02-01T00:00:00.000Z' });
+    renderPage('/?template=email_verification');
+    await waitFor(() => expect(screen.getByLabelText('Subject')).toBeInTheDocument());
+
+    await userEvent.type(screen.getByLabelText('Subject'), ' now');
+    await userEvent.click(screen.getByLabelText('Enabled'));
+    await waitFor(() => expect(patchMock).toHaveBeenCalled());
+
+    expect(screen.getByLabelText('Subject')).toHaveValue('Verify your email address now');
+  });
+
+  it('saving branding sends one request with every edited field, not one per change', async () => {
+    putMock.mockResolvedValue({ id: 'b-1', module: 'emailBranding', data: {}, createdAt: '', updatedAt: '' });
+    renderPage();
+    await waitFor(() => expect(screen.getByText('Email Branding')).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole('button', { name: /Customize email branding/ }));
+    await userEvent.type(screen.getByLabelText('Brand color hex value'), '#112233');
+    await userEvent.type(screen.getByLabelText('Footer text override'), 'Hello');
+    expect(putMock).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Save branding' }));
+
+    await waitFor(() => expect(putMock).toHaveBeenCalledTimes(1));
+    expect(putMock).toHaveBeenCalledWith(
+      '/api/v1/admin/structured-settings/emailBranding',
+      expect.objectContaining({ brandColor: '#112233', footerText: 'Hello' }),
     );
   });
 });

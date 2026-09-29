@@ -42,6 +42,10 @@ export interface Bindings {
   // docs/PLUGINS.md's Commerce section. Paystack's test-mode secret key (`sk_test_...`) and its
   // live key both work here unchanged; which one is configured is entirely an operator choice.
   PAYSTACK_SECRET_KEY?: string;
+  // Pixabay image search in the Media picker (lib/external-media.ts). Unset = the Pixabay tab shows
+  // setup instructions instead of results; Picsum keeps working without it. A Worker secret
+  // (`wrangler secret put PIXABAY_API_KEY`) — a free key from pixabay.com/api/docs.
+  PIXABAY_API_KEY?: string;
   // Gates the public /api/v1/openapi.json + /api/v1/docs (Scalar) routes. Defaults to enabled
   // (unset or anything other than "false") so local dev and every existing deployment keep
   // working with zero config — set to "false" to 404 both routes on a deployment that would
