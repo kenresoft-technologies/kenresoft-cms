@@ -500,8 +500,16 @@ function EntryForm({ contentTypeId, contentTypeSlug, singleFeatured, entryId, fi
               />
               <p className="text-xs text-muted-foreground">
                 Leave blank to publish only on manual save. If set, a draft entry is
-                automatically published once this time passes.
+                automatically published once this time passes (checked about every minute
+                while the site is in use, and at least every 5 minutes).
               </p>
+              {publishAt && status === 'draft' ? (
+                <p className="text-xs font-medium text-foreground">
+                  Scheduled: goes live {new Date(publishAt) <= new Date() ? 'on the next check' : `around ${new Date(publishAt).toLocaleString()}`}.
+                </p>
+              ) : publishAt ? (
+                <p className="text-xs text-muted-foreground">Only draft entries are published on a schedule.</p>
+              ) : null}
             </CardContent>
           </Card>
 

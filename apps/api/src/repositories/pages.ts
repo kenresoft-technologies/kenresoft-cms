@@ -142,8 +142,12 @@ export async function publishDuePages(db: Database): Promise<Page[]> {
 
   const published: Page[] = [];
   for (const page of due) {
-    const updated = await updatePage(db, page.id, { status: 'published' }, null);
-    if (updated) published.push(updated);
+    try {
+      const updated = await updatePage(db, page.id, { status: 'published' }, null);
+      if (updated) published.push(updated);
+    } catch (error) {
+      console.error(`Scheduled publish failed for page ${page.id}:`, error);
+    }
   }
   return published;
 }

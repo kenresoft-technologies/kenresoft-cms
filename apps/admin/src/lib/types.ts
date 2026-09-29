@@ -79,6 +79,8 @@ export type {
   Media,
   MediaContentType,
   MediaFolder,
+  PixabayHit,
+  PixabaySearchResponse,
   NavigationItem,
   NavigationSettingsData,
   Page,

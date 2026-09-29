@@ -2,12 +2,14 @@ import {
   createExecutionContext,
   createScheduledController,
   env,
+  SELF,
   waitOnExecutionContext,
 } from 'cloudflare:test';
 import { createDb } from '@kenresoft-cms/database';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import worker from '../src/index';
+import { resetPublishSweepThrottle } from '../src/lib/scheduled-publishing';
 import { createContentType } from '../src/repositories/content-types';
 import { createEntry, getEntryById, listEntryRevisions } from '../src/repositories/entries';
 
@@ -46,6 +48,16 @@ describe('scheduled publishing (real D1)', () => {
 
     const revisions = await listEntryRevisions(db, entry.id);
     expect(revisions[0]).toMatchObject({ status: 'draft', createdBy: null });
+  });
+
+  it('publishes a due draft from ordinary request traffic too, not only the Cron Trigger', async () => {
+    resetPublishSweepThrottle();
+    const entry = await seedEntry('draft', new Date(Date.now() - 60_000));
+
+    const response = await SELF.fetch('https://example.com/api/v1/public/blog-post');
+    await response.text();
+
+    expect((await getEntryById(db, entry.id))?.status).toBe('published');
   });
 
   it('leaves a draft with a future publishAt untouched', async () => {

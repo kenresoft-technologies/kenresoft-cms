@@ -101,10 +101,16 @@ export const publicMediaListItemSchema = publicMediaSchema.extend({ id: z.string
 // stored in R2 like any other upload (media-service.ts's uploadMedia), never hot-linked — this
 // deployment stays the only thing a visitor's request ever depends on, and the file survives
 // Picsum going away or changing its own images at that seed.
-export const IMPORT_MEDIA_SOURCES = ['picsum'] as const;
+//
+// Pixabay (pixabay.com — free API key, configured as the PIXABAY_API_KEY Worker secret) is the
+// keyword-searchable source; Picsum stays as the no-key fallback. A Pixabay import carries the
+// `imageUrl` the admin UI got from the search route, which the server re-validates as a
+// pixabay.com host before downloading anything (never an arbitrary URL — that would be an SSRF).
+export const IMPORT_MEDIA_SOURCES = ['picsum', 'pixabay'] as const;
 
 export const importExternalMediaSchema = z.object({
   source: z.enum(IMPORT_MEDIA_SOURCES),
+  imageUrl: z.string().url().max(2000).optional(),
   width: z.number().int().min(1).max(5000),
   height: z.number().int().min(1).max(5000),
   // A specific photo id from Picsum's own /v2/list catalog (what the admin UI's browse grid
@@ -123,6 +129,27 @@ export const importExternalMediaSchema = z.object({
   folderId: z.string().min(1).optional(),
 });
 
+export const pixabayHitSchema = z.object({
+  id: z.number(),
+  previewUrl: z.string(),
+  imageUrl: z.string(),
+  width: z.number(),
+  height: z.number(),
+  user: z.string(),
+  pageUrl: z.string(),
+  tags: z.string(),
+});
+
+// `configured: false` (no PIXABAY_API_KEY secret set) is a normal 200, not an error — the admin
+// UI turns it into setup instructions rather than a broken tab.
+export const pixabaySearchResponseSchema = z.object({
+  configured: z.boolean(),
+  total: z.number(),
+  hits: z.array(pixabayHitSchema),
+});
+
+export type PixabayHit = z.infer<typeof pixabayHitSchema>;
+export type PixabaySearchResponse = z.infer<typeof pixabaySearchResponseSchema>;
 export type Media = z.infer<typeof mediaSchema>;
 export type ImportExternalMediaInput = z.infer<typeof importExternalMediaSchema>;
 export type PublicMediaListItem = z.infer<typeof publicMediaListItemSchema>;

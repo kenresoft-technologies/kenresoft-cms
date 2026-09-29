@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { apiClient } from '@/lib/api-client';
-import type { Media, MediaFolder } from '@/lib/types';
+import type { Media, MediaFolder, PixabaySearchResponse } from '@/lib/types';
 
 const mediaKey = ['media'] as const;
 const mediaFoldersKey = ['media-folders'] as const;
@@ -63,7 +63,8 @@ export function useImportExternalMedia() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: {
-      source: 'picsum';
+      source: 'picsum' | 'pixabay';
+      imageUrl?: string | undefined;
       width: number;
       height: number;
       pictureId?: string | undefined;
@@ -76,6 +77,21 @@ export function useImportExternalMedia() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: mediaKey });
     },
+  });
+}
+
+// Goes through this deployment's API (unlike Picsum's public catalog below) because Pixabay needs
+// an API key, which lives in a Worker secret and never reaches the browser. An empty query is
+// valid — Pixabay returns its latest photos — so the tab has something to browse before anyone types.
+export function usePixabaySearch(query: string, page: number) {
+  return useQuery({
+    queryKey: ['pixabay-search', query, page],
+    queryFn: () =>
+      apiClient.get<PixabaySearchResponse>(
+        `/api/v1/admin/media/external/pixabay?q=${encodeURIComponent(query)}&page=${page}`,
+      ),
+    staleTime: 5 * 60 * 1000,
+    retry: false,
   });
 }
 

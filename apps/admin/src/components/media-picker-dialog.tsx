@@ -11,8 +11,10 @@ import {
   useMediaFolders,
   useMediaList,
   usePicsumCatalog,
+  usePixabaySearch,
   type PicsumPhoto,
 } from '@/lib/queries/media';
+import type { PixabayHit } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { usePagination } from '@/lib/use-pagination';
 import { PaginationControls } from '@/components/pagination-controls';
@@ -43,9 +45,211 @@ interface MediaPickerDialogProps {
 // outright rather than kept alongside browsing.
 type PicsumSelection = { kind: 'catalog'; photo: PicsumPhoto } | { kind: 'seed'; seed: string };
 
-// Picsum needs no API key (unlike a Pixabay/Unsplash-style provider would), which is exactly why
-// it's the one external source implemented so far — see IMPORT_MEDIA_SOURCES's own comment in
-// packages/contracts/schemas/media.ts. The image is downloaded and stored in R2 like a normal
+// Real keyword search over Pixabay's photo library, proxied through this deployment's API so the
+// PIXABAY_API_KEY secret never reaches the browser. Without that secret the tab explains how to set
+// it up (Picsum, the tab next to it, keeps working with no key). As with Picsum, the chosen image
+// is downloaded into R2 before onSelect fires — never hot-linked — so the caller always receives a
+// real, persisted media id.
+function PixabayImportTab({
+  defaultFolderId,
+  onImported,
+}: {
+  defaultFolderId?: string | undefined;
+  onImported: (mediaId: string, item: { filename: string; altText: string | null }) => void;
+}) {
+  const [input, setInput] = useState('');
+  const [query, setQuery] = useState('');
+  const [page, setPage] = useState(1);
+  const [selected, setSelected] = useState<PixabayHit | null>(null);
+  const [altText, setAltText] = useState('');
+  const [folderId, setFolderId] = useState(defaultFolderId ?? '');
+  const { data, isLoading, isError, error } = usePixabaySearch(query, page);
+  const { data: folders } = useMediaFolders();
+  const importMedia = useImportExternalMedia();
+
+  function submitSearch() {
+    setPage(1);
+    setQuery(input.trim());
+  }
+
+  function choose(hit: PixabayHit) {
+    setSelected(hit);
+    setAltText(hit.tags);
+  }
+
+  function handleImport() {
+    if (!selected) return;
+    importMedia.mutate(
+      {
+        source: 'pixabay',
+        imageUrl: selected.imageUrl,
+        pictureId: String(selected.id),
+        width: Math.min(5000, selected.width),
+        height: Math.min(5000, selected.height),
+        altText: altText.trim() || undefined,
+        folderId: folderId || undefined,
+      },
+      {
+        onSuccess: (media) => {
+          toast.success('Image imported from Pixabay');
+          onImported(media.id, { filename: media.filename, altText: media.altText });
+        },
+        onError: (err) => toast.error(err instanceof ApiError ? err.message : 'Failed to import image'),
+      },
+    );
+  }
+
+  if (data && !data.configured) {
+    return (
+      <div className="flex flex-col gap-2 rounded-md border border-dashed p-4 text-sm">
+        <p className="font-medium">Pixabay isn't set up on this deployment</p>
+        <p className="text-muted-foreground">
+          Get a free API key at{' '}
+          <a href="https://pixabay.com/api/docs/" target="_blank" rel="noreferrer" className="underline">
+            pixabay.com/api/docs
+          </a>
+          , then an administrator can add it in{' '}
+          <a href="/settings?section=api" className="underline">
+            Settings → API → Image sources
+          </a>
+          .
+        </p>
+        <p className="text-muted-foreground">Picsum works without a key in the meantime.</p>
+      </div>
+    );
+  }
+
+  if (selected) {
+    return (
+      <div className="flex flex-col gap-4 py-2">
+        <button
+          type="button"
+          onClick={() => setSelected(null)}
+          className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+        >
+          <ChevronLeft className="size-4" /> Back
+        </button>
+        <div className="overflow-hidden rounded-md bg-muted">
+          <img src={selected.previewUrl} alt="Selected preview" className="mx-auto max-h-72 w-full object-contain" />
+        </div>
+        <p className="text-sm text-muted-foreground">
+          Photo by{' '}
+          <a href={selected.pageUrl} target="_blank" rel="noreferrer" className="underline">
+            {selected.user}
+          </a>{' '}
+          on Pixabay — original {selected.width}×{selected.height}px
+        </p>
+        {folders && folders.length > 0 ? (
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="pixabay-folder">Folder</Label>
+            <Select value={folderId || 'unfiled'} onValueChange={(v) => setFolderId(v === 'unfiled' ? '' : v)}>
+              <SelectTrigger id="pixabay-folder">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="unfiled">Unfiled</SelectItem>
+                {folders.map((folder) => (
+                  <SelectItem key={folder.id} value={folder.id}>
+                    {folder.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ) : null}
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="pixabay-alt">Alt text</Label>
+          <Input id="pixabay-alt" value={altText} onChange={(e) => setAltText(e.target.value)} />
+        </div>
+        <Button type="button" onClick={handleImport} disabled={importMedia.isPending} className="self-start">
+          {importMedia.isPending ? 'Importing…' : 'Import this photo'}
+        </Button>
+      </div>
+    );
+  }
+
+  const pageCount = data ? Math.max(1, Math.ceil(data.total / 24)) : 1;
+
+  return (
+    <div className="flex flex-col gap-3 py-2">
+      <div className="flex gap-2">
+        <div className="relative flex-1">
+          <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                submitSearch();
+              }
+            }}
+            placeholder="Search Pixabay photos (e.g. office, mountains)…"
+            aria-label="Search Pixabay"
+            className="pl-8"
+          />
+        </div>
+        <Button type="button" variant="outline" onClick={submitSearch}>
+          Search
+        </Button>
+      </div>
+      {isError ? (
+        <p className="text-sm text-destructive">
+          {error instanceof ApiError ? error.message : "Couldn't reach Pixabay. Try again."}
+        </p>
+      ) : isLoading ? (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+          {Array.from({ length: 12 }).map((_, i) => (
+            <Skeleton key={i} className="aspect-square w-full rounded-md" />
+          ))}
+        </div>
+      ) : data && data.hits.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No photos found{query ? ` for "${query}"` : ''}.</p>
+      ) : (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+          {(data?.hits ?? []).map((hit) => (
+            <button
+              key={hit.id}
+              type="button"
+              title={`Photo by ${hit.user}`}
+              onClick={() => choose(hit)}
+              className="group relative block aspect-square w-full overflow-hidden rounded-md bg-muted ring-2 ring-transparent outline-none focus-visible:ring-primary group-hover:ring-primary"
+            >
+              <img
+                src={hit.previewUrl}
+                alt={hit.tags}
+                loading="lazy"
+                className="absolute inset-0 h-full w-full object-cover transition-transform group-hover:scale-105"
+              />
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="flex items-center justify-between pt-1">
+        <Button type="button" variant="outline" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}>
+          <ChevronLeft className="size-4" /> Previous
+        </Button>
+        <span className="text-sm text-muted-foreground">
+          Page {page} of {pageCount}
+        </span>
+        <Button type="button" variant="outline" size="sm" onClick={() => setPage((p) => p + 1)} disabled={page >= pageCount}>
+          Next <ChevronRight className="size-4" />
+        </Button>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Photos from{' '}
+        <a href="https://pixabay.com" target="_blank" rel="noreferrer" className="underline">
+          Pixabay
+        </a>{' '}
+        — free to use, downloaded into your Media Library.
+      </p>
+    </div>
+  );
+}
+
+// Picsum needs no API key, which is why it stays as the zero-setup fallback next to Pixabay — it
+// has no keyword search, only a browsable catalog and repeatable seeds. See IMPORT_MEDIA_SOURCES's
+// own comment in packages/contracts/schemas/media.ts. The image is downloaded and stored in R2 like a normal
 // upload before onSelect ever fires, so the caller always receives a real, already-persisted
 // media id, identical to picking an existing library item.
 //
@@ -329,6 +533,7 @@ export function MediaPickerDialog({
         <Tabs defaultValue="library" className="flex min-h-0 flex-1 flex-col gap-3">
           <TabsList>
             <TabsTrigger value="library">Library</TabsTrigger>
+            <TabsTrigger value="pixabay">From Pixabay</TabsTrigger>
             <TabsTrigger value="picsum">From Picsum</TabsTrigger>
           </TabsList>
           <TabsContent value="library" className="flex min-h-0 flex-1 flex-col gap-3">
@@ -409,6 +614,15 @@ export function MediaPickerDialog({
               total={libraryPage.total}
               pageSize={20}
               onPageChange={libraryPage.setPage}
+            />
+          </TabsContent>
+          <TabsContent value="pixabay" className="min-h-0 flex-1 overflow-y-auto pr-1">
+            <PixabayImportTab
+              defaultFolderId={folderId === 'all' || folderId === 'unfiled' ? undefined : folderId}
+              onImported={(mediaId, item) => {
+                onSelect(mediaId, item);
+                onOpenChange(false);
+              }}
             />
           </TabsContent>
           <TabsContent value="picsum" className="min-h-0 flex-1 overflow-y-auto pr-1">
