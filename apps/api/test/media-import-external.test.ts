@@ -37,6 +37,37 @@ describe('import external media (real D1, request validation and role gate)', ()
     expect(response.status).toBe(400);
   });
 
+  it('reports Pixabay as unconfigured (not an error) when no PIXABAY_API_KEY secret is set', async () => {
+    const cookie = await authedCookie('media-pixabay-1@example.test');
+
+    const response = await SELF.fetch('https://example.com/api/v1/admin/media/external/pixabay?q=office', {
+      headers: { Cookie: cookie },
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ configured: false, total: 0, hits: [] });
+  });
+
+  it('refuses a Pixabay import whose imageUrl is not an https pixabay.com URL, without fetching it', async () => {
+    const cookie = await authedCookie('media-pixabay-2@example.test');
+    const post = (imageUrl: string | undefined) =>
+      SELF.fetch('https://example.com/api/v1/admin/media/import-external', {
+        method: 'POST',
+        headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source: 'pixabay', width: 100, height: 100, imageUrl }),
+      });
+
+    for (const bad of [
+      'http://cdn.pixabay.com/photo/a.jpg',
+      'https://evil.example/pixabay.com/a.jpg',
+      'https://pixabay.com.evil.example/a.jpg',
+      undefined,
+    ]) {
+      const response = await post(bad);
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({ error: expect.stringContaining('pixabay.com') });
+    }
+  });
+
   it('rejects import from a viewer role', async () => {
     const ownerCookie = await authedCookie('media-import-owner@example.test');
     const ownerHeaders = { Cookie: ownerCookie, 'Content-Type': 'application/json' };

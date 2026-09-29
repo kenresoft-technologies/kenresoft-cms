@@ -153,6 +153,10 @@ BETTER_AUTH_URL = "https://REPLACE_AFTER_FIRST_DEPLOY.workers.dev"
 # Use a test-mode key (starts sk_test_) while developing/testing — Paystack itself decides
 # sandbox-vs-live purely from which key you use, nothing else here needs to change.
 
+# Pixabay image search in the Media picker is optional: a free key from https://pixabay.com/api/docs/
+# set as a secret enables it (Picsum works without one) — `wrangler secret put PIXABAY_API_KEY` — or an
+# admin can enter it in Settings → API → Image sources (stored encrypted; the secret wins if both exist).
+
 # Optional bot protection on public sign-up (Cloudflare Turnstile). Create a widget for your
 # site's domain(s) at dash.cloudflare.com -> Turnstile, then set both values it gives you:
 #   wrangler secret put TURNSTILE_SECRET_KEY    # server-side, verifies the token — genuinely secret

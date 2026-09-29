@@ -23,6 +23,7 @@ export * from './recovery-codes';
 export * from './webhooks';
 export * from './email-templates';
 export * from './cache-purge-jobs';
+export * from './integration-secrets';
 export * from './plugin-settings';
 export * from './plugin-enablement';
 export * from './plugins/hello';

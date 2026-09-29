@@ -6,6 +6,7 @@ import {
   MEDIA_VISIBILITIES,
   mediaSchema,
   moveMediaSchema,
+  pixabaySearchResponseSchema,
   updateMediaSchema,
 } from '@kenresoft-cms/contracts';
 import type { Media, MediaVisibility } from '@kenresoft-cms/contracts';
@@ -13,7 +14,8 @@ import type { Media, MediaVisibility } from '@kenresoft-cms/contracts';
 import { recordAudit } from '../../lib/audit';
 import { getDb } from '../../lib/db';
 import { createOpenApiApp } from '../../lib/openapi';
-import { fetchExternalImage } from '../../lib/external-media';
+import { fetchExternalImage, searchPixabay } from '../../lib/external-media';
+import { resolvePixabayKey } from '../../lib/secret-store';
 import { deleteMediaFile, uploadMedia } from '../../lib/media-service';
 import { invalidatePublicMediaFolderCache } from '../../lib/public-cache';
 import { requireRole } from '../../middleware/require-role';
@@ -70,6 +72,41 @@ mediaRoute.openapi(
     const { folderId } = c.req.valid('query');
     const scope = folderId === undefined ? undefined : folderId === 'unfiled' ? null : folderId;
     return c.json((await listMedia(db, scope)).map(toMedia), 200);
+  },
+);
+
+// Server-side proxy so PIXABAY_API_KEY never reaches the browser. Registered before any `/:id`
+// route so "external" is never read as a media id.
+mediaRoute.openapi(
+  createRoute({
+    method: 'get',
+    path: '/external/pixabay',
+    tags: ['Media'],
+    summary: 'Search Pixabay for stock photos to import',
+    middleware: requireRole('admin', 'editor'),
+    request: {
+      query: z.object({
+        q: z.string().max(100).optional(),
+        page: z.coerce.number().int().min(1).max(100).optional(),
+      }),
+    },
+    responses: {
+      200: {
+        description: 'Matching photos, or `configured: false` when no PIXABAY_API_KEY is set.',
+        content: { 'application/json': { schema: pixabaySearchResponseSchema } },
+      },
+      502: {
+        description: 'Pixabay could not be reached or rejected the request.',
+        content: { 'application/json': { schema: notFoundSchema } },
+      },
+    },
+  }),
+  async (c) => {
+    const { q, page } = c.req.valid('query');
+    const { key } = await resolvePixabayKey(getDb(c), c.env);
+    const result = await searchPixabay(key ?? undefined, q?.trim() ?? '', page ?? 1);
+    if (!result.ok) return c.json({ error: result.error }, 502);
+    return c.json(result.result, 200);
   },
 );
 
@@ -150,7 +187,7 @@ mediaRoute.openapi(
     method: 'post',
     path: '/import-external',
     tags: ['Media'],
-    summary: 'Import an image from an external source (e.g. Picsum) into the Media Library',
+    summary: 'Import an image from an external source (Pixabay or Picsum) into the Media Library',
     middleware: requireRole('admin', 'editor'),
     request: { body: { content: { 'application/json': { schema: importExternalMediaSchema } } } },
     responses: {
