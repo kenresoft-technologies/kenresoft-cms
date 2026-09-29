@@ -12,6 +12,32 @@ the next release will contain.
 
 ## Unreleased
 
+### Added
+
+- **Pixabay in the Media picker** — a "From Pixabay" tab with real keyword search, imported into
+  your own library like any upload. Optional: set the free API key as a Worker secret
+  (`wrangler secret put PIXABAY_API_KEY`); without it the tab explains how. Picsum stays as the
+  no-key fallback. The key can be entered by an admin in Settings → API → Image sources (stored
+  encrypted, never shown again; a `PIXABAY_API_KEY` Worker secret still takes precedence). Needs
+  `pnpm run update` to apply the new migration.
+
+### Fixed
+
+- **Scheduled publishing** — it relied only on the 5-minute Cron Trigger, which never fires under
+  `wrangler dev` and could lag on a deployment, and one failing entry could stop the whole sweep.
+  Due drafts (entries and pages) are now also published from ordinary request traffic (throttled to
+  once every 30s), each item is isolated so one failure can't block the rest, and the entry editor
+  shows when a schedule will fire.
+- **Email Templates** — toggling Enabled no longer discards unsaved edits; the open email is kept in
+  the URL (reload/Back work); leaving with unsaved edits asks first; custom-HTML emails no longer
+  look "dirty" on open; preview failures are shown instead of hanging; branding is saved with one
+  explicit button instead of a request per keystroke/color-picker tick.
+
+### Changed
+
+- **Email Templates no longer has its own Developer options.** Custom HTML for an email is offered
+  when the deployment-wide Developer experience setting (Settings → API) is on.
+
 ## [0.9.0] - 2026-09-27
 
 ### Added
