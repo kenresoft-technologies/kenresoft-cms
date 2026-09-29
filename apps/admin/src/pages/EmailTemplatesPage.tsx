@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useQueries } from '@tanstack/react-query';
+import { useBlocker, useSearchParams } from 'react-router';
 import { ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -21,6 +22,7 @@ import type {
   EmailTemplateMode,
   GeneralSettingsData,
 } from '@/lib/types';
+import { useDeveloperMode } from '@/lib/developer-mode';
 import { MediaReferenceField } from '@/pages/settings/shared';
 import { PageBreadcrumb } from '@/components/page-breadcrumb';
 import { PageHeader } from '@/components/page-header';
@@ -40,6 +42,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 
@@ -121,7 +124,6 @@ function brandingPatch(branding: Partial<EmailBrandingSettingsData>, patch: Part
     logoMediaId: branding.logoMediaId ?? null,
     footerText: branding.footerText ?? null,
     designId: branding.designId ?? null,
-    developerModeEnabled: branding.developerModeEnabled ?? null,
     ...patch,
   };
 }
@@ -228,7 +230,10 @@ function ChangeDesignDialog({
                     tabIndex={0}
                     onClick={() => setPendingId(design.id)}
                     onKeyDown={(event) => {
-                      if (event.key === 'Enter' || event.key === ' ') setPendingId(design.id);
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        setPendingId(design.id);
+                      }
                     }}
                     className={`cursor-pointer transition-colors ${selected ? 'border-primary' : 'hover:border-primary/50'}`}
                   >
@@ -286,47 +291,6 @@ function DeveloperModeRow({
   );
 }
 
-// Bottom-of-editor card. Below the deployment-wide "Developer options" gate, this is purely
-// explanatory with a single action to turn that gate on — no HTML editing happens here. Once the
-// gate is on (deployment-wide, or because this specific email is already in Developer mode from
-// before), it's replaced by the actual per-email switch above.
-function DeveloperOptionsCard({
-  gateOn,
-  usingCustomHtml,
-  onEnableGate,
-  onToggleMode,
-  enabling,
-}: {
-  gateOn: boolean;
-  usingCustomHtml: boolean;
-  onEnableGate: () => void;
-  onToggleMode: (usingCustomHtml: boolean) => void;
-  enabling: boolean;
-}) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-sm">Developer options</CardTitle>
-      </CardHeader>
-      <CardContent>
-        {gateOn ? (
-          <DeveloperModeRow usingCustomHtml={usingCustomHtml} onToggle={onToggleMode} />
-        ) : (
-          <div className="flex flex-col items-start gap-3 rounded-md border border-dashed px-4 py-3">
-            <p className="text-xs text-muted-foreground">
-              Advanced HTML customization is available for developers who need complete control over the email markup.
-              Most administrators never need this.
-            </p>
-            <Button type="button" variant="outline" size="sm" disabled={enabling} onClick={onEnableGate}>
-              {enabling ? 'Enabling…' : 'Enable developer mode'}
-            </Button>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
 // The editor for a single system email: content only. No design selection here — the design is
 // a single, global choice made from the management page's "Change design" action; this editor
 // only ever shows an informational line naming which one is currently active. There is exactly
@@ -336,17 +300,19 @@ function EmailEditor({
   template,
   designs,
   brandingRow,
-  developerOptionsOn,
   onBack,
   onRequestChangeDesign,
 }: {
   template: EmailTemplate;
   designs: EmailDesign[];
   brandingRow: { data: unknown } | null;
-  developerOptionsOn: boolean;
   onBack: () => void;
   onRequestChangeDesign: () => void;
 }) {
+  // The ONE deployment-wide Developer experience switch (Settings → API) decides whether custom
+  // HTML is offered here — there is no separate email-only switch. A template already in custom
+  // HTML mode keeps its toggle regardless, so switching the setting off never strands it.
+  const developerMode = useDeveloperMode();
   const branding = (brandingRow?.data as Partial<EmailBrandingSettingsData> | undefined) ?? {};
   const activeDesignId = branding.designId ?? DEFAULT_DESIGN_ID;
   const activeDesign = findDesign(designs, activeDesignId);
@@ -357,13 +323,11 @@ function EmailEditor({
   const [bodyHtml, setBodyHtml] = useState(template.bodyHtml);
   const [plainText, setPlainText] = useState(template.plainText ?? '');
   const [usePlainTextOverride, setUsePlainTextOverride] = useState(template.plainText !== null);
-  const [enabled, setEnabled] = useState(template.enabled);
   const [preview, setPreview] = useState<{ subject: string; html: string; text: string } | null>(null);
   const [testTo, setTestTo] = useState('');
   const [confirmRestore, setConfirmRestore] = useState(false);
 
   const updateTemplate = useUpdateEmailTemplate(template.key);
-  const updateBranding = useUpdateStructuredSettings('emailBranding');
   const restoreDefault = useRestoreEmailTemplateDefault(template.key);
   const previewMutation = usePreviewEmailTemplate(template.key);
   const sendTest = useSendTestEmailTemplate(template.key);
@@ -384,12 +348,26 @@ function EmailEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- previewMutation is a fresh mutation object every render; including it would re-trigger the debounce on every keystroke's own render, not just on content changes.
   }, [mode, subject, content, bodyHtml, plainText, usePlainTextOverride]);
 
+  // Compared against the saved template (which refreshes after every save), with a null saved
+  // content treated as empty — otherwise a custom-HTML email (content: null) read as "dirty" the
+  // moment it opened.
   const isContentDirty =
     mode !== template.mode ||
     subject !== template.subject ||
-    JSON.stringify(content) !== JSON.stringify(template.content) ||
+    JSON.stringify(content) !== JSON.stringify(template.content ?? emptyContent()) ||
     (mode === 'developer' && bodyHtml !== template.bodyHtml) ||
     (usePlainTextOverride ? plainText : null) !== template.plainText;
+
+  // Leaving with unsaved edits (Back, sidebar link, tab close) asks first.
+  const blocker = useBlocker(() => isContentDirty);
+  useEffect(() => {
+    if (!isContentDirty) return;
+    function handleBeforeUnload(event: BeforeUnloadEvent) {
+      event.preventDefault();
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isContentDirty]);
 
   async function handleSaveContent() {
     try {
@@ -404,20 +382,28 @@ function EmailEditor({
     }
   }
 
+  // Toggling Enabled saves just that flag. It reads the saved value straight from the template
+  // (no local copy to drift), and — because this editor is no longer remounted on every save —
+  // never discards unsaved content edits sitting in the fields below.
   async function handleSaveEnabled(nextEnabled: boolean) {
-    setEnabled(nextEnabled);
     try {
       await updateTemplate.mutateAsync({ enabled: nextEnabled });
       toast.success(nextEnabled ? 'Enabled' : 'Disabled');
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : 'Failed to update');
-      setEnabled(!nextEnabled);
     }
   }
 
   async function handleRestore() {
     try {
-      await restoreDefault.mutateAsync();
+      const restored = await restoreDefault.mutateAsync();
+      // The editor isn't remounted after a save, so pull the restored values into the fields.
+      setMode(restored.mode);
+      setSubject(restored.subject);
+      setContent(restored.content ?? emptyContent());
+      setBodyHtml(restored.bodyHtml);
+      setPlainText(restored.plainText ?? '');
+      setUsePlainTextOverride(restored.plainText !== null);
       toast.success('Restored to the default');
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : 'Failed to restore default');
@@ -436,15 +422,7 @@ function EmailEditor({
     }
   }
 
-  async function handleEnableDeveloperGate() {
-    try {
-      await updateBranding.mutateAsync(brandingPatch(branding, { developerModeEnabled: true }));
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : 'Failed to save');
-    }
-  }
-
-  const showDeveloperGateOn = developerOptionsOn || template.mode === 'developer';
+  const showCustomHtmlToggle = developerMode || template.mode === 'developer';
 
   return (
     <div className="flex flex-col gap-6">
@@ -468,11 +446,23 @@ function EmailEditor({
               <Label htmlFor="template-enabled" className="text-xs font-normal text-muted-foreground">
                 Enabled
               </Label>
-              <Switch id="template-enabled" checked={enabled} onCheckedChange={(next) => void handleSaveEnabled(next)} />
+              <Switch
+                id="template-enabled"
+                checked={template.enabled}
+                disabled={updateTemplate.isPending}
+                onCheckedChange={(next) => void handleSaveEnabled(next)}
+              />
             </div>
           </div>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
+          {showCustomHtmlToggle ? (
+            <DeveloperModeRow
+              usingCustomHtml={mode === 'developer'}
+              onToggle={(usingCustomHtml) => setMode(usingCustomHtml ? 'developer' : 'standard')}
+            />
+          ) : null}
+
           <div className="flex flex-col gap-2">
             <Label htmlFor="template-subject">Subject</Label>
             <Input id="template-subject" value={subject} onChange={(event) => setSubject(event.target.value)} />
@@ -590,11 +580,18 @@ function EmailEditor({
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
+          {previewMutation.isError ? (
+            <p className="text-sm text-destructive">
+              Couldn't refresh the preview
+              {previewMutation.error instanceof ApiError ? `: ${previewMutation.error.message}` : '.'} The last
+              successful preview is shown below.
+            </p>
+          ) : null}
           <ScaledEmailPreview html={preview?.html} scale={1} minHeight={520} title="Email preview" />
           <div className="flex flex-wrap items-end gap-2 border-t pt-4">
             <div className="flex flex-1 flex-col gap-2">
               <Label htmlFor="test-email-to" className="font-normal text-muted-foreground">
-                Send a test email
+                Send a test email{isContentDirty ? ' (sends the last saved version — save first to include your edits)' : ''}
               </Label>
               <Input
                 id="test-email-to"
@@ -611,13 +608,18 @@ function EmailEditor({
         </CardContent>
       </Card>
 
-      <DeveloperOptionsCard
-        gateOn={showDeveloperGateOn}
-        usingCustomHtml={mode === 'developer'}
-        onEnableGate={() => void handleEnableDeveloperGate()}
-        onToggleMode={(usingCustomHtml) => setMode(usingCustomHtml ? 'developer' : 'standard')}
-        enabling={updateBranding.isPending}
-      />
+      <AlertDialog open={blocker.state === 'blocked'}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Discard unsaved changes?</AlertDialogTitle>
+            <AlertDialogDescription>Your edits to "{template.name}" haven't been saved.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => blocker.reset?.()}>Keep editing</AlertDialogCancel>
+            <AlertDialogAction onClick={() => blocker.proceed?.()}>Discard</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={confirmRestore} onOpenChange={setConfirmRestore}>
         <AlertDialogContent>
@@ -762,52 +764,68 @@ function EmailBrandingSection({
   );
 }
 
+// Edits are held as a local draft and saved together with an explicit button. Saving on every
+// change (each color-picker drag tick, each blur) used to fire a request per tick and remount the
+// form when the saved data came back, throwing away whatever was half-typed in the other fields.
 function BrandingCustomizeFields({ brandingRow, onDone }: { brandingRow: { data: unknown } | null; onDone: () => void }) {
-  return <BrandingCustomizeFieldsInner key={JSON.stringify(brandingRow?.data ?? null)} brandingRow={brandingRow} onDone={onDone} />;
-}
-
-function BrandingCustomizeFieldsInner({ brandingRow, onDone }: { brandingRow: { data: unknown } | null; onDone: () => void }) {
   const branding = (brandingRow?.data as Partial<EmailBrandingSettingsData> | undefined) ?? {};
   const updateBranding = useUpdateStructuredSettings('emailBranding');
 
+  const [logoMediaId, setLogoMediaId] = useState<string | null>(branding.logoMediaId ?? null);
   const [footerText, setFooterText] = useState(branding.footerText ?? '');
   const [brandColor, setBrandColor] = useState(branding.brandColor ?? '');
 
-  function save(patch: Partial<EmailBrandingSettingsData>) {
-    updateBranding.mutate(brandingPatch(branding, patch), {
-      onError: (err) => toast.error(err instanceof ApiError ? err.message : 'Failed to save'),
-    });
+  const validColor = /^#[0-9a-fA-F]{6}$/.test(brandColor);
+  const colorInvalid = brandColor !== '' && !validColor;
+  const isDirty =
+    logoMediaId !== (branding.logoMediaId ?? null) ||
+    footerText !== (branding.footerText ?? '') ||
+    brandColor !== (branding.brandColor ?? '');
+
+  async function handleSave() {
+    try {
+      await updateBranding.mutateAsync(
+        brandingPatch(branding, {
+          logoMediaId,
+          footerText: footerText.trim() || null,
+          brandColor: brandColor || null,
+        }),
+      );
+      toast.success('Email branding saved');
+      onDone();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Failed to save');
+    }
   }
 
   return (
     <div className="flex flex-col gap-4 rounded-md border border-dashed p-4">
-      <MediaReferenceField
-        label="Logo override"
-        mediaId={branding.logoMediaId ?? null}
-        readOnly={false}
-        onChange={(mediaId) => save({ logoMediaId: mediaId })}
-      />
+      <MediaReferenceField label="Logo override" mediaId={logoMediaId} readOnly={false} onChange={setLogoMediaId} />
       <div className="flex flex-col gap-2">
         <Label htmlFor="email-brand-color">Primary &amp; button color override</Label>
         <div className="flex items-center gap-2">
           <Input
             id="email-brand-color"
             type="color"
-            value={brandColor || '#6366f1'}
-            onChange={(event) => {
-              setBrandColor(event.target.value);
-              save({ brandColor: event.target.value });
-            }}
+            value={validColor ? brandColor : '#6366f1'}
+            onChange={(event) => setBrandColor(event.target.value)}
             className="h-9 w-14 p-1"
           />
           <Input
             value={brandColor}
             placeholder="Using the design's own colors"
             onChange={(event) => setBrandColor(event.target.value)}
-            onBlur={() => save({ brandColor: brandColor || null })}
+            aria-invalid={colorInvalid}
+            aria-label="Brand color hex value"
             className="font-mono text-sm"
           />
+          {brandColor ? (
+            <Button type="button" variant="ghost" size="sm" onClick={() => setBrandColor('')}>
+              Reset
+            </Button>
+          ) : null}
         </div>
+        {colorInvalid ? <p className="text-xs text-destructive">Use a 6-digit hex color like #6366f1.</p> : null}
       </div>
       <div className="flex flex-col gap-2">
         <Label htmlFor="email-footer-text">Footer text override</Label>
@@ -816,44 +834,22 @@ function BrandingCustomizeFieldsInner({ brandingRow, onDone }: { brandingRow: { 
           placeholder="Sent by your site. If you weren't expecting this, ignore it."
           value={footerText}
           onChange={(event) => setFooterText(event.target.value)}
-          onBlur={() => save({ footerText: footerText || null })}
         />
         <p className="text-xs text-muted-foreground">Leave blank to use your site's own footer text.</p>
       </div>
-      <Button type="button" variant="ghost" size="sm" className="self-start" onClick={onDone}>
-        Done
-      </Button>
-    </div>
-  );
-}
-
-// Kept minimal and out of the way on purpose — a single deployment-wide switch, not a card full
-// of controls, since most administrators never need to open this at all.
-function DeveloperOptionsSection({ brandingRow }: { brandingRow: { data: unknown } | null }) {
-  const branding = (brandingRow?.data as Partial<EmailBrandingSettingsData> | undefined) ?? {};
-  const updateBranding = useUpdateStructuredSettings('emailBranding');
-  const developerModeEnabled = branding.developerModeEnabled ?? false;
-
-  return (
-    <div className="flex items-start justify-between gap-4 rounded-md border border-dashed px-4 py-3">
-      <div>
-        <Label htmlFor="developer-mode-toggle" className="font-medium">
-          Developer options
-        </Label>
-        <p className="mt-1 max-w-md text-xs text-muted-foreground">
-          Allow custom HTML when an email needs full control over its markup, instead of the plain fields. Most
-          administrators never need this.
-        </p>
+      <div className="flex gap-2">
+        <Button
+          type="button"
+          size="sm"
+          disabled={!isDirty || colorInvalid || updateBranding.isPending}
+          onClick={() => void handleSave()}
+        >
+          {updateBranding.isPending ? 'Saving…' : 'Save branding'}
+        </Button>
+        <Button type="button" variant="ghost" size="sm" onClick={onDone} disabled={updateBranding.isPending}>
+          Cancel
+        </Button>
       </div>
-      <Switch
-        id="developer-mode-toggle"
-        checked={developerModeEnabled}
-        onCheckedChange={(checked) =>
-          updateBranding.mutate(brandingPatch(branding, { developerModeEnabled: checked }), {
-            onError: (err) => toast.error(err instanceof ApiError ? err.message : 'Failed to save'),
-          })
-        }
-      />
     </div>
   );
 }
@@ -869,7 +865,13 @@ export function EmailTemplatesPage() {
   const { data: designs } = useEmailDesigns();
   const { data: brandingRow } = useStructuredSettings('emailBranding');
   const { data: generalRow } = useStructuredSettings('general');
-  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  // The open email lives in the URL (?template=<key>), so a reload, the browser Back button and
+  // a shared link all land on the same email instead of dropping back to the list.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const selectedKey = searchParams.get('template');
+  function selectTemplate(key: string | null) {
+    setSearchParams(key ? { template: key } : {});
+  }
   const [changeDesignOpen, setChangeDesignOpen] = useState(false);
 
   const branding = (brandingRow?.data as Partial<EmailBrandingSettingsData> | undefined) ?? {};
@@ -889,23 +891,31 @@ export function EmailTemplatesPage() {
       {error ? <p className="text-destructive">{error.message}</p> : null}
 
       {isPending || !templates ? (
-        <p className="text-sm text-muted-foreground">Loading…</p>
+        <div className="flex flex-col gap-6" aria-busy="true">
+          <Skeleton className="h-28 w-full" />
+          <Skeleton className="h-64 w-full" />
+        </div>
+      ) : selectedKey && !selected ? (
+        <p className="text-sm text-muted-foreground">
+          That email doesn't exist.{' '}
+          <button type="button" className="text-primary hover:underline" onClick={() => selectTemplate(null)}>
+            Back to Email Templates
+          </button>
+        </p>
       ) : selected ? (
         <EmailEditor
-          key={`${selected.key}-${selected.updatedAt}`}
+          key={selected.key}
           template={selected}
           designs={designs ?? []}
           brandingRow={brandingRow ?? null}
-          developerOptionsOn={branding.developerModeEnabled ?? false}
-          onBack={() => setSelectedKey(null)}
+          onBack={() => selectTemplate(null)}
           onRequestChangeDesign={() => setChangeDesignOpen(true)}
         />
       ) : (
         <>
           <SystemEmailDesignSection activeDesign={activeDesign} onChangeDesign={() => setChangeDesignOpen(true)} />
-          <TransactionalEmailsSection templates={templates} onEdit={setSelectedKey} />
+          <TransactionalEmailsSection templates={templates} onEdit={selectTemplate} />
           <EmailBrandingSection brandingRow={brandingRow ?? null} generalRow={generalRow ?? null} />
-          <DeveloperOptionsSection brandingRow={brandingRow ?? null} />
         </>
       )}
 
