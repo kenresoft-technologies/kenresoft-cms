@@ -12,6 +12,8 @@ the next release will contain.
 
 ## Unreleased
 
+## [0.10.0] - 2026-09-29
+
 ### Added
 
 - **Pixabay in the Media picker** — a "From Pixabay" tab with real keyword search, imported into
