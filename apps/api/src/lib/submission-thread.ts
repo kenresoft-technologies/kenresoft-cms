@@ -128,7 +128,7 @@ export async function notifyAccountOfStageChange(
   env: Bindings,
   ctx: WaitUntilContext,
   form: Pick<Form, 'name' | 'accountSubmissionUrl'>,
-  submission: Pick<FormSubmission, 'id' | 'accountUserId'>,
+  submission: Pick<FormSubmission, 'id' | 'accountUserId' | 'context'>,
   stage: string,
 ): Promise<void> {
   const submissionUrl = accountSubmissionUrl(form, submission.id);
@@ -140,6 +140,8 @@ export async function notifyAccountOfStageChange(
       'user.name': account.name,
       'user.email': account.email,
       'form.name': form.name,
+      // What the submission is about (e.g. the job applied for); empty for an ordinary form.
+      'context.title': submission.context?.title ?? '',
       stage,
       submissionUrl,
     });

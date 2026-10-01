@@ -252,6 +252,21 @@ function parseStageList(raw: string): string[] {
   return raw.split('\n').map((entry) => entry.trim()).filter(Boolean);
 }
 
+// "field = value" per line; true/false become booleans, so a boolean field can gate submissions.
+function parseOpenWhen(raw: string): { field: string; equals: string | boolean }[] {
+  return raw
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .flatMap((line) => {
+      const at = line.indexOf('=');
+      if (at < 1) return [];
+      const field = line.slice(0, at).trim();
+      const value = line.slice(at + 1).trim();
+      return [{ field, equals: value === 'true' ? true : value === 'false' ? false : value }];
+    });
+}
+
 function EditFormForm({ form, onDone }: { form: Form; onDone: () => void }) {
   const [nameValue, setNameValue] = useState(form.name);
   const [slugValue, setSlugValue] = useState(form.slug);
@@ -259,6 +274,11 @@ function EditFormForm({ form, onDone }: { form: Form; onDone: () => void }) {
   const [requiresAccount, setRequiresAccount] = useState(form.requiresAccount);
   const [stagesValue, setStagesValue] = useState((form.stages ?? []).join('\n'));
   const [accountUrlValue, setAccountUrlValue] = useState(form.accountSubmissionUrl ?? '');
+  const [contextType, setContextType] = useState(form.contextConfig?.contentType ?? '');
+  const [openWhenValue, setOpenWhenValue] = useState(
+    (form.contextConfig?.openWhen ?? []).map((rule) => `${rule.field} = ${String(rule.equals)}`).join('\n'),
+  );
+  const [deadlineValue, setDeadlineValue] = useState(form.contextConfig?.deadlineField ?? '');
   const [error, setError] = useState<string | null>(null);
   const updateForm = useUpdateForm(form.id);
 
@@ -267,6 +287,14 @@ function EditFormForm({ form, onDone }: { form: Form; onDone: () => void }) {
     setError(null);
     const parsedEmails = parseEmailList(notificationEmailsValue);
     const parsedStages = parseStageList(stagesValue);
+    const rules = parseOpenWhen(openWhenValue);
+    const contextConfig = contextType.trim()
+      ? {
+          contentType: contextType.trim(),
+          ...(rules.length > 0 ? { openWhen: rules } : {}),
+          ...(deadlineValue.trim() ? { deadlineField: deadlineValue.trim() } : {}),
+        }
+      : null;
     try {
       await updateForm.mutateAsync({
         name: nameValue,
@@ -275,6 +303,8 @@ function EditFormForm({ form, onDone }: { form: Form; onDone: () => void }) {
         requiresAccount,
         stages: parsedStages.length > 0 ? parsedStages : null,
         accountSubmissionUrl: accountUrlValue.trim() || null,
+        // Only sent when the form has (or is getting) a context, so editing an ordinary form is unchanged.
+        ...(contextConfig || form.contextConfig ? { contextConfig } : {}),
       });
       toast.success('Form updated');
       onDone();
@@ -354,6 +384,47 @@ function EditFormForm({ form, onDone }: { form: Form; onDone: () => void }) {
             email is sent.
           </p>
         </div>
+      ) : null}
+      <div className="flex flex-col gap-2">
+        <Label htmlFor="form-edit-context-type">About an entry of this content type (optional)</Label>
+        <Input
+          id="form-edit-context-type"
+          placeholder="opportunity"
+          value={contextType}
+          onChange={(e) => setContextType(e.target.value)}
+        />
+        <p className="text-xs text-muted-foreground">
+          Content type slug. Submissions are then made for one published entry (for example a job
+          application for a vacancy), chosen by the entry&apos;s slug in the submit URL as{' '}
+          <code>?context=slug</code>. The CMS resolves and records the entry itself, so the submitter
+          can&apos;t change it.
+        </p>
+      </div>
+      {contextType.trim() ? (
+        <>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="form-edit-context-open">Only accept while the entry matches</Label>
+            <Textarea
+              id="form-edit-context-open"
+              rows={3}
+              placeholder={'status = Open\napplicationEnabled = true'}
+              value={openWhenValue}
+              onChange={(e) => setOpenWhenValue(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              One <code>field = value</code> per line. An entry that doesn&apos;t match is refused as closed.
+            </p>
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="form-edit-context-deadline">Closing date field (optional)</Label>
+            <Input
+              id="form-edit-context-deadline"
+              placeholder="closingDate"
+              value={deadlineValue}
+              onChange={(e) => setDeadlineValue(e.target.value)}
+            />
+          </div>
+        </>
       ) : null}
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
       <DialogFooter>

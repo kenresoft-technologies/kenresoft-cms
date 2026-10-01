@@ -12,6 +12,18 @@ the next release will contain.
 
 ## Unreleased
 
+### Added
+
+- **Submission context** — a form can now be "about" one published entry, such as a job application
+  for a vacancy. Set the form's content type (Forms → Edit form → "About an entry of this content
+  type") and submit to `/api/v1/public/forms/{slug}/submissions?context={entry-slug}`. The server
+  resolves the published entry itself and stores it, with a title snapshot, on the submission, so
+  the visitor can't point an application at another record. Optional rules refuse a submission when
+  the entry isn't open (`status = Open`) or a closing-date field has passed. Staff see an "About"
+  card on the submission, the owning account sees `context` in its submissions, and notification
+  emails name the entry. Update emails get a `{{context.title}}` variable. Needs `pnpm run update`
+  to apply the new migration (additive, existing forms are unchanged).
+
 ## [0.10.0] - 2026-09-29
 
 ### Added

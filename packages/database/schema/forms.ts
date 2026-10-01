@@ -25,6 +25,14 @@ export const forms = sqliteTable('forms', {
   // Where the owning account views a submission on the site, with `{id}` replaced by the
   // submission id — the link in update emails. Null falls back to the site URL.
   accountSubmissionUrl: text('account_submission_url'),
+  // Submission context: when set, a submission must name one published entry of this content type
+  // (the server resolves it, the visitor never supplies a record), optionally only while that entry
+  // is open for submissions. See FormContextConfig in contracts. Null for ordinary forms.
+  contextConfig: text('context_config', { mode: 'json' }).$type<{
+    contentType: string;
+    openWhen?: { field: string; equals: string | boolean }[] | undefined;
+    deadlineField?: string | undefined;
+  } | null>(),
   createdAt: integer('created_at', { mode: 'timestamp' })
     .notNull()
     .default(sql`(unixepoch())`),

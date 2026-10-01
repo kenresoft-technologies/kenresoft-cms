@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import { sqliteTable, text, integer, index } from 'drizzle-orm/sqlite-core';
 
 import { user } from './auth';
+import { entries } from './entries';
 import { forms } from './forms';
 // FORM_SUBMISSION_STATUSES itself lives in packages/contracts — see field-definitions.ts for why.
 import type { FormSubmissionStatus } from '@kenresoft-cms/contracts';
@@ -38,6 +39,11 @@ export const formSubmissions = sqliteTable(
     // Current progress stage, one of the form's own `stages` — separate from `status`, which is
     // the staff inbox triage state and never shown to the account.
     stage: text('stage'),
+    // The published entry this submission is about (a form with a contextConfig), resolved by the
+    // server at submission time, plus a snapshot so it still reads correctly if the entry is later
+    // renamed or deleted. Never settable by the visitor and never changed afterwards.
+    contextEntryId: text('context_entry_id').references(() => entries.id, { onDelete: 'set null' }),
+    context: text('context', { mode: 'json' }).$type<{ contentType: string; slug: string; title: string } | null>(),
     createdAt: integer('created_at', { mode: 'timestamp' })
       .notNull()
       .default(sql`(unixepoch())`),

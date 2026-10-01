@@ -30,6 +30,7 @@ import {
   deleteFormSubmissionReply,
   listFormSubmissionReplies,
 } from '../../repositories/form-submission-replies';
+import { toSubmissionContext } from '../../lib/submission-context';
 import { getAccountSubmission, listAccountSubmissions, listStageChanges } from '../../repositories/form-submissions';
 
 // The signed-in account's own submissions, for forms with requiresAccount. Every route resolves
@@ -63,6 +64,7 @@ function toSummary(
     data: submission.data,
     stage: submission.stage,
     stages: form.stages ?? null,
+    context: toSubmissionContext(submission),
     createdAt: submission.createdAt.toISOString(),
     lastActivityAt: latest([submission.createdAt, ...activity]),
   };

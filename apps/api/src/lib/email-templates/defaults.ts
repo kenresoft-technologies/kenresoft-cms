@@ -147,7 +147,7 @@ const formSubmissionUpdateDefault: EmailTemplateDefault = {
   subject: 'Update on your {{form.name}} request',
   content: formSubmissionUpdateContent,
   primaryCtaVariable: 'submissionUrl',
-  variables: ['user.name', 'user.email', 'form.name', 'stage', 'submissionUrl'],
+  variables: ['user.name', 'user.email', 'form.name', 'context.title', 'stage', 'submissionUrl'],
   bodyHtml: buildDefaultBodyHtml(
     formSubmissionUpdateContent,
     '{{submissionUrl}}',
