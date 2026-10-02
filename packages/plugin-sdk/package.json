@@ -14,7 +14,7 @@
     "@hono/zod-openapi": "^1.6.1",
     "@kenresoft-cms/contracts": "workspace:*",
     "@kenresoft-cms/database": "workspace:*",
-    "hono": "^4.10.7",
+    "hono": "^4.13.7",
     "zod": "^4.4.3"
   },
   "devDependencies": {
