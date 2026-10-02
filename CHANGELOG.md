@@ -22,7 +22,14 @@ the next release will contain.
   the entry isn't open (`status = Open`) or a closing-date field has passed. Staff see an "About"
   card on the submission, the owning account sees `context` in its submissions, and notification
   emails name the entry. Update emails get a `{{context.title}}` variable. Needs `pnpm run update`
-  to apply the new migration (additive, existing forms are unchanged).
+  to apply the new migration (additive, existing forms are unchanged). The Astro client's
+  `forms.submit` takes a `context` option: this needs `@kenresoft-cms/astro` 0.9.0 (which
+  depends on `@kenresoft-cms/contracts` 0.8.0).
+
+### Changed
+
+- **Job Application form template** now has phone, a PDF/DOCX resume, a cover letter, LinkedIn and
+  portfolio links and an additional-information box. Existing forms are not changed.
 
 ## [0.10.0] - 2026-09-29
 
