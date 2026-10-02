@@ -12,6 +12,7 @@ import { getFormBySlug } from '../../repositories/forms';
 import type { FormSubmission as DbFormSubmission } from '@kenresoft-cms/database';
 import { getClientIp } from '../../lib/client-ip';
 import { resolveAccount } from '../../middleware/require-account';
+import { resolveSubmissionContext, toSubmissionContext } from '../../lib/submission-context';
 
 export const publicFormsRoute = createOpenApiApp<{ Bindings: Bindings }>();
 
@@ -24,6 +25,7 @@ function toFormSubmission(row: DbFormSubmission): FormSubmission {
     isTest: row.isTest,
     accountUserId: row.accountUserId,
     stage: row.stage,
+    context: toSubmissionContext(row),
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -71,16 +73,27 @@ publicFormsRoute.post('/:slug/submissions', async (c) => {
     return c.json({ error: parsedBody.error }, 400);
   }
 
+  // A form that is about one published entry (e.g. a job application) resolves it here from the
+  // ?context=<slug> the visitor is applying under. Unknown, unpublished or closed entries are refused
+  // before anything is stored.
+  const context = await resolveSubmissionContext(db, form, c.req.query('context'));
+  if (context && !context.ok) {
+    return c.json({ error: context.error }, context.status);
+  }
+
   const fields = await listFormFields(db, form.id);
   const result = await submitForm(db, c.env.MEDIA_BUCKET, form, fields, parsedBody.parsed, {
     isTest: false,
     accountUserId,
+    context,
   });
   if (!result.ok) {
     return c.json({ error: result.error, issues: result.issues }, result.status);
   }
 
-  sendFormSubmissionNotification(c.env, c.executionCtx, form, fields, result.submission);
+  sendFormSubmissionNotification(c.env, c.executionCtx, form, fields, result.submission, {
+    context: context?.ok ? context.snapshot : null,
+  });
   return c.json(toFormSubmission(result.submission), 201);
 });
 
@@ -93,9 +106,11 @@ publicFormsRoute.openAPIRegistry.registerPath({
     "The request body's valid shape varies per form, built dynamically from that form's own " +
     'field definitions — there is no fixed schema. Rate limited per client IP (5/60s). A form with ' +
     'requiresAccount needs a signed-in, verified account session and a trusted Origin; the ' +
-    'submission is then owned by that account.',
+    'submission is then owned by that account. A form with a submission context also needs ' +
+    '?context=<entry slug>; the server resolves that published entry and stores it with the submission.',
   request: {
     params: z.object({ slug: z.string() }),
+    query: z.object({ context: z.string().optional() }),
     body: { content: { 'application/json': { schema: z.record(z.string(), z.unknown()) } } },
   },
   responses: {
@@ -115,8 +130,12 @@ publicFormsRoute.openAPIRegistry.registerPath({
       description: 'The form requires an account and the request did not come from a trusted origin.',
       content: { 'application/json': { schema: z.object({ error: z.string() }) } },
     },
+    409: {
+      description: 'The form is about an entry that is closed to new submissions.',
+      content: { 'application/json': { schema: z.object({ error: z.string() }) } },
+    },
     404: {
-      description: 'No form with that slug.',
+      description: 'No form with that slug, or (for a form with a submission context) no published entry for ?context.',
       content: { 'application/json': { schema: z.object({ error: z.string() }) } },
     },
     429: {

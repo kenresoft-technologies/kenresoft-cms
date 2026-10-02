@@ -67,6 +67,8 @@ import {
   updateFormSubmissionStage,
   updateFormSubmissionStatus,
 } from '../../repositories/form-submissions';
+import { toSubmissionContext } from '../../lib/submission-context';
+import { getContentTypeBySlug } from '../../repositories/content-types';
 import { createForm, getFormById, listForms, updateForm } from '../../repositories/forms';
 import { deleteAttachmentsForOwner } from '../../repositories/media-attachments';
 import { getMediaById } from '../../repositories/media';
@@ -123,6 +125,7 @@ function toForm(row: DbForm): Form {
     requiresAccount: row.requiresAccount,
     stages: row.stages ?? null,
     accountSubmissionUrl: row.accountSubmissionUrl ?? null,
+    contextConfig: row.contextConfig ?? null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -167,6 +170,7 @@ function toFormSubmission(row: DbFormSubmission): FormSubmission {
     isTest: row.isTest,
     accountUserId: row.accountUserId,
     stage: row.stage,
+    context: toSubmissionContext(row),
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -182,6 +186,7 @@ export function toFormSubmissionWithForm(
     isTest: row.isTest,
     accountUserId: row.accountUserId,
     stage: row.stage,
+    context: toSubmissionContext(row),
     createdAt: row.createdAt.toISOString(),
     formName: row.formName,
     formSlug: row.formSlug,
@@ -228,11 +233,18 @@ formsRoute.openapi(
         description: 'The created form.',
         content: { 'application/json': { schema: formSchema } },
       },
+      400: {
+        description: 'The submission context names a content type that does not exist.',
+        content: { 'application/json': { schema: notFoundSchema } },
+      },
     },
   }),
   async (c) => {
     const input = c.req.valid('json');
     const db = getDb(c);
+    if (input.contextConfig && !(await getContentTypeBySlug(db, input.contextConfig.contentType))) {
+      return c.json({ error: 'Submission context content type not found' }, 400);
+    }
     const form = await createForm(db, input);
     await recordAudit(db, {
       actorUserId: c.get('user').id,
@@ -291,6 +303,10 @@ formsRoute.openapi(
         description: 'The updated form.',
         content: { 'application/json': { schema: formSchema } },
       },
+      400: {
+        description: 'The submission context names a content type that does not exist.',
+        content: { 'application/json': { schema: notFoundSchema } },
+      },
       404: {
         description: 'No form with that id.',
         content: { 'application/json': { schema: notFoundSchema } },
@@ -306,6 +322,9 @@ formsRoute.openapi(
     }
 
     const input = c.req.valid('json');
+    if (input.contextConfig && !(await getContentTypeBySlug(db, input.contextConfig.contentType))) {
+      return c.json({ error: 'Submission context content type not found' }, 400);
+    }
     const updated = await updateForm(db, id, input);
     await recordAudit(db, {
       actorUserId: c.get('user').id,

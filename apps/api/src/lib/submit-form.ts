@@ -60,7 +60,12 @@ export async function submitForm(
   fields: FormField[],
   parsed: ParsedSubmissionBody,
   // accountUserId comes only from the server-verified session, never from the request body.
-  options: { isTest: boolean; accountUserId?: string | null },
+  options: {
+    isTest: boolean;
+    accountUserId?: string | null;
+    // Resolved server-side by resolveSubmissionContext, never taken from the request body.
+    context?: { entryId: string; snapshot: { contentType: string; slug: string; title: string } } | null;
+  },
 ): Promise<SubmitFormResult> {
   const validated = await validateSubmission(fields, parsed.body, parsed.uploadedFiles);
   if (validated.issues) {
@@ -106,6 +111,8 @@ export async function submitForm(
       isTest: options.isTest,
       accountUserId: options.accountUserId ?? null,
       stage: initialStage,
+      contextEntryId: options.context?.entryId ?? null,
+      context: options.context?.snapshot ?? null,
     });
     for (const { fieldName, mediaId } of stored) {
       await createMediaAttachment(db, { mediaId, ownerType: 'form_submission', ownerId: submission.id, fieldName });

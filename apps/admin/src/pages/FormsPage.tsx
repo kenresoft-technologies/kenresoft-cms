@@ -182,11 +182,16 @@ const FORM_TEMPLATES: FormTemplate[] = [
   {
     name: 'Job Application',
     slug: 'job-application',
-    description: 'Name, email, and a resume upload. For a careers page.',
+    description: 'Contact details, a resume (PDF or Word), a cover letter and links. For a careers page.',
     fields: [
       { name: 'name', label: 'Name', fieldType: 'text', required: true },
       { name: 'email', label: 'Email', fieldType: 'email', required: true },
-      { name: 'resume', label: 'Resume', fieldType: 'file', required: true },
+      { name: 'phone', label: 'Phone', fieldType: 'text', required: false },
+      { name: 'resume', label: 'Resume', fieldType: 'file', required: true, config: { accept: ['pdf', 'docx'] } },
+      { name: 'coverLetter', label: 'Cover letter', fieldType: 'file', required: false, config: { accept: ['pdf', 'docx'] } },
+      { name: 'linkedin', label: 'LinkedIn profile', fieldType: 'url', required: false },
+      { name: 'portfolio', label: 'Portfolio or work samples', fieldType: 'url', required: false },
+      { name: 'additionalInfo', label: 'Additional information', fieldType: 'textarea', required: false },
     ],
   },
   {
