@@ -12,6 +12,8 @@ the next release will contain.
 
 ## Unreleased
 
+## [0.11.0] - 2026-10-02
+
 ### Added
 
 - **Submission context** — a form can now be "about" one published entry, such as a job application
