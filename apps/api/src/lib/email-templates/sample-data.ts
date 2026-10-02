@@ -36,6 +36,7 @@ export function buildSampleVariables(key: EmailTemplateKey): TemplateVariables {
         'user.name': 'Jane Doe',
         'user.email': 'jane@example.com',
         'form.name': 'Support request',
+        'context.title': 'Sample item',
         stage: 'In Progress',
         submissionUrl: 'https://example.com/account/requests/sample-submission-id',
       };

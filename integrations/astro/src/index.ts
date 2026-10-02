@@ -464,6 +464,13 @@ export interface SubmitFormOptions {
    * FormData instead of an object to include files for the form's file-type fields.
    */
   data: Record<string, unknown> | FormData;
+  /**
+   * For a form that is about one published entry (a form with a submission context), the slug of
+   * that entry. Sent as `?context=`; the CMS resolves the published entry itself and stores it with
+   * the submission. Throws 400 if the form needs it and it is missing, 404 if no such published
+   * entry exists, 409 if the entry is closed to new submissions.
+   */
+  context?: string;
 }
 
 export interface KenresoftClient {
@@ -891,8 +898,8 @@ export function createKenresoftClient(config: KenresoftClientConfig): KenresoftC
       },
     },
     forms: {
-      async submit({ formSlug, data }) {
-        const path = `/api/v1/public/forms/${formSlug}/submissions`;
+      async submit({ formSlug, data, context }) {
+        const path = `/api/v1/public/forms/${formSlug}/submissions${context ? `?context=${encodeURIComponent(context)}` : ''}`;
         // credentials: 'include' so a form that requires an account receives the session.
         // FormData sets its own multipart Content-Type (with the boundary).
         const response = await doFetch(`${baseUrl}${path}`, {

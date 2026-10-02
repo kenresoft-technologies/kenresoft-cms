@@ -72,7 +72,7 @@ export function sendFormSubmissionNotification(
   form: Pick<Form, 'id' | 'name' | 'notificationEmails'>,
   fields: FieldLabelSource[],
   submission: { id: string; data: Record<string, unknown> },
-  options?: { isTest?: boolean },
+  options?: { isTest?: boolean; context?: { title: string } | null },
 ): void {
   const recipients = form.notificationEmails;
   if (!recipients || recipients.length === 0) return;
@@ -85,17 +85,23 @@ export function sendFormSubmissionNotification(
       // real thing it's verifying, just unmistakably marked so nobody treats it as a real
       // inquiry (this is a real, deliverable email, per the "Preview & Test" feature's own
       // "run the real pipeline" design, not a simulated/logged-only one).
-      const subject = options?.isTest ? `[Test] New submission: ${form.name}` : `New submission: ${form.name}`;
+      const about = options?.context?.title;
+      const label = about ? `${form.name} · ${about}` : form.name;
+      const subject = options?.isTest ? `[Test] New submission: ${label}` : `New submission: ${label}`;
       const text =
         (options?.isTest ? 'This is a TEST submission sent from the admin "Preview & Test" tool.\n\n' : '') +
-        `A new submission was received for "${form.name}".\n\n` +
+        `A new submission was received for "${form.name}".\n` +
+        (about ? `About: ${about}\n` : '') +
+        '\n' +
         formatSubmissionAsText(fields, submission.data) +
         (submissionLink ? `\n\nView it in the admin: ${submissionLink}` : '');
       const html =
         (options?.isTest
           ? '<p style="color:#b45309;"><strong>This is a TEST submission</strong> sent from the admin "Preview &amp; Test" tool.</p>'
           : '') +
-        `<p>A new submission was received for <strong>${escapeHtml(form.name)}</strong>.</p>` +
+        `<p>A new submission was received for <strong>${escapeHtml(form.name)}</strong>.` +
+        (about ? `<br>About: <strong>${escapeHtml(about)}</strong>` : '') +
+        '</p>' +
         formatSubmissionAsHtml(fields, submission.data) +
         (submissionLink
           ? `<p style="margin-top:16px;"><a href="${escapeHtml(submissionLink)}">View it in the admin</a></p>`

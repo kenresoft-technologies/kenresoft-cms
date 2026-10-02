@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { submissionContextSchema } from './form-submissions';
+
 // The account-facing view of a submission (/api/v1/account/forms/submissions), returned only to
 // the account that owns it. Deliberately narrower than the admin shape: no inbox `status`, no
 // staff identities or email addresses, no isTest flag.
@@ -27,6 +29,8 @@ export const accountSubmissionSummarySchema = z.object({
   data: z.record(z.string(), z.unknown()),
   stage: z.string().nullable(),
   stages: z.array(z.string()).nullable(),
+  // The entry this submission is about (e.g. the job applied for), or null for an ordinary form.
+  context: submissionContextSchema.nullable(),
   createdAt: z.string(),
   // The newest of the submission itself, its stage changes and its messages.
   lastActivityAt: z.string(),

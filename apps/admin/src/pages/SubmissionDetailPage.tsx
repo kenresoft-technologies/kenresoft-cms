@@ -424,6 +424,20 @@ export function SubmissionDetailPage() {
           </div>
 
           <div className="flex min-w-0 flex-col gap-6 lg:col-span-2">
+            {submission.context ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">About</CardTitle>
+                </CardHeader>
+                <CardContent className="min-w-0">
+                  <p className="break-words text-sm font-medium">{submission.context.title}</p>
+                  <p className="truncate text-xs text-muted-foreground">
+                    {submission.context.contentType} / {submission.context.slug}
+                    {submission.context.entryId ? '' : ' (entry deleted)'}
+                  </p>
+                </CardContent>
+              </Card>
+            ) : null}
             {submission.account ? (
               <Card>
                 <CardHeader>

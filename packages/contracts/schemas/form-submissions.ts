@@ -5,6 +5,15 @@ import { FORM_SUBMISSION_STATUSES } from './enums';
 // No create-request schema — public form submissions are validated dynamically against the
 // form's own field definitions (apps/api/src/lib/form-submission-validation.ts), not a fixed
 // shape known at route-definition time.
+// The entry a submission is about, set by the server for a form with a contextConfig. `title` is a
+// snapshot taken at submission time. `entryId` is null once the entry has been deleted.
+export const submissionContextSchema = z.object({
+  contentType: z.string(),
+  slug: z.string(),
+  title: z.string(),
+  entryId: z.string().nullable(),
+});
+
 export const formSubmissionSchema = z.object({
   id: z.string(),
   formId: z.string(),
@@ -19,6 +28,7 @@ export const formSubmissionSchema = z.object({
   accountUserId: z.string().nullable(),
   // The current progress stage (one of the form's own stages), or null if the form has none.
   stage: z.string().nullable(),
+  context: submissionContextSchema.nullable(),
   createdAt: z.string(),
 });
 
@@ -33,6 +43,7 @@ export const updateFormSubmissionStageSchema = z.object({
   notifyAccount: z.boolean().optional(),
 });
 
+export type SubmissionContext = z.infer<typeof submissionContextSchema>;
 export type FormSubmission = z.infer<typeof formSubmissionSchema>;
 export type UpdateFormSubmissionStatusInput = z.infer<typeof updateFormSubmissionStatusSchema>;
 export type UpdateFormSubmissionStageInput = z.infer<typeof updateFormSubmissionStageSchema>;
