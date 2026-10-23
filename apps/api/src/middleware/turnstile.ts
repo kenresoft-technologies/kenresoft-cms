@@ -1,4 +1,4 @@
-import type { MiddlewareHandler } from 'hono';
+import type { Context, MiddlewareHandler } from 'hono';
 
 import { getClientIp } from '../lib/client-ip';
 import type { Bindings } from '../lib/env';
@@ -24,6 +24,30 @@ export async function verifyTurnstileToken(secret: string, token: string, remote
   } catch {
     return 'unavailable';
   }
+}
+
+// The same check for a public form that opted in (forms.requiresHumanCheck). Returns the error
+// response to send, or null when the request may proceed. Like sign-up it does nothing unless the
+// deployment has TURNSTILE_SECRET_KEY set, and it fails closed when verification is unreachable.
+export async function checkFormHumanVerification(
+  c: Context<{ Bindings: Bindings }>,
+): Promise<Response | null> {
+  const secret = c.env.TURNSTILE_SECRET_KEY;
+  if (!secret) return null;
+
+  const token = c.req.header(TOKEN_HEADER);
+  if (!token || token.length > MAX_TOKEN_LENGTH) {
+    return c.json({ code: 'TURNSTILE_REQUIRED', error: 'Complete the human check to submit this form.' }, 400);
+  }
+  const ip = getClientIp(c.req.raw.headers, c.env);
+  const result = await verifyTurnstileToken(secret, token, ip === 'local-dev' ? undefined : ip);
+  if (result === 'unavailable') {
+    return c.json({ code: 'TURNSTILE_UNAVAILABLE', error: 'The human check could not be verified. Please try again.' }, 503);
+  }
+  if (result === 'failed') {
+    return c.json({ code: 'TURNSTILE_FAILED', error: 'The human check failed. Please try again.' }, 403);
+  }
+  return null;
 }
 
 // Optional bot protection for public website sign-up (POST /api/v1/auth/sign-up/email) — the one

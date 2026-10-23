@@ -272,6 +272,8 @@ function EditFormForm({ form, onDone }: { form: Form; onDone: () => void }) {
   const [slugValue, setSlugValue] = useState(form.slug);
   const [notificationEmailsValue, setNotificationEmailsValue] = useState((form.notificationEmails ?? []).join(', '));
   const [requiresAccount, setRequiresAccount] = useState(form.requiresAccount);
+  const [uniqueFieldsValue, setUniqueFieldsValue] = useState((form.uniqueFields ?? []).join(', '));
+  const [requiresHumanCheck, setRequiresHumanCheck] = useState(form.requiresHumanCheck);
   const [stagesValue, setStagesValue] = useState((form.stages ?? []).join('\n'));
   const [accountUrlValue, setAccountUrlValue] = useState(form.accountSubmissionUrl ?? '');
   const [contextType, setContextType] = useState(form.contextConfig?.contentType ?? '');
@@ -288,6 +290,7 @@ function EditFormForm({ form, onDone }: { form: Form; onDone: () => void }) {
     const parsedEmails = parseEmailList(notificationEmailsValue);
     const parsedStages = parseStageList(stagesValue);
     const rules = parseOpenWhen(openWhenValue);
+    const uniqueFields = [...new Set(uniqueFieldsValue.split(',').map((name) => name.trim()).filter(Boolean))];
     const contextConfig = contextType.trim()
       ? {
           contentType: contextType.trim(),
@@ -303,6 +306,11 @@ function EditFormForm({ form, onDone }: { form: Form; onDone: () => void }) {
         requiresAccount,
         stages: parsedStages.length > 0 ? parsedStages : null,
         accountSubmissionUrl: accountUrlValue.trim() || null,
+        // Only sent when changed, so editing a form that uses neither setting is unchanged.
+        ...(uniqueFields.join(',') !== (form.uniqueFields ?? []).join(',')
+          ? { uniqueFields: uniqueFields.length > 0 ? uniqueFields : null }
+          : {}),
+        ...(requiresHumanCheck !== form.requiresHumanCheck ? { requiresHumanCheck } : {}),
         // Only sent when the form has (or is getting) a context, so editing an ordinary form is unchanged.
         ...(contextConfig || form.contextConfig ? { contextConfig } : {}),
       });
@@ -352,6 +360,34 @@ function EditFormForm({ form, onDone }: { form: Form; onDone: () => void }) {
           One per line, in order. New submissions start in the first stage, and you move them along from
           each submission. Leave blank for no stages.
         </p>
+      </div>
+      <div className="flex flex-col gap-2">
+        <Label htmlFor="form-edit-unique-fields">Refuse duplicates on</Label>
+        <Input
+          id="form-edit-unique-fields"
+          placeholder="e.g. app, email"
+          value={uniqueFieldsValue}
+          onChange={(e) => setUniqueFieldsValue(e.target.value)}
+        />
+        <p className="text-xs text-muted-foreground">
+          Field names, comma separated. A submission with the same values for all of them as an earlier
+          one is refused. Email addresses are compared in lowercase. Leave blank to allow duplicates.
+        </p>
+      </div>
+      <div className="flex items-start gap-2">
+        <Checkbox
+          id="form-edit-human-check"
+          className="mt-0.5"
+          checked={requiresHumanCheck}
+          onCheckedChange={(checked) => setRequiresHumanCheck(checked === true)}
+        />
+        <div className="flex flex-col gap-1">
+          <Label htmlFor="form-edit-human-check">Require a Turnstile human check</Label>
+          <p className="text-xs text-muted-foreground">
+            Your site sends the visitor's Turnstile token with the submission. Checked only when this
+            deployment has Turnstile set up (TURNSTILE_SECRET_KEY).
+          </p>
+        </div>
       </div>
       <div className="flex items-start gap-2">
         <Checkbox

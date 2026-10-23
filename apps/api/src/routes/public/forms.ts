@@ -11,6 +11,7 @@ import { listFormFields } from '../../repositories/form-fields';
 import { getFormBySlug } from '../../repositories/forms';
 import type { FormSubmission as DbFormSubmission } from '@kenresoft-cms/database';
 import { getClientIp } from '../../lib/client-ip';
+import { checkFormHumanVerification } from '../../middleware/turnstile';
 import { resolveAccount } from '../../middleware/require-account';
 import { resolveSubmissionContext, toSubmissionContext } from '../../lib/submission-context';
 
@@ -68,6 +69,13 @@ publicFormsRoute.post('/:slug/submissions', async (c) => {
     return c.json({ error: 'Too many submissions, please try again later' }, 429);
   }
 
+  // A form that opted in to the human check verifies the visitor's Turnstile token before any
+  // body is read or anything is stored.
+  if (form.requiresHumanCheck) {
+    const blocked = await checkFormHumanVerification(c);
+    if (blocked) return blocked;
+  }
+
   const parsedBody = await parseSubmissionRequestBody(c.req.raw);
   if (!parsedBody.ok) {
     return c.json({ error: parsedBody.error }, 400);
@@ -106,7 +114,8 @@ publicFormsRoute.openAPIRegistry.registerPath({
     "The request body's valid shape varies per form, built dynamically from that form's own " +
     'field definitions — there is no fixed schema. Rate limited per client IP (5/60s). A form with ' +
     'requiresAccount needs a signed-in, verified account session and a trusted Origin; the ' +
-    'submission is then owned by that account. A form with a submission context also needs ' +
+    'submission is then owned by that account. A form with requiresHumanCheck also needs an ' +
+    'x-turnstile-token header when the deployment has TURNSTILE_SECRET_KEY set. A form with a submission context also needs ' +
     '?context=<entry slug>; the server resolves that published entry and stores it with the submission.',
   request: {
     params: z.object({ slug: z.string() }),
@@ -131,7 +140,8 @@ publicFormsRoute.openAPIRegistry.registerPath({
       content: { 'application/json': { schema: z.object({ error: z.string() }) } },
     },
     409: {
-      description: 'The form is about an entry that is closed to new submissions.',
+      description:
+        'The form is about an entry that is closed to new submissions, or the form has uniqueFields and this combination was already submitted.',
       content: { 'application/json': { schema: z.object({ error: z.string() }) } },
     },
     404: {

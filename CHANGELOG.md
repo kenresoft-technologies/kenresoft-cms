@@ -12,6 +12,21 @@ the next release will contain.
 
 ## Unreleased
 
+### Added
+
+- **Duplicate check, human check and CSV export for forms** — Forms → Edit form has two new
+  settings. "Refuse duplicates on" takes field names (for example `app, email` for a waitlist): a
+  submission with the same values as an earlier one is refused with 409, and email addresses are
+  compared in lowercase. "Require a Turnstile human check" makes the public submit route verify the
+  visitor's `x-turnstile-token` the same way sign-up does; it only applies when the deployment has
+  `TURNSTILE_SECRET_KEY` set. The Submissions page has an "Export CSV" button (real submissions
+  only; cells that start with `=`, `+`, `-` or `@` are neutralised for spreadsheets).
+  Email-type form fields are now stored trimmed and lowercased. Needs `pnpm run update` to apply
+  the new migration (additive, existing forms and submissions are unchanged and keep allowing
+  duplicates). The Astro client's `forms.submit` takes a `turnstileToken` option and sets
+  `KenresoftApiError.code`, which needs `@kenresoft-cms/astro` and `@kenresoft-cms/contracts` to be
+  published with this release.
+
 ## [0.11.0] - 2026-10-02
 
 ### Added

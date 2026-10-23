@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Archive, ExternalLink, Inbox, MailOpen, MoreHorizontal, Paperclip, Trash2 } from 'lucide-react';
+import { Archive, Download, ExternalLink, Inbox, MailOpen, MoreHorizontal, Paperclip, Trash2 } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router';
 import { toast } from 'sonner';
 import type { ColumnDef } from '@tanstack/react-table';
@@ -13,6 +13,7 @@ import {
   useFormSubmissions,
   useUpdateFormSubmissionStatus,
 } from '@/lib/queries/form-submissions';
+import { downloadCsv, submissionsToCsv } from '@/lib/submissions-csv';
 import { getSubmissionAttachments } from '@/lib/submission-attachments';
 import { getSubmissionSender } from '@/lib/submission-sender';
 import type { FormSubmission, FormSubmissionStatus } from '@/lib/types';
@@ -242,6 +243,17 @@ export function FormSubmissionsPage() {
       <PageHeader
         title="Submissions"
         description={form ? `Visitor submissions for ${form.name}.` : 'Visitor submissions.'}
+        actions={
+          submissions && submissions.some((submission) => !submission.isTest) ? (
+            <Button
+              variant="outline"
+              onClick={() => downloadCsv(`${form?.slug ?? 'submissions'}-submissions.csv`, submissionsToCsv(submissions))}
+            >
+              <Download />
+              Export CSV
+            </Button>
+          ) : undefined
+        }
       />
 
       {error ? <p className="text-destructive">{error.message}</p> : null}

@@ -471,6 +471,13 @@ export interface SubmitFormOptions {
    * entry exists, 409 if the entry is closed to new submissions.
    */
   context?: string;
+  /**
+   * The token from a Cloudflare Turnstile widget, for a form with the human check turned on.
+   * Sent as `x-turnstile-token`; needed only when the deployment has `TURNSTILE_SECRET_KEY` set.
+   * Without it the API answers 400 with code `TURNSTILE_REQUIRED` (`KenresoftApiError.code`), and
+   * 403 `TURNSTILE_FAILED` for a bad or reused token.
+   */
+  turnstileToken?: string;
 }
 
 export interface KenresoftClient {
@@ -535,7 +542,7 @@ export interface KenresoftClient {
      * Submits a public form. Rate limited server-side (5/60s per client IP) and validated
      * against the form's own field definitions — throws KenresoftApiError with `issues`
      * populated for a validation failure (400), and without `issues` for a nonexistent form
-     * (404) or exceeding the rate limit (429).
+     * (404), a repeat of a form's duplicate rule (409) or exceeding the rate limit (429).
      */
     submit(options: SubmitFormOptions): Promise<FormSubmission>;
   };
@@ -898,7 +905,7 @@ export function createKenresoftClient(config: KenresoftClientConfig): KenresoftC
       },
     },
     forms: {
-      async submit({ formSlug, data, context }) {
+      async submit({ formSlug, data, context, turnstileToken }) {
         const path = `/api/v1/public/forms/${formSlug}/submissions${context ? `?context=${encodeURIComponent(context)}` : ''}`;
         // credentials: 'include' so a form that requires an account receives the session.
         // FormData sets its own multipart Content-Type (with the boundary).
@@ -906,18 +913,25 @@ export function createKenresoftClient(config: KenresoftClientConfig): KenresoftC
           method: 'POST',
           credentials: 'include',
           ...(data instanceof FormData
-            ? { body: data }
-            : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }),
+            ? { body: data, ...(turnstileToken ? { headers: { 'x-turnstile-token': turnstileToken } } : {}) }
+            : {
+                headers: {
+                  'Content-Type': 'application/json',
+                  ...(turnstileToken ? { 'x-turnstile-token': turnstileToken } : {}),
+                },
+                body: JSON.stringify(data),
+              }),
         });
 
         if (!response.ok) {
           const body = (await response.json().catch(() => null)) as
-            | { error?: string; issues?: FormSubmissionIssue[] }
+            | { error?: string; issues?: FormSubmissionIssue[]; code?: string }
             | null;
           throw new KenresoftApiError(
             response.status,
             body?.error ?? `Kenresoft CMS API request failed: POST ${path} -> ${response.status}`,
             body?.issues,
+            body?.code,
           );
         }
 
