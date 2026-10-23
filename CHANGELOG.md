@@ -12,6 +12,19 @@ the next release will contain.
 
 ## Unreleased
 
+### Changed
+
+- **URL fields no longer show "Choose from Media" by default.** It invited picking a Media file where
+  a web link belongs (a store listing, a repository). To keep it on a field, open Content types →
+  the field → tick "Allow choosing a file from the Media Library". A plain URL field that already holds
+  a Media file link now shows a warning instead of looking like a normal link. If a URL field of yours
+  relies on the picker, tick that box once after updating; nothing else changes.
+
+### Fixed
+
+- Clicking the thumbnail of a chosen Media file (a media field, or a URL field that allows Media) now opens
+  a larger preview, so editors can see what they picked.
+
 ## [0.12.1] - 2026-10-23
 
 ### Changed

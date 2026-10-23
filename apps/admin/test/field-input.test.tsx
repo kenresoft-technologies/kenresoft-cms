@@ -131,7 +131,7 @@ describe('FieldInput', () => {
     // Simulate the parent re-rendering with the newly chosen value, as EntryEditorPage's own
     // handleFieldChange does synchronously on selection — the media list query is still empty.
     rerender('m-picsum-1');
-    expect(screen.getByAltText('Photo by Alejandro Escamilla via Picsum')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Preview Photo by Alejandro Escamilla via Picsum' })).toBeInTheDocument();
     fetchMock.mockRestore();
   });
 
@@ -209,11 +209,39 @@ describe('FieldInput', () => {
     fetchMock.mockRestore();
   });
 
-  it('lets a url field pick a media file, filling the input with its public URL', async () => {
+  it('opens a larger preview of the chosen media when its thumbnail is clicked', async () => {
+    getMock.mockResolvedValue([
+      { id: 'm-1', filename: 'icon.png', contentType: 'image/png', size: 100, width: 10, height: 10, altText: null },
+    ]);
+    renderField(baseField({ fieldType: 'media' }), 'm-1');
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Preview icon.png' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent('icon.png');
+    expect(dialog.querySelector('img')).toHaveAttribute('alt', 'icon.png');
+  });
+
+  it('shows no Media picker on a url field by default', () => {
+    renderField(baseField({ fieldType: 'url' }), '');
+    expect(screen.queryByRole('button', { name: 'Choose from Media' })).not.toBeInTheDocument();
+  });
+
+  it('warns when a plain url field holds a Media Library file link', () => {
+    renderField(baseField({ fieldType: 'url' }), 'https://api.example.com/api/v1/public/media/m-1/file');
+    expect(screen.getByRole('alert')).toHaveTextContent('not a web address');
+    expect(screen.queryByRole('button', { name: 'Choose from Media' })).not.toBeInTheDocument();
+  });
+
+  it('does not warn about an ordinary link', () => {
+    renderField(baseField({ fieldType: 'url' }), 'https://github.com/kenresoft/quick-response');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('lets a url field pick a media file when the field allows it, filling the input with its public URL', async () => {
     getMock.mockResolvedValue([
       { id: 'm-1', filename: 'photo.png', contentType: 'image/png', size: 100, width: 10, height: 10, altText: null },
     ]);
-    const field = baseField({ fieldType: 'url' });
+    const field = baseField({ fieldType: 'url', config: { allowMedia: true } });
     const { onChange } = renderField(field, '');
 
     expect(screen.getByLabelText('Field')).toHaveAttribute('type', 'url');

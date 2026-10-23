@@ -1,5 +1,5 @@
 import { useState, type ReactElement } from 'react';
-import { Check, ChevronsUpDown, ImageOff, X } from 'lucide-react';
+import { Check, ChevronsUpDown, X } from 'lucide-react';
 
 import { useContentType } from '@/lib/queries/content-types';
 import { useEntries } from '@/lib/queries/entries';
@@ -7,6 +7,7 @@ import { mediaFileUrl, publicMediaFileUrl, useMediaList } from '@/lib/queries/me
 import { cn } from '@/lib/utils';
 import type { FieldDefinition } from '@/lib/types';
 import { MediaPickerDialog } from '@/components/media-picker-dialog';
+import { MediaPreview } from '@/components/media-preview';
 import { RichTextEditor } from '@/components/rich-text-editor';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -174,26 +175,13 @@ function MediaField({ field, value, onChange }: FieldInputProps) {
   const [justPicked, setJustPicked] = useState<{ filename: string; altText: string | null } | null>(null);
   const filename = justPicked?.filename ?? cached?.filename;
   const altText = justPicked?.altText ?? cached?.altText ?? null;
-  const [previewFailed, setPreviewFailed] = useState(false);
 
   return (
     <div className="flex flex-col gap-2">
       <Label>{field.label}</Label>
       <div className="flex items-center gap-3">
         {selectedId ? (
-          !previewFailed ? (
-            <img
-              key={selectedId}
-              src={mediaFileUrl(selectedId)}
-              alt={altText ?? filename ?? ''}
-              onError={() => setPreviewFailed(true)}
-              className="size-16 rounded-md object-cover"
-            />
-          ) : (
-            <div className="flex size-16 items-center justify-center rounded-md bg-muted">
-              <ImageOff className="size-5 text-muted-foreground" />
-            </div>
-          )
+          <MediaPreview key={selectedId} src={mediaFileUrl(selectedId)} name={altText || filename || 'Selected media'} />
         ) : (
           <div className="flex size-16 items-center justify-center rounded-md border border-dashed text-xs text-muted-foreground">
             None
@@ -208,7 +196,6 @@ function MediaField({ field, value, onChange }: FieldInputProps) {
               selectedId={selectedId}
               onSelect={(id, item) => {
                 setJustPicked(item);
-                setPreviewFailed(false);
                 onChange(id);
               }}
               trigger={
@@ -245,12 +232,21 @@ function MediaField({ field, value, onChange }: FieldInputProps) {
 // not the admin-gated mediaFileUrl the thumbnail below uses) — this value is meant to be usable
 // by an unauthenticated visitor of the real site, exactly like @kenresoft-cms/astro's own
 // media.url().
+//
+// The Media picker is off unless the field turns it on (Content types → the field → "Allow
+// choosing a file from the Media Library"): most url fields hold a web page (a store listing, a
+// repository), and a picker there invites picking a file by mistake. A plain field that already
+// holds a Media file link says so instead of showing it as if it were a normal link.
+const MEDIA_FILE_URL = new RegExp('/api/v1/public/media/[^/]+/file([?#].*)?$');
+
 function UrlField({ field, value, onChange }: FieldInputProps) {
   const id = `field-${field.name}`;
   const [pickerOpen, setPickerOpen] = useState(false);
   const { data: mediaItems } = useMediaList();
   const stringValue = typeof value === 'string' ? value : '';
+  const allowMedia = field.config?.allowMedia === true;
   const selectedMedia = mediaItems?.find((item) => publicMediaFileUrl(item.id) === stringValue);
+  const holdsMediaLink = !allowMedia && MEDIA_FILE_URL.test(stringValue);
 
   return (
     <div className="flex flex-col gap-2">
@@ -263,25 +259,29 @@ function UrlField({ field, value, onChange }: FieldInputProps) {
           value={stringValue}
           onChange={(event) => onChange(event.target.value)}
           className="flex-1"
+          aria-invalid={holdsMediaLink || undefined}
         />
-        <MediaPickerDialog
-          open={pickerOpen}
-          onOpenChange={setPickerOpen}
-          selectedId={selectedMedia?.id}
-          onSelect={(mediaId) => onChange(publicMediaFileUrl(mediaId))}
-          trigger={
-            <Button type="button" variant="outline" size="sm">
-              Choose from Media
-            </Button>
-          }
-        />
+        {allowMedia ? (
+          <MediaPickerDialog
+            open={pickerOpen}
+            onOpenChange={setPickerOpen}
+            selectedId={selectedMedia?.id}
+            onSelect={(mediaId) => onChange(publicMediaFileUrl(mediaId))}
+            trigger={
+              <Button type="button" variant="outline" size="sm">
+                Choose from Media
+              </Button>
+            }
+          />
+        ) : null}
       </div>
-      {selectedMedia?.width && selectedMedia.height ? (
-        <img
-          src={mediaFileUrl(selectedMedia.id)}
-          alt={selectedMedia.altText ?? selectedMedia.filename}
-          className="size-16 rounded-md object-cover"
-        />
+      {holdsMediaLink ? (
+        <p className="text-xs text-destructive" role="alert">
+          This is a link to a file in your Media Library, not a web address. Replace it with the link this field expects.
+        </p>
+      ) : null}
+      {allowMedia && selectedMedia?.width && selectedMedia.height ? (
+        <MediaPreview src={mediaFileUrl(selectedMedia.id)} name={selectedMedia.altText ?? selectedMedia.filename} />
       ) : null}
     </div>
   );
