@@ -12,6 +12,11 @@ the next release will contain.
 
 ## Unreleased
 
+### Changed
+
+- Dependency updates: Hono 4.13.13 (the API and plugins now require `^4.13.11`) and Vite 8.3.5 for
+  the admin build. No action needed beyond `pnpm run update`.
+
 ## [0.12.0] - 2026-10-23
 
 ### Added
