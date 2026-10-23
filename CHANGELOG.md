@@ -12,6 +12,8 @@ the next release will contain.
 
 ## Unreleased
 
+## [0.12.2] - 2026-10-23
+
 ### Changed
 
 - **URL fields no longer show "Choose from Media" by default.** It invited picking a Media file where
