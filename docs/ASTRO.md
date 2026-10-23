@@ -70,7 +70,9 @@ work, not a rename of this package (see Future work).
   ids from the flat library. Backed by `GET /api/v1/public/media/folders/:slug`, edge-cached and
   invalidated the same way the rest of `lib/public-cache.ts` is. Returns an empty array for a
   folder slug that doesn't exist. Folders have no draft/published distinction to hide.
-- `forms.submit({ formSlug, data })`: submits a public form. Rate limited server-side
+- `forms.submit({ formSlug, data, turnstileToken? })`: submits a public form. A form can refuse
+  duplicates (409 for a repeat of the same unique-field values) and can require a Turnstile token
+  (see Forms → Edit form). Rate limited server-side
   (5/60s per client IP) and validated against that form's own field definitions. There's no
   client-side equivalent of those definitions to validate against here (no public
   form-metadata endpoint either), so a validation failure only surfaces after a real request.

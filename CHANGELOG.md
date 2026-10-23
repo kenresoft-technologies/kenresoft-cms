@@ -12,6 +12,45 @@ the next release will contain.
 
 ## Unreleased
 
+## [0.12.2] - 2026-10-23
+
+### Changed
+
+- **URL fields no longer show "Choose from Media" by default.** It invited picking a Media file where
+  a web link belongs (a store listing, a repository). To keep it on a field, open Content types →
+  the field → tick "Allow choosing a file from the Media Library". A plain URL field that already holds
+  a Media file link now shows a warning instead of looking like a normal link. If a URL field of yours
+  relies on the picker, tick that box once after updating; nothing else changes.
+
+### Fixed
+
+- Clicking the thumbnail of a chosen Media file (a media field, or a URL field that allows Media) now opens
+  a larger preview, so editors can see what they picked.
+
+## [0.12.1] - 2026-10-23
+
+### Changed
+
+- Dependency updates: Hono 4.13.13 (the API and plugins now require `^4.13.11`) and Vite 8.3.5 for
+  the admin build. No action needed beyond `pnpm run update`.
+
+## [0.12.0] - 2026-10-23
+
+### Added
+
+- **Duplicate check, human check and CSV export for forms** — Forms → Edit form has two new
+  settings. "Refuse duplicates on" takes field names (for example `app, email` for a waitlist): a
+  submission with the same values as an earlier one is refused with 409, and email addresses are
+  compared in lowercase. "Require a Turnstile human check" makes the public submit route verify the
+  visitor's `x-turnstile-token` the same way sign-up does; it only applies when the deployment has
+  `TURNSTILE_SECRET_KEY` set. The Submissions page has an "Export CSV" button (real submissions
+  only; cells that start with `=`, `+`, `-` or `@` are neutralised for spreadsheets).
+  Email-type form fields are now stored trimmed and lowercased. Needs `pnpm run update` to apply
+  the new migration (additive, existing forms and submissions are unchanged and keep allowing
+  duplicates). The Astro client's `forms.submit` takes a `turnstileToken` option and sets
+  `KenresoftApiError.code`, which needs `@kenresoft-cms/astro` and `@kenresoft-cms/contracts` to be
+  published with this release.
+
 ## [0.11.0] - 2026-10-02
 
 ### Added

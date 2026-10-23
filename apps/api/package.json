@@ -1,6 +1,6 @@
 {
   "name": "@kenresoft-cms/api",
-  "version": "0.11.0",
+  "version": "0.12.2",
   "private": true,
   "type": "module",
   "scripts": {
@@ -27,7 +27,7 @@
     "@scalar/hono-api-reference": "^0.11.16",
     "better-auth": "1.7.2",
     "drizzle-orm": "^0.45.2",
-    "hono": "^4.10.7",
+    "hono": "^4.13.11",
     "zod": "^4.4.3"
   },
   "devDependencies": {

@@ -1,6 +1,6 @@
 {
   "name": "@kenresoft-cms/admin",
-  "version": "0.11.0",
+  "version": "0.12.2",
   "private": true,
   "type": "module",
   "scripts": {
@@ -19,7 +19,7 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@fontsource-variable/geist": "^5.3.0",
-    "@kenresoft-cms/contracts": "^0.8.0",
+    "@kenresoft-cms/contracts": "^0.9.0",
     "@tanstack/react-query": "^5.102.5",
     "@tanstack/react-table": "^8.21.3",
     "@tiptap/extension-character-count": "^3.31.0",
@@ -76,7 +76,7 @@
     "tailwindcss": "^4.3.3",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.68.0",
-    "vite": "^8.2.2",
+    "vite": "^8.2.4",
     "vitest": "^4.1.11",
     "wrangler": "^4.129.0"
   }

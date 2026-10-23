@@ -72,7 +72,7 @@ const OPTION_LIST_TYPES: FieldType[] = ['select', 'multi_select'];
 // that field's type to `media`, not something this select can prevent after the fact, so the
 // description is here to prevent the mistake up front.
 const FIELD_TYPE_DESCRIPTIONS: Partial<Record<FieldType, string>> = {
-  url: 'A plain link the editor types by hand — not connected to the Media Library.',
+  url: 'A link the editor types by hand. Optionally lets editors pick a Media Library file instead.',
   media: 'Picks an already-uploaded image from the Media Library.',
   reference: 'Links to another entry.',
   rich_text: 'Formatted text with a toolbar (bold, links, images, tables…).',
@@ -136,6 +136,7 @@ function FieldForm({
   const [targetContentTypeId, setTargetContentTypeId] = useState(
     (field?.config?.targetContentTypeId as string | undefined) ?? '',
   );
+  const [allowMedia, setAllowMedia] = useState(field?.config?.allowMedia === true);
   const [error, setError] = useState<string | null>(null);
   const createField = useCreateFieldDefinition(contentTypeId);
   const updateField = useUpdateFieldDefinition(contentTypeId);
@@ -150,7 +151,9 @@ function FieldForm({
       ? { options }
       : fieldType === 'reference' && targetContentTypeId
         ? { targetContentTypeId }
-        : null;
+        : fieldType === 'url' && allowMedia
+          ? { allowMedia: true }
+          : null;
 
     try {
       if (isEditing && field) {
@@ -215,6 +218,24 @@ function FieldForm({
           </div>
 
           {OPTION_LIST_TYPES.includes(fieldType) ? <OptionListEditor options={options} onChange={setOptions} /> : null}
+
+          {fieldType === 'url' ? (
+            <div className="flex items-start gap-2">
+              <Checkbox
+                id="field-allow-media"
+                className="mt-0.5"
+                checked={allowMedia}
+                onCheckedChange={(checked) => setAllowMedia(checked === true)}
+              />
+              <div className="flex flex-col gap-1">
+                <Label htmlFor="field-allow-media">Allow choosing a file from the Media Library</Label>
+                <p className="text-xs text-muted-foreground">
+                  Adds a "Choose from Media" button that fills the field with a file's public link. Leave off for
+                  web page links such as store listings or repositories.
+                </p>
+              </div>
+            </div>
+          ) : null}
 
           {fieldType === 'reference' ? (
             <div className="flex flex-col gap-2">

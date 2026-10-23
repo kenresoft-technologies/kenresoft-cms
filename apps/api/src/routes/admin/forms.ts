@@ -126,6 +126,8 @@ function toForm(row: DbForm): Form {
     stages: row.stages ?? null,
     accountSubmissionUrl: row.accountSubmissionUrl ?? null,
     contextConfig: row.contextConfig ?? null,
+    uniqueFields: row.uniqueFields ?? null,
+    requiresHumanCheck: row.requiresHumanCheck,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
