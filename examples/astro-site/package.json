@@ -13,7 +13,7 @@
   "dependencies": {
     "@astrojs/cloudflare": "^14.3.0",
     "@kenresoft-cms/astro": "workspace:*",
-    "astro": "^7.3.1"
+    "astro": "^7.3.3"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.10",
