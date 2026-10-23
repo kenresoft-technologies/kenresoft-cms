@@ -12,6 +12,8 @@ the next release will contain.
 
 ## Unreleased
 
+## [0.12.0] - 2026-10-23
+
 ### Added
 
 - **Duplicate check, human check and CSV export for forms** — Forms → Edit form has two new
