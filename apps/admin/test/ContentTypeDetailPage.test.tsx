@@ -151,6 +151,43 @@ describe('ContentTypeDetailPage', () => {
     );
   });
 
+  it('adds a url field with the Media Library picker off, and turns it on only when asked', async () => {
+    getMock.mockImplementation((path: string) => {
+      if (path.endsWith('/fields')) return Promise.resolve([]);
+      if (path === '/api/v1/admin/content-types') return Promise.resolve([]);
+      return Promise.resolve({ id: 'ct-1', name: 'Blog Post', slug: 'blog-post' });
+    });
+    postMock.mockResolvedValue({ id: 'f-1' });
+    renderPage();
+    await waitFor(() => expect(screen.getByText('No fields yet')).toBeInTheDocument());
+
+    const addUrlField = async (name: string, allowMedia: boolean) => {
+      await userEvent.click(screen.getByRole('button', { name: 'Add field' }));
+      const dialog = screen.getByRole('dialog');
+      await userEvent.type(within(dialog).getByLabelText('Name'), name);
+      await userEvent.type(within(dialog).getByLabelText('Label'), name);
+      await userEvent.click(within(dialog).getByLabelText('Type'));
+      await userEvent.click(screen.getByRole('option', { name: 'url' }));
+      const checkbox = within(dialog).getByRole('checkbox', { name: /Allow choosing a file from the Media Library/ });
+      expect(checkbox).not.toBeChecked();
+      if (allowMedia) await userEvent.click(checkbox);
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Add field' }));
+    };
+
+    await addUrlField('link', false);
+    await waitFor(() =>
+      expect(postMock).toHaveBeenCalledWith('/api/v1/admin/content-types/ct-1/fields', {
+        name: 'link', label: 'link', fieldType: 'url', required: false, config: null,
+      }),
+    );
+    await addUrlField('banner', true);
+    await waitFor(() =>
+      expect(postMock).toHaveBeenCalledWith('/api/v1/admin/content-types/ct-1/fields', {
+        name: 'banner', label: 'banner', fieldType: 'url', required: false, config: { allowMedia: true },
+      }),
+    );
+  });
+
   it('edits a content type, including its route pattern, through the edit dialog', async () => {
     getMock.mockImplementation((path: string) => {
       if (path.endsWith('/fields')) return Promise.resolve([]);
