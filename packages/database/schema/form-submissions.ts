@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { sqliteTable, text, integer, index } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, integer, index, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 import { user } from './auth';
 import { entries } from './entries';
@@ -39,6 +39,10 @@ export const formSubmissions = sqliteTable(
     // Current progress stage, one of the form's own `stages` — separate from `status`, which is
     // the staff inbox triage state and never shown to the account.
     stage: text('stage'),
+    // Normalized values of the form's uniqueFields, set only on real (non-test) submissions of a
+    // form that defines them. The unique index makes a duplicate fail atomically, so two
+    // simultaneous submissions cannot both get through. Null for every other row.
+    dedupeKey: text('dedupe_key'),
     // The published entry this submission is about (a form with a contextConfig), resolved by the
     // server at submission time, plus a snapshot so it still reads correctly if the entry is later
     // renamed or deleted. Never settable by the visitor and never changed afterwards.
@@ -51,6 +55,7 @@ export const formSubmissions = sqliteTable(
   (table) => [
     index('form_submissions_form_id_idx').on(table.formId),
     index('form_submissions_account_user_id_idx').on(table.accountUserId),
+    uniqueIndex('form_submissions_form_dedupe_key_idx').on(table.formId, table.dedupeKey),
   ],
 );
 

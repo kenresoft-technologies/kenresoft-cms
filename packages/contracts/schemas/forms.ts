@@ -37,6 +37,14 @@ export const formContextConfigSchema = z
   })
   .nullable();
 
+// Field names the form's duplicate check combines (see forms.uniqueFields).
+const uniqueFieldsSchema = z
+  .array(z.string().trim().min(1).max(60))
+  .min(1)
+  .max(5)
+  .refine((names) => new Set(names).size === names.length, 'Field names must be distinct')
+  .nullable();
+
 export const formSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -46,6 +54,8 @@ export const formSchema = z.object({
   stages: z.array(z.string()).nullable(),
   accountSubmissionUrl: z.string().nullable(),
   contextConfig: formContextConfigSchema,
+  uniqueFields: z.array(z.string()).nullable(),
+  requiresHumanCheck: z.boolean(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -58,6 +68,8 @@ export const createFormSchema = z.object({
   stages: stagesSchema.optional(),
   accountSubmissionUrl: accountSubmissionUrlSchema.optional(),
   contextConfig: formContextConfigSchema.optional(),
+  uniqueFields: uniqueFieldsSchema.optional(),
+  requiresHumanCheck: z.boolean().optional(),
 });
 
 // Hand-written, not createFormSchema.partial() — no field here has a .default(), so .partial()
@@ -73,6 +85,8 @@ export const updateFormSchema = z.object({
   stages: stagesSchema.optional(),
   accountSubmissionUrl: accountSubmissionUrlSchema.optional(),
   contextConfig: formContextConfigSchema.optional(),
+  uniqueFields: uniqueFieldsSchema.optional(),
+  requiresHumanCheck: z.boolean().optional(),
 });
 
 export type FormContextConfig = NonNullable<z.infer<typeof formContextConfigSchema>>;

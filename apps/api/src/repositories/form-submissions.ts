@@ -3,7 +3,7 @@ import type { Database, FormSubmission, FormSubmissionStatus, NewFormSubmission 
 
 export async function createFormSubmission(
   db: Database,
-  input: Pick<NewFormSubmission, 'formId' | 'data' | 'isTest' | 'accountUserId' | 'stage' | 'contextEntryId' | 'context'>,
+  input: Pick<NewFormSubmission, 'formId' | 'data' | 'isTest' | 'accountUserId' | 'stage' | 'dedupeKey' | 'contextEntryId' | 'context'>,
 ): Promise<FormSubmission> {
   const [submission] = await db.insert(formSubmissions).values(input).returning();
   return submission!;

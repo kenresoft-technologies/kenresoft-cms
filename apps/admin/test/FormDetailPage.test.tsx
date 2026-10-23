@@ -31,6 +31,8 @@ const baseForm = {
   slug: 'contact',
   notificationEmails: null,
   requiresAccount: false,
+  uniqueFields: null,
+  requiresHumanCheck: false,
   stages: null,
   accountSubmissionUrl: null,
 };

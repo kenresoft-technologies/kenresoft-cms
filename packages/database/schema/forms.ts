@@ -33,6 +33,14 @@ export const forms = sqliteTable('forms', {
     openWhen?: { field: string; equals: string | boolean }[] | undefined;
     deadlineField?: string | undefined;
   } | null>(),
+  // Field names whose combined, normalized values must be unique among real submissions (for a
+  // waitlist: ["app", "email"], one registration per app and address). A repeat is refused with
+  // 409. Null means duplicates are allowed, which is every existing form's behavior.
+  uniqueFields: text('unique_fields', { mode: 'json' }).$type<string[] | null>(),
+  // Opt-in Cloudflare Turnstile check on the public submit route. Enforced only when the
+  // deployment also has TURNSTILE_SECRET_KEY set, so opting in never blocks a deployment that
+  // has not configured Turnstile.
+  requiresHumanCheck: integer('requires_human_check', { mode: 'boolean' }).notNull().default(false),
   createdAt: integer('created_at', { mode: 'timestamp' })
     .notNull()
     .default(sql`(unixepoch())`),

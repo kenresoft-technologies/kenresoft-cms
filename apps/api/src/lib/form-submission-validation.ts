@@ -22,7 +22,12 @@ function schemaForField(field: FormField): z.ZodTypeAny {
 
   switch (field.fieldType) {
     case 'email':
-      base = z.email().max(320).transform(sanitizeText);
+      // Lowercased so the same address always reads, stores and de-duplicates the same way.
+      base = z
+        .string()
+        .trim()
+        .pipe(z.email().max(320))
+        .transform((value) => sanitizeText(value).toLowerCase());
       break;
     case 'url':
       base = z.url().max(2000).transform(sanitizeText);
