@@ -15,7 +15,7 @@
     "@kenresoft-cms/contracts": "workspace:*",
     "@kenresoft-cms/database": "workspace:*",
     "@kenresoft-cms/plugin-sdk": "workspace:*",
-    "hono": "^4.13.11",
+    "hono": "^4.13.16",
     "zod": "^4.4.3"
   },
   "devDependencies": {
